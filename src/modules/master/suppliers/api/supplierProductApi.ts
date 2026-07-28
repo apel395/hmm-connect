@@ -39,3 +39,6 @@ export const supplierProductApi = {
 };
 
 export default supplierProductApi;
+export type {
+  SupplierProductPayload,
+};

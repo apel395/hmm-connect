@@ -105,7 +105,7 @@ export default function ProductPage() {
         <PageHeader
           title="Products"
           description="Product Master"
-          action={
+          actions={
             <Button
               onClick={
                 handleCreate
@@ -147,12 +147,10 @@ export default function ProductPage() {
         onSubmit={handleSubmit}
       />
 
-      <ConfirmDialog
+      {/* <ConfirmDialog
         open={deleteOpen}
         title="Delete Product"
-        description={`Delete "${selected?.name}" ?`}
         confirmText="Delete"
-        variant="danger"
         loading={
           deleteMutation.isPending
         }
@@ -161,7 +159,7 @@ export default function ProductPage() {
           setSelected(null);
         }}
         onConfirm={confirmDelete}
-      />
+      /> */}
     </>
   );
 }

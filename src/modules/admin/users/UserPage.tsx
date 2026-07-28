@@ -14,7 +14,7 @@ title="Users"
 
 description="System Users"
 
-action={<Button>New User</Button>}
+actions={<Button>New User</Button>}
 
 />
 

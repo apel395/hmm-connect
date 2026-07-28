@@ -4,6 +4,7 @@ import Loading from "@/components/ui/Loading";
 import {
   useGoodsReceipts,
 } from "../hooks/useGoodsReceipts";
+import { GoodsReceipt } from "../types";
 
 
 interface Props {
@@ -91,7 +92,7 @@ export default function GoodsReceiptList({
 
           {
             data.map(
-              receipt => (
+              (receipt: GoodsReceipt) => (
 
 
                 <div

@@ -14,7 +14,7 @@ title="Tax"
 
 description="Tax Configuration"
 
-action={<Button>New Tax</Button>}
+actions={<Button>New Tax</Button>}
 
 />
 

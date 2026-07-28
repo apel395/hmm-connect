@@ -421,7 +421,7 @@ export default function ReceiveGoodsDialog({
 
                 {
                   warehouses.map(
-                    warehouse=>(
+                    (warehouse:any)=>(
 
                       <option
 

@@ -264,7 +264,7 @@ export default function PurchaseOrderPage() {
           description="Purchase Order Management"
 
 
-          action={
+          actions={
 
             <Button
 

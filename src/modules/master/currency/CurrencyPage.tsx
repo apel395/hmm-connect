@@ -14,7 +14,7 @@ title="Currency"
 
 description="Currency Master"
 
-action={<Button>New Currency</Button>}
+actions={<Button>New Currency</Button>}
 
 />
 

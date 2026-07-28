@@ -165,9 +165,8 @@ export default function SupplierPage() {
     try {
       await deleteSupplierProduct.mutateAsync(
         {
-          supplierId:
-            selected.id,
-          id: row.id,
+          supplierId: selected.id,
+          supplierProductId: 0
         }
       );
     } catch (err) {
@@ -182,7 +181,7 @@ export default function SupplierPage() {
         <PageHeader
           title="Suppliers"
           description="Supplier Master"
-          action={
+          actions={
             <Button
               onClick={
                 createSupplier
