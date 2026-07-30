@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -11,6 +12,10 @@ class GoodsReceiptItemCreate(BaseModel):
 
 class GoodsReceiptCreate(BaseModel):
     purchase_order_id: int
+    received_at: datetime | None = None
+    source_type: Literal["LIVE", "HISTORICAL_IMPORT"] = "LIVE"
+    external_reference: str | None = Field(default=None, max_length=100)
+    receipt_type: Literal["GOODS", "SERVICE"] = "GOODS"
     warehouse_id: int
     destination_type: Literal["INVENTORY", "DIRECT_CONSUMPTION"] = "INVENTORY"
     notes: str | None = None

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TokenResponse(BaseModel):
@@ -31,3 +31,39 @@ class UserSummary(BaseModel):
     roles: list[RoleSummary] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+class RegistrationRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=50)
+    full_name: str = Field(min_length=1, max_length=150)
+    email: str = Field(
+        min_length=3,
+        max_length=120,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+    password: str = Field(min_length=1)
+
+    @field_validator("username", "full_name", "email", mode="before")
+    @classmethod
+    def trim_required_text(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be empty")
+        return normalized
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.lower()
+
+
+class RegistrationResponse(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    email: str
+    is_active: bool
+    requires_admin_access: bool
+    message: str

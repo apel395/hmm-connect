@@ -61,6 +61,9 @@ class PurchaseRequisitionService:
                 db
             ),
             status="DRAFT",
+            request_date=data.request_date or date.today(),
+            source_type=data.source_type,
+            external_reference=data.external_reference,
             notes=data.notes,
             expiry_date=data.expiry_date,
             total_amount=Decimal("0"),

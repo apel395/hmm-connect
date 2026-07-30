@@ -89,6 +89,8 @@ def get_requisition(
         "pr_number": requisition.pr_number,
         "status": requisition.status,
         "request_date": requisition.request_date,
+        "source_type": requisition.source_type,
+        "external_reference": requisition.external_reference,
         "expiry_date": requisition.expiry_date,
         "notes": requisition.notes,
         "total_amount": requisition.total_amount,
