@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     accounting, ap_aging, approvals, ar_aging, audit_trail, auth, balance_sheet,
-    cash_flow, customer_payments, dashboard, document_drilldown, document_events,
+    cash_flow, customer_payments, dashboard, document_attachments, document_drilldown, document_events,
     fiscal_periods, general_ledger, goods_receipts, inventory,
     journal_detail, journals, payments, products, profit_loss,
     purchase_orders, purchase_requisitions, supplier_products, suppliers,
@@ -22,5 +22,6 @@ for router in (
     balance_sheet.router, cash_flow.router, ap_aging.router, ar_aging.router,
     warehouses.router, year_end.router, audit_trail.router, document_drilldown.router,
     document_events.router,
+    document_attachments.router,
 ):
     api_router.include_router(router)

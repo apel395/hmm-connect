@@ -56,6 +56,8 @@ def serialize_purchase_order(
         "approval_status": approval_status,
         "current_approver_role": current_approver_role,
         "order_date": purchase_order.order_date,
+        "source_type": purchase_order.source_type,
+        "external_reference": purchase_order.external_reference,
         "expected_date": purchase_order.expected_date,
         "expiry_date": purchase_order.expiry_date,
         "receipt_tolerance_percent": purchase_order.receipt_tolerance_percent,

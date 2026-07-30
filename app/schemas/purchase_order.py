@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -13,6 +14,9 @@ class PurchaseOrderItemCreate(BaseModel):
 
 class PurchaseOrderCreate(BaseModel):
     supplier_id: int
+    order_date: date | None = None
+    source_type: Literal["LIVE", "HISTORICAL_IMPORT"] = "LIVE"
+    external_reference: str | None = Field(default=None, max_length=100)
     expected_date: date
     expiry_date: date | None = None
     receipt_tolerance_percent: Decimal = Field(default=Decimal("0"), ge=0)

@@ -22,6 +22,9 @@ class GoodsReceipt(Base):
         index=True,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False)
+    external_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    receipt_type: Mapped[str] = mapped_column(String(30), default="GOODS", nullable=False)
 
     purchase_order = relationship("PurchaseOrder", back_populates="goods_receipts")
     received_by = relationship("User")

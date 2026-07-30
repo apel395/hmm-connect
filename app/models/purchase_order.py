@@ -47,6 +47,8 @@ class PurchaseOrder(Base, TimestampMixin):
     )
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False)
+    external_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     supplier = relationship("Supplier", back_populates="purchase_orders")
 

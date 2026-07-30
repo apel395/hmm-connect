@@ -51,3 +51,6 @@ def test_openapi_schema_contains_core_routes():
     assert "/api/v1/traceability/purchase-requisitions/{requisition_id}" in paths
     assert "/api/v1/traceability/purchase-orders/{purchase_order_id}" in paths
     assert "/api/v1/inventory" in paths
+    assert "/api/v1/document-attachments/upload" in paths
+    assert "/api/v1/document-attachments" in paths
+    assert "/api/v1/document-attachments/{attachment_id}/download" in paths

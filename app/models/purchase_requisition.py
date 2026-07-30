@@ -17,6 +17,8 @@ class PurchaseRequisition(Base, TimestampMixin):
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False)
+    external_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     items = relationship(
         "PurchaseRequisitionItem",
