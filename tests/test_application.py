@@ -20,6 +20,7 @@ def test_openapi_schema_contains_core_routes():
     schema = TestClient(app).get("/openapi.json").json()
     paths = schema["paths"]
     assert "/api/v1/auth/login" in paths
+    assert "/api/v1/auth/register" in paths
     assert "/api/v1/products" in paths
     assert "/api/v1/purchase-requisitions" in paths
     assert "/api/v1/purchase-requisitions/{requisition_id}" in paths
