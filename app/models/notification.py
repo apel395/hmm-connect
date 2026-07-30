@@ -1,7 +1,7 @@
 # app/models/notification.py
 
 from sqlalchemy import *
-from app.core.database import Base
+from app.models.base import Base
 
 class Notification(Base):
     __tablename__ = "notifications"

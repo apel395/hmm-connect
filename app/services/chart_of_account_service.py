@@ -52,9 +52,9 @@ class ChartOfAccountService:
 
         for account in accounts:
 
-            if account.parent_id:
+            if account.parent_account_id:
 
-                parent = lookup.get(account.parent_id)
+                parent = lookup.get(account.parent_account_id)
 
                 if parent:
                     parent.children.append(account)
@@ -84,9 +84,9 @@ class ChartOfAccountService:
         parent = None
         level = 1
 
-        if payload.parent_id:
+        if payload.parent_account_id:
 
-            parent = self.get(payload.parent_id)
+            parent = self.get(payload.parent_account_id)
 
             if parent is None:
                 raise HTTPException(
@@ -94,26 +94,20 @@ class ChartOfAccountService:
                     "Parent account not found",
                 )
 
-            if parent.is_postable:
+            if parent.is_posting:
                 raise HTTPException(
                     400,
                     "Parent account cannot be postable",
                 )
 
-            level = parent.level + 1
-
         account = ChartOfAccount(
             account_number=payload.account_number,
             account_name=payload.account_name,
             account_type=payload.account_type,
-            category=payload.category,
-            normal_balance=payload.normal_balance,
-            parent_id=payload.parent_id,
-            level=level,
-            currency=payload.currency,
-            is_postable=payload.is_postable,
+            cash_flow_category=payload.cash_flow_category,
+            parent_account_id=payload.parent_account_id,
+            is_posting=payload.is_posting,
             is_active=payload.is_active,
-            description=payload.description,
         )
 
         self.db.add(account)
@@ -162,9 +156,9 @@ class ChartOfAccountService:
                 data["account_name"]
             )
 
-        if "parent_id" in data:
+        if "parent_account_id" in data:
 
-            parent_id = data["parent_id"]
+            parent_id = data["parent_account_id"]
 
             if parent_id == account.id:
                 raise HTTPException(
@@ -182,17 +176,11 @@ class ChartOfAccountService:
                         "Parent account not found",
                     )
 
-                if parent.is_postable:
+                if parent.is_posting:
                     raise HTTPException(
                         400,
                         "Parent account cannot be postable",
                     )
-
-                account.level = parent.level + 1
-
-            else:
-
-                account.level = 1
 
         for key, value in data.items():
             setattr(account, key, value)

@@ -154,3 +154,7 @@ class ActivityService:
         db.flush()
 
         return activity
+
+
+# Backwards-compatible name used by recovered purchasing and payments modules.
+AuditService = ActivityService

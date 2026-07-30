@@ -100,7 +100,7 @@ class ImportBatch(Base):
     # FAILED
 
 
-    activities = relationship(
+    audit_logs = relationship(
         "AuditLog",
         back_populates="import_batch",
     )

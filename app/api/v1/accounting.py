@@ -91,7 +91,7 @@ def general_ledger(
 
     entries = (
         query.order_by(
-            GeneralLedger.transaction_date,
+            GeneralLedger.posting_date,
             GeneralLedger.id,
         )
         .all()
@@ -112,7 +112,7 @@ def account_ledger(
             GeneralLedger.account_id == account_id
         )
         .order_by(
-            GeneralLedger.transaction_date,
+            GeneralLedger.posting_date,
             GeneralLedger.id,
         )
         .all()
@@ -129,7 +129,7 @@ def account_ledger(
 
         result.append(
             {
-                "date": e.transaction_date,
+                "date": e.posting_date,
                 "description": e.description,
                 "debit": e.debit,
                 "credit": e.credit,

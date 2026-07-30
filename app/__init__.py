@@ -1,0 +1,1 @@
+"""HMM Connect backend application."""
