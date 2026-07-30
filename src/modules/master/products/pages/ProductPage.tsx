@@ -147,19 +147,20 @@ export default function ProductPage() {
         onSubmit={handleSubmit}
       />
 
-      {/* <ConfirmDialog
+      <ConfirmDialog
         open={deleteOpen}
         title="Delete Product"
+        message={`Delete ${selected?.name ?? "this product"}?`}
         confirmText="Delete"
         loading={
           deleteMutation.isPending
         }
-        onCancel={() => {
+        onClose={() => {
           setDeleteOpen(false);
           setSelected(null);
         }}
         onConfirm={confirmDelete}
-      /> */}
+      />
     </>
   );
 }

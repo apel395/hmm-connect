@@ -1,11 +1,14 @@
 import {
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
+import useAuthStore from "@/store/auth";
 
 import PurchaseOrderTable from "../components/PurchaseOrderTable";
 import PurchaseOrderForm from "../components/PurchaseOrderForm";
@@ -30,12 +33,22 @@ import type {
 
 export default function PurchaseOrderListPage(){
 
+  const navigate = useNavigate();
+
+  const user = useAuthStore((state) => state.user);
+  const roleNames = (user?.roles ?? []).map((role) => role.name);
+  const isAdmin = roleNames.includes("ADMIN");
+  const canManagePO = isAdmin || roleNames.includes("PURCHASING");
+  const canReceive = isAdmin || roleNames.includes("WAREHOUSE");
+
+  const [scope, setScope] =
+    useState<"active" | "history">("active");
 
   const {
     data=[],
     isLoading,
   } =
-    usePurchaseOrders();
+    usePurchaseOrders(scope);
 
 
 
@@ -46,10 +59,8 @@ export default function PurchaseOrderListPage(){
   const submitMutation =
     useSubmitPurchaseOrder();
 
-
   const approveMutation =
     useApprovePurchaseOrder();
-
 
   const rejectMutation =
     useRejectPurchaseOrder();
@@ -121,52 +132,41 @@ export default function PurchaseOrderListPage(){
 
 
 
-  async function approve(
-    row:PurchaseOrder
-  ){
-
-    await approveMutation.mutateAsync({
-
-      id:
-        row.id,
-
-    });
-
-  }
-
-
-
-
-
-
-
-  async function reject(
-    row:PurchaseOrder
-  ){
-
-    const comment =
-      window.prompt(
-        "Reject reason"
+  async function approve(row: PurchaseOrder) {
+    const requiredRole =
+      row.current_approver_role ?? "current role";
+    if (
+      !window.confirm(
+        `Approve ${row.po_number} for the ${requiredRole} step?`
+      )
+    ) {
+      return;
+    }
+    try {
+      await approveMutation.mutateAsync({
+        id: row.id,
+        comment: `Approved by administrator for ${requiredRole}`,
+      });
+      toast.success(`${row.po_number}: ${requiredRole} step approved.`);
+    } catch (error: any) {
+      toast.error(
+        typeof error?.response?.data?.detail === "string"
+          ? error.response.data.detail
+          : "Unable to approve purchase order."
       );
-
-
-    await rejectMutation.mutateAsync({
-
-      id:
-        row.id,
-
-      comment:
-        comment ?? "",
-
-    });
-
+    }
   }
 
-
-
-
-
-
+  async function reject(row: PurchaseOrder) {
+    const comment = window.prompt("Reject reason");
+    if (!comment) {
+      return;
+    }
+    await rejectMutation.mutateAsync({
+      id: row.id,
+      comment,
+    });
+  }
 
 return (
 
@@ -182,21 +182,25 @@ title="Purchase Orders"
 description="Manage supplier orders"
 
 actions={
-
-<Button
-
-onClick={()=>{
-
-  setOpenForm(true);
-
-}}
-
->
-
-New Purchase Order
-
-</Button>
-
+  <div className="flex gap-2">
+    <Button
+      variant={scope === "active" ? "primary" : "outline"}
+      onClick={() => setScope("active")}
+    >
+      Active
+    </Button>
+    <Button
+      variant={scope === "history" ? "primary" : "outline"}
+      onClick={() => setScope("history")}
+    >
+      History
+    </Button>
+    {scope === "active" && canManagePO && (
+      <Button onClick={() => setOpenForm(true)}>
+        New Purchase Order
+      </Button>
+    )}
+  </div>
 }
 
 />
@@ -221,29 +225,32 @@ isLoading
 
 rows={data}
 
+onEdit={(row) =>
+  navigate(`/purchase-orders/${row.id}`)
+}
+
+onTrace={(row) =>
+  navigate(`/traceability/po/${row.id}`)
+}
+
 
 
 onSubmit={
-  submit
+  canManagePO ? submit : undefined
 }
-
-
 
 onApprove={
-  approve
+  isAdmin ? approve : undefined
 }
-
-
 
 onReject={
-  reject
+  isAdmin ? reject : undefined
 }
 
-
-
 onReceive={
-  (row)=>
-    setSelectedPO(row)
+  canReceive
+    ? (row) => setSelectedPO(row)
+    : undefined
 }
 
 

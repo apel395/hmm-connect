@@ -4,7 +4,7 @@ import Loading from "@/components/ui/Loading";
 import {
   useGoodsReceipts,
 } from "../hooks/useGoodsReceipts";
-import { GoodsReceipt } from "../types";
+import type { GoodsReceipt } from "../types";
 
 
 interface Props {
@@ -143,9 +143,7 @@ export default function GoodsReceiptList({
 
                       <div className="font-medium">
 
-                        {
-                          receipt.destination_type
-                        }
+                        {receipt.destination_type === "INVENTORY" ? "Warehouse inventory" : "Direct consumption"}
 
                       </div>
 
@@ -155,11 +153,7 @@ export default function GoodsReceiptList({
 
                           <div className="text-sm text-slate-500">
 
-                            Warehouse ID:
-                            {" "}
-                            {
-                              receipt.warehouse_id
-                            }
+                            {receipt.warehouse_name ?? `Warehouse #${receipt.warehouse_id}`}
 
                           </div>
 
@@ -234,10 +228,8 @@ export default function GoodsReceiptList({
 
                               <td className="py-2">
 
-                                Product #
-                                {
-                                  item.product_id
-                                }
+                                <div>{item.product_name}</div>
+                                <div className="text-xs text-slate-500">{item.product_code}</div>
 
                               </td>
 

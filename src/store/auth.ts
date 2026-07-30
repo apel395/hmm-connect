@@ -10,7 +10,7 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   access_token: string;
-  refresh_token: string;
+  refresh_token?: string;
   token_type: string;
 }
 
@@ -120,6 +120,13 @@ export const useAuthStore = create<AuthState>(
       return false;
     }
 
+    if (
+      user.roles.some(
+        role => role.name === "ADMIN"
+      )
+    ) {
+      return true;
+    }
 
     return user.roles.some(
       role =>
@@ -297,7 +304,15 @@ export const useAuthStore = create<AuthState>(
       } =
         await api.post<LoginResponse>(
           "/auth/login",
-          payload
+          new URLSearchParams({
+            username: payload.username,
+            password: payload.password,
+          }),
+          {
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+          }
         );
 
 
@@ -308,10 +323,16 @@ export const useAuthStore = create<AuthState>(
       );
 
 
-      localStorage.setItem(
-        "refresh_token",
-        data.refresh_token
-      );
+      if (data.refresh_token) {
+        localStorage.setItem(
+          "refresh_token",
+          data.refresh_token
+        );
+      } else {
+        localStorage.removeItem(
+          "refresh_token"
+        );
+      }
 
 
 
@@ -337,7 +358,7 @@ export const useAuthStore = create<AuthState>(
           data.access_token,
 
         refreshToken:
-          data.refresh_token,
+          data.refresh_token ?? null,
 
         user:
           me.data,

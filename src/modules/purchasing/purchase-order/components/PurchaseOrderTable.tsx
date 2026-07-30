@@ -29,6 +29,10 @@ interface Props {
     row: PurchaseOrder
   ) => void;
 
+  onTrace?: (
+    row: PurchaseOrder
+  ) => void;
+
 }
 
 
@@ -87,6 +91,7 @@ export default function PurchaseOrderTable({
   onReject,
 
   onReceive,
+  onTrace,
 
 }:Props){
 
@@ -231,6 +236,11 @@ row.status.replaceAll(
 
 </span>
 
+{row.status === "PENDING_APPROVAL" && (
+  <div className="mt-2 text-xs text-amber-700">
+    Needs {row.current_approver_role ?? "assigned role"} approval
+  </div>
+)}
 
 </td>
 
@@ -242,11 +252,21 @@ row.status.replaceAll(
 
 <div className="flex justify-end gap-2">
 
+{onTrace && (
+  <Button
+    size="sm"
+    variant="outline"
+    onClick={() => onTrace(row)}
+  >
+    Trace
+  </Button>
+)}
+
 
 
 {
 row.status==="DRAFT"
-
+&& (onEdit || onSubmit)
 &&
 
 <>
@@ -263,7 +283,7 @@ onEdit?.(row)
 
 >
 
-Edit
+View
 
 </Button>
 
@@ -292,7 +312,7 @@ Submit
 
 {
 row.status==="PENDING_APPROVAL"
-
+&& (onApprove || onReject)
 &&
 
 <>
@@ -344,7 +364,7 @@ row.status==="APPROVED"
 ||
 row.status==="PARTIALLY_RECEIVED"
 )
-
+&& onReceive
 &&
 
 <Button

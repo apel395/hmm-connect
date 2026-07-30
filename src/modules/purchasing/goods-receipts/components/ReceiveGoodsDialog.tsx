@@ -2,6 +2,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import axios from "axios";
 
 import Button from "@/components/ui/Button";
 
@@ -315,11 +316,9 @@ export default function ReceiveGoodsDialog({
     }
 
     catch(error){
-
-      console.error(
-        error
-      );
-
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
+      const message = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map(item => item?.msg ?? "Invalid value").join(", ") : "Goods receipt could not be saved";
+      alert(message);
     }
 
 
@@ -498,9 +497,7 @@ export default function ReceiveGoodsDialog({
 
                         {" | "}
 
-                        Received:
-                        {" "}
-                        {line.received}
+                        Received: {line.received} | Remaining: {line.ordered - line.received}
 
                       </div>
 
@@ -512,6 +509,8 @@ export default function ReceiveGoodsDialog({
                         type="number"
 
                         min="0"
+
+                        max={line.ordered - line.received}
 
                         className="mt-2 w-full rounded-md border p-2"
 

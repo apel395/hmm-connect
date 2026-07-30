@@ -30,6 +30,9 @@ export default function PurchaseRequisitionForm({
   const [notes, setNotes] =
     useState("");
 
+  const [expiryDate, setExpiryDate] =
+    useState("");
+
   const [saving, setSaving] =
     useState(false);
 
@@ -156,6 +159,7 @@ export default function PurchaseRequisitionForm({
       await onSubmit({
 
         notes,
+        expiry_date: expiryDate || null,
 
         items: validItems,
 
@@ -251,6 +255,19 @@ export default function PurchaseRequisitionForm({
               p-6
             "
           >
+
+            <div>
+              <label className="mb-2 block text-sm font-medium">
+                Valid Until
+              </label>
+              <input
+                type="date"
+                value={expiryDate}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(event) => setExpiryDate(event.target.value)}
+                className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              />
+            </div>
 
             <div>
 

@@ -67,10 +67,6 @@ export default function PurchaseOrderPage() {
 
 
 
-  const [selected, setSelected] =
-    useState<PurchaseOrder | null>(
-      null
-    );
 
 
 
@@ -83,7 +79,6 @@ export default function PurchaseOrderPage() {
 
   function createPO() {
 
-    setSelected(null);
 
     setOpen(true);
 
@@ -105,7 +100,6 @@ export default function PurchaseOrderPage() {
 
       setOpen(false);
 
-      setSelected(null);
 
 
     } catch(err) {
@@ -356,7 +350,6 @@ export default function PurchaseOrderPage() {
 
           setOpen(false);
 
-          setSelected(null);
 
         }}
 

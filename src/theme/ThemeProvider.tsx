@@ -65,6 +65,8 @@ setTheme,
 
 }
 
+// The context hook intentionally shares this module with its provider.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useTheme(){
 
 return useContext(

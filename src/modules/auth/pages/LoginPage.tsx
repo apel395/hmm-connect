@@ -37,10 +37,24 @@ export default function LoginPage() {
         replace: true,
       });
     } catch (err: any) {
-      setError(
-        err?.response?.data?.detail ??
+      const detail =
+        err?.response?.data?.detail;
+
+      if (typeof detail === "string") {
+        setError(detail);
+      } else if (Array.isArray(detail)) {
+        setError(
+          detail
+            .map((item) => item?.msg)
+            .filter(Boolean)
+            .join(" ") ||
+            "Unable to sign in."
+        );
+      } else {
+        setError(
           "Invalid username or password."
-      );
+        );
+      }
     }
   };
 

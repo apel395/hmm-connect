@@ -18,11 +18,12 @@ function badgeVariant(status?: string) {
       return "success";
 
     case "PENDING":
+      return "warning";
 
     case "SUBMITTED":
+      return "warning";
 
     case "PENDING_APPROVAL":
-
       return "warning";
 
     case "REJECTED":

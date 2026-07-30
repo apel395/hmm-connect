@@ -2,10 +2,11 @@ import api from "@/api/client";
 
 export const requisitionApi = {
 
-  list: () =>
+  list: (scope = "active") =>
 
     api.get(
       "/purchase-requisitions",
+      { params: { scope } },
     ),
 
   detail: (
@@ -39,7 +40,7 @@ export const requisitionApi = {
     id: number,
   ) =>
 
-    api.patch(
+    api.post(
       `/purchase-requisitions/${id}/submit`,
     ),
 
@@ -48,7 +49,7 @@ export const requisitionApi = {
     comment?: string,
   ) =>
 
-    api.patch(
+    api.post(
       `/purchase-requisitions/${id}/approve`,
       {
         comment,
@@ -60,7 +61,7 @@ export const requisitionApi = {
     comment?: string,
   ) =>
 
-    api.patch(
+    api.post(
       `/purchase-requisitions/${id}/reject`,
       {
         comment,
@@ -80,7 +81,7 @@ export const requisitionApi = {
   ) =>
 
     api.get(
-      `/purchase-requisitions/${id}/traceability`,
+      `/traceability/purchase-requisitions/${id}`,
     ),
 
   convertToPO: (

@@ -11,18 +11,23 @@ import {
 
 
 
-export function usePurchaseOrders() {
+export function usePurchaseOrders(
+  scope = "active"
+) {
 
   return useQuery({
 
     queryKey: [
       "purchase-orders",
+      scope,
     ],
 
     queryFn: async () => {
 
       const res =
-        await purchaseOrderApi.list();
+        await purchaseOrderApi.list(
+          scope
+        );
 
       return res.data;
 

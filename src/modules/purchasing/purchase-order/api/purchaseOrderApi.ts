@@ -28,9 +28,10 @@ export interface PurchaseOrderCreatePayload {
 
 export const purchaseOrderApi = {
 
-  list: () =>
+  list: (scope = "active") =>
     api.get(
-      "/purchase-orders"
+      "/purchase-orders",
+      { params: { scope } }
     ),
 
   detail: (
@@ -60,7 +61,7 @@ export const purchaseOrderApi = {
   submit: (
     id: number
   ) =>
-    api.patch(
+    api.post(
       `/purchase-orders/${id}/submit`
     ),
 
@@ -68,7 +69,7 @@ export const purchaseOrderApi = {
     id: number,
     comment = ""
   ) =>
-    api.patch(
+    api.post(
       `/purchase-orders/${id}/approve`,
       {
         comment,
@@ -79,7 +80,7 @@ export const purchaseOrderApi = {
     id: number,
     comment = ""
   ) =>
-    api.patch(
+    api.post(
       `/purchase-orders/${id}/reject`,
       {
         comment,
@@ -89,7 +90,7 @@ export const purchaseOrderApi = {
   cancel: (
     id: number
   ) =>
-    api.patch(
+    api.post(
       `/purchase-orders/${id}/cancel`
     ),
 
@@ -100,36 +101,11 @@ export const purchaseOrderApi = {
       `/purchase-orders/${id}`
     ),
 
-  /*
-    Approved PR source for PO creation.
+  approvedPurchaseRequisitions: () =>
 
-    Backend:
-    GET /purchase-requisitions
-
-    We filter APPROVED here because
-    backend currently does not expose:
-    /purchase-requisitions/approved
-  */
-  approvedPurchaseRequisitions: async () => {
-
-    const res =
-      await api.get(
-        "/purchase-requisitions"
-      );
-
-    const rows =
-      Array.isArray(res.data)
-        ? res.data
-        : [];
-
-    return {
-      data: rows.filter(
-        (item: any) =>
-          item.status === "APPROVED"
-      ),
-    };
-
-  },
+    api.get(
+      "/purchase-requisitions/eligible-for-po"
+    ),
 
 };
 

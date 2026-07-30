@@ -60,6 +60,10 @@ export interface PurchaseOrder {
 
 
 
+  approval_status?: string | null;
+
+  current_approver_role?: string | null;
+
   status:
     | "DRAFT"
     | "PENDING_APPROVAL"

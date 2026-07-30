@@ -1,14 +1,19 @@
 import { useParams } from "react-router-dom";
+import { toast } from "sonner";
 
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import Badge from "@/components/ui/Badge";
 import PageHeader from "@/components/common/PageHeader";
+import useAuthStore from "@/store/auth";
+import { useApproval } from "@/modules/purchasing/requisition/hooks/useApprovals";
 
 import {
   usePurchaseOrder,
+  useSubmitPurchaseOrder,
   useApprovePurchaseOrder,
+  useRejectPurchaseOrder,
   useCancelPurchaseOrder,
 } from "../hooks/usePurchaseOrders";
 
@@ -28,8 +33,15 @@ export default function PurchaseOrderDetailPage(){
   );
 
 
-  const approve =
-    useApprovePurchaseOrder();
+  const approval = useApproval(
+    "PURCHASE_ORDER",
+    Number(id),
+  );
+
+  const user = useAuthStore((state) => state.user);
+  const submit = useSubmitPurchaseOrder();
+  const approve = useApprovePurchaseOrder();
+  const reject = useRejectPurchaseOrder();
 
 
 
@@ -51,6 +63,16 @@ export default function PurchaseOrderDetailPage(){
     return null;
 
   }
+
+  const roleNames = (user?.roles ?? []).map((role) => role.name);
+  const isAdmin = roleNames.includes("ADMIN");
+  const canManagePO = isAdmin || roleNames.includes("PURCHASING");
+  const currentRole =
+    approval.data?.current_approver_role ??
+    data.current_approver_role;
+  const canApprove =
+    data.status === "PENDING_APPROVAL" &&
+    (isAdmin || Boolean(currentRole && roleNames.includes(currentRole)));
 
 
 
@@ -97,11 +119,16 @@ export default function PurchaseOrderDetailPage(){
 
 
 
+<div className="text-right">
           <Badge>
-
             {data.status}
-
           </Badge>
+          {data.status === "PENDING_APPROVAL" && (
+            <div className="mt-2 text-sm text-amber-700">
+              Approval needed: {currentRole ?? "assigned role"}
+            </div>
+          )}
+          </div>
 
 
         </div>
@@ -326,59 +353,72 @@ export default function PurchaseOrderDetailPage(){
 
 
       <div className="flex gap-3">
+        {data.status === "DRAFT" && canManagePO && (
+          <Button
+            loading={submit.isPending}
+            onClick={() => submit.mutate(data.id)}
+          >
+            Submit
+          </Button>
+        )}
 
-
-        
-
-
-
-        {
-          data.status==="DRAFT" && (
-
+        {canApprove && (
+          <>
             <Button
-
-              onClick={()=>
-                approve.mutate(
-                  data.id
-                )
-              }
-
+              variant="success"
+              loading={approve.isPending}
+              onClick={async () => {
+                const requiredRole = currentRole ?? "current role";
+                if (
+                  !window.confirm(
+                    `Approve ${data.po_number} for the ${requiredRole} step?`
+                  )
+                ) {
+                  return;
+                }
+                try {
+                  await approve.mutateAsync({
+                    id: data.id,
+                    comment: `Approved for ${requiredRole}`,
+                  });
+                  toast.success(`${requiredRole} step approved.`);
+                } catch (error: any) {
+                  toast.error(
+                    typeof error?.response?.data?.detail === "string"
+                      ? error.response.data.detail
+                      : "Unable to approve purchase order."
+                  );
+                }
+              }}
             >
-
               Approve
-
             </Button>
+            <Button
+              variant="danger"
+              loading={reject.isPending}
+              onClick={() => {
+                const comment = window.prompt("Reject reason");
+                if (comment) {
+                  reject.mutate({ id: data.id, comment });
+                }
+              }}
+            >
+              Reject
+            </Button>
+          </>
+        )}
 
-          )
-        }
-
-
-
-
-
-
-        <Button
-
-          variant="danger"
-
-          onClick={()=>
-            cancel.mutate(
-              data.id
-            )
-          }
-
-        >
-
-          Cancel
-
-        </Button>
-
-
+        {canManagePO &&
+          ["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(data.status) && (
+            <Button
+              variant="danger"
+              loading={cancel.isPending}
+              onClick={() => cancel.mutate(data.id)}
+            >
+              Cancel
+            </Button>
+          )}
       </div>
-
-
     </div>
-
   );
-
 }

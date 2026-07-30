@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import PageHeader from "@/components/common/PageHeader";
+import useAuthStore from "@/store/auth";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -19,15 +20,26 @@ import {
 
 export default function PurchaseRequisitionListPage() {
 
+  const [scope, setScope] =
+    useState<"active" | "history">("active");
+
   const navigate =
     useNavigate();
+
+  const user = useAuthStore((state) => state.user);
+  const roleNames = (user?.roles ?? []).map((role) => role.name);
+  const isAdmin = roleNames.includes("ADMIN");
+  const canCreate = isAdmin || roleNames.includes("REQUESTER");
+  const canSubmit = canCreate;
 
   const {
     data = [],
     isLoading,
     refetch,
   }: any =
-    usePurchaseRequisitions();
+    usePurchaseRequisitions(
+      scope,
+    );
 
   const createPurchaseRequisition =
     useCreatePurchaseRequisition();
@@ -140,24 +152,12 @@ export default function PurchaseRequisitionListPage() {
 
   }
 
-  function handleConvert(
-    row: any,
-  ) {
-
-    navigate(
-      `/purchase-orders/create?pr=${row.id}`,
-    );
-
-  }
-
   function handleTraceability(
     row: any,
   ) {
-
     navigate(
-      `/purchase-requisitions/${row.id}/traceability`,
+      `/traceability/pr/${row.id}`,
     );
-
   }
 
   return (
@@ -186,14 +186,24 @@ export default function PurchaseRequisitionListPage() {
             </Button>
 
             <Button
-              onClick={() =>
-                setOpen(true)
-              }
+              variant={scope === "active" ? "primary" : "outline"}
+              onClick={() => setScope("active")}
             >
-
-              + New Requisition
-
+              Active
             </Button>
+
+            <Button
+              variant={scope === "history" ? "primary" : "outline"}
+              onClick={() => setScope("history")}
+            >
+              History
+            </Button>
+
+            {scope === "active" && canCreate && (
+              <Button onClick={() => setOpen(true)}>
+                + New Requisition
+              </Button>
+            )}
 
           </div>
 
@@ -306,16 +316,15 @@ export default function PurchaseRequisitionListPage() {
             }
 
             onSubmit={
-              handleSubmit
-            }
-
-            onConvert={
-              handleConvert
+              canSubmit
+                ? handleSubmit
+                : undefined
             }
 
             onTraceability={
               handleTraceability
             }
+
 
           />
 

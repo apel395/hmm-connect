@@ -23,6 +23,10 @@ export interface GoodsReceiptItem {
 
   product_id: number;
 
+  product_code: string;
+
+  product_name: string;
+
   quantity: number;
 
   unit_cost: number;
@@ -36,13 +40,19 @@ export interface GoodsReceipt {
 
   purchase_order_id: number;
 
+  purchase_order_number: string;
+
   received_by_id: number;
+
+  received_by_name?: string | null;
 
   received_at: string;
 
   destination_type: string;
 
   warehouse_id?: number | null;
+
+  warehouse_name?: string | null;
 
   notes?: string | null;
 

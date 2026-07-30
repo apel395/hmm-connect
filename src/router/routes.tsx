@@ -38,6 +38,7 @@ import SettingPage from "@/modules/admin/settings/SettingPage";
 
 /* Others */
 import AuditLogPage from "@/modules/audit/AuditLogPage";
+import TraceabilityPage from "@/modules/audit/TraceabilityPage";
 import ProfilePage from "@/modules/profile/ProfilePage";
 import NotificationPage from "@/modules/notification/NotificationPage";
 
@@ -143,6 +144,10 @@ const router = createBrowserRouter([
       {
         path: "audit",
         element: <AuditLogPage />,
+      },
+      {
+        path: "traceability/:documentType/:id",
+        element: <TraceabilityPage />,
       },
 
       {

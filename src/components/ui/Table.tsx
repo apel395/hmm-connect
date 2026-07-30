@@ -6,8 +6,7 @@ import {
 } from "react";
 import clsx from "clsx";
 
-export interface TableProps
-  extends TableHTMLAttributes<HTMLTableElement> {}
+export type TableProps = TableHTMLAttributes<HTMLTableElement>;
 
 export function Table({
   className,
@@ -29,8 +28,7 @@ export function Table({
   );
 }
 
-export interface THeadProps
-  extends HTMLAttributes<HTMLTableSectionElement> {}
+export type THeadProps = HTMLAttributes<HTMLTableSectionElement>;
 
 export function THead({
   className,
@@ -47,8 +45,7 @@ export function THead({
   );
 }
 
-export interface TBodyProps
-  extends HTMLAttributes<HTMLTableSectionElement> {}
+export type TBodyProps = HTMLAttributes<HTMLTableSectionElement>;
 
 export function TBody({
   className,
@@ -65,8 +62,7 @@ export function TBody({
   );
 }
 
-export interface TFootProps
-  extends HTMLAttributes<HTMLTableSectionElement> {}
+export type TFootProps = HTMLAttributes<HTMLTableSectionElement>;
 
 export function TFoot({
   className,
@@ -83,8 +79,7 @@ export function TFoot({
   );
 }
 
-export interface TRProps
-  extends HTMLAttributes<HTMLTableRowElement> {}
+export type TRProps = HTMLAttributes<HTMLTableRowElement>;
 
 export function TR({
   className,
@@ -104,8 +99,7 @@ export function TR({
   );
 }
 
-export interface THProps
-  extends ThHTMLAttributes<HTMLTableCellElement> {}
+export type THProps = ThHTMLAttributes<HTMLTableCellElement>;
 
 export function TH({
   className,
@@ -125,8 +119,7 @@ export function TH({
   );
 }
 
-export interface TDProps
-  extends TdHTMLAttributes<HTMLTableCellElement> {}
+export type TDProps = TdHTMLAttributes<HTMLTableCellElement>;
 
 export function TD({
   className,

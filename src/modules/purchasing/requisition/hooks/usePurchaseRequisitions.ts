@@ -8,18 +8,23 @@ import {
   requisitionApi,
 } from "../api/requisitionApi";
 
-export function usePurchaseRequisitions() {
+export function usePurchaseRequisitions(
+  scope = "active",
+) {
 
   return useQuery({
 
     queryKey: [
       "purchase-requisitions",
+      scope,
     ],
 
     queryFn: async () => {
 
       const res =
-        await requisitionApi.list();
+        await requisitionApi.list(
+          scope,
+        );
 
       return res.data;
 

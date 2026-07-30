@@ -4,6 +4,6 @@ export const inventoryMovementApi={
 
 list:()=>
 
-api.get("/inventory-movements"),
+api.get("/inventory/movements"),
 
 };

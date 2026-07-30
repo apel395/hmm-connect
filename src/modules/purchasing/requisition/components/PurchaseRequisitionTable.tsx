@@ -242,7 +242,8 @@ export default function PurchaseRequisitionTable({
                         </Button>
 
                         {row.status ===
-                          "DRAFT" && (
+                          "DRAFT" &&
+                          onSubmit && (
 
                           <Button
                             size="sm"
@@ -260,7 +261,8 @@ export default function PurchaseRequisitionTable({
                         )}
 
                         {row.status ===
-                          "PENDING_APPROVAL" && (
+                          "PENDING_APPROVAL" &&
+                          (onApprove || onReject) && (
 
                           <>
 
@@ -296,7 +298,8 @@ export default function PurchaseRequisitionTable({
                         )}
 
                         {row.status ===
-                          "APPROVED" && (
+                          "APPROVED" &&
+                          onConvert && (
 
                           <Button
                             size="sm"
@@ -313,19 +316,17 @@ export default function PurchaseRequisitionTable({
 
                         )}
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            onTraceability?.(
-                              row,
-                            )
-                          }
-                        >
-
-                          Trace
-
-                        </Button>
+                        {onTraceability && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              onTraceability(row)
+                            }
+                          >
+                            Trace
+                          </Button>
+                        )}
 
                       </div>
 

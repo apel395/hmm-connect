@@ -11,7 +11,8 @@ export const goodsReceiptApi = {
     purchaseOrderId: number
   ) =>
     api.get(
-      `/goods-receipts/purchase-orders/${purchaseOrderId}`
+      "/goods-receipts",
+      { params: { purchase_order_id: purchaseOrderId } }
     ),
 
 
@@ -20,8 +21,11 @@ export const goodsReceiptApi = {
     payload: GoodsReceiptCreatePayload
   ) =>
     api.post(
-      `/goods-receipts/purchase-orders/${purchaseOrderId}/receive`,
-      payload
+      "/goods-receipts",
+      {
+        ...payload,
+        purchase_order_id: purchaseOrderId,
+      }
     ),
 
 };
