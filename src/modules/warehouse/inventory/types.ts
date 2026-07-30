@@ -18,4 +18,6 @@ average_cost:number;
 
 inventory_account:string;
 
+minimum_stock?:number;
+
 }

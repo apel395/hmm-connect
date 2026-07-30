@@ -1,284 +1,259 @@
-import { useState } from "react";
-
+import { useMemo, useState } from "react";
+import axios from "axios";
+import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 import Loading from "@/components/ui/Loading";
-
-import SupplierTable from "../components/SupplierTable";
+import SupplierDetail from "../components/SupplierDetail";
 import SupplierForm from "../components/SupplierForm";
-import SupplierProductTable from "../components/SupplierProductTable";
-import SupplierProductForm from "../components/SupplierProductForm";
-
-import type { Supplier } from "../types";
-
+import SupplierTable from "../components/SupplierTable";
+import type { Supplier, SupplierPayload } from "../types";
 import {
-  useSuppliers,
   useCreateSupplier,
-  useUpdateSupplier,
   useDeleteSupplier,
+  useSupplier,
+  useSuppliers,
+  useUpdateSupplier,
 } from "../hooks/useSuppliers";
 
-import {
-  useSupplierProducts,
-  useCreateSupplierProduct,
-  useDeleteSupplierProduct,
-} from "../hooks/useSupplierProducts";
+type StatusFilter = "all" | "active" | "inactive";
+interface ValidationDetail {
+  loc?: Array<string | number>;
+  msg?: string;
+}
+
+function errorMessage(error: unknown): string {
+  if (!axios.isAxiosError(error)) return "An unexpected error occurred. Please try again.";
+
+  const status = error.response?.status;
+  const payload = error.response?.data as
+    | { detail?: string | ValidationDetail[]; message?: string }
+    | undefined;
+  const detail = payload?.detail;
+
+  if (Array.isArray(detail)) {
+    const message = detail
+      .map((item) => {
+        const field = item.loc?.filter((part) => part !== "body").join(".");
+        return [field, item.msg].filter(Boolean).join(": ");
+      })
+      .filter(Boolean)
+      .join("; ");
+    if (message) return message;
+  }
+  if (typeof detail === "string") return detail;
+  if (payload?.message) return payload.message;
+
+  if (status === 400) return "The supplier information is invalid.";
+  if (status === 404) return "Supplier not found.";
+  if (status === 409) return "A supplier with this code or name already exists.";
+  if (status === 422) return "Please check the supplier fields and try again.";
+  if (status && status >= 500) return "The server could not process the request.";
+  return "Unable to complete the supplier request.";
+}
+
+function supplierPayload(supplier: Supplier, isActive = supplier.is_active): SupplierPayload {
+  return {
+    code: supplier.code,
+    name: supplier.name,
+    address: supplier.address ?? "",
+    bank_name: supplier.bank_name ?? "",
+    bank_account_number: supplier.bank_account_number ?? "",
+    bank_account_name: supplier.bank_account_name ?? "",
+    is_active: isActive,
+    rows: supplier.rows?.map((row) => ({
+      id: row.id,
+      pic_name: row.pic_name,
+      phone: row.phone,
+      unit: row.unit,
+      item: row.item,
+    })) ?? [],
+  };
+}
 
 export default function SupplierPage() {
-  const {
-    data = [],
-    isLoading,
-  } = useSuppliers();
+  const suppliersQuery = useSuppliers();
+  const createMutation = useCreateSupplier();
+  const updateMutation = useUpdateSupplier();
+  const deleteMutation = useDeleteSupplier();
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Supplier | null>(null);
+  const [viewId, setViewId] = useState<number>();
+  const [formError, setFormError] = useState<string | null>(null);
+  const [actionId, setActionId] = useState<number | null>(null);
+  const detailQuery = useSupplier(viewId);
 
-  const createMutation =
-    useCreateSupplier();
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return (suppliersQuery.data ?? []).filter((supplier) => {
+      const matchesStatus =
+        status === "all" ||
+        (status === "active" ? supplier.is_active : !supplier.is_active);
+      const searchable = [
+        supplier.code,
+        supplier.name,
+        supplier.address,
+        supplier.bank_name,
+        supplier.bank_account_number,
+        ...(supplier.rows ?? []).flatMap((row) => [
+          row.pic_name,
+          row.phone ?? "",
+        ]),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return matchesStatus && (!term || searchable.includes(term));
+    });
+  }, [search, status, suppliersQuery.data]);
 
-  const updateMutation =
-    useUpdateSupplier();
-
-  const deleteMutation =
-    useDeleteSupplier();
-
-  const createSupplierProduct =
-    useCreateSupplierProduct();
-
-  const deleteSupplierProduct =
-    useDeleteSupplierProduct();
-
-  const [open, setOpen] =
-    useState(false);
-
-  const [
-    productOpen,
-    setProductOpen,
-  ] = useState(false);
-
-  const [selected, setSelected] =
-    useState<Supplier | null>(null);
-
-  const {
-    data: supplierProducts = [],
-  } = useSupplierProducts(
-    selected?.id
-  );
-
-  function createSupplier() {
-    setSelected(null);
-    setOpen(true);
+  function openCreate() {
+    setEditing(null);
+    setFormError(null);
+    setFormOpen(true);
   }
 
-  function editSupplier(
-    supplier: Supplier
-  ) {
-    setSelected(supplier);
-    setOpen(true);
+  function openEdit(supplier: Supplier) {
+    setEditing(supplier);
+    setFormError(null);
+    setFormOpen(true);
   }
 
-  function manageProducts(
-    supplier: Supplier
-  ) {
-    setSelected(supplier);
-  }
-
-  async function submit(
-    payload: any
-  ) {
+  async function save(payload: SupplierPayload) {
+    if (createMutation.isPending || updateMutation.isPending) return;
+    setFormError(null);
     try {
-      if (selected) {
-        await updateMutation.mutateAsync({
-          id: selected.id,
-          payload,
-        });
+      if (editing) {
+        await updateMutation.mutateAsync({ id: editing.id, payload });
+        toast.success("Supplier updated successfully.");
       } else {
-        await createMutation.mutateAsync(
-          payload
-        );
+        await createMutation.mutateAsync(payload);
+        toast.success("Supplier created successfully.");
       }
-
-      setOpen(false);
-      setSelected(null);
-    } catch (err) {
-      console.error(err);
+      setFormOpen(false);
+      setEditing(null);
+    } catch (error) {
+      setFormError(errorMessage(error));
     }
   }
 
-  async function remove(
-    supplier: Supplier
-  ) {
+  async function toggleStatus(supplier: Supplier) {
+    const nextActive = !supplier.is_active;
     if (
       !window.confirm(
-        `Delete supplier "${supplier.name}"?`
+        `${nextActive ? "Activate" : "Deactivate"} supplier "${supplier.name}"?`
       )
-    ) {
-      return;
-    }
+    ) return;
 
+    setActionId(supplier.id);
     try {
-      await deleteMutation.mutateAsync(
-        supplier.id
-      );
-
-      if (
-        selected?.id === supplier.id
-      ) {
-        setSelected(null);
-      }
-    } catch (err) {
-      console.error(err);
+      await updateMutation.mutateAsync({
+        id: supplier.id,
+        payload: supplierPayload(supplier, nextActive),
+      });
+      toast.success(`Supplier ${nextActive ? "activated" : "deactivated"}.`);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setActionId(null);
     }
   }
 
-  async function addProduct(
-    payload: any
-  ) {
-    if (!selected) return;
-
+  async function remove(supplier: Supplier) {
+    if (!window.confirm(`Delete supplier "${supplier.name}"? This cannot be undone.`)) return;
+    setActionId(supplier.id);
     try {
-      await createSupplierProduct.mutateAsync(
-        {
-          supplierId:
-            selected.id,
-          payload,
-        }
-      );
-
-      setProductOpen(false);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function removeProduct(
-    row: any
-  ) {
-    if (!selected) return;
-
-    if (
-      !window.confirm(
-        `Remove "${row.product_name}"?`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await deleteSupplierProduct.mutateAsync(
-        {
-          supplierId: selected.id,
-          supplierProductId: 0
-        }
-      );
-    } catch (err) {
-      console.error(err);
+      await deleteMutation.mutateAsync(supplier.id);
+      toast.success("Supplier deleted successfully.");
+      if (viewId === supplier.id) setViewId(undefined);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setActionId(null);
     }
   }
 
   return (
     <>
       <div className="space-y-6">
-
         <PageHeader
           title="Suppliers"
-          description="Supplier Master"
-          actions={
-            <Button
-              onClick={
-                createSupplier
-              }
-            >
-              New Supplier
-            </Button>
-          }
+          description="Manage supplier profiles, contacts, banking details, and availability."
+          actions={<Button onClick={openCreate}>Add Supplier</Button>}
         />
 
         <Card>
-          {isLoading ? (
-            <Loading />
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+            <Input
+              type="search"
+              aria-label="Search suppliers"
+              placeholder="Search code, name, contact, phone, or bank..."
+              value={search}
+              className="sm:max-w-md"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <select
+              aria-label="Filter suppliers by status"
+              value={status}
+              onChange={(event) => setStatus(event.target.value as StatusFilter)}
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
+          {suppliersQuery.isLoading ? (
+            <div className="py-12"><Loading /></div>
+          ) : suppliersQuery.isError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+              <p className="text-sm text-red-700">{errorMessage(suppliersQuery.error)}</p>
+              <Button
+                className="mt-4"
+                size="sm"
+                variant="outline"
+                onClick={() => suppliersQuery.refetch()}
+              >
+                Try Again
+              </Button>
+            </div>
           ) : (
             <SupplierTable
-              rows={data}
-              onEdit={
-                editSupplier
-              }
-              onDelete={
-                remove
-              }
-              onProducts={
-                manageProducts
-              }
+              rows={filtered}
+              busyId={actionId}
+              onView={(supplier) => setViewId(supplier.id)}
+              onEdit={openEdit}
+              onToggle={toggleStatus}
+              onDelete={remove}
             />
           )}
         </Card>
-
-        {selected && (
-          <Card>
-
-            <div className="mb-5 flex items-center justify-between">
-
-              <div>
-
-                <h2 className="text-lg font-semibold">
-                  Supplier Products
-                </h2>
-
-                <p className="text-sm text-slate-500">
-                  {selected.code}
-                  {" - "}
-                  {selected.name}
-                </p>
-
-              </div>
-
-              <Button
-                onClick={() =>
-                  setProductOpen(
-                    true
-                  )
-                }
-              >
-                Add Product
-              </Button>
-
-            </div>
-
-            <SupplierProductTable
-              rows={
-                supplierProducts
-              }
-              onDelete={
-                removeProduct
-              }
-            />
-
-          </Card>
-        )}
-
       </div>
 
       <SupplierForm
-        open={open}
-        supplier={selected}
-        loading={
-          createMutation.isPending ||
-          updateMutation.isPending
-        }
+        open={formOpen}
+        supplier={editing}
+        loading={createMutation.isPending || (updateMutation.isPending && actionId === null)}
+        error={formError}
         onClose={() => {
-          setOpen(false);
-          setSelected(null);
+          if (createMutation.isPending || updateMutation.isPending) return;
+          setFormOpen(false);
+          setEditing(null);
+          setFormError(null);
         }}
-        onSubmit={submit}
+        onSubmit={save}
       />
 
-      <SupplierProductForm
-        open={productOpen}
-        loading={
-          createSupplierProduct.isPending
-        }
-        onClose={() =>
-          setProductOpen(false)
-        }
-        onSubmit={addProduct}
+      <SupplierDetail
+        open={viewId !== undefined}
+        supplier={detailQuery.data}
+        loading={detailQuery.isLoading}
+        error={detailQuery.isError ? errorMessage(detailQuery.error) : null}
+        onClose={() => setViewId(undefined)}
       />
     </>
   );

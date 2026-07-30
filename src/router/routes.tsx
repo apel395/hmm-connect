@@ -8,6 +8,7 @@ import AuthGuard from "@/components/guard/AuthGuard";
 
 /* Authentication */
 import LoginPage from "@/modules/auth/pages/LoginPage";
+import SignupPage from "@/modules/auth/pages/SignupPage";
 
 /* Dashboard */
 import DashboardPage from "@/modules/dashboard/DashboardPage";
@@ -18,6 +19,7 @@ import PurchaseRequisitionDetailPage from "@/modules/purchasing/requisition/page
 
 import PurchaseOrderListPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderListPage";
 import PurchaseOrderDetailPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderDetailPage";
+import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDocumentsPage";
 
 /* Warehouse */
 
@@ -51,6 +53,10 @@ const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+  },
+  {
+    path: "/signup",
+    element: <SignupPage />,
   },
 
   {
@@ -88,6 +94,10 @@ const router = createBrowserRouter([
       {
         path: "purchase-orders/:id",
         element: <PurchaseOrderDetailPage />,
+      },
+      {
+        path: "purchasing-documents",
+        element: <PurchasingDocumentsPage />,
       },
 
       

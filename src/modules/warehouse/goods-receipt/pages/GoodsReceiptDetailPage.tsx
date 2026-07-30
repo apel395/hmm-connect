@@ -4,6 +4,7 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import PageHeader from "@/components/common/PageHeader";
+import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 
 import {
 useGoodsReceipt,
@@ -227,6 +228,11 @@ Complete Receipt
 </div>
 
 </Card>
+
+<DocumentAttachments
+entityType="GOODS_RECEIPT"
+entityId={data.id}
+/>
 
 </div>
 

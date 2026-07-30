@@ -12,6 +12,7 @@ import Badge from "@/components/ui/Badge";
 import Loading from "@/components/ui/Loading";
 
 import useAuthStore from "@/store/auth";
+import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 
 import WorkflowHeader from "../components/WorkflowHeader";
 import WorkflowActionBar from "../components/WorkflowActionBar";
@@ -736,6 +737,11 @@ export default function PurchaseRequisitionDetailPage() {
         </div>
 
       </div>
+
+      <DocumentAttachments
+        entityType="PURCHASE_REQUISITION"
+        entityId={data.id}
+      />
 
     </div>
 

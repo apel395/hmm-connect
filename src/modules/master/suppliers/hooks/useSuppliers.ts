@@ -1,94 +1,54 @@
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supplierApi } from "../api/supplierApi";
+import type { SupplierPayload } from "../types";
 
-import {
-  supplierApi,
-  type SupplierPayload,
-} from "../api/supplierApi";
+export const supplierKeys = {
+  all: ["suppliers"] as const,
+  lists: () => [...supplierKeys.all, "list"] as const,
+  detail: (id: number) => [...supplierKeys.all, "detail", id] as const,
+};
 
 export function useSuppliers() {
   return useQuery({
-    queryKey: ["suppliers"],
-
-    queryFn: async () => {
-      const res =
-        await supplierApi.list();
-
-      return res.data;
-    },
+    queryKey: supplierKeys.lists(),
+    queryFn: supplierApi.list,
   });
 }
 
+export function useSupplier(id?: number) {
+  return useQuery({
+    queryKey: supplierKeys.detail(id ?? 0),
+    queryFn: () => supplierApi.detail(id as number),
+    enabled: id !== undefined,
+  });
+}
+
+function useInvalidateSuppliers() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: supplierKeys.all });
+}
+
 export function useCreateSupplier() {
-  const queryClient =
-    useQueryClient();
-
+  const invalidate = useInvalidateSuppliers();
   return useMutation({
-    mutationFn: (
-      payload: SupplierPayload
-    ) =>
-      supplierApi.create(
-        payload
-      ),
-
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          "suppliers",
-        ],
-      });
-    },
+    mutationFn: (payload: SupplierPayload) => supplierApi.create(payload),
+    onSuccess: invalidate,
   });
 }
 
 export function useUpdateSupplier() {
-  const queryClient =
-    useQueryClient();
-
+  const invalidate = useInvalidateSuppliers();
   return useMutation({
-    mutationFn: ({
-      id,
-      payload,
-    }: {
-      id: number;
-      payload: SupplierPayload;
-    }) =>
-      supplierApi.update(
-        id,
-        payload
-      ),
-
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          "suppliers",
-        ],
-      });
-    },
+    mutationFn: ({ id, payload }: { id: number; payload: SupplierPayload }) =>
+      supplierApi.update(id, payload),
+    onSuccess: invalidate,
   });
 }
 
 export function useDeleteSupplier() {
-  const queryClient =
-    useQueryClient();
-
+  const invalidate = useInvalidateSuppliers();
   return useMutation({
-    mutationFn: (
-      id: number
-    ) =>
-      supplierApi.remove(
-        id
-      ),
-
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          "suppliers",
-        ],
-      });
-    },
+    mutationFn: supplierApi.remove,
+    onSuccess: invalidate,
   });
 }

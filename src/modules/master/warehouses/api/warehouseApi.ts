@@ -7,7 +7,9 @@ import type {
 export const warehouseApi = {
 
   list: () =>
-    api.get("/warehouses"),
+    api.get("/warehouses", {
+      params: { active_only: false },
+    }),
 
   create: (
     payload: WarehousePayload

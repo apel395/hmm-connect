@@ -1,4 +1,5 @@
 import {
+  useMemo,
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -8,6 +9,7 @@ import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 import useAuthStore from "@/store/auth";
 
 import PurchaseOrderTable from "../components/PurchaseOrderTable";
@@ -43,12 +45,35 @@ export default function PurchaseOrderListPage(){
 
   const [scope, setScope] =
     useState<"active" | "history">("active");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   const {
     data=[],
     isLoading,
   } =
     usePurchaseOrders(scope);
+
+  const filteredOrders = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    return data.filter((order: PurchaseOrder) => {
+      const matchesStatus =
+        statusFilter === "ALL" ||
+        order.status === statusFilter;
+      const searchable = [
+        order.po_number,
+        order.supplier_name,
+        order.order_date,
+        order.expected_date,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return matchesStatus && (!term || searchable.includes(term));
+    });
+  }, [data, search, statusFilter]);
 
 
 
@@ -210,6 +235,32 @@ actions={
 
 <Card>
 
+<div className="mb-5 flex flex-col gap-3 sm:flex-row">
+  <Input
+    type="search"
+    aria-label="Search purchase orders"
+    placeholder="Search PO number, supplier, or date..."
+    value={search}
+    className="border-[#DCD6CB] sm:max-w-md focus:border-[#086B5A] focus:ring-[#086B5A]"
+    onChange={(event) => setSearch(event.target.value)}
+  />
+
+  <select
+    aria-label="Filter purchase orders by status"
+    value={statusFilter}
+    onChange={(event) => setStatusFilter(event.target.value)}
+    className="h-10 rounded-md border border-[#DCD6CB] bg-white px-3 text-sm text-[#202723] focus:border-[#086B5A] focus:outline-none focus:ring-2 focus:ring-[#086B5A]"
+  >
+    <option value="ALL">All statuses</option>
+    <option value="DRAFT">Draft</option>
+    <option value="PENDING_APPROVAL">Pending Approval</option>
+    <option value="APPROVED">Approved</option>
+    <option value="PARTIALLY_RECEIVED">Partially Received</option>
+    <option value="RECEIVED">Received</option>
+    <option value="REJECTED">Rejected</option>
+  </select>
+</div>
+
 
 {
 isLoading
@@ -223,7 +274,7 @@ isLoading
 <PurchaseOrderTable
 
 
-rows={data}
+rows={filteredOrders}
 
 onEdit={(row) =>
   navigate(`/purchase-orders/${row.id}`)

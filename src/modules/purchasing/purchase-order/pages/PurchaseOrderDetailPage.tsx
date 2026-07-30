@@ -19,6 +19,7 @@ import {
 
 import GoodsReceiptList from "@/modules/purchasing/goods-receipts/components/GoodsReceiptList";
 import GoodsReceiptHistory from "../components/GoodsReceiptHistory";
+import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 
 export default function PurchaseOrderDetailPage(){
 
@@ -351,6 +352,11 @@ export default function PurchaseOrderDetailPage(){
 
 
 
+
+      <DocumentAttachments
+        entityType="PURCHASE_ORDER"
+        entityId={data.id}
+      />
 
       <div className="flex gap-3">
         {data.status === "DRAFT" && canManagePO && (

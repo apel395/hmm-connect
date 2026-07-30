@@ -7,6 +7,7 @@ import {
 import warehouseApi from "../api/warehouseApi";
 
 import type {
+  Warehouse,
   WarehousePayload,
 } from "../types";
 
@@ -21,7 +22,11 @@ export function useWarehouses() {
       const res =
         await warehouseApi.list();
 
-      return res.data;
+      const value = res.data as Warehouse[] | { items?: Warehouse[]; data?: Warehouse[] };
+      if (Array.isArray(value)) return value;
+      if (Array.isArray(value.items)) return value.items;
+      if (Array.isArray(value.data)) return value.data;
+      return [];
     },
   });
 }
