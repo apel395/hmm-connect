@@ -1,0 +1,82 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+ENV.venv/
+
+# Environment variables (Crucial for FastAPI security)
+.env
+.env.*
+!.env.example
+
+# Inline secrets or tokens
+*.secret
+*.pem
+*.key
+
+# FastAPI / Uvicorn runtime logs
+*.log
+logs/
+
+# Testing and Coverage
+.toml
+.pytest_cache/
+.htmlcov/
+htmlcov/
+.tox/
+.nosexy/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+.mutants
+
+# Database (SQLite / Migrations)
+*.db
+*.sqlite3
+# Uncomment next line if you want to ignore Alembic migration files (usually kept in git)
+# alembic/versions/*
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
+
+# Operating System files
+.DS_Store
+Thumbs.db
