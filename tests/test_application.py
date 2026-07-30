@@ -22,5 +22,32 @@ def test_openapi_schema_contains_core_routes():
     assert "/api/v1/auth/login" in paths
     assert "/api/v1/products" in paths
     assert "/api/v1/purchase-requisitions" in paths
+    assert "/api/v1/purchase-requisitions/{requisition_id}" in paths
+    assert "/api/v1/purchase-requisitions/{requisition_id}/submit" in paths
+    assert "/api/v1/purchase-requisitions/{requisition_id}/approve" in paths
+    assert "/api/v1/purchase-requisitions/{requisition_id}/reject" in paths
+    assert "/api/v1/approvals/{entity_type}/{entity_id}" in paths
+    assert "get" in paths["/api/v1/purchase-requisitions/{requisition_id}"]
+    assert "post" in paths["/api/v1/purchase-requisitions/{requisition_id}/submit"]
+    assert "post" in paths["/api/v1/purchase-requisitions/{requisition_id}/approve"]
+    assert "post" in paths["/api/v1/purchase-requisitions/{requisition_id}/reject"]
+    assert "/api/v1/purchase-orders" in paths
+    assert "/api/v1/purchase-orders/{purchase_order_id}" in paths
+    assert "/api/v1/purchase-orders/{purchase_order_id}/submit" in paths
+    assert "/api/v1/purchase-orders/{purchase_order_id}/approve" in paths
+    assert "/api/v1/purchase-orders/{purchase_order_id}/reject" in paths
+    assert "/api/v1/purchase-orders/{purchase_order_id}/cancel" in paths
+    assert "/api/v1/purchase-requisitions/eligible-for-po" in paths
+    assert "post" in paths["/api/v1/purchase-orders"]
+    assert "post" in paths["/api/v1/purchase-orders/{purchase_order_id}/submit"]
+    assert "post" in paths["/api/v1/purchase-orders/{purchase_order_id}/approve"]
+    assert "post" in paths["/api/v1/purchase-orders/{purchase_order_id}/reject"]
     assert "/api/v1/goods-receipts" in paths
+    assert "/api/v1/goods-receipts/{receipt_id}" in paths
+    assert "/api/v1/warehouses" in paths
+    assert "/api/v1/inventory/{inventory_id}" in paths
+    assert "/api/v1/inventory/movements" in paths
+    assert "/api/v1/audit/events" in paths
+    assert "/api/v1/traceability/purchase-requisitions/{requisition_id}" in paths
+    assert "/api/v1/traceability/purchase-orders/{purchase_order_id}" in paths
     assert "/api/v1/inventory" in paths

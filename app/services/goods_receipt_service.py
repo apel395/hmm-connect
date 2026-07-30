@@ -59,57 +59,68 @@ class GoodsReceiptService:
                     status_code=400,
                     detail="Receipt item does not belong to the purchase order",
                 )
-            remaining = Decimal(item.quantity) - Decimal(item.received_quantity or 0)
+            tolerance = Decimal(purchase_order.receipt_tolerance_percent or 0)
+            allowed_total = Decimal(item.quantity) * (
+                Decimal("1") + tolerance / Decimal("100")
+            )
+            remaining = allowed_total - Decimal(item.received_quantity or 0)
             if incoming.quantity > remaining:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Quantity exceeds remaining amount for PO item {item.id}",
                 )
 
+            unit_cost = Decimal(item.unit_price)
+
             receipt.items.append(
                 GoodsReceiptItem(
                     purchase_order_item_id=item.id,
                     product_id=item.product_id,
                     quantity=incoming.quantity,
-                    unit_cost=incoming.unit_cost,
+                    unit_cost=unit_cost,
                 )
             )
             item.received_quantity = Decimal(item.received_quantity or 0) + incoming.quantity
 
-            inventory = (
-                db.query(Inventory)
-                .filter(
-                    Inventory.product_id == item.product_id,
-                    Inventory.warehouse_id == data.warehouse_id,
+            if data.destination_type == "INVENTORY":
+                inventory = (
+                    db.query(Inventory)
+                    .filter(
+                        Inventory.product_id == item.product_id,
+                        Inventory.warehouse_id == data.warehouse_id,
+                    )
+                    .first()
                 )
-                .first()
-            )
-            if not inventory:
-                inventory = Inventory(
-                    product_id=item.product_id,
-                    warehouse_id=data.warehouse_id,
-                    quantity=Decimal("0"),
-                    average_cost=Decimal("0"),
-                )
-                db.add(inventory)
-                db.flush()
+                if not inventory:
+                    inventory = Inventory(
+                        product_id=item.product_id,
+                        warehouse_id=data.warehouse_id,
+                        quantity=Decimal("0"),
+                        average_cost=Decimal("0"),
+                    )
+                    db.add(inventory)
+                    db.flush()
 
-            old_quantity = Decimal(inventory.quantity or 0)
-            old_value = old_quantity * Decimal(inventory.average_cost or 0)
-            new_quantity = old_quantity + incoming.quantity
-            inventory.quantity = new_quantity
-            inventory.average_cost = (
-                old_value + incoming.quantity * incoming.unit_cost
-            ) / new_quantity
+                old_quantity = Decimal(inventory.quantity or 0)
+                old_value = old_quantity * Decimal(inventory.average_cost or 0)
+                new_quantity = old_quantity + incoming.quantity
+                inventory.quantity = new_quantity
+                inventory.average_cost = (
+                    old_value + incoming.quantity * unit_cost
+                ) / new_quantity
 
             db.add(
                 StockMovement(
                     product_id=item.product_id,
                     warehouse_id=data.warehouse_id,
                     goods_receipt_id=receipt.id,
-                    movement_type="IN",
+                    movement_type=(
+                        "IN"
+                        if data.destination_type == "INVENTORY"
+                        else "DIRECT_CONSUMPTION"
+                    ),
                     quantity=incoming.quantity,
-                    unit_cost=incoming.unit_cost,
+                    unit_cost=unit_cost,
                     reference_type="GOODS_RECEIPT",
                     reference_id=receipt.id,
                 )
@@ -131,6 +142,12 @@ class GoodsReceiptService:
             document_number=receipt.receipt_number,
             document_status="POSTED",
             reference_document=purchase_order.po_number,
+            details={
+                "purchase_order_id": purchase_order.id,
+                "warehouse_id": data.warehouse_id,
+                "destination_type": data.destination_type,
+                "item_count": len(data.items),
+            },
         )
         db.commit()
         db.refresh(receipt)

@@ -83,6 +83,8 @@ def _current_step(request: ApprovalRequest) -> ApprovalRequestStep:
 
 def _authorize_step(step: ApprovalRequestStep, user) -> None:
     role_names = {role.name for role in user.roles}
+    if "ADMIN" in role_names:
+        return
     if step.approver_role_name not in role_names:
         raise HTTPException(status_code=403, detail="User cannot approve this step")
     if step.department_name and (

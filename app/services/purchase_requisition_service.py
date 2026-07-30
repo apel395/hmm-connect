@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -61,6 +62,7 @@ class PurchaseRequisitionService:
             ),
             status="DRAFT",
             notes=data.notes,
+            expiry_date=data.expiry_date,
             total_amount=Decimal("0"),
         )
 
@@ -153,6 +155,28 @@ class PurchaseRequisitionService:
             raise HTTPException(
                 status_code=404,
                 detail="Purchase requisition not found",
+            )
+
+        if (
+            purchase_requisition.expiry_date
+            and purchase_requisition.expiry_date < date.today()
+        ):
+            purchase_requisition.status = "EXPIRED"
+            AuditService.log(
+                db=db,
+                user=current_user,
+                action="EXPIRE",
+                entity_type="PURCHASE_REQUISITION",
+                entity_id=purchase_requisition.id,
+                summary=f"Expired {purchase_requisition.pr_number}",
+                document_type="PR",
+                document_number=purchase_requisition.pr_number,
+                document_status="EXPIRED",
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail="Purchase requisition has expired",
             )
 
         if purchase_requisition.status != "DRAFT":

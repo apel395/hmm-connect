@@ -14,6 +14,7 @@ class PurchaseRequisition(Base, TimestampMixin):
     pr_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     status: Mapped[str] = mapped_column(String(30), default="DRAFT", nullable=False)
     request_date: Mapped[date] = mapped_column(Date, default=date.today, nullable=False)
+    expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
 

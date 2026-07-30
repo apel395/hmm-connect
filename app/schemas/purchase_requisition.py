@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -11,6 +12,7 @@ class PurchaseRequisitionItemCreate(BaseModel):
 
 class PurchaseRequisitionCreate(BaseModel):
     notes: str | None = None
+    expiry_date: date | None = None
     items: list[PurchaseRequisitionItemCreate]
 
 
