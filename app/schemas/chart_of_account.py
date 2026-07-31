@@ -1,20 +1,81 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class ChartOfAccountCreate(BaseModel):
-    account_number: str = Field(min_length=1, max_length=30)
+AccountType = Literal["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"]
+NormalBalance = Literal["DEBIT", "CREDIT"]
+
+
+class ChartOfAccountBase(BaseModel):
+    account_code: str = Field(min_length=1, max_length=30)
     account_name: str = Field(min_length=1, max_length=150)
-    account_type: str = Field(min_length=1, max_length=30)
-    cash_flow_category: str | None = None
+    account_type: AccountType
     parent_account_id: int | None = None
-    is_posting: bool = True
+    normal_balance: NormalBalance
+    description: str | None = Field(default=None, max_length=500)
     is_active: bool = True
+
+    @field_validator("account_code", "account_name")
+    @classmethod
+    def strip_required(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def strip_optional(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
+class ChartOfAccountCreate(ChartOfAccountBase):
+    pass
 
 
 class ChartOfAccountUpdate(BaseModel):
-    account_name: str | None = None
-    account_type: str | None = None
-    cash_flow_category: str | None = None
+    account_code: str | None = Field(default=None, min_length=1, max_length=30)
+    account_name: str | None = Field(default=None, min_length=1, max_length=150)
+    account_type: AccountType | None = None
     parent_account_id: int | None = None
-    is_posting: bool | None = None
+    normal_balance: NormalBalance | None = None
+    description: str | None = Field(default=None, max_length=500)
     is_active: bool | None = None
+
+    @field_validator("account_code", "account_name")
+    @classmethod
+    def strip_present(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+class ChartOfAccountRead(ChartOfAccountBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChartOfAccountTree(ChartOfAccountRead):
+    children: list["ChartOfAccountTree"] = Field(default_factory=list)
+
+
+class ChartOfAccountLookup(BaseModel):
+    id: int
+    account_code: str
+    account_name: str
+
+
+class ChartOfAccountPage(BaseModel):
+    items: list[ChartOfAccountRead]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int

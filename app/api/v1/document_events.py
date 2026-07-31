@@ -110,7 +110,8 @@ def list_document_events(
     actor: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    limit: int = Query(default=200, ge=1, le=1000),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -131,12 +132,27 @@ def list_document_events(
         query = query.filter(
             AuditLog.created_at <= datetime.combine(date_to, time.max, timezone.utc)
         )
-    return [
+
+    total_items = query.count()
+    offset = (page - 1) * page_size
+    items = [
         serialize_event(event)
         for event in query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
-        .limit(limit)
+        .offset(offset)
+        .limit(page_size)
         .all()
     ]
+    total_pages = (total_items + page_size - 1) // page_size
+
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total_items": total_items,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+    }
 
 
 @router.get("/traceability/purchase-requisitions/{requisition_id}")

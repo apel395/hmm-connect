@@ -1,267 +1,171 @@
-from sqlalchemy.orm import Session
+from __future__ import annotations
+
+from math import ceil
 
 from fastapi import HTTPException, status
+from sqlalchemy import asc, desc, func, or_
+from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
-from app.schemas.chart_of_account import (
-    ChartOfAccountCreate,
-    ChartOfAccountUpdate,
-)
+from app.schemas.chart_of_account import ChartOfAccountCreate, ChartOfAccountUpdate
 
 
 class ChartOfAccountService:
-
     def __init__(self, db: Session):
         self.db = db
 
-    # ----------------------------------------------------
-    # Query
-    # ----------------------------------------------------
+    @staticmethod
+    def serialize(account: ChartOfAccount) -> dict:
+        return {
+            "id": account.id,
+            "account_code": account.account_number,
+            "account_name": account.account_name,
+            "account_type": account.account_type,
+            "parent_account_id": account.parent_account_id,
+            "normal_balance": account.normal_balance,
+            "description": account.description,
+            "is_active": account.is_active,
+            "created_at": account.created_at,
+            "updated_at": account.updated_at,
+        }
 
-    def get_all(self):
-        return (
-            self.db.query(ChartOfAccount)
-            .order_by(ChartOfAccount.account_number)
-            .all()
-        )
+    def get_or_404(self, account_id: int) -> ChartOfAccount:
+        account = self.db.get(ChartOfAccount, account_id)
+        if account is None:
+            raise HTTPException(status_code=404, detail="Chart of account not found")
+        return account
 
-    def get(self, account_id: int):
-        return (
-            self.db.query(ChartOfAccount)
-            .filter(ChartOfAccount.id == account_id)
-            .first()
-        )
+    def list(self, *, page: int, page_size: int, search: str | None,
+             account_type: str | None, is_active: bool | None,
+             parent_account_id: int | None, sort_by: str, sort_order: str) -> dict:
+        query = self.db.query(ChartOfAccount)
+        if search:
+            term = f"%{search.strip()}%"
+            query = query.filter(or_(ChartOfAccount.account_number.ilike(term),
+                                     ChartOfAccount.account_name.ilike(term),
+                                     ChartOfAccount.description.ilike(term)))
+        if account_type:
+            query = query.filter(ChartOfAccount.account_type == account_type)
+        if is_active is not None:
+            query = query.filter(ChartOfAccount.is_active.is_(is_active))
+        if parent_account_id is not None:
+            query = query.filter(ChartOfAccount.parent_account_id == parent_account_id)
 
-    def get_tree(self):
+        total_items = query.count()
+        columns = {
+            "account_code": ChartOfAccount.account_number,
+            "account_name": ChartOfAccount.account_name,
+            "account_type": ChartOfAccount.account_type,
+            "normal_balance": ChartOfAccount.normal_balance,
+            "is_active": ChartOfAccount.is_active,
+            "created_at": ChartOfAccount.created_at,
+            "updated_at": ChartOfAccount.updated_at,
+        }
+        column = columns[sort_by]
+        ordering = desc(column) if sort_order == "desc" else asc(column)
+        rows = query.order_by(ordering, ChartOfAccount.id).offset((page - 1) * page_size).limit(page_size).all()
+        return {
+            "items": [self.serialize(row) for row in rows],
+            "page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": ceil(total_items / page_size) if total_items else 0,
+        }
 
-        accounts = (
-            self.db.query(ChartOfAccount)
-            .order_by(
-                ChartOfAccount.account_number
-            )
-            .all()
-        )
-
-        lookup = {}
-
-        for account in accounts:
-            account.children = []
-            lookup[account.id] = account
-
+    def tree(self, is_active: bool | None = None) -> list[dict]:
+        query = self.db.query(ChartOfAccount)
+        if is_active is not None:
+            query = query.filter(ChartOfAccount.is_active.is_(is_active))
+        accounts = query.order_by(ChartOfAccount.account_number).all()
+        nodes = {row.id: {**self.serialize(row), "children": []} for row in accounts}
         roots = []
-
-        for account in accounts:
-
-            if account.parent_account_id:
-
-                parent = lookup.get(account.parent_account_id)
-
-                if parent:
-                    parent.children.append(account)
-
+        for row in accounts:
+            node = nodes[row.id]
+            if row.parent_account_id in nodes:
+                nodes[row.parent_account_id]["children"].append(node)
             else:
-                roots.append(account)
-
+                roots.append(node)
         return roots
 
-    # ----------------------------------------------------
-    # Create
-    # ----------------------------------------------------
+    def lookup(self, search: str | None, is_active: bool) -> list[dict]:
+        query = self.db.query(ChartOfAccount).filter(ChartOfAccount.is_active.is_(is_active))
+        if search:
+            term = f"%{search.strip()}%"
+            query = query.filter(or_(ChartOfAccount.account_number.ilike(term), ChartOfAccount.account_name.ilike(term)))
+        return [{"id": row.id, "account_code": row.account_number, "account_name": row.account_name}
+                for row in query.order_by(ChartOfAccount.account_number).limit(200).all()]
 
-    def create(
-        self,
-        payload: ChartOfAccountCreate,
-    ):
-
-        self._validate_unique_number(
-            payload.account_number
-        )
-
-        self._validate_unique_name(
-            payload.account_name
-        )
-
-        parent = None
-        level = 1
-
-        if payload.parent_account_id:
-
-            parent = self.get(payload.parent_account_id)
-
-            if parent is None:
-                raise HTTPException(
-                    404,
-                    "Parent account not found",
-                )
-
-            if parent.is_posting:
-                raise HTTPException(
-                    400,
-                    "Parent account cannot be postable",
-                )
-
+    def create(self, payload: ChartOfAccountCreate) -> ChartOfAccount:
+        self._validate_unique(payload.account_code, payload.account_name)
+        self._validate_parent(None, payload.parent_account_id)
         account = ChartOfAccount(
-            account_number=payload.account_number,
+            account_number=payload.account_code,
             account_name=payload.account_name,
             account_type=payload.account_type,
-            cash_flow_category=payload.cash_flow_category,
             parent_account_id=payload.parent_account_id,
-            is_posting=payload.is_posting,
+            normal_balance=payload.normal_balance,
+            description=payload.description,
             is_active=payload.is_active,
+            is_posting=True,
+            is_system=False,
         )
-
         self.db.add(account)
-        self.db.commit()
-        self.db.refresh(account)
-
+        self.db.flush()
         return account
 
-    # ----------------------------------------------------
-    # Update
-    # ----------------------------------------------------
-
-    def update(
-        self,
-        account_id: int,
-        payload: ChartOfAccountUpdate,
-    ):
-
-        account = self.get(account_id)
-
-        if account is None:
-            raise HTTPException(
-                404,
-                "Chart of account not found",
-            )
-
-        data = payload.model_dump(
-            exclude_unset=True
-        )
-
-        if (
-            "account_number" in data
-            and data["account_number"]
-            != account.account_number
-        ):
-            self._validate_unique_number(
-                data["account_number"]
-            )
-
-        if (
-            "account_name" in data
-            and data["account_name"]
-            != account.account_name
-        ):
-            self._validate_unique_name(
-                data["account_name"]
-            )
-
+    def update(self, account_id: int, payload: ChartOfAccountUpdate) -> ChartOfAccount:
+        account = self.get_or_404(account_id)
+        data = payload.model_dump(exclude_unset=True)
+        code = data.get("account_code", account.account_number)
+        name = data.get("account_name", account.account_name)
+        self._validate_unique(code, name, account.id)
         if "parent_account_id" in data:
-
-            parent_id = data["parent_account_id"]
-
-            if parent_id == account.id:
-                raise HTTPException(
-                    400,
-                    "Account cannot be its own parent",
-                )
-
-            if parent_id:
-
-                parent = self.get(parent_id)
-
-                if parent is None:
-                    raise HTTPException(
-                        404,
-                        "Parent account not found",
-                    )
-
-                if parent.is_posting:
-                    raise HTTPException(
-                        400,
-                        "Parent account cannot be postable",
-                    )
-
+            self._validate_parent(account.id, data["parent_account_id"])
+        elif data.get("is_active") is True and not account.is_active:
+            self._validate_parent(account.id, account.parent_account_id)
+        if data.get("is_active") is False and account.is_active:
+            self._ensure_no_active_children(account.id)
         for key, value in data.items():
-            setattr(account, key, value)
-
-        self.db.commit()
-        self.db.refresh(account)
-
+            setattr(account, "account_number" if key == "account_code" else key, value)
+        self.db.flush()
         return account
 
-    # ----------------------------------------------------
-    # Delete
-    # ----------------------------------------------------
+    def archive(self, account_id: int) -> ChartOfAccount:
+        account = self.get_or_404(account_id)
+        self._ensure_no_active_children(account.id)
+        account.is_active = False
+        self.db.flush()
+        return account
 
-    def delete(
-        self,
-        account_id: int,
-    ):
+    def _validate_unique(self, code: str, name: str, exclude_id: int | None = None) -> None:
+        query = self.db.query(ChartOfAccount).filter(ChartOfAccount.id != exclude_id) if exclude_id else self.db.query(ChartOfAccount)
+        if query.filter(func.lower(ChartOfAccount.account_number) == code.lower()).first():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Account code already exists")
+        if query.filter(func.lower(ChartOfAccount.account_name) == name.lower()).first():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Account name already exists")
 
-        account = self.get(account_id)
+    def _validate_parent(self, account_id: int | None, parent_id: int | None) -> None:
+        if parent_id is None:
+            return
+        if parent_id == account_id:
+            raise HTTPException(status_code=400, detail="Account cannot be its own parent")
+        parent = self.db.get(ChartOfAccount, parent_id)
+        if parent is None:
+            raise HTTPException(status_code=404, detail="Parent account not found")
+        if not parent.is_active:
+            raise HTTPException(status_code=400, detail="Parent account must be active")
+        current = parent
+        visited = set()
+        while current is not None and current.id not in visited:
+            if current.id == account_id:
+                raise HTTPException(status_code=400, detail="Parent account would create a circular hierarchy")
+            visited.add(current.id)
+            current = self.db.get(ChartOfAccount, current.parent_account_id) if current.parent_account_id else None
 
-        if account is None:
-            raise HTTPException(
-                404,
-                "Chart of account not found",
-            )
-
-        if account.children:
-            raise HTTPException(
-                400,
-                "Cannot delete account with children",
-            )
-
-        if account.account_receipts:
-            raise HTTPException(
-                400,
-                "Account already used",
-            )
-
-        self.db.delete(account)
-        self.db.commit()
-
-    # ----------------------------------------------------
-    # Validation
-    # ----------------------------------------------------
-
-    def _validate_unique_number(
-        self,
-        account_number: str,
-    ):
-
-        exists = (
-            self.db.query(ChartOfAccount)
-            .filter(
-                ChartOfAccount.account_number
-                == account_number
-            )
-            .first()
-        )
-
-        if exists:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Account number already exists",
-            )
-
-    def _validate_unique_name(
-        self,
-        account_name: str,
-    ):
-
-        exists = (
-            self.db.query(ChartOfAccount)
-            .filter(
-                ChartOfAccount.account_name
-                == account_name
-            )
-            .first()
-        )
-
-        if exists:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Account name already exists",
-            )
+    def _ensure_no_active_children(self, account_id: int) -> None:
+        child = self.db.query(ChartOfAccount).filter(
+            ChartOfAccount.parent_account_id == account_id,
+            ChartOfAccount.is_active.is_(True),
+        ).first()
+        if child:
+            raise HTTPException(status_code=409, detail="Cannot archive an account with active children")

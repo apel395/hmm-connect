@@ -27,6 +27,16 @@ class ChartOfAccount(Base, TimestampMixin):
         index=True,
     )
 
+    normal_balance: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+    )
+
+    description: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
     cash_flow_category: Mapped[str | None] = mapped_column(
         String(30),
         nullable=True,

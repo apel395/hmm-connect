@@ -12,9 +12,12 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        origin.strip()
-        for origin in settings.CORS_ORIGINS.split(",")
-        if origin.strip()
+        # origin.strip()
+        # for origin in settings.CORS_ORIGINS.split(",")
+        # if origin.strip()
+        "http://localhost:5173",
+        "https://hmm-connect.vercel.app",
+        "https://connect.mutiaramerdekahotel.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
