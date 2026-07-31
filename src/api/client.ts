@@ -4,7 +4,7 @@ const api=axios.create({
 
 baseURL:
 
-'https://feb-purchases-burlington-expanding.trycloudflare.com/api/v1',
+import.meta.env.VITE_API_URL,
 
 timeout:30000,
 
@@ -15,7 +15,6 @@ headers:{
 },
 
 });
-
 
 api.interceptors.request.use(config=>{
 
