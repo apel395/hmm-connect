@@ -6,7 +6,7 @@ import axios, {
 } from "axios";
 
 const api: AxiosInstance = axios.create({
-  baseURL: 'https://feb-purchases-burlington-expanding.trycloudflare.com/api/v1',
+  baseURL: import.meta.env.VITE_API_URL,
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
