@@ -87,7 +87,7 @@ export default function LoginPage() {
             HMM
           </div>
           <div>
-            <div className="font-semibold tracking-wide">HMM Connect</div>
+            <div className="font-semibold tracking-wide">HMM-Connect</div>
             <div className="text-xs text-emerald-100/65">
               Hotel Administration
             </div>
@@ -139,7 +139,7 @@ export default function LoginPage() {
               HMM
             </div>
             <div>
-              <div className="font-semibold">HMM Connect</div>
+              <div className="font-semibold">HMM-Connect</div>
               <div className="text-xs text-[#6F756F]">Hotel Mutiara Merdeka</div>
             </div>
           </div>
@@ -215,7 +215,7 @@ export default function LoginPage() {
           </div>
 
           <p className="mt-6 text-center text-sm text-[#6F756F]">
-            New to HMM Connect?{" "}
+            New to HMM-Connect?{" "}
             <Link
               className="font-semibold text-[#086B5A] hover:underline"
               to={signupTarget}
@@ -225,7 +225,7 @@ export default function LoginPage() {
           </p>
 
           <p className="mt-6 text-center text-xs text-[#6F756F]">
-            Authorized personnel only · HMM Connect
+            Authorized personnel only · HMM-Connect
           </p>
         </div>
       </section>

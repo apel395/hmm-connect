@@ -38,3 +38,16 @@ export interface AdminUser {
   created_at: string;
   updated_at: string;
 }
+
+export interface EditableUser extends AdminUser {
+  role_ids: number[];
+}
+
+export interface UserDetailsUpdate {
+  username?: string;
+  email?: string;
+  full_name?: string;
+  is_active?: boolean;
+  department_id?: number | null;
+  location_id?: number | null;
+}

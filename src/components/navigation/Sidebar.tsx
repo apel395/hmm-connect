@@ -80,7 +80,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
               HMM
             </div>
             <div>
-              <div className="font-semibold tracking-wide">HMM Connect</div>
+              <div className="font-semibold tracking-wide">HMM-Connect</div>
               <div className="text-xs text-emerald-100/70">Hotel Mutiara Merdeka</div>
               <div className="mt-1 flex gap-1 text-[9px] text-[#C49A4A]" aria-label="Four star hotel">
                 <span>★</span><span>★</span><span>★</span><span>★</span>

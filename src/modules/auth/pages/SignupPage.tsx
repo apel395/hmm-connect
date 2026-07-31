@@ -126,7 +126,7 @@ export default function SignupPage() {
             HMM
           </div>
           <div>
-            <div className="font-semibold tracking-wide">HMM Connect</div>
+            <div className="font-semibold tracking-wide">HMM-Connect</div>
             <div className="text-xs text-emerald-100/65">Hotel Administration</div>
           </div>
         </div>
@@ -164,7 +164,7 @@ export default function SignupPage() {
               HMM
             </div>
             <div>
-              <div className="font-semibold">HMM Connect</div>
+              <div className="font-semibold">HMM-Connect</div>
               <div className="text-xs text-[#6F756F]">Hotel Mutiara Merdeka</div>
             </div>
           </div>
@@ -196,7 +196,7 @@ export default function SignupPage() {
                   </div>
                   <h1 className="font-serif text-3xl font-semibold tracking-tight">Create account</h1>
                   <p className="mt-2 text-sm text-[#6F756F]">
-                    Register for basic access to HMM Connect.
+                    Register for basic access to HMM-Connect.
                   </p>
                 </div>
 

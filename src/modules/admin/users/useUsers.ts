@@ -4,11 +4,47 @@ import { userApi } from "./userApi";
 export const userKeys = {
   all: ["users"] as const,
   list: () => [...userKeys.all, "list"] as const,
+  detail: (userId: number) => [...userKeys.all, "detail", userId] as const,
+  roles: () => [...userKeys.all, "roles"] as const,
+  departments: () => [...userKeys.all, "departments"] as const,
+  locations: () => [...userKeys.all, "locations"] as const,
 };
 
 export function useUsers() {
   return useQuery({
     queryKey: userKeys.list(),
     queryFn: userApi.list,
+  });
+}
+
+export function useUserDetail(userId: number | null) {
+  return useQuery({
+    queryKey: userKeys.detail(userId ?? 0),
+    queryFn: () => userApi.detail(userId!),
+    enabled: userId !== null,
+  });
+}
+
+export function useAssignableRoles(enabled: boolean) {
+  return useQuery({
+    queryKey: userKeys.roles(),
+    queryFn: userApi.roles,
+    enabled,
+  });
+}
+
+export function useAssignableDepartments(enabled: boolean) {
+  return useQuery({
+    queryKey: userKeys.departments(),
+    queryFn: userApi.departments,
+    enabled,
+  });
+}
+
+export function useAssignableLocations(enabled: boolean) {
+  return useQuery({
+    queryKey: userKeys.locations(),
+    queryFn: userApi.locations,
+    enabled,
   });
 }
