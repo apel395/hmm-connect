@@ -1,22 +1,21 @@
 import axios from "axios";
 
-// const api=axios.create({
+const api=axios.create({
 
-// baseURL:
+baseURL:
 
-// import.meta.env.VITE_API_URL,
+'https://feb-purchases-burlington-expanding.trycloudflare.com/api/v1',
 
-// timeout:30000,
+timeout:30000,
 
-// headers:{
+headers:{
 
-// "Content-Type":"application/json",
+"Content-Type":"application/json",
 
-// },
+},
 
-// });
+});
 
-const api='https://feb-purchases-burlington-expanding.trycloudflare.com/api/v1'
 
 api.interceptors.request.use(config=>{
 
