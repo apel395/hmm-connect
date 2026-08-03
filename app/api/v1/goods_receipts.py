@@ -6,6 +6,7 @@ from app.dependencies.auth import get_current_user
 from app.models.goods_receipt import GoodsReceipt
 from app.schemas.goods_receipt import GoodsReceiptCreate
 from app.services.goods_receipt_service import GoodsReceiptService
+from app.services.document_context import document_context, print_metadata
 
 
 router = APIRouter(prefix="/goods-receipts", tags=["Goods Receipts"])
@@ -61,12 +62,22 @@ def list_receipts(
 def get_receipt(
     receipt_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
     receipt = db.get(GoodsReceipt, receipt_id)
     if not receipt:
         raise HTTPException(status_code=404, detail="Goods receipt not found")
-    return serialize_receipt(receipt)
+    result = serialize_receipt(receipt)
+    result.update(document_context(db, "GOODS_RECEIPT", receipt.id, "POSTED", user))
+    return result
+
+
+@router.get("/{receipt_id}/print")
+def print_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    receipt = db.get(GoodsReceipt, receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Goods receipt not found")
+    return {**get_receipt(receipt_id, db, user), "document_type": "Goods Receipt", **print_metadata(user)}
 
 
 @router.post("", status_code=201)

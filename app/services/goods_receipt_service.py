@@ -12,19 +12,13 @@ from app.models.stock_movement import StockMovement
 from app.models.warehouse import Warehouse
 from app.schemas.goods_receipt import GoodsReceiptCreate
 from app.services.activity_service import ActivityService
+from app.services.document_number import next_document_number
 
 
 class GoodsReceiptService:
     @staticmethod
     def _number(db: Session) -> str:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-        count = (
-            db.query(GoodsReceipt)
-            .filter(GoodsReceipt.receipt_number.like(f"GR-{stamp}-%"))
-            .count()
-            + 1
-        )
-        return f"GR-{stamp}-{count:05d}"
+        return next_document_number(db, "GR", digits=5, day=True)
 
     @classmethod
     def receive(cls, db: Session, *, data: GoodsReceiptCreate, user):
@@ -36,8 +30,15 @@ class GoodsReceiptService:
                 status_code=400,
                 detail="Only approved purchase orders can be received",
             )
-        if not db.get(Warehouse, data.warehouse_id):
-            raise HTTPException(status_code=404, detail="Warehouse not found")
+        destination_type = {
+            "INVENTORY": "WAREHOUSE",
+            "DIRECT_CONSUMPTION": "DIRECT_USE",
+        }.get(data.destination_type, data.destination_type)
+        if destination_type == "WAREHOUSE":
+            if data.warehouse_id is None:
+                raise HTTPException(status_code=400, detail="Warehouse is required for warehouse receiving")
+            if not db.get(Warehouse, data.warehouse_id):
+                raise HTTPException(status_code=404, detail="Warehouse not found")
         if not data.items:
             raise HTTPException(status_code=400, detail="Receipt must contain items")
 
@@ -49,8 +50,8 @@ class GoodsReceiptService:
             source_type=data.source_type,
             external_reference=data.external_reference,
             receipt_type=data.receipt_type,
-            destination_type=data.destination_type,
-            warehouse_id=data.warehouse_id,
+            destination_type=destination_type,
+            warehouse_id=data.warehouse_id if destination_type == "WAREHOUSE" else None,
             notes=data.notes,
         )
         db.add(receipt)
@@ -63,11 +64,7 @@ class GoodsReceiptService:
                     status_code=400,
                     detail="Receipt item does not belong to the purchase order",
                 )
-            tolerance = Decimal(purchase_order.receipt_tolerance_percent or 0)
-            allowed_total = Decimal(item.quantity) * (
-                Decimal("1") + tolerance / Decimal("100")
-            )
-            remaining = allowed_total - Decimal(item.received_quantity or 0)
+            remaining = Decimal(item.quantity) - Decimal(item.received_quantity or 0)
             if incoming.quantity > remaining:
                 raise HTTPException(
                     status_code=400,
@@ -86,7 +83,7 @@ class GoodsReceiptService:
             )
             item.received_quantity = Decimal(item.received_quantity or 0) + incoming.quantity
 
-            if data.destination_type == "INVENTORY":
+            if destination_type == "WAREHOUSE":
                 inventory = (
                     db.query(Inventory)
                     .filter(
@@ -113,22 +110,17 @@ class GoodsReceiptService:
                     old_value + incoming.quantity * unit_cost
                 ) / new_quantity
 
-            db.add(
-                StockMovement(
+            if destination_type == "WAREHOUSE":
+                db.add(StockMovement(
                     product_id=item.product_id,
                     warehouse_id=data.warehouse_id,
                     goods_receipt_id=receipt.id,
-                    movement_type=(
-                        "IN"
-                        if data.destination_type == "INVENTORY"
-                        else "DIRECT_CONSUMPTION"
-                    ),
+                    movement_type="IN",
                     quantity=incoming.quantity,
                     unit_cost=unit_cost,
                     reference_type="GOODS_RECEIPT",
                     reference_id=receipt.id,
-                )
-            )
+                ))
 
         fully_received = all(
             Decimal(item.received_quantity or 0) >= Decimal(item.quantity)
@@ -149,7 +141,7 @@ class GoodsReceiptService:
             details={
                 "purchase_order_id": purchase_order.id,
                 "warehouse_id": data.warehouse_id,
-                "destination_type": data.destination_type,
+                "destination_type": destination_type,
                 "item_count": len(data.items),
             },
         )

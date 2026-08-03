@@ -19,6 +19,7 @@ from app.schemas.purchase_requisition import (
 )
 
 from app.services.activity_service import AuditService
+from app.services.document_number import next_document_number
 from app.services.approval import (
     approve_current_step,
     get_request,
@@ -30,17 +31,44 @@ from app.services.approval import (
 class PurchaseRequisitionService:
 
     @staticmethod
+    def update(db: Session, *, purchase_requisition_id: int,
+               data: PurchaseRequisitionCreate, current_user: User) -> PurchaseRequisition:
+        requisition = db.get(PurchaseRequisition, purchase_requisition_id)
+        if not requisition:
+            raise HTTPException(status_code=404, detail="Purchase requisition not found")
+        from app.services.document_context import document_context
+        if not document_context(db, "PURCHASE_REQUISITION", requisition.id, requisition.status, current_user)["allowed_actions"]["can_edit"]:
+            raise HTTPException(status_code=409, detail="Purchase requisition is locked for editing")
+        if not data.items:
+            raise HTTPException(status_code=400, detail="Purchase requisition must have items")
+        requisition.request_date = data.request_date or requisition.request_date
+        requisition.expiry_date = data.expiry_date
+        requisition.notes = data.notes
+        requisition.items.clear()
+        total = Decimal("0")
+        for incoming in data.items:
+            if not db.get(Product, incoming.product_id):
+                raise HTTPException(status_code=404, detail=f"Product {incoming.product_id} not found")
+            line_total = incoming.quantity * incoming.estimated_price
+            requisition.items.append(PurchaseRequisitionItem(
+                product_id=incoming.product_id, quantity=incoming.quantity,
+                estimated_price=incoming.estimated_price, total_price=line_total,
+            ))
+            total += line_total
+        requisition.total_amount = total
+        AuditService.log(db=db, user=current_user, action="UPDATE", entity_type="PURCHASE_REQUISITION",
+            entity_id=requisition.id, summary=f"Updated {requisition.pr_number}", document_type="PR",
+            document_number=requisition.pr_number, document_status=requisition.status,
+            details={"edited_during_approval": requisition.status == "PENDING_APPROVAL"})
+        db.commit(); db.refresh(requisition)
+        return requisition
+
+    @staticmethod
     def generate_pr_number(
         db: Session,
     ) -> str:
 
-        count = (
-            db.query(PurchaseRequisition)
-            .count()
-            + 1
-        )
-
-        return f"PR-{count:06d}"
+        return next_document_number(db, "PR")
 
     @staticmethod
     def create(
@@ -444,13 +472,7 @@ class PurchaseRequisitionService:
         db: Session,
     ) -> str:
 
-        count = (
-            db.query(PurchaseOrder)
-            .count()
-            + 1
-        )
-
-        return f"PO-{count:06d}"
+        return next_document_number(db, "PO")
 
     @staticmethod
     def convert_to_purchase_order(

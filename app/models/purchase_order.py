@@ -29,6 +29,8 @@ class PurchaseOrder(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     po_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
 
     purchase_requisition_id: Mapped[int | None] = mapped_column(
         ForeignKey("purchase_requisitions.id", ondelete="SET NULL"),
@@ -40,17 +42,14 @@ class PurchaseOrder(Base, TimestampMixin):
     order_date: Mapped[date] = mapped_column(Date, default=date.today)
     expected_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    receipt_tolerance_percent: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2),
-        default=Decimal("0"),
-        nullable=False,
-    )
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     supplier = relationship("Supplier", back_populates="purchase_orders")
+    department = relationship("Department")
+    location = relationship("Location")
 
     purchase_requisition = relationship(
         "PurchaseRequisition",
@@ -78,4 +77,16 @@ class PurchaseOrder(Base, TimestampMixin):
 
     @property
     def purchase_requisition_ids(self) -> list[int]:
-        return [pr.id for pr in self.purchase_requisitions]
+        ids = [pr.id for pr in self.purchase_requisitions]
+        if self.purchase_requisition_id and self.purchase_requisition_id not in ids:
+            ids.append(self.purchase_requisition_id)
+        return ids
+
+    @property
+    def source_purchase_requisitions(self):
+        requisitions = list(self.purchase_requisitions)
+        if self.purchase_requisition and all(
+            item.id != self.purchase_requisition.id for item in requisitions
+        ):
+            requisitions.append(self.purchase_requisition)
+        return requisitions

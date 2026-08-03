@@ -2,15 +2,19 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.purchase_requisition import PurchaseRequisition
 from app.models.supplier import Supplier
+from app.models.department import Department
+from app.models.location import Location
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.purchase_order import PurchaseOrderCreate
 from app.services.activity_service import AuditService
+from app.services.document_number import next_document_number
 from app.services.approval import (
     approve_current_step,
     get_request,
@@ -21,8 +25,47 @@ from app.services.approval import (
 
 class PurchaseOrderService:
     @staticmethod
+    def update(db: Session, *, purchase_order_id: int, data: PurchaseOrderCreate, user):
+        purchase_order = db.get(PurchaseOrder, purchase_order_id)
+        if not purchase_order:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        from app.services.document_context import document_context
+        if not document_context(db, "PURCHASE_ORDER", purchase_order.id, purchase_order.status, user)["allowed_actions"]["can_edit"]:
+            raise HTTPException(status_code=409, detail="Purchase order is locked for editing")
+        supplier = db.get(Supplier, data.supplier_id)
+        if not supplier or not supplier.is_active:
+            raise HTTPException(status_code=404, detail="Active supplier not found")
+        purchase_order.supplier_id = data.supplier_id
+        purchase_order.order_date = data.order_date or purchase_order.order_date
+        purchase_order.expected_date = data.expected_date
+        purchase_order.expiry_date = data.expiry_date
+        if data.department_id is not None and not db.get(Department, data.department_id):
+            raise HTTPException(status_code=404, detail="Department not found")
+        if data.location_id is not None and not db.get(Location, data.location_id):
+            raise HTTPException(status_code=404, detail="Location not found")
+        purchase_order.department_id = data.department_id
+        purchase_order.location_id = data.location_id
+        purchase_order.notes = data.notes
+        purchase_order.items.clear()
+        total = Decimal("0")
+        for incoming in data.items:
+            line_total = incoming.quantity * incoming.unit_price
+            purchase_order.items.append(PurchaseOrderItem(
+                purchase_requisition_item_id=incoming.purchase_requisition_item_id,
+                product_id=incoming.product_id, quantity=incoming.quantity,
+                description=incoming.description, uom=incoming.uom,
+                received_quantity=Decimal("0"), unit_price=incoming.unit_price, total_price=line_total,
+            ))
+            total += line_total
+        purchase_order.total_amount = total
+        PurchaseOrderService._audit(db, user, purchase_order, "UPDATE",
+            edited_during_approval=purchase_order.status == "PENDING_APPROVAL")
+        db.commit(); db.refresh(purchase_order)
+        return purchase_order
+
+    @staticmethod
     def _number(db: Session) -> str:
-        return f"PO-{db.query(PurchaseOrder).count() + 1:06d}"
+        return next_document_number(db, "PO")
 
     @staticmethod
     def _audit(db, user, purchase_order, action, previous_status=None, **details):
@@ -44,6 +87,10 @@ class PurchaseOrderService:
         supplier = db.get(Supplier, data.supplier_id)
         if not supplier or not supplier.is_active:
             raise HTTPException(status_code=404, detail="Active supplier not found")
+        if data.department_id is not None and not db.get(Department, data.department_id):
+            raise HTTPException(status_code=404, detail="Department not found")
+        if data.location_id is not None and not db.get(Location, data.location_id):
+            raise HTTPException(status_code=404, detail="Location not found")
 
         requisitions = (
             db.query(PurchaseRequisition)
@@ -61,35 +108,62 @@ class PurchaseOrderService:
         requisition_item_ids = {
             item.id for requisition in requisitions for item in requisition.items
         }
-        if any(
-            item.purchase_requisition_item_id not in requisition_item_ids
-            for item in data.items
-        ):
+        if requisitions and any(item.purchase_requisition_item_id not in requisition_item_ids for item in data.items):
             raise HTTPException(
                 status_code=400,
                 detail="PO items must belong to the selected purchase requisitions",
             )
+        remaining_by_item = {}
+        for requisition in requisitions:
+            for requisition_item in requisition.items:
+                already_ordered = db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(
+                    PurchaseOrderItem.purchase_requisition_item_id == requisition_item.id,
+                    PurchaseOrder.status != "CANCELLED",
+                ).scalar() or Decimal("0")
+                remaining = Decimal(requisition_item.quantity) - Decimal(already_ordered)
+                if remaining > 0:
+                    remaining_by_item[requisition_item.id] = (requisition_item, remaining)
+
+        for incoming in data.items:
+            if incoming.purchase_requisition_item_id is None:
+                continue
+            requisition_item, remaining = remaining_by_item[incoming.purchase_requisition_item_id]
+            if incoming.quantity > remaining:
+                raise HTTPException(status_code=409, detail=f"Quantity exceeds the remaining requested quantity for PR item {incoming.purchase_requisition_item_id}")
+            if incoming.product_id is not None and incoming.product_id != requisition_item.product_id:
+                raise HTTPException(status_code=400, detail="Product identity must come from the selected purchase requisition")
 
         purchase_order = PurchaseOrder(
             po_number=PurchaseOrderService._number(db),
             supplier_id=data.supplier_id,
+            department_id=data.department_id,
+            location_id=data.location_id,
             status="DRAFT",
             order_date=data.order_date or date.today(),
             source_type=data.source_type,
             external_reference=data.external_reference,
             expected_date=data.expected_date,
             expiry_date=data.expiry_date,
-            receipt_tolerance_percent=data.receipt_tolerance_percent,
             notes=data.notes,
             purchase_requisitions=requisitions,
         )
         total = Decimal("0")
         for item in data.items:
+            product_id = item.product_id
+            description = item.description
+            uom = item.uom
+            if item.purchase_requisition_item_id is not None:
+                source_item = remaining_by_item[item.purchase_requisition_item_id][0]
+                product_id = source_item.product_id
+                description = source_item.product.description
+                uom = source_item.product.uom
             line_total = item.quantity * item.unit_price
             purchase_order.items.append(
                 PurchaseOrderItem(
                     purchase_requisition_item_id=item.purchase_requisition_item_id,
-                    product_id=item.product_id,
+                    product_id=product_id,
+                    description=description,
+                    uom=uom,
                     quantity=item.quantity,
                     received_quantity=Decimal("0"),
                     unit_price=item.unit_price,
@@ -99,7 +173,16 @@ class PurchaseOrderService:
             total += line_total
         purchase_order.total_amount = total
         for requisition in requisitions:
-            requisition.status = "CONVERTED"
+            fully_converted = all(
+                (db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(
+                    PurchaseOrderItem.purchase_requisition_item_id == item.id,
+                    PurchaseOrder.status != "CANCELLED",
+                ).scalar() or Decimal("0")) + sum(
+                    incoming.quantity for incoming in data.items if incoming.purchase_requisition_item_id == item.id
+                ) >= item.quantity
+                for item in requisition.items
+            )
+            requisition.status = "CONVERTED" if fully_converted else "PARTIALLY_CONVERTED"
 
         db.add(purchase_order)
         db.flush()

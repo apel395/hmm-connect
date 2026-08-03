@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric
+from sqlalchemy import ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -29,6 +29,9 @@ class PurchaseOrderItem(Base):
         ForeignKey("products.id"),
         nullable=False,
     )
+
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    uom: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     quantity: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),

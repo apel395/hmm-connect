@@ -16,7 +16,7 @@ class GoodsReceiptCreate(BaseModel):
     source_type: Literal["LIVE", "HISTORICAL_IMPORT"] = "LIVE"
     external_reference: str | None = Field(default=None, max_length=100)
     receipt_type: Literal["GOODS", "SERVICE"] = "GOODS"
-    warehouse_id: int
-    destination_type: Literal["INVENTORY", "DIRECT_CONSUMPTION"] = "INVENTORY"
+    warehouse_id: int | None = None
+    destination_type: Literal["WAREHOUSE", "DIRECT_USE", "INVENTORY", "DIRECT_CONSUMPTION"] = "WAREHOUSE"
     notes: str | None = None
     items: list[GoodsReceiptItemCreate]

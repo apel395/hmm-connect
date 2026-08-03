@@ -11,6 +11,7 @@ from app.models.customer import Customer
 from app.models.customer_payment import CustomerPayment
 from app.models.department import Department
 from app.models.document_attachment import DocumentAttachment
+from app.models.document_sequence import DocumentSequence
 from app.models.fiscal_period import FiscalPeriod
 from app.models.fiscal_year_close import FiscalYearClose
 from app.models.general_ledger import GeneralLedger
