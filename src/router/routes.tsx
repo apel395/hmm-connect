@@ -23,6 +23,15 @@ import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDo
 import ReceivingPage from "@/modules/purchasing/goods-receipts/pages/ReceivingPage";
 import ReceivingDetailPage from "@/modules/purchasing/goods-receipts/pages/ReceivingDetailPage";
 import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
+import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
+import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/SupplierInvoiceListPage";
+import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
+import JournalListPage from "@/modules/finance/journals/JournalListPage";
+import JournalDetailPage from "@/modules/finance/journals/JournalDetailPage";
+import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
+import PaymentListPage from "@/modules/finance/payments/PaymentListPage";
+import PaymentDetailPage from "@/modules/finance/payments/PaymentDetailPage";
+import GeneralLedgerPage from "@/modules/finance/general-ledger/GeneralLedgerPage";
 
 /* Warehouse */
 
@@ -110,6 +119,17 @@ const router = createBrowserRouter([
       { path: "purchase-requisitions/:id/print", element: <PrintDocumentPage kind="purchase-requisitions" /> },
       { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
       { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },
+      { path: "posting-rules", element: <PostingRulesPage /> },
+      { path: "supplier-invoices", element: <SupplierInvoiceListPage /> },
+      { path: "supplier-invoices/:id", element: <SupplierInvoiceDetailPage /> },
+      { path: "supplier-invoices/:id/print", element: <AccountingPrintPage kind="supplier-invoices" /> },
+      { path: "journal-entries", element: <JournalListPage /> },
+      { path: "journal-entries/:id", element: <JournalDetailPage /> },
+      { path: "journal-entries/:id/print", element: <AccountingPrintPage kind="journal-entries" /> },
+      { path: "payments", element: <PaymentListPage /> },
+      { path: "payments/:id", element: <PaymentDetailPage /> },
+      { path: "payments/:id/print", element: <AccountingPrintPage kind="payments" /> },
+      { path: "general-ledger", element: <GeneralLedgerPage /> },
 
       
 

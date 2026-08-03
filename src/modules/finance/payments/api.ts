@@ -1,0 +1,17 @@
+import api from "@/api/client";
+
+export type Payment = {
+  id: number; payment_number: string; supplier_id: number; supplier_name: string;
+  payment_date: string; payment_method: string; payment_account_id: number;
+  payment_account_code: string; payment_account_name: string; currency: string;
+  total_amount: number; allocated_amount: number; reference_number?: string | null;
+  cheque_number?: string | null; status: string; notes?: string | null;
+  journal_entry_id?: number | null; journal_number?: string | null;
+  allocations: any[]; allowed_actions?: Record<string, boolean>; activity_history?: any[];
+};
+
+export const listPayments = async (params: any = {}) => (await api.get("/payments", { params })).data;
+export const getPayment = async (id: number) => (await api.get<Payment>(`/payments/${id}`)).data;
+export const eligibleInvoices = async (supplier_id: number, currency = "IDR") => (await api.get("/payments/eligible-invoices", { params: { supplier_id, currency } })).data;
+export const createPayment = async (payload: any) => (await api.post<Payment>("/payments", payload)).data;
+export const paymentAction = async (id: number, action: string) => (await api.post<Payment>(`/payments/${id}/${action}`)).data;

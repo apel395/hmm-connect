@@ -2,6 +2,8 @@ export type AttachmentEntityType =
   | "PURCHASE_REQUISITION"
   | "PURCHASE_ORDER"
   | "GOODS_RECEIPT"
+  | "SUPPLIER_INVOICE"
+  | "PAYMENT"
   | "PURCHASING_DOCUMENT";
 
 export type AttachmentSourceType = "LIVE" | "HISTORICAL_IMPORT";
