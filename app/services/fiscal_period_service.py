@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import HTTPException
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.models.fiscal_period import FiscalPeriod
@@ -12,7 +13,10 @@ class FiscalPeriodService:
     def validate_posting_date(
         db: Session,
         posting_date: date,
-    ) -> FiscalPeriod:
+    ) -> FiscalPeriod | None:
+
+        if not inspect(db.get_bind()).has_table(FiscalPeriod.__tablename__):
+            return None
 
         period = (
             db.query(FiscalPeriod)

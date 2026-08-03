@@ -1,0 +1,55 @@
+from datetime import date, datetime
+from decimal import Decimal
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.base import Base, TimestampMixin
+
+class SupplierInvoice(Base, TimestampMixin):
+    __tablename__ = "supplier_invoices"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    internal_invoice_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    supplier_invoice_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False, index=True)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    received_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date, index=True)
+    purchase_order_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id", ondelete="SET NULL"), index=True)
+    goods_receipt_id: Mapped[int | None] = mapped_column(ForeignKey("goods_receipts.id", ondelete="SET NULL"), index=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"))
+    currency: Mapped[str] = mapped_column(String(3), default="IDR", nullable=False)
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
+    withholding_tax_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
+    paid_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
+    balance_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
+    payment_status: Mapped[str] = mapped_column(String(20), default="UNPAID", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="DRAFT", nullable=False, index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False, index=True)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    supplier = relationship("Supplier"); purchase_order = relationship("PurchaseOrder"); goods_receipt = relationship("GoodsReceipt")
+    department = relationship("Department"); location = relationship("Location"); created_by = relationship("User")
+    lines = relationship("SupplierInvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
+
+class SupplierInvoiceLine(Base):
+    __tablename__ = "supplier_invoice_lines"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    supplier_invoice_id: Mapped[int] = mapped_column(ForeignKey("supplier_invoices.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"))
+    purchase_order_item_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_order_items.id", ondelete="SET NULL"))
+    goods_receipt_item_id: Mapped[int | None] = mapped_column(ForeignKey("goods_receipt_items.id", ondelete="SET NULL"))
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18,4), nullable=False)
+    uom: Mapped[str | None] = mapped_column(String(20))
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
+    line_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"))
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    invoice = relationship("SupplierInvoice", back_populates="lines"); product = relationship("Product"); account = relationship("ChartOfAccount")

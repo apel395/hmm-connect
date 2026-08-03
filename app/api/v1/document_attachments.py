@@ -15,6 +15,8 @@ from app.models.document_attachment import DocumentAttachment
 from app.models.goods_receipt import GoodsReceipt
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_requisition import PurchaseRequisition
+from app.models.supplier_invoice import SupplierInvoice
+from app.models.payment import Payment
 from app.models.purchasing_document import PurchasingDocument
 from app.schemas.document_attachment import DocumentAttachmentResponse
 from app.services.activity_service import ActivityService
@@ -32,6 +34,8 @@ ENTITY_MODELS = {
     "PURCHASE_ORDER": PurchaseOrder,
     "GOODS_RECEIPT": GoodsReceipt,
     "PURCHASING_DOCUMENT": PurchasingDocument,
+    "SUPPLIER_INVOICE": SupplierInvoice,
+    "PAYMENT": Payment,
 }
 SOURCE_TYPES = {"LIVE", "HISTORICAL_IMPORT"}
 

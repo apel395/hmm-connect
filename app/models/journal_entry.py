@@ -74,6 +74,8 @@ class JournalEntry(Base, TimestampMixin):
         server_default=func.now(),
     )
 
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_by = relationship(
         "User",
         foreign_keys=[created_by_id],

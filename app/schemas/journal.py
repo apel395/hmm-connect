@@ -9,6 +9,9 @@ class JournalLineCreate(BaseModel):
     debit: Decimal = Field(default=Decimal("0"))
     credit: Decimal = Field(default=Decimal("0"))
     description: str | None = None
+    department_id: int | None = None
+    location_id: int | None = None
+    supplier_id: int | None = None
 
 
 class JournalCreate(BaseModel):
@@ -43,3 +46,8 @@ class JournalResponse(BaseModel):
     status: str
 
     lines: list[JournalLineResponse]
+
+class JournalUpdate(BaseModel):
+    posting_date: date | None = None
+    description: str | None = None
+    lines: list[JournalLineCreate] | None = None

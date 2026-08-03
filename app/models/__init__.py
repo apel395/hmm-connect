@@ -3,6 +3,7 @@ from app.models.account_payable import AccountPayable
 from app.models.account_receipt import AccountReceipt
 from app.models.account_receivable import AccountReceivable
 from app.models.accounting_setting import AccountingSetting
+from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.approval_request import ApprovalRequest, ApprovalRequestStep
 from app.models.approval_workflow import ApprovalWorkflow, ApprovalWorkflowStep
 from app.models.audit_log import AuditLog
@@ -27,7 +28,7 @@ from app.models.journal_vouche import JournalVoucher
 from app.models.journal_voucher_line import JournalVoucherLine
 from app.models.location import Location
 from app.models.notification import Notification
-from app.models.payment import Payment
+from app.models.payment import Payment, PaymentAllocation
 from app.models.permission import Permission
 from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
@@ -41,6 +42,7 @@ from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier, SupplierRow
+from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.models.supplier_product import SupplierProduct
 from app.models.user import User
 from app.models.user_role import UserRole

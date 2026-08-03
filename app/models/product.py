@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -64,6 +64,15 @@ class Product(Base, TimestampMixin):
         Numeric(12, 2),
         default=0,
     )
+
+    minimum_stock: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    reorder_level: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    maximum_stock: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    lead_time_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    preferred_supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True)
+    inventory_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    purchase_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    cogs_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,

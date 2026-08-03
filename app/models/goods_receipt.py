@@ -12,6 +12,7 @@ class GoodsReceipt(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     receipt_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="DRAFT", nullable=False)
     purchase_order_id: Mapped[int] = mapped_column(ForeignKey("purchase_orders.id"), nullable=False, index=True)
     received_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

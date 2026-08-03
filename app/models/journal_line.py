@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, Text
+from sqlalchemy import ForeignKey, Integer, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -39,6 +39,10 @@ class JournalLine(Base):
         Text,
         nullable=True,
     )
+    line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
 
     journal_entry = relationship(
         "JournalEntry",
@@ -48,3 +52,6 @@ class JournalLine(Base):
     account = relationship(
         "ChartOfAccount",
     )
+    department = relationship("Department")
+    location = relationship("Location")
+    supplier = relationship("Supplier")
