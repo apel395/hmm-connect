@@ -7,6 +7,10 @@ import type {
 
 export const goodsReceiptApi = {
 
+  list: () => api.get("/goods-receipts"),
+
+  detail: (id: number) => api.get(`/goods-receipts/${id}`),
+
   listByPurchaseOrder: (
     purchaseOrderId: number
   ) =>

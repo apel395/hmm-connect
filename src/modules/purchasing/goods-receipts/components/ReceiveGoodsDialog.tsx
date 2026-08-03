@@ -100,6 +100,8 @@ export default function ReceiveGoodsDialog({
   ] =
   useState("");
 
+  const [destinationType, setDestinationType] = useState<"WAREHOUSE" | "DIRECT_USE">("WAREHOUSE");
+
 
 
   useEffect(()=>{
@@ -230,7 +232,7 @@ export default function ReceiveGoodsDialog({
 
 
 
-    if(!warehouseId){
+    if(destinationType === "WAREHOUSE" && !warehouseId){
 
       alert(
         "Please select warehouse"
@@ -289,12 +291,10 @@ export default function ReceiveGoodsDialog({
 
         payload:{
 
-          destination_type:
-            "INVENTORY",
+          destination_type: destinationType,
 
 
-          warehouse_id:
-            warehouseId,
+          warehouse_id: destinationType === "WAREHOUSE" ? warehouseId : null,
 
 
           items,
@@ -377,8 +377,17 @@ export default function ReceiveGoodsDialog({
 
           <div className="space-y-5">
 
-
             <div>
+              <label className="mb-1 block text-sm font-medium">Destination</label>
+              <select className="w-full rounded-md border p-2" value={destinationType} onChange={(e) => setDestinationType(e.target.value as "WAREHOUSE" | "DIRECT_USE")}>
+                <option value="WAREHOUSE">Warehouse</option>
+                <option value="DIRECT_USE">Direct Use</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-500">{destinationType === "WAREHOUSE" ? "Accepted quantities will increase warehouse stock." : "Accepted quantities will be recorded as received but will not increase warehouse stock."}</p>
+            </div>
+
+
+            {destinationType === "WAREHOUSE" && <div>
 
 
               <label className="mb-1 block text-sm font-medium">
@@ -420,7 +429,7 @@ export default function ReceiveGoodsDialog({
 
                 {
                   warehouses.map(
-                    (warehouse:any)=>(
+                    (warehouse)=>(
 
                       <option
 
@@ -455,7 +464,7 @@ export default function ReceiveGoodsDialog({
               </select>
 
 
-            </div>
+            </div>}
 
 
 

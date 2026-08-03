@@ -42,3 +42,12 @@ select,
 textarea {
   font: inherit;
 }
+
+@page { size: A4; margin: 14mm; }
+@media print {
+  body { background: white; color: black; }
+  aside, body header:not(.print-document header), .print-actions { display: none !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  .print-document { width: 100%; max-width: none; padding: 0; }
+  .avoid-break, tr { break-inside: avoid; page-break-inside: avoid; }
+}

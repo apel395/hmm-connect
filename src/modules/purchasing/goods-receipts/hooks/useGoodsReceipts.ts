@@ -8,8 +8,24 @@ import {
 import goodsReceiptApi from "../api/goodsReceiptApi";
 
 import type {
+  GoodsReceipt,
   GoodsReceiptCreatePayload,
 } from "../types";
+
+export function useAllGoodsReceipts() {
+  return useQuery({
+    queryKey: ["goods-receipts"],
+    queryFn: async () => (await goodsReceiptApi.list()).data as GoodsReceipt[],
+  });
+}
+
+export function useGoodsReceipt(id: number) {
+  return useQuery({
+    queryKey: ["goods-receipt", id],
+    queryFn: async () => (await goodsReceiptApi.detail(id)).data as GoodsReceipt,
+    enabled: Boolean(id),
+  });
+}
 
 
 export function useGoodsReceipts(

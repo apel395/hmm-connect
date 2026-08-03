@@ -12,7 +12,10 @@ import {
 
 
 export function usePurchaseOrders(
-  scope = "active"
+  scope: "active" | "history" | "all" = "all",
+  page = 1,
+  pageSize = 20,
+  status?: string,
 ) {
 
   return useQuery({
@@ -20,14 +23,20 @@ export function usePurchaseOrders(
     queryKey: [
       "purchase-orders",
       scope,
+      page,
+      pageSize,
+      status,
     ],
 
     queryFn: async () => {
 
       const res =
-        await purchaseOrderApi.list(
-          scope
-        );
+        await purchaseOrderApi.list({
+          scope,
+          page,
+          page_size: pageSize,
+          status,
+        });
 
       return res.data;
 

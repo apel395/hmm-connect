@@ -1,6 +1,7 @@
 import {
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 
 
 import PageHeader from "@/components/common/PageHeader";
@@ -32,10 +33,11 @@ import {
 
 
 export default function PurchaseOrderPage() {
+  const navigate = useNavigate();
 
 
   const {
-    data = [],
+    data,
     isLoading,
   } =
     usePurchaseOrders();
@@ -293,27 +295,8 @@ export default function PurchaseOrderPage() {
 
               <PurchaseOrderTable
 
-                rows={data}
-
-
-                onSubmit={
-                  submitForApproval
-                }
-
-
-                onApprove={
-                  approvePO
-                }
-
-
-                onReject={
-                  rejectPO
-                }
-
-
-                onReceive={
-                  openReceive
-                }
+                rows={data?.items ?? []}
+                onView={(row) => navigate(`/purchase-orders/${row.id}`)}
 
 
               />

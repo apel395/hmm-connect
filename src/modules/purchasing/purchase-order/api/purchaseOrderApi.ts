@@ -1,7 +1,11 @@
 import api from "@/api/client";
 
 export interface PurchaseOrderItemPayload {
-  product_id: number;
+  product_id?: number;
+
+  description?: string;
+
+  uom?: string;
 
   quantity: number;
 
@@ -13,11 +17,15 @@ export interface PurchaseOrderItemPayload {
 export interface PurchaseOrderCreatePayload {
   supplier_id: number;
 
-  expected_date: string;
+  department_id?: number;
+
+  location_id?: number;
+
+  order_date?: string;
+
+  expected_date?: string;
 
   expiry_date?: string | null;
-
-  receipt_tolerance_percent?: number;
 
   notes?: string;
 
@@ -28,10 +36,10 @@ export interface PurchaseOrderCreatePayload {
 
 export const purchaseOrderApi = {
 
-  list: (scope = "active") =>
+  list: (params: { scope?: "active" | "history" | "all"; status?: string; page?: number; page_size?: number } = {}) =>
     api.get(
       "/purchase-orders",
-      { params: { scope } }
+      { params }
     ),
 
   detail: (

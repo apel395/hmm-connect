@@ -17,6 +17,10 @@ export interface PurchaseOrderItem {
 
   product_name: string;
 
+  description?: string | null;
+
+  uom?: string;
+
 
   quantity: number;
 
@@ -51,12 +55,20 @@ export interface PurchaseOrder {
 
   supplier_name: string;
 
+  department_id?: number | null;
+  department_name?: string | null;
+  location_id?: number | null;
+  location_name?: string | null;
+
 
 
   purchase_requisition_id?: number | null;
 
 
   purchase_requisition_ids?: number[];
+  source_pr_id?: number | null;
+  source_pr_number?: string | null;
+  source_purchase_requisitions?: Array<{ id: number; pr_number: string }>;
 
 
 
@@ -77,14 +89,12 @@ export interface PurchaseOrder {
   order_date: string;
 
 
-  expected_date: string;
+  expected_date?: string | null;
 
 
   expiry_date?: string | null;
 
 
-
-  receipt_tolerance_percent?: number;
 
 
 
@@ -98,4 +108,29 @@ export interface PurchaseOrder {
 
   items: PurchaseOrderItem[];
 
+  creation_type?: "FROM_PR" | "DIRECT";
+  allowed_actions?: DocumentAllowedActions;
+  approval_history?: ApprovalHistoryItem[];
+  activity_history?: import("../components/DocumentActivity").DocumentActivityItem[];
+
+}
+
+export interface PurchaseOrderPage {
+  items: PurchaseOrder[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface DocumentAllowedActions {
+  can_edit: boolean; can_submit: boolean; can_approve: boolean; can_reject: boolean;
+  can_print: boolean; can_view_history: boolean; can_manage_attachments: boolean; can_receive?: boolean;
+}
+
+export interface ApprovalHistoryItem {
+  level: number; name: string; approver_role: string; status: string;
+  approver_name?: string | null; decided_at?: string | null; comment?: string | null;
 }

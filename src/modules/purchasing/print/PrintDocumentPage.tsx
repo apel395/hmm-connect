@@ -1,0 +1,37 @@
+import { useQuery } from "@tanstack/react-query";
+import { useParams } from "react-router-dom";
+import api from "@/api/client";
+import Button from "@/components/ui/Button";
+import Loading from "@/components/ui/Loading";
+
+interface PrintItem {
+  id: number; product_code?: string; product_name: string; uom?: string;
+  quantity: number; unit_price?: number; estimated_price?: number; total_price?: number;
+}
+interface ApprovalRecord { level: number; name: string; status: string; approver_name?: string | null; decided_at?: string | null; comment?: string | null }
+interface PrintDocument {
+  document_type: string; brand_name: string; hotel_name: string; pr_number?: string; po_number?: string; receipt_number?: string;
+  request_date?: string; order_date?: string; received_at?: string; supplier_name?: string; requester_name?: string;
+  status?: string; destination_type?: string; warehouse_name?: string | null; notes?: string | null; total_amount?: number;
+  printed_by: string; generated_at: string; items: PrintItem[]; approval_history?: ApprovalRecord[];
+}
+
+export default function PrintDocumentPage({ kind }: { kind: "purchase-requisitions" | "purchase-orders" | "goods-receipts" }) {
+  const { id } = useParams();
+  const query = useQuery({ queryKey: [kind, id, "print"], queryFn: async () => (await api.get<PrintDocument>(`/${kind}/${id}/print`)).data, enabled: Boolean(id) });
+  if (query.isLoading) return <Loading/>;
+  if (!query.data) return <p>Document could not be loaded.</p>;
+  const data = query.data;
+  const number = data.pr_number ?? data.po_number ?? data.receipt_number;
+  const date = data.request_date ?? data.order_date ?? data.received_at;
+  return <article className="print-document mx-auto max-w-[210mm] bg-white p-8 text-black">
+    <div className="print-actions mb-6 flex justify-end"><Button onClick={() => window.print()}>Print</Button></div>
+    <header className="mb-8 flex items-start justify-between border-b-2 border-black pb-5"><div><div className="text-2xl font-bold">{data.brand_name}</div><div>{data.hotel_name}</div></div><div className="text-right"><h1 className="text-2xl font-bold">{data.document_type}</h1><div className="font-mono text-lg">{number}</div></div></header>
+    <dl className="mb-6 grid grid-cols-2 gap-x-8 gap-y-2 text-sm"><div><dt className="font-semibold">Document Date</dt><dd>{date ? new Date(date).toLocaleDateString() : "—"}</dd></div><div><dt className="font-semibold">Status</dt><dd>{data.status ?? "POSTED"}</dd></div>{data.supplier_name && <div><dt className="font-semibold">Supplier</dt><dd>{data.supplier_name}</dd></div>}{data.requester_name && <div><dt className="font-semibold">Requester</dt><dd>{data.requester_name}</dd></div>}{data.destination_type && <div><dt className="font-semibold">Destination</dt><dd>{data.destination_type === "WAREHOUSE" ? `Warehouse — ${data.warehouse_name ?? ""}` : "Direct Use"}</dd></div>}</dl>
+    <table className="mb-8 w-full border-collapse text-sm"><thead><tr><th className="border border-black p-2 text-left">Item</th><th className="border border-black p-2">UOM</th><th className="border border-black p-2 text-right">Quantity</th>{kind !== "goods-receipts" && <th className="border border-black p-2 text-right">Unit Price</th>}{kind !== "goods-receipts" && <th className="border border-black p-2 text-right">Total</th>}</tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td className="border border-black p-2"><div>{item.product_name}</div><div className="text-xs">{item.product_code}</div></td><td className="border border-black p-2 text-center">{item.uom ?? "—"}</td><td className="border border-black p-2 text-right">{item.quantity}</td>{kind !== "goods-receipts" && <td className="border border-black p-2 text-right">{Number(item.unit_price ?? item.estimated_price ?? 0).toLocaleString()}</td>}{kind !== "goods-receipts" && <td className="border border-black p-2 text-right">{Number(item.total_price ?? 0).toLocaleString()}</td>}</tr>)}</tbody></table>
+    {data.total_amount !== undefined && <div className="mb-8 text-right text-lg font-bold">Total: {Number(data.total_amount).toLocaleString()}</div>}
+    <section className="avoid-break mb-8"><h2 className="mb-2 font-bold">Notes</h2><div className="min-h-16 border border-black p-3">{data.notes || "—"}</div></section>
+    <section className="avoid-break"><h2 className="mb-3 font-bold">Approval Records</h2><div className="grid grid-cols-3 gap-4">{data.approval_history?.map((record) => <div key={record.level} className="min-h-28 border border-black p-3 text-center text-xs"><div className="font-bold">{record.name}</div><div className="mt-4">{record.approver_name ?? record.status}</div><div>{record.decided_at ? new Date(record.decided_at).toLocaleString() : ""}</div><div>{record.comment}</div></div>)}</div></section>
+    <footer className="mt-10 border-t pt-3 text-xs">Printed by {data.printed_by} · {new Date(data.generated_at).toLocaleString()}</footer>
+  </article>;
+}

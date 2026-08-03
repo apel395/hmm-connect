@@ -1,5 +1,6 @@
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
+import { Link } from "react-router-dom";
 
 import {
   useGoodsReceipts,
@@ -153,10 +154,7 @@ export default function GoodsReceiptHistory({
 
 
                   <td className="p-3 font-medium">
-
-                    {
-                      receipt.receipt_number
-                    }
+                    <Link className="text-emerald-700 hover:underline" to={`/receiving/${receipt.id}`}>{receipt.receipt_number}</Link>
 
                   </td>
 
