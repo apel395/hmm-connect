@@ -17,7 +17,7 @@ from app.models.fiscal_period import FiscalPeriod
 from app.models.fiscal_year_close import FiscalYearClose
 from app.models.general_ledger import GeneralLedger
 from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
-from app.models.import_batch import ImportBatch
+from app.models.import_batch import ImportBatch, ImportRow
 from app.models.purchasing_document import PurchasingDocument
 from app.models.inventory import Inventory
 from app.models.item_group import ItemGroup

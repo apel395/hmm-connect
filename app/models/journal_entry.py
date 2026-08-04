@@ -75,6 +75,11 @@ class JournalEntry(Base, TimestampMixin):
     )
 
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False, index=True)
+    external_reference: Mapped[str | None] = mapped_column(String(100))
+    import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("import_batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    imported_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_by = relationship(
         "User",

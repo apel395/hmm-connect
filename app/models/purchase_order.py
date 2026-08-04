@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Table, Text, Column
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Table, Text, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -46,6 +46,12 @@ class PurchaseOrder(Base, TimestampMixin):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="IDR", nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("import_batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    imported_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     supplier = relationship("Supplier", back_populates="purchase_orders")
     department = relationship("Department")

@@ -25,10 +25,14 @@ class GoodsReceipt(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    delivery_note_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     receipt_type: Mapped[str] = mapped_column(String(30), default="GOODS", nullable=False)
+    import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("import_batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    imported_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     purchase_order = relationship("PurchaseOrder", back_populates="goods_receipts")
-    received_by = relationship("User")
+    received_by = relationship("User", foreign_keys=[received_by_id])
     warehouse = relationship("Warehouse")
     items = relationship("GoodsReceiptItem", back_populates="goods_receipt", cascade="all, delete-orphan")
 

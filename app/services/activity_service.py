@@ -28,6 +28,7 @@ class ActivityService:
         after_data: dict[str, Any] | None = None,
         ip_address: str | None = None,
         client_info: str | None = None,
+        import_batch_id: int | None = None,
 
     ) -> AuditLog:
 
@@ -146,6 +147,7 @@ class ActivityService:
             ip_address=ip_address,
 
             client_info=client_info,
+            import_batch_id=import_batch_id,
         )
 
 

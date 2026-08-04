@@ -29,12 +29,16 @@ class SupplierInvoice(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="DRAFT", nullable=False, index=True)
     notes: Mapped[str | None] = mapped_column(Text)
     source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False, index=True)
+    external_reference: Mapped[str | None] = mapped_column(String(100))
+    import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("import_batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    imported_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     supplier = relationship("Supplier"); purchase_order = relationship("PurchaseOrder"); goods_receipt = relationship("GoodsReceipt")
-    department = relationship("Department"); location = relationship("Location"); created_by = relationship("User")
+    department = relationship("Department"); location = relationship("Location"); created_by = relationship("User", foreign_keys=[created_by_id])
     lines = relationship("SupplierInvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 
 class SupplierInvoiceLine(Base):
