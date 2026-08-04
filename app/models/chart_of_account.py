@@ -41,6 +41,8 @@ class ChartOfAccount(Base, TimestampMixin):
         String(30),
         nullable=True,
     )
+    account_subtype: Mapped[str] = mapped_column(String(20), default="OTHER", nullable=False, index=True)
+    financial_statement_group: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
 
     parent_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("chart_of_accounts.id"),
