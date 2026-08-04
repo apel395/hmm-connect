@@ -97,7 +97,7 @@ export default function PurchaseRequisitionItems({
 
     <div className="space-y-5">
 
-      <table className="w-full rounded-lg border">
+      <table className="table-grid w-full rounded-lg border">
 
         <thead className="bg-slate-50">
 

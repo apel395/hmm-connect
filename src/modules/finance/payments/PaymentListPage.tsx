@@ -335,7 +335,7 @@ export default function PaymentListPage() {
                   </label>
                 )}
               </div>
-              <table className="w-full text-sm">
+              <table className="table-grid w-full text-sm">
                 <thead>
                   <tr>
                     <th>Invoice</th>

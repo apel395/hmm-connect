@@ -40,7 +40,7 @@ cards.map(([title,value])=>(
 
 </div>
 
-<div className="mt-2 text-3xl font-bold">
+<div className="mt-1 text-2xl font-bold">
 
 {value}
 

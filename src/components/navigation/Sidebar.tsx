@@ -55,24 +55,24 @@ export default function Sidebar({ open = false, onClose }: Props) {
 
   return <>
     {open && <button className="fixed inset-0 z-40 bg-black/40 lg:hidden" aria-label="Close navigation" onClick={onClose}/>}
-    <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-[#073F37] text-white transition-transform lg:sticky lg:top-0 lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
-      <div className="border-b border-white/10 px-5 py-6">
+    <aside className={`fixed inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col overflow-hidden bg-[#073F37] text-white transition-transform lg:static lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
+      <div className="shrink-0 border-b border-white/10 px-4 py-4">
         <button className="absolute right-3 top-3 rounded-lg p-2 text-white/70 hover:bg-white/10 lg:hidden" aria-label="Close navigation" onClick={onClose}><X className="h-5 w-5"/></button>
-        <div className="flex items-center gap-3"><div className="grid h-11 w-11 place-items-center rounded-xl border border-[#C49A4A]/60 bg-white/5 font-serif text-lg font-bold tracking-wider text-[#E4C57E]">HMM</div><div><div className="font-semibold tracking-wide">HMM-Connect</div><div className="text-xs text-emerald-100/70">Hotel Mutiara Merdeka</div><div className="mt-1 text-[9px] text-[#C49A4A]">★★★★</div></div></div>
+        <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl border border-[#C49A4A]/60 bg-white/5 font-serif text-base font-bold tracking-wider text-[#E4C57E]">HMM</div><div className="min-w-0"><div className="truncate text-sm font-semibold tracking-wide" title="HMM-Connect">HMM-Connect</div><div className="truncate text-[11px] text-emerald-100/70" title="Hotel Mutiara Merdeka">Hotel Mutiara Merdeka</div><div className="text-[9px] text-[#C49A4A]">★★★★</div></div></div>
       </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden p-2.5">
         {groups.filter((group) => allowed(group.roles)).map((group) => {
           const Icon = group.icon;
-          if (group.url) return <NavLink key={group.title} to={group.url} onClick={onClose} className={({isActive}) => `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-[#0F6758] text-white" : "text-emerald-50/75 hover:bg-white/10"}`}><Icon className="h-[18px] w-[18px]"/>{group.title}</NavLink>;
+          if (group.url) return <NavLink key={group.title} to={group.url} title={group.title} onClick={onClose} className={({isActive}) => `flex h-9 items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium ${isActive ? "bg-[#0F6758] text-white" : "text-emerald-50/75 hover:bg-white/10"}`}><Icon className="h-4 w-4 shrink-0"/><span className="truncate">{group.title}</span></NavLink>;
           const children = group.children?.filter((child) => allowed(child.roles)) ?? [];
           const isExpanded = expanded.includes(group.title);
           return <div key={group.title}>
-            <button type="button" aria-expanded={isExpanded} onClick={() => setExpanded((value) => value.includes(group.title) ? value.filter((item) => item !== group.title) : [...value, group.title])} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-emerald-50/75 hover:bg-white/10"><Icon className="h-[18px] w-[18px]"/><span className="flex-1 text-left">{group.title}</span><ChevronDown className={`h-4 w-4 transition ${isExpanded ? "rotate-180" : ""}`}/></button>
-            {isExpanded && <div className="ml-5 border-l border-white/10 pl-3">{children.map((child) => child.disabled ? <div key={child.title} className="flex items-center justify-between px-3 py-2 text-sm text-emerald-100/35" title="Coming Soon"><span>{child.title}</span><span className="text-[9px] uppercase">Soon</span></div> : <NavLink key={child.title} to={child.url!} onClick={onClose} className={({isActive}) => `block rounded-lg px-3 py-2 text-sm ${isActive ? "bg-[#0F6758] text-white" : "text-emerald-50/70 hover:bg-white/10 hover:text-white"}`}>{child.title}</NavLink>)}</div>}
+            <button type="button" title={group.title} aria-expanded={isExpanded} onClick={() => setExpanded((value) => value.includes(group.title) ? value.filter((item) => item !== group.title) : [...value, group.title])} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium text-emerald-50/75 hover:bg-white/10"><Icon className="h-4 w-4 shrink-0"/><span className="min-w-0 flex-1 truncate text-left">{group.title}</span><ChevronDown className={`h-4 w-4 shrink-0 transition ${isExpanded ? "rotate-180" : ""}`}/></button>
+            {isExpanded && <div className="ml-4 border-l border-white/10 pl-2">{children.map((child) => child.disabled ? <div key={child.title} className="flex h-8 items-center justify-between gap-2 px-2.5 text-xs text-emerald-100/35" title={`${child.title} — Coming Soon`}><span className="truncate">{child.title}</span><span className="text-[9px] uppercase">Soon</span></div> : <NavLink key={child.title} to={child.url!} title={child.title} onClick={onClose} className={({isActive}) => `flex h-8 items-center rounded-lg px-2.5 text-xs ${isActive ? "bg-[#0F6758] text-white" : "text-emerald-50/70 hover:bg-white/10 hover:text-white"}`}><span className="truncate">{child.title}</span></NavLink>)}</div>}
           </div>;
         })}
       </nav>
-      <div className="border-t border-white/10 p-4 text-xs text-emerald-100/55"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#C49A4A]"/>Premium hotel operations</div></div>
+      <div className="shrink-0 border-t border-white/10 p-3 text-[11px] text-emerald-100/55"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#C49A4A]"/>Premium hotel operations</div></div>
     </aside>
   </>;
 }

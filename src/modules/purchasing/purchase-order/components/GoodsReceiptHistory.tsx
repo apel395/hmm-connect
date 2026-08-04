@@ -91,7 +91,7 @@ export default function GoodsReceiptHistory({
         :
 
 
-        <table className="w-full border-collapse">
+        <table className="table-grid w-full">
 
 
           <thead>

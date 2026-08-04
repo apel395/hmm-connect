@@ -35,8 +35,8 @@ const variants: Record<IconButtonVariant, string> = {
 
 const sizes = {
   sm: "h-8 w-8",
-  md: "h-10 w-10",
-  lg: "h-12 w-12",
+  md: "h-9 w-9",
+  lg: "h-10 w-10",
 };
 
 const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(

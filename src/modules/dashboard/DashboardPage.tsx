@@ -109,7 +109,7 @@ function KpiCard({
         </div>
         <MiniTrend color={color} />
       </div>
-      <div className="mt-4 text-3xl font-semibold tracking-tight">{value}</div>
+      <div className="mt-2 text-2xl font-semibold tracking-tight">{value}</div>
       <div className="mt-1 text-sm font-semibold">{title}</div>
       <div className="mt-1 text-xs text-[#6F756F]">{note}</div>
     </div>
@@ -233,7 +233,7 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="mb-1 text-sm text-[#6F756F]">{dateFormatter.format(new Date())}</p>
-          <h1 className="font-serif text-3xl font-semibold tracking-tight">Good morning, {firstName}</h1>
+          <h1 className="font-serif text-2xl font-semibold tracking-tight">Good morning, {firstName}</h1>
           <p className="mt-1 text-sm text-[#6F756F]">Here is today&apos;s hotel operations overview.</p>
         </div>
         <Link

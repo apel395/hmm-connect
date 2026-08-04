@@ -439,7 +439,7 @@ export default function PurchaseRequisitionDetailPage() {
 
             <div className="overflow-x-auto">
 
-              <table className="min-w-full text-sm">
+              <table className="table-grid min-w-full text-sm">
 
                 <thead className="bg-slate-100">
 

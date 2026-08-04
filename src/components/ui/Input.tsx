@@ -13,7 +13,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         ref={ref}
         disabled={disabled}
         className={clsx(
-          "flex h-10 w-full rounded-md border bg-white px-3 py-2 text-sm",
+          "flex h-9 w-full rounded-md border bg-white px-3 py-2 text-[13px]",
           "placeholder:text-slate-400",
           "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
           "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-60",

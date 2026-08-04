@@ -66,7 +66,8 @@ export function DialogContent({
       <DialogPrimitive.Content
         className={clsx(
           "fixed left-1/2 top-1/2 z-50",
-          "w-[95vw] max-w-2xl",
+          "flex max-h-[calc(100vh-2rem)] w-[95vw] max-w-2xl flex-col overflow-hidden",
+          "[&>form]:flex [&>form]:min-h-0 [&>form]:flex-1 [&>form]:flex-col [&>form]:overflow-hidden",
           "-translate-x-1/2 -translate-y-1/2",
           "rounded-xl border border-slate-200 bg-white shadow-2xl",
           "focus:outline-none",
@@ -78,7 +79,7 @@ export function DialogContent({
         <DialogPrimitive.Close asChild>
           <button
             type="button"
-            className="absolute right-4 top-4 rounded-md p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="absolute right-3 top-3 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -103,7 +104,7 @@ export function DialogHeader({
   return (
     <div
       className={clsx(
-        "border-b border-slate-200 px-6 py-4",
+        "shrink-0 border-b border-slate-200 px-4 py-3 pr-12",
         className
       )}
     >
@@ -124,7 +125,7 @@ export function DialogBody({
   return (
     <div
       className={clsx(
-        "px-6 py-5",
+        "min-h-0 flex-1 overflow-y-auto px-4 py-4 text-[13px]",
         className
       )}
     >
@@ -145,7 +146,7 @@ export function DialogFooter({
   return (
     <div
       className={clsx(
-        "flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4",
+        "shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-4 py-3",
         className
       )}
     >

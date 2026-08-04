@@ -32,7 +32,7 @@ export function CardHeader({
   return (
     <div
       className={clsx(
-        "flex items-center justify-between border-b border-slate-200 px-6 py-4",
+        "flex items-center justify-between border-b border-slate-200 px-4 py-3",
         className
       )}
       {...props}
@@ -49,7 +49,7 @@ export function CardTitle({
   return (
     <h2
       className={clsx(
-        "text-lg font-semibold text-slate-900",
+        "text-base font-semibold text-slate-900",
         className
       )}
       {...props}
@@ -66,7 +66,7 @@ export function CardDescription({
   return (
     <p
       className={clsx(
-        "mt-1 text-sm text-slate-500",
+        "mt-0.5 text-[13px] text-slate-500",
         className
       )}
       {...props}
@@ -83,7 +83,7 @@ export function CardContent({
   return (
     <div
       className={clsx(
-        "p-6",
+        "p-4",
         className
       )}
       {...props}
@@ -100,7 +100,7 @@ export function CardFooter({
   return (
     <div
       className={clsx(
-        "flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4",
+        "flex items-center justify-end gap-2 border-t border-slate-200 px-4 py-3",
         className
       )}
       {...props}

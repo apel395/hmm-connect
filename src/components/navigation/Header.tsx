@@ -18,7 +18,7 @@ export default function Header({ onMenuClick }: Props) {
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[#E8E2D8] bg-white/95 px-4 backdrop-blur sm:px-6">
+    <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-[#E8E2D8] bg-white/95 px-4 backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3">
         <button
           className="rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] lg:hidden"
@@ -38,7 +38,7 @@ export default function Header({ onMenuClick }: Props) {
           className="relative rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]"
           aria-label="Notifications"
         >
-          <Bell className="h-5 w-5" />
+          <Bell className="h-[18px] w-[18px]" />
           <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#C49A4A]" />
         </Link>
         <Link
@@ -46,10 +46,10 @@ export default function Header({ onMenuClick }: Props) {
           className="hidden rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] sm:block"
           aria-label="Help"
         >
-          <CircleHelp className="h-5 w-5" />
+          <CircleHelp className="h-[18px] w-[18px]" />
         </Link>
         <div className="ml-1 flex items-center gap-2 border-l border-[#E8E2D8] pl-3">
-          <div className="grid h-9 w-9 place-items-center rounded-full bg-[#0F6758] text-xs font-bold text-white">
+          <div className="grid h-8 w-8 place-items-center rounded-full bg-[#0F6758] text-xs font-bold text-white">
             {initials || "HU"}
           </div>
           <div className="hidden max-w-32 sm:block">

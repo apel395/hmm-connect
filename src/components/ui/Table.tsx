@@ -6,18 +6,25 @@ import {
 } from "react";
 import clsx from "clsx";
 
-export type TableProps = TableHTMLAttributes<HTMLTableElement>;
+export interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
+  variant?: "standard" | "grid";
+  stickyHeader?: boolean;
+}
 
 export function Table({
   className,
   children,
+  variant = "standard",
+  stickyHeader = false,
   ...props
 }: TableProps) {
   return (
     <div className="w-full overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
       <table
         className={clsx(
-          "min-w-full border-collapse text-sm",
+          "min-w-full text-[13px]",
+          variant === "grid" ? "table-grid" : "table-standard",
+          stickyHeader && "table-sticky-header",
           className
         )}
         {...props}
@@ -89,7 +96,7 @@ export function TR({
   return (
     <tr
       className={clsx(
-        "border-b border-slate-100 transition-colors hover:bg-slate-50",
+        "transition-colors hover:bg-slate-50 aria-selected:bg-blue-50 data-[state=selected]:bg-blue-50",
         className
       )}
       {...props}
@@ -109,7 +116,7 @@ export function TH({
   return (
     <th
       className={clsx(
-        "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600",
+        "h-9 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600",
         className
       )}
       {...props}
@@ -129,7 +136,7 @@ export function TD({
   return (
     <td
       className={clsx(
-        "px-4 py-3 align-middle text-slate-700",
+        "h-10 px-3 py-2 align-middle text-slate-700",
         className
       )}
       {...props}

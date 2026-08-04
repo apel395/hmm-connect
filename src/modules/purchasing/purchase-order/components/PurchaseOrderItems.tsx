@@ -40,7 +40,7 @@ export default function PurchaseOrderItems({ items, products, fromRequisition, o
 
   return <div className="space-y-4">
     <div className="overflow-x-auto rounded-lg border border-slate-200">
-      <table className="min-w-[900px] w-full text-sm">
+      <table className="table-grid min-w-[900px] w-full text-sm">
         <thead className="bg-slate-50"><tr>
           {fromRequisition && <th className="p-3 text-left">Item Code</th>}
           <th className="p-3 text-left">Item Name</th>
