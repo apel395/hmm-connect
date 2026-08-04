@@ -32,6 +32,7 @@ const groups: Group[] = [
     { title: "Chart of Accounts", url: "/chart-of-accounts" }, { title: "Posting Rules", url: "/posting-rules" },
     { title: "Supplier Invoices", url: "/supplier-invoices" }, { title: "Journal Entries", url: "/journal-entries" },
     { title: "Payments", url: "/payments" }, { title: "General Ledger", url: "/general-ledger" },
+    { title: "Historical Import", url: "/historical-import" },
     { title: "Trial Balance", disabled: true }, { title: "Balance Sheet", disabled: true }, { title: "Profit & Loss", disabled: true },
   ] },
   { title: "Reports", icon: FileBarChart, children: [

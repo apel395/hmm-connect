@@ -32,6 +32,8 @@ import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
 import PaymentListPage from "@/modules/finance/payments/PaymentListPage";
 import PaymentDetailPage from "@/modules/finance/payments/PaymentDetailPage";
 import GeneralLedgerPage from "@/modules/finance/general-ledger/GeneralLedgerPage";
+import HistoricalImportPage from "@/modules/finance/historical-import/HistoricalImportPage";
+import HistoricalImportDetailPage from "@/modules/finance/historical-import/HistoricalImportDetailPage";
 
 /* Warehouse */
 
@@ -130,6 +132,8 @@ const router = createBrowserRouter([
       { path: "payments/:id", element: <PaymentDetailPage /> },
       { path: "payments/:id/print", element: <AccountingPrintPage kind="payments" /> },
       { path: "general-ledger", element: <GeneralLedgerPage /> },
+      { path: "historical-import", element: <HistoricalImportPage /> },
+      { path: "historical-import/:id", element: <HistoricalImportDetailPage /> },
 
       
 
