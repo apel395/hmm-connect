@@ -35,6 +35,7 @@ import GeneralLedgerPage from "@/modules/finance/general-ledger/GeneralLedgerPag
 import HistoricalImportPage from "@/modules/finance/historical-import/HistoricalImportPage";
 import HistoricalImportDetailPage from "@/modules/finance/historical-import/HistoricalImportDetailPage";
 
+import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
 /* Warehouse */
 
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
@@ -134,6 +135,7 @@ const router = createBrowserRouter([
       { path: "general-ledger", element: <GeneralLedgerPage /> },
       { path: "historical-import", element: <HistoricalImportPage /> },
       { path: "historical-import/:id", element: <HistoricalImportDetailPage /> },
+      { path: "finance-dashboard", element: <FinanceDashboardPage /> },
 
       
 

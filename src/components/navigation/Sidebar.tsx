@@ -29,6 +29,7 @@ const groups: Group[] = [
     { title: "Stock Adjustment", disabled: true },
   ] },
   { title: "Finance", icon: Landmark, roles: ["FINANCE"], children: [
+    { title: "Finance Dashboard", url: "/finance-dashboard" },
     { title: "Chart of Accounts", url: "/chart-of-accounts" }, { title: "Posting Rules", url: "/posting-rules" },
     { title: "Supplier Invoices", url: "/supplier-invoices" }, { title: "Journal Entries", url: "/journal-entries" },
     { title: "Payments", url: "/payments" }, { title: "General Ledger", url: "/general-ledger" },
