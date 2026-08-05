@@ -60,6 +60,17 @@ jobs:
           cd build
           zip -qr ../hmm-connect-lambda.zip .
 
+      - name: Validate packaged application
+        env:
+          SECRET_KEY: ci-only-secret-key-that-is-longer-than-32-characters
+          DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:5432/ci_db
+          CORS_ORIGINS: http://localhost:5173
+          PYTHONPATH: build
+        run: |
+          set -euo pipefail
+          python -m compileall -q build/app build/lambda_handler.py
+          python -c "from lambda_handler import handler; from app.main import app; assert handler is not None; assert app.title"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -80,3 +91,25 @@ jobs:
           aws lambda get-function-configuration \
             --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" \
             --query '{FunctionName:FunctionName,Runtime:Runtime,Architectures:Architectures,CodeSize:CodeSize,LastModified:LastModified,State:State,LastUpdateStatus:LastUpdateStatus}'
+
+      - name: Smoke test health endpoint
+        if: ${{ vars.AWS_LAMBDA_FUNCTION_URL != '' }}
+        env:
+          FUNCTION_URL: ${{ vars.AWS_LAMBDA_FUNCTION_URL }}
+        run: |
+          set -euo pipefail
+          BASE_URL="${FUNCTION_URL%/}"
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              "${BASE_URL}/health"; then
+              echo
+              echo "Lambda health check passed."
+              exit 0
+            fi
+            echo "Health check attempt ${attempt} failed; retrying in 10 seconds."
+            sleep 10
+          done
+          echo "Lambda health check failed after 5 attempts."
+          exit 1
