@@ -1,0 +1,14 @@
+import api from "@/api/client";
+export const listReconciliations=async(params:any)=>(await api.get("/bank-reconciliations",{params})).data;
+export const getReconciliation=async(id:number)=>(await api.get(`/bank-reconciliations/${id}`)).data;
+export const getReconciliationAccounts=async()=>(await api.get("/bank-reconciliations/accounts")).data;
+export const createReconciliation=async(data:any)=>(await api.post("/bank-reconciliations",data)).data;
+export const getStatementLines=async(id:number)=>(await api.get(`/bank-reconciliations/${id}/statement-lines`)).data;
+export const getSystemTransactions=async(id:number)=>(await api.get(`/bank-reconciliations/${id}/system-transactions`)).data;
+export const uploadStatement=async(id:number,file:File,mapping:any,preview=false)=>{const form=new FormData();form.append("file",file);form.append("mapping_json",JSON.stringify(mapping));form.append("preview",String(preview));return(await api.post(`/bank-reconciliations/${id}/upload-statement`,form)).data};
+export const autoMatch=async(id:number,confirm_suggested=false)=>(await api.post(`/bank-reconciliations/${id}/auto-match`,{date_tolerance_days:3,confirm_suggested})).data;
+export const createMatches=async(id:number,allocations:any[])=>(await api.post(`/bank-reconciliations/${id}/matches`,{allocations})).data;
+export const removeMatch=async(id:number,matchId:number)=>(await api.delete(`/bank-reconciliations/${id}/matches/${matchId}`)).data;
+export const createAdjustment=async(id:number,data:any)=>(await api.post(`/bank-reconciliations/${id}/create-adjustment`,data)).data;
+export const completeReconciliation=async(id:number)=>(await api.post(`/bank-reconciliations/${id}/complete`)).data;
+export const voidReconciliation=async(id:number)=>(await api.post(`/bank-reconciliations/${id}/void`)).data;

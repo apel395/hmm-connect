@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -8,7 +8,8 @@ import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { getAccountSummary, listLedger } from "./api";
 
 export default function GeneralLedgerPage() {
-  const [page, setPage] = useState(1); const [filters, setFilters] = useState<any>({ search: "", account_id: "", date_from: "", date_to: "", reference_type: "", supplier_id: "", department_id: "", location_id: "" });
+  const [searchParams] = useSearchParams();
+  const [page, setPage] = useState(1); const [filters, setFilters] = useState<any>({ search: searchParams.get("search") || "", account_id: searchParams.get("account_id") || "", date_from: searchParams.get("date_from") || "", date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "" });
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: 20 }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
   const accounts = useQuery({ queryKey: ["ledger-accounts"], queryFn: () => getAccountLookup({ is_posting: true, is_active: true }) });

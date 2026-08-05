@@ -30,16 +30,22 @@ const groups: Group[] = [
   ] },
   { title: "Finance", icon: Landmark, roles: ["FINANCE"], children: [
     { title: "Finance Dashboard", url: "/finance-dashboard" },
+    { title: "Bank Reconciliation", url: "/bank-reconciliations" },
+    { title: "Budgets", url: "/budgets" }, { title: "Budget vs Actual", url: "/budget-vs-actual" },
+    { title: "Fixed Assets", url: "/fixed-assets" }, { title: "Asset Categories", url: "/asset-categories" }, { title: "Depreciation Runs", url: "/depreciation-runs" },
     { title: "Chart of Accounts", url: "/chart-of-accounts" }, { title: "Posting Rules", url: "/posting-rules" },
     { title: "Supplier Invoices", url: "/supplier-invoices" }, { title: "Journal Entries", url: "/journal-entries" },
     { title: "Payments", url: "/payments" }, { title: "General Ledger", url: "/general-ledger" },
+    { title: "Cash Flow Dashboard", url: "/cash-flow" }, { title: "Cash & Bank Accounts", url: "/cash-accounts" },
+    { title: "Bank Transfers", url: "/bank-transfers" }, { title: "Cash Flow Statement", url: "/cash-flow-statement" },
     { title: "Historical Import", url: "/historical-import" },
-    { title: "Trial Balance", disabled: true }, { title: "Balance Sheet", disabled: true }, { title: "Profit & Loss", disabled: true },
+    { title: "Trial Balance", url: "/trial-balance" }, { title: "Balance Sheet", url: "/balance-sheet" }, { title: "Profit & Loss", url: "/profit-loss" },
   ] },
   { title: "Reports", icon: FileBarChart, children: [
-    { title: "Purchasing Reports", url: "/audit", roles: ["ADMIN"] }, { title: "Inventory Reports", disabled: true }, { title: "Finance Reports", disabled: true },
+    { title: "Purchasing Reports", url: "/audit", roles: ["ADMIN"] }, { title: "Inventory Reports", disabled: true }, { title: "Fixed Asset Register", url: "/reports/fixed-assets", roles:["FINANCE"] }, { title: "Depreciation Report", url: "/reports/depreciation", roles:["FINANCE"] },
   ] },
   { title: "Administration", icon: Settings, roles: ["ADMIN"], children: [
+    { title: "Business Units", url: "/organization-dimensions" },
     { title: "Users", url: "/users" }, { title: "Roles", url: "/roles" }, { title: "Settings", url: "/settings" },
   ] },
 ];

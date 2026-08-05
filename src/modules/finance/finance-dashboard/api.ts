@@ -8,6 +8,7 @@ export interface FinanceDashboardFilters {
   department_id?: string;
   cash_account_id?: string;
   currency?: string;
+  business_unit_id?: string;
 }
 
 export const getFinanceDashboard = async (filters: FinanceDashboardFilters) =>

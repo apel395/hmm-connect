@@ -1,5 +1,5 @@
 import api from "@/api/client";
-import type { AccountLookup, AccountPage, AccountPayload, AccountType, ChartOfAccount, ChartOfAccountNode, NormalBalance } from "./types";
+import type { AccountLookup, AccountPage, AccountPayload, AccountSubtype, AccountType, ChartOfAccount, ChartOfAccountNode, NormalBalance } from "./types";
 
 export interface AccountParams {
   page: number;
@@ -21,7 +21,7 @@ export async function getAccountTree() {
   const { data } = await api.get<ChartOfAccountNode[]>("/chart-of-accounts/tree");
   return data;
 }
-export async function getAccountLookup(params: { account_type?: AccountType; is_posting?: boolean; is_active?: boolean } = {}) {
+export async function getAccountLookup(params: { account_type?: AccountType; account_subtype?: AccountSubtype | AccountSubtype[]; is_posting?: boolean; is_active?: boolean } = {}) {
   const { data } = await api.get<AccountLookup[]>("/chart-of-accounts/lookup", { params });
   return data;
 }

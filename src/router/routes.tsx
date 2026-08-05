@@ -32,8 +32,23 @@ import PaymentDetailPage from "@/modules/finance/payments/PaymentDetailPage";
 import GeneralLedgerPage from "@/modules/finance/general-ledger/GeneralLedgerPage";
 import HistoricalImportPage from "@/modules/finance/historical-import/HistoricalImportPage";
 import HistoricalImportDetailPage from "@/modules/finance/historical-import/HistoricalImportDetailPage";
-
+import CashFlowDashboardPage from "@/modules/finance/cash-flow/CashFlowDashboardPage";
+import CashAccountsPage from "@/modules/finance/cash-flow/CashAccountsPage";
+import CashAccountActivityPage from "@/modules/finance/cash-flow/CashAccountActivityPage";
+import CashFlowStatementPage from "@/modules/finance/cash-flow/CashFlowStatementPage";
+import BankTransferListPage from "@/modules/finance/cash-flow/BankTransferListPage";
+import BankTransferDetailPage from "@/modules/finance/cash-flow/BankTransferDetailPage";
+import BankTransferPrintPage from "@/modules/finance/cash-flow/BankTransferPrintPage";
+import TrialBalancePage from "@/modules/finance/trial-balance/TrialBalancePage";
+import BalanceSheetPage from "@/modules/finance/financial-statements/BalanceSheetPage";
+import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPage";
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
+import BankReconciliationListPage from "@/modules/finance/bank-reconciliation/BankReconciliationListPage";
+import BankReconciliationDetailPage from "@/modules/finance/bank-reconciliation/BankReconciliationDetailPage";
+import BudgetListPage from "@/modules/finance/budgets/BudgetListPage";import BudgetDetailPage from "@/modules/finance/budgets/BudgetDetailPage";import BudgetVsActualPage from "@/modules/finance/budgets/BudgetVsActualPage";
+import FixedAssetListPage from "@/modules/finance/fixed-assets/FixedAssetListPage";import FixedAssetFormPage from "@/modules/finance/fixed-assets/FixedAssetFormPage";import FixedAssetDetailPage from "@/modules/finance/fixed-assets/FixedAssetDetailPage";import AssetCategoryPage from "@/modules/finance/fixed-assets/AssetCategoryPage";import DepreciationRunsPage from "@/modules/finance/fixed-assets/DepreciationRunsPage";import FixedAssetReportPage from "@/modules/finance/fixed-assets/FixedAssetReportPage";import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationReportPage";
+import useAuthStore from "@/store/auth";
+
 /* Warehouse */
 
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
@@ -50,6 +65,7 @@ import ChartOfAccountPage from "@/modules/master/chart-of-accounts/pages/ChartOf
 import UserPage from "@/modules/admin/users/UserPage";
 import RolePage from "@/modules/admin/roles/RolePage";
 import SettingPage from "@/modules/admin/settings/SettingPage";
+import OrganizationDimensionsPage from "@/modules/admin/organization/OrganizationDimensionsPage";
 
 /* Others */
 import AuditLogPage from "@/modules/audit/AuditLogPage";
@@ -61,6 +77,11 @@ import NotFoundPage from "@/pages/errors/NotFoundPage";
 import ForbiddenPage from "@/pages/errors/ForbiddenPage";
 import UnauthorizedPage from "@/pages/errors/UnauthorizedPage";
 import InternalServerErrorPage from "@/pages/errors/InternalServerErrorPage";
+
+function RoleLanding() {
+  const roles = useAuthStore((state) => state.user?.roles ?? []);
+  return <Navigate to={roles.some((role) => role.name === "FINANCE" || role.name === "ADMIN") ? "/finance-dashboard" : "/dashboard"} replace />;
+}
 
 const router = createBrowserRouter([
   {
@@ -83,7 +104,7 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Navigate to="/dashboard" replace />,
+        element: <RoleLanding />,
       },
 
       {
@@ -128,7 +149,21 @@ const router = createBrowserRouter([
       { path: "general-ledger", element: <GeneralLedgerPage /> },
       { path: "historical-import", element: <HistoricalImportPage /> },
       { path: "historical-import/:id", element: <HistoricalImportDetailPage /> },
+      { path: "cash-flow", element: <CashFlowDashboardPage /> },
+      { path: "cash-accounts", element: <CashAccountsPage /> },
+      { path: "cash-accounts/:id", element: <CashAccountActivityPage /> },
+      { path: "cash-flow-statement", element: <CashFlowStatementPage /> },
+      { path: "bank-transfers", element: <BankTransferListPage /> },
+      { path: "bank-transfers/:id", element: <BankTransferDetailPage /> },
+      { path: "bank-transfers/:id/print", element: <BankTransferPrintPage /> },
+      { path: "trial-balance", element: <TrialBalancePage /> },
+      { path: "balance-sheet", element: <BalanceSheetPage /> },
+      { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
+      { path: "bank-reconciliations", element: <BankReconciliationListPage /> },
+      { path: "bank-reconciliations/:id", element: <BankReconciliationDetailPage /> },
+      { path: "budgets", element: <BudgetListPage /> }, { path: "budgets/:id", element: <BudgetDetailPage /> }, { path: "budget-vs-actual", element: <BudgetVsActualPage /> },
+      { path: "fixed-assets", element: <FixedAssetListPage /> }, { path: "fixed-assets/new", element: <FixedAssetFormPage /> }, { path: "fixed-assets/:id", element: <FixedAssetDetailPage /> }, { path: "asset-categories", element: <AssetCategoryPage /> }, { path: "depreciation-runs", element: <DepreciationRunsPage /> }, { path: "reports/fixed-assets", element: <FixedAssetReportPage /> }, { path: "reports/depreciation", element: <DepreciationReportPage /> },
 
       {
         path: "inventory",
@@ -178,6 +213,7 @@ const router = createBrowserRouter([
         path: "settings",
         element: <SettingPage />,
       },
+      { path: "organization-dimensions", element: <OrganizationDimensionsPage /> },
 
       {
         path: "audit",

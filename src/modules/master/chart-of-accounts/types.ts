@@ -1,5 +1,8 @@
 export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
 export type NormalBalance = "DEBIT" | "CREDIT";
+export type AccountSubtype = "CASH" | "BANK" | "PETTY_CASH" | "OTHER";
+export type CashFlowCategory = "OPERATING" | "INVESTING" | "FINANCING" | "NON_CASH" | "UNCLASSIFIED";
+export type FinancialStatementGroup = "CURRENT_ASSET" | "NON_CURRENT_ASSET" | "CURRENT_LIABILITY" | "NON_CURRENT_LIABILITY" | "EQUITY" | "OPERATING_REVENUE" | "OTHER_REVENUE" | "COST_OF_REVENUE" | "OPERATING_EXPENSE" | "OTHER_EXPENSE";
 
 export interface ChartOfAccount {
   id: number;
@@ -9,7 +12,9 @@ export interface ChartOfAccount {
   parent_account_id: number | null;
   normal_balance: NormalBalance;
   description: string | null;
-  cash_flow_category: string | null;
+  account_subtype: AccountSubtype;
+  cash_flow_category: CashFlowCategory | null;
+  financial_statement_group: FinancialStatementGroup | null;
   is_posting: boolean;
   is_system: boolean;
   is_active: boolean;
@@ -23,7 +28,7 @@ export interface ChartOfAccountNode extends ChartOfAccount {
 
 export type AccountPayload = Pick<ChartOfAccount,
   "account_code" | "account_name" | "account_type" | "parent_account_id" |
-  "normal_balance" | "description" | "cash_flow_category" | "is_posting" | "is_active">;
+  "normal_balance" | "description" | "account_subtype" | "cash_flow_category" | "financial_statement_group" | "is_posting" | "is_active">;
 
 export interface AccountPage {
   items: ChartOfAccount[];
@@ -43,4 +48,7 @@ export interface AccountLookup {
   normal_balance: NormalBalance;
   is_posting: boolean;
   is_active: boolean;
+  account_subtype: AccountSubtype;
+  cash_flow_category: CashFlowCategory | null;
+  financial_statement_group: FinancialStatementGroup | null;
 }
