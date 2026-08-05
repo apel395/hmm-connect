@@ -71,6 +71,21 @@ jobs:
           python -m compileall -q build/app build/lambda_handler.py
           python -c "from lambda_handler import handler; from app.main import app; assert handler is not None; assert app.title"
 
+      - name: Inspect GitHub OIDC claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESPONSE=$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+          TOKEN=$(printf '%s' "$RESPONSE" | jq -r '.value')
+          PAYLOAD=$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
+          case $((${#PAYLOAD} % 4)) in
+            2) PAYLOAD="${PAYLOAD}==" ;;
+            3) PAYLOAD="${PAYLOAD}=" ;;
+          esac
+          printf '%s' "$PAYLOAD" | base64 --decode | jq '{aud, sub, repository, ref, environment, workflow}'
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
