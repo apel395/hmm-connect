@@ -26,7 +26,11 @@ class Settings(BaseSettings):
     DB_USER: str = "postgres"
     DB_PASSWORD: str = "postgres"
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     DOCUMENT_STORAGE_PATH: Path = Path("./uploads")
+    S3_BUCKET: str | None = None
+    S3_PREFIX: str = "documents"
+    S3_PRESIGNED_URL_EXPIRES_SECONDS: int = Field(default=600, ge=60, le=3600)
     MAX_DOCUMENT_SIZE_MB: int = Field(default=10, gt=0)
     ALLOWED_DOCUMENT_MIME_TYPES: str = (
         "application/pdf,image/jpeg,image/png,"

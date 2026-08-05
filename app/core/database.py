@@ -1,5 +1,8 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
@@ -13,13 +16,16 @@ DATABASE_URL = settings.DATABASE_URL or (
     f"{settings.DB_NAME}"
 )
 
+engine_options: dict[str, object] = {
+    "pool_pre_ping": True,
+    "future": True,
+}
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    future=True,
-)
+if os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    engine_options["poolclass"] = NullPool
+    engine_options["connect_args"] = {"connect_timeout": 5}
 
+engine = create_engine(DATABASE_URL, **engine_options)
 
 SessionLocal = sessionmaker(
     autocommit=False,

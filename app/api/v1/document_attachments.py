@@ -5,7 +5,7 @@ from uuid import uuid4
 import re
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -23,8 +23,10 @@ from app.services.activity_service import ActivityService
 from app.services.file_storage import (
     EmptyFileError,
     FileStorageError,
+    FileStorageService,
     FileTooLargeError,
     LocalFileStorage,
+    S3FileStorage,
 )
 
 
@@ -40,7 +42,9 @@ ENTITY_MODELS = {
 SOURCE_TYPES = {"LIVE", "HISTORICAL_IMPORT"}
 
 
-def get_document_storage() -> LocalFileStorage:
+def get_document_storage() -> FileStorageService:
+    if settings.S3_BUCKET:
+        return S3FileStorage(settings.S3_BUCKET, settings.S3_PREFIX)
     return LocalFileStorage(settings.DOCUMENT_STORAGE_PATH)
 
 
@@ -87,7 +91,7 @@ def upload_attachment(
     source_type: Annotated[str, Form()] = "LIVE",
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    storage: LocalFileStorage = Depends(get_document_storage),
+    storage: FileStorageService = Depends(get_document_storage),
 ):
     entity_type = normalized_entity_type(entity_type)
     require_entity(db, entity_type, entity_id)
@@ -126,7 +130,7 @@ def upload_attachment(
         document_date=document_date,
         original_file_name=original_name,
         stored_file_name=stored_name,
-        storage_provider="LOCAL",
+        storage_provider=storage.provider_name,
         storage_path=storage_path,
         mime_type=mime_type,
         file_size=file_size,
@@ -182,18 +186,29 @@ def download_attachment(
     attachment_id: int,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
-    storage: LocalFileStorage = Depends(get_document_storage),
+    storage: FileStorageService = Depends(get_document_storage),
 ):
     attachment = db.get(DocumentAttachment, attachment_id)
     if not attachment or not attachment.is_active:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    if not storage.exists(attachment.storage_path):
-        raise HTTPException(status_code=404, detail="Attachment file not found")
-    return StreamingResponse(
-        stream_file(storage.open(attachment.storage_path)),
-        media_type=attachment.mime_type or "application/octet-stream",
-        headers={"Content-Disposition": content_disposition(attachment.original_file_name)},
-    )
+    try:
+        if not storage.exists(attachment.storage_path):
+            raise HTTPException(status_code=404, detail="Attachment file not found")
+        download_url = storage.create_download_url(
+            attachment.storage_path,
+            filename=attachment.original_file_name,
+            content_type=attachment.mime_type or "application/octet-stream",
+            expires_seconds=settings.S3_PRESIGNED_URL_EXPIRES_SECONDS,
+        )
+        if download_url:
+            return RedirectResponse(download_url, status_code=307)
+        return StreamingResponse(
+            stream_file(storage.open(attachment.storage_path)),
+            media_type=attachment.mime_type or "application/octet-stream",
+            headers={"Content-Disposition": content_disposition(attachment.original_file_name)},
+        )
+    except FileStorageError as exc:
+        raise HTTPException(status_code=500, detail="Document retrieval failed") from exc
 
 
 @router.delete("/{attachment_id}", response_model=DocumentAttachmentResponse)
