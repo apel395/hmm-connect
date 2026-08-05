@@ -20,8 +20,6 @@ import PurchaseRequisitionDetailPage from "@/modules/purchasing/requisition/page
 import PurchaseOrderListPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderListPage";
 import PurchaseOrderDetailPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderDetailPage";
 import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDocumentsPage";
-import ReceivingPage from "@/modules/purchasing/goods-receipts/pages/ReceivingPage";
-import ReceivingDetailPage from "@/modules/purchasing/goods-receipts/pages/ReceivingDetailPage";
 import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
 import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/SupplierInvoiceListPage";
@@ -114,11 +112,6 @@ const router = createBrowserRouter([
         path: "purchasing-documents",
         element: <PurchasingDocumentsPage />,
       },
-      {
-        path: "receiving",
-        element: <ReceivingPage />,
-      },
-      { path: "receiving/:id", element: <ReceivingDetailPage /> },
       { path: "purchase-requisitions/:id/print", element: <PrintDocumentPage kind="purchase-requisitions" /> },
       { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
       { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },
@@ -136,8 +129,6 @@ const router = createBrowserRouter([
       { path: "historical-import", element: <HistoricalImportPage /> },
       { path: "historical-import/:id", element: <HistoricalImportDetailPage /> },
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
-
-      
 
       {
         path: "inventory",
