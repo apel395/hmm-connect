@@ -4,6 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import api_router
 from app.core.config import settings
 
+
+def _cors_origins() -> list[str]:
+    return [
+        origin.strip()
+        for origin in settings.CORS_ORIGINS.split(",")
+        if origin.strip()
+    ]
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
@@ -11,14 +20,7 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        # origin.strip()
-        # for origin in settings.CORS_ORIGINS.split(",")
-        # if origin.strip()
-        "http://localhost:5173",
-        "https://hmm-connect.vercel.app",
-        "https://connect.mutiaramerdekahotel.com",
-    ],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
