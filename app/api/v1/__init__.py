@@ -9,11 +9,10 @@ from app.api.v1 import (
     purchase_requisitions, purchasing_documents, supplier_invoices,
     supplier_products, suppliers, trial_balance, users, warehouses, year_end,
 )
-from app.core.config import settings
 
 api_router = APIRouter()
 
-routers = [
+for router in (
     auth.router,
     approvals.router,
     products.router,
@@ -48,12 +47,5 @@ routers = [
     document_drilldown.router,
     document_events.router,
     document_attachments.router,
-]
-
-if settings.ENABLE_HISTORICAL_IMPORT_API:
-    from app.api.v1 import historical_import
-
-    routers.append(historical_import.router)
-
-for router in routers:
+):
     api_router.include_router(router)
