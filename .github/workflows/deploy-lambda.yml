@@ -1,3 +1,4 @@
+# Production schema target: 20260810_fixed_assets
 name: Deploy backend to AWS Lambda
 
 on:
