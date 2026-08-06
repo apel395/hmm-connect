@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 import DocumentActivity from "../../components/DocumentActivity";
@@ -32,11 +33,20 @@ const badgeVariant = (status?: string) => {
   }
 };
 
+function errorMessage(error: unknown) {
+  const candidate = error as { response?: { data?: { detail?: string | { message?: string } } }; message?: string };
+  const detail = candidate.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  return detail?.message ?? candidate.message ?? "Purchase requisition could not be loaded.";
+}
+
 export default function PurchaseRequisitionDetailPage() {
   const navigate = useNavigate();
   const prId = Number(useParams().id);
-  const { data, isLoading } = usePurchaseRequisition(prId);
-  const { data: approval, isLoading: approvalLoading } = useApproval("PURCHASE_REQUISITION", prId);
+  const prQuery = usePurchaseRequisition(prId);
+  const approvalQuery = useApproval("PURCHASE_REQUISITION", prId);
+  const data = prQuery.data;
+  const approval = approvalQuery.data;
   const submit = useSubmitPurchaseRequisition();
   const approve = useApprovePurchaseRequisition();
   const reject = useRejectPurchaseRequisition();
@@ -44,14 +54,25 @@ export default function PurchaseRequisitionDetailPage() {
   const { isSuperuser } = useAuthorization();
   const [editing, setEditing] = useState(false);
 
-  if (isLoading || approvalLoading) return <div className="py-24"><Loading/></div>;
-  if (!data) return null;
+  if (prQuery.isLoading) return <div className="py-24"><Loading/></div>;
+
+  if (prQuery.isError || !data) {
+    return <Card className="mx-auto mt-12 max-w-2xl">
+      <h2 className="text-lg font-semibold text-red-700">Purchase requisition could not be displayed</h2>
+      <p className="mt-2 text-sm text-slate-600">{errorMessage(prQuery.error)}</p>
+      <div className="mt-5 flex gap-3">
+        <Button variant="outline" onClick={() => navigate("/purchase-requisitions")}>Back</Button>
+        <Button onClick={() => prQuery.refetch()}>Try Again</Button>
+      </div>
+    </Card>;
+  }
 
   const admin = isSuperuser();
-  const canSubmit = data.allowed_actions?.can_submit ?? false;
-  const canApprove = admin || (data.allowed_actions?.can_approve ?? false);
-  const canReject = admin || (data.allowed_actions?.can_reject ?? false);
-  const canEdit = admin || (data.allowed_actions?.can_edit ?? false);
+  const pendingApproval = data.status === "PENDING_APPROVAL";
+  const canSubmit = data.status === "DRAFT" && Boolean(data.allowed_actions?.can_submit);
+  const canApprove = pendingApproval && (admin || Boolean(data.allowed_actions?.can_approve));
+  const canReject = pendingApproval && (admin || Boolean(data.allowed_actions?.can_reject));
+  const canEdit = data.status === "DRAFT" && (admin || Boolean(data.allowed_actions?.can_edit));
   const total = (data.items ?? []).reduce((sum: number, item: any) => sum + Number(item.total_price ?? item.quantity * item.estimated_price), 0);
 
   const act = async (operation: "submit" | "approve" | "reject") => {
@@ -91,6 +112,10 @@ export default function PurchaseRequisitionDetailPage() {
       onReject={() => act("reject")}
     />
 
+    {approvalQuery.isError && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      Approval details are not available yet. The purchase requisition itself is still accessible.
+    </div>}
+
     <div className="grid gap-6 lg:grid-cols-12">
       <div className="space-y-6 lg:col-span-8">
         <Card className="overflow-hidden p-0">
@@ -105,7 +130,11 @@ export default function PurchaseRequisitionDetailPage() {
         <ApprovalSummary approval={approval}/>
         <Card><h3 className="mb-4 font-semibold">Information</h3><div className="space-y-3 text-sm">
           <div className="flex justify-between"><span className="text-slate-500">PR Number</span><span className="font-medium">{data.pr_number}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Business Unit</span><span>{data.business_unit_name ?? "—"}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Department</span><span>{data.department_name ?? "—"}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Location</span><span>{data.location_name ?? "—"}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">Request Date</span><span>{data.request_date ?? "—"}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Valid Until</span><span>{data.expiry_date ?? "—"}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">Status</span><Badge variant={badgeVariant(data.status)}>{data.status}</Badge></div>
           <div className="flex justify-between"><span className="text-slate-500">Total Items</span><span>{data.items?.length ?? 0}</span></div>
           {!!data.generated_purchase_orders?.length && <div className="border-t pt-3"><div className="mb-2 text-slate-500">Generated Purchase Orders</div>{data.generated_purchase_orders.map((order: any) => <Link key={order.id} className="mr-3 font-medium text-emerald-700" to={`/purchase-orders/${order.id}`}>{order.document_number}</Link>)}</div>}
@@ -115,6 +144,7 @@ export default function PurchaseRequisitionDetailPage() {
 
     {editing && <PurchaseRequisitionForm initialData={data} onClose={() => setEditing(false)} onSubmit={async (payload) => {
       await update.mutateAsync({ id: data.id, data: payload });
+      setEditing(false);
       toast.success("Purchase requisition updated.");
     }}/>} 
     {data.allowed_actions?.can_manage_attachments !== false && <DocumentAttachments entityType="PURCHASE_REQUISITION" entityId={data.id}/>} 
