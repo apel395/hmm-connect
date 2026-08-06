@@ -64,6 +64,12 @@ def list_requisitions_eligible_for_po(
             "expiry_date": requisition.expiry_date,
             "notes": requisition.notes,
             "total_amount": requisition.total_amount,
+            "business_unit_id": requisition.business_unit_id,
+            "business_unit_name": requisition.business_unit.name if requisition.business_unit else None,
+            "department_id": requisition.department_id,
+            "department_name": requisition.department.name if requisition.department else None,
+            "location_id": requisition.location_id,
+            "location_name": requisition.location.name if requisition.location else None,
             "items": [
                 {
                     "id": item.id,
@@ -90,6 +96,7 @@ def list_requisitions_eligible_for_po(
         for requisition in requisitions
     ]
 
+
 @router.get("/{requisition_id}")
 def get_requisition(
     requisition_id: int,
@@ -110,6 +117,12 @@ def get_requisition(
         "expiry_date": requisition.expiry_date,
         "notes": requisition.notes,
         "total_amount": requisition.total_amount,
+        "business_unit_id": requisition.business_unit_id,
+        "business_unit_name": requisition.business_unit.name if requisition.business_unit else None,
+        "department_id": requisition.department_id,
+        "department_name": requisition.department.name if requisition.department else None,
+        "location_id": requisition.location_id,
+        "location_name": requisition.location.name if requisition.location else None,
         "created_at": requisition.created_at,
         "updated_at": requisition.updated_at,
         "items": [
@@ -138,6 +151,7 @@ def get_requisition(
 def print_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     result = get_requisition(requisition_id, db, user)
     return {**result, "document_type": "Purchase Requisition", **print_metadata(user)}
+
 
 @router.post("", status_code=201)
 def create_requisition(
