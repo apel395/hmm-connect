@@ -2,6 +2,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import ProductCombobox from "@/components/form/ProductCombobox";
+import QuantityInput from "@/components/form/QuantityInput";
 
 export interface PurchaseOrderItemRow {
   product_id?:number; product_code?:string; product_name?:string; description?:string; uom?:string;
@@ -26,7 +27,7 @@ export default function PurchaseOrderItems({items,products,fromRequisition,onCha
         <td className="p-2">{fromRequisition ? row.product_name : <ProductCombobox value={row.product_id} products={products} onChange={(productId) => selectProduct(index,productId)}/>}</td>
         <td className="p-2">{fromRequisition ? (row.description || "—") : <Input value={row.description ?? ""} onChange={(event) => update(index,{description:event.target.value})}/>}</td>
         {fromRequisition && <td className="p-3 text-right">{row.requested_quantity}</td>}{fromRequisition && <td className="p-3 text-right">{row.remaining_quantity}</td>}
-        <td className="p-2"><Input type="number" min="0.01" max={fromRequisition ? row.remaining_quantity : undefined} step="0.01" value={row.quantity} onChange={(event) => update(index,{quantity:Number(event.target.value)})}/></td>
+        <td className="p-2"><QuantityInput value={row.quantity} min={0} max={fromRequisition ? row.remaining_quantity : undefined} step={0.01} onValueChange={(value) => update(index,{quantity:value})}/></td>
         <td className="p-3">{row.uom || "—"}</td>
         <td className="p-2"><CurrencyInput value={row.unit_price} onValueChange={(value) => update(index,{unit_price:value})}/></td>
         <td className="p-3 text-right font-medium tabular-nums">{(row.quantity * row.unit_price).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
