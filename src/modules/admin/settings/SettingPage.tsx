@@ -7,16 +7,18 @@ import {
   Warehouse,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import OrganizationManagement, { OrganizationSection } from "@/modules/admin/organization/OrganizationManagement";
 import PageHeader from "@/components/common/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
 import useAuthStore from "@/store/auth";
 
-type Section = "roles" | "permissions" | "departments" | "locations" | "warehouses";
+type Section = "roles" | "permissions" | OrganizationSection | "warehouses";
 
 const sections = [
   { id: "roles", label: "Roles", icon: ShieldCheck },
   { id: "permissions", label: "Permissions", icon: KeyRound },
+  { id: "business-units", label: "Business Units", icon: Building2 },
   { id: "departments", label: "Departments", icon: Building2 },
   { id: "locations", label: "Locations", icon: MapPin },
   { id: "warehouses", label: "Warehouses", icon: Warehouse },
@@ -102,17 +104,8 @@ export default function SettingPage() {
           </Card>
         )}
 
-        {(section === "departments" || section === "locations") && (
-          <Card>
-            <h2 className="text-lg font-semibold">{section === "departments" ? "Departments" : "Locations"}</h2>
-            <div className="mt-5 rounded-lg border border-dashed p-10 text-center">
-              <p className="text-sm font-medium">Management API unavailable</p>
-              <p className="mt-1 text-xs text-slate-500">
-                This backend version does not expose a {section} endpoint, so no unsupported actions are shown.
-              </p>
-            </div>
-          </Card>
-        )}
+        {(section === "business-units" || section === "departments" || section === "locations") &&
+          <OrganizationManagement fixedSection={section} />}
 
         {section === "warehouses" && (
           <Card>
