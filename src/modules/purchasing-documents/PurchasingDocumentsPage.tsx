@@ -1,13 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  Archive,
-  Eye,
-  FileSearch,
-  Link2,
-  Pencil,
-  RotateCcw,
-  Upload,
-} from "lucide-react";
+import { Eye, FileSearch, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -22,6 +14,7 @@ import Dialog, {
 } from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
 import Loading from "@/components/ui/Loading";
+import { exportCsv } from "@/utils/exportCsv";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 import { attachmentApi } from "@/modules/document-attachments/attachmentApi";
 import { parseAttachmentError } from "@/modules/document-attachments/attachmentUtils";
@@ -41,14 +34,8 @@ import {
   usePurchasingDocument,
   usePurchasingDocuments,
   usePurchasingDocumentSummary,
-  useSetPurchasingDocumentActive,
   useUpdatePurchasingDocument,
 } from "./usePurchasingDocuments";
-
-const summaryCards = [
-  ["planned_amount", "Total PR Planned Value"],
-  ["committed_amount", "Total PO Committed Value"],
-] as const;
 
 function dateValue(value?: string | null): string {
   if (!value) return "—";
@@ -74,7 +61,6 @@ export default function PurchasingDocumentsPage() {
   const [viewId, setViewId] = useState<number>();
   const [formError, setFormError] = useState("");
   const [progress, setProgress] = useState(0);
-  const [busyId, setBusyId] = useState<number | null>(null);
 
   const filters = useMemo<PurchasingDocumentFilters>(
     () => ({
@@ -114,15 +100,10 @@ export default function PurchasingDocumentsPage() {
 
   const documents = usePurchasingDocuments(filters);
   const summary = usePurchasingDocumentSummary(summaryFilters);
-  const poExpectedSummary = usePurchasingDocumentSummary({
-    ...summaryFilters,
-    document_type: "PURCHASE_ORDER",
-  });
   const suppliers = useSuppliers();
   const detail = usePurchasingDocument(viewId);
   const createDocument = useCreatePurchasingDocument();
   const updateDocument = useUpdatePurchasingDocument();
-  const setDocumentActive = useSetPurchasingDocumentActive();
   const saving = createDocument.isPending || updateDocument.isPending;
 
   function resetPage() {
@@ -191,67 +172,22 @@ export default function PurchasingDocumentsPage() {
     }
   }
 
-  async function toggleActive(document: PurchasingDocument) {
-    const nextActive = !document.is_active;
-    if (!window.confirm(`${nextActive ? "Restore" : "Archive"} "${document.document_number}"?`)) return;
-    setBusyId(document.id);
-    try {
-      await setDocumentActive.mutateAsync({
-        id: document.id,
-        active: nextActive,
-      });
-      toast.success(`Document ${nextActive ? "restored" : "archived"}.`);
-    } catch (error) {
-      toast.error(purchasingDocumentError(error));
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  const countCards = summary.data
-    ? [
-        [summary.data.missing_supplier_count, "Missing Supplier"],
-        [summary.data.missing_amount_count, "Missing Amount"],
-        [summary.data.missing_attachment_count, "Missing Attachment"],
-      ]
-    : [];
-
   return (
     <>
       <div className="space-y-6">
         <PageHeader
           title="Purchasing Documents"
           description="Track uploaded Purchase Requisition and Purchase Order papers for audit and future reporting."
-          actions={<Button onClick={openCreate}><Upload className="h-4 w-4" /> Upload Document</Button>}
+          actions={<div className="flex flex-wrap gap-2"><Button onClick={openCreate}><Plus className="h-4 w-4" /> Create</Button><Button variant="outline" onClick={openCreate}><Upload className="h-4 w-4" /> Import</Button><Button variant="outline" onClick={() => exportCsv("purchasing-documents.csv", ["Document Number","Type","Date","Supplier","Status","Attachments"], (documents.data?.items ?? []).map((item) => [item.document_number,item.document_type,item.document_date,item.supplier_name,item.status,item.attachment_count]))}>Export</Button></div>}
         />
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-          {summaryCards.map(([field, label]) => (
-            <Card key={field} className="p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-              <p className="mt-2 text-xl font-semibold text-[#086B5A]">
-                {summary.isLoading
-                  ? "…"
-                  : formatMoney(summary.data?.[field] ?? null)}
-              </p>
-            </Card>
-          ))}
-          <Card className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              PO Expected This Month
-            </p>
-            <p className="mt-2 text-xl font-semibold text-[#086B5A]">
-              {poExpectedSummary.isLoading
-                ? "…"
-                : formatMoney(poExpectedSummary.data?.expected_this_month ?? null)}
-            </p>
-          </Card>
-          {countCards.map(([value, label]) => (
-            <Card key={label} className="p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-              <p className="mt-2 text-xl font-semibold">{value}</p>
-            </Card>
-          ))}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            [documents.data?.total ?? 0, "Documents Uploaded"],
+            [summary.data?.missing_attachment_count ?? 0, "Missing Attachments"],
+            ["—", "Expiring Contracts", "Future capability"],
+            [documents.data?.items.length ?? 0, "Recent Activity", "Documents on this page"],
+          ].map(([value, label, note]) => <Card key={label} className="p-5"><p className="text-sm font-medium text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold">{summary.isLoading ? "…" : value}</p>{note && <p className="mt-1 text-xs text-slate-500">{note}</p>}</Card>)}
         </div>
 
         <Card>
@@ -339,12 +275,6 @@ export default function PurchasingDocumentsPage() {
                         <td className="py-4">
                           <div className="flex min-w-max gap-2">
                             <Button size="xs" variant="outline" onClick={() => setViewId(document.id)}><Eye className="h-3.5 w-3.5" /> View</Button>
-                            <Button size="xs" variant="outline" onClick={() => openEdit(document)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>
-                            <Button size="xs" variant="ghost" disabled title="Related-document API unavailable"><Link2 className="h-3.5 w-3.5" /> Link</Button>
-                            <Button size="xs" variant={document.is_active ? "danger" : "success"} loading={busyId === document.id} onClick={() => toggleActive(document)}>
-                              {document.is_active ? <Archive className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                              {document.is_active ? "Archive" : "Restore"}
-                            </Button>
                           </div>
                         </td>
                       </tr>
