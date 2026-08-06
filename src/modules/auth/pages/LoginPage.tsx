@@ -70,11 +70,11 @@ export default function LoginPage() {
     <main className="min-h-screen bg-[#F8F6F1] text-[#202723] lg:grid lg:grid-cols-[1.05fr_1fr]">
       <section className="relative hidden min-h-screen overflow-hidden bg-[#073F37] px-12 py-10 text-white lg:flex lg:flex-col">
         <div
-          className="absolute -right-32 -top-32 h-96 w-96 rounded-full border border-[#C49A4A]/15"
+          className="absolute -right-32 -top-32 h-96 w-96 rounded-full border border-[#D4AA1D]/15"
           aria-hidden="true"
         />
         <div
-          className="absolute -right-20 -top-20 h-72 w-72 rounded-full border border-[#C49A4A]/20"
+          className="absolute -right-20 -top-20 h-72 w-72 rounded-full border border-[#D4AA1D]/20"
           aria-hidden="true"
         />
         <div
@@ -82,9 +82,13 @@ export default function LoginPage() {
           aria-hidden="true"
         />
 
-        <div className="relative flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-xl border border-[#C49A4A]/60 bg-white/5 font-serif text-lg font-bold tracking-wider text-[#E4C57E]">
-            HMM
+        <div className="relative flex items-center gap-4">
+          <div className="grid h-16 w-24 place-items-center overflow-hidden rounded-xl bg-white p-1.5 shadow-sm">
+            <img
+              src="/mutiara-merdeka-logo.svg"
+              alt="Hotel Mutiara Merdeka"
+              className="h-full w-full object-contain"
+            />
           </div>
           <div>
             <div className="font-semibold tracking-wide">HMM-Connect</div>
@@ -95,10 +99,10 @@ export default function LoginPage() {
         </div>
 
         <div className="relative my-auto max-w-xl">
-          <div className="mb-5 flex gap-1 text-sm text-[#C49A4A]">
+          <div className="mb-5 flex gap-1 text-sm text-[#D4AA1D]">
             <span>★</span><span>★</span><span>★</span><span>★</span>
           </div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-[#D8B96F]">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-[#E1C65F]">
             Hotel Mutiara Merdeka
           </p>
           <h1 className="max-w-lg font-serif text-5xl font-semibold leading-tight tracking-tight">
@@ -111,14 +115,14 @@ export default function LoginPage() {
 
           <div className="mt-10 grid max-w-lg grid-cols-2 gap-4">
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <ShieldCheck className="mb-3 h-5 w-5 text-[#D8B96F]" />
+              <ShieldCheck className="mb-3 h-5 w-5 text-[#E1C65F]" />
               <div className="text-sm font-semibold">Secure access</div>
               <div className="mt-1 text-xs text-emerald-50/60">
                 Role-based hotel administration
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <Sparkles className="mb-3 h-5 w-5 text-[#D8B96F]" />
+              <Sparkles className="mb-3 h-5 w-5 text-[#E1C65F]" />
               <div className="text-sm font-semibold">Connected operations</div>
               <div className="mt-1 text-xs text-emerald-50/60">
                 Clear workflows across departments
@@ -135,8 +139,12 @@ export default function LoginPage() {
       <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-10">
         <div className="w-full max-w-md">
           <div className="mb-10 flex items-center gap-3 lg:hidden">
-            <div className="grid h-11 w-11 place-items-center rounded-xl bg-[#073F37] font-serif text-sm font-bold tracking-wider text-[#E4C57E]">
-              HMM
+            <div className="grid h-14 w-20 place-items-center overflow-hidden rounded-lg bg-white p-1 shadow-sm">
+              <img
+                src="/mutiara-merdeka-logo.svg"
+                alt="Hotel Mutiara Merdeka"
+                className="h-full w-full object-contain"
+              />
             </div>
             <div>
               <div className="font-semibold">HMM-Connect</div>
