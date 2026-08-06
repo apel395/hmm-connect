@@ -5,7 +5,7 @@ from app.api.v1 import (
     audit_trail, auth, balance_sheet, cash_flow, chart_of_accounts,
     customer_payments, dashboard, document_attachments, document_drilldown,
     document_events, fiscal_periods, general_ledger, goods_receipts, inventory,
-    journal_detail, journals, payments, products, profit_loss, purchase_orders,
+    journal_detail, journals, organization_dimensions, payments, products, profit_loss, purchase_orders,
     purchase_requisitions, purchasing_documents, supplier_invoices,
     supplier_products, suppliers, trial_balance, users, warehouses, year_end,
 )
@@ -47,5 +47,6 @@ for router in (
     document_drilldown.router,
     document_events.router,
     document_attachments.router,
+    organization_dimensions.router,
 ):
     api_router.include_router(router)

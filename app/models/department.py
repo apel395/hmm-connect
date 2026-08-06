@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, String, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -12,12 +12,14 @@ class Department(Base, TimestampMixin):
     code: Mapped[str] = mapped_column(
         String(30),
         unique=True,
+        index=True,
         nullable=False
     )
 
     name: Mapped[str] = mapped_column(
         String(100),
         unique=True,
+        index=True,
         nullable=False
     )
 
@@ -26,8 +28,11 @@ class Department(Base, TimestampMixin):
         default=True,
         nullable=False
     )
+    business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True, index=True)
+    business_unit = relationship("BusinessUnit", back_populates="departments")
 
     users = relationship(
         "User",
-        back_populates="department"
+        back_populates="department",
+        foreign_keys="User.department_id",
     )

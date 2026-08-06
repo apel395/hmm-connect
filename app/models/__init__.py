@@ -29,6 +29,7 @@ from app.models.journal_voucher_line import JournalVoucherLine
 from app.models.location import Location
 from app.models.notification import Notification
 from app.models.payment import Payment, PaymentAllocation
+from app.models.business_unit import BusinessUnit
 from app.models.bank_transfer import BankTransfer
 from app.models.permission import Permission
 from app.models.product import Product
