@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import has_any_role
 from app.models.goods_receipt import GoodsReceipt
 from app.models.purchase_order import PurchaseOrder
 from app.schemas.goods_receipt import GoodsReceiptCreate
@@ -16,8 +17,7 @@ router = APIRouter(prefix="/goods-receipts", tags=["Goods Receipts"])
 
 
 def receipt_actions(receipt: GoodsReceipt, user):
-    roles = {role.name for role in user.roles}
-    can_post = receipt.status == "DRAFT" and bool(roles.intersection({"WAREHOUSE", "ADMIN"}))
+    can_post = receipt.status == "DRAFT" and has_any_role(user, "WAREHOUSE")
     return {
         "can_edit": False,
         "can_post": can_post,

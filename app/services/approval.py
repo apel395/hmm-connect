@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.approval_request import ApprovalRequest, ApprovalRequestStep
 from app.models.approval_workflow import ApprovalWorkflow
+from app.dependencies.authorization import is_superuser, role_names
 
 
 def get_request(db: Session, entity_type: str, entity_id: int):
@@ -82,10 +83,10 @@ def _current_step(request: ApprovalRequest) -> ApprovalRequestStep:
 
 
 def _authorize_step(step: ApprovalRequestStep, user) -> None:
-    role_names = {role.name for role in user.roles}
-    if "ADMIN" in role_names:
+    user_role_names = role_names(user)
+    if is_superuser(user):
         return
-    if step.approver_role_name not in role_names:
+    if step.approver_role_name.strip().upper() not in user_role_names:
         raise HTTPException(status_code=403, detail="User cannot approve this step")
     if step.department_name and (
         not user.department or user.department.name != step.department_name

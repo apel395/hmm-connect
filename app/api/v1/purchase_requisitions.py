@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import require_roles
 from app.models.purchase_requisition import PurchaseRequisition
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
@@ -17,6 +18,8 @@ from app.services.document_context import document_context, print_metadata
 
 
 router = APIRouter(prefix="/purchase-requisitions", tags=["Purchase Requisitions"])
+requester_user = require_roles("REQUESTER")
+purchasing_user = require_roles("PURCHASING")
 
 
 @router.get("")
@@ -140,7 +143,7 @@ def print_requisition(requisition_id: int, db: Session = Depends(get_db), user=D
 def create_requisition(
     data: PurchaseRequisitionCreate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(requester_user),
 ):
     return PurchaseRequisitionService.create(db=db, data=data, current_user=user)
 
@@ -148,7 +151,7 @@ def create_requisition(
 @router.put("/{requisition_id}")
 @router.patch("/{requisition_id}")
 def update_requisition(requisition_id: int, data: PurchaseRequisitionCreate,
-                       db: Session = Depends(get_db), user=Depends(get_current_user)):
+                       db: Session = Depends(get_db), user=Depends(requester_user)):
     return PurchaseRequisitionService.update(db=db, purchase_requisition_id=requisition_id,
         data=data, current_user=user)
 
@@ -157,7 +160,7 @@ def update_requisition(requisition_id: int, data: PurchaseRequisitionCreate,
 def submit_requisition(
     requisition_id: int,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(requester_user),
 ):
     return PurchaseRequisitionService.submit(
         db=db, purchase_requisition_id=requisition_id, current_user=user
@@ -199,7 +202,7 @@ def convert_requisition(
     requisition_id: int,
     data: PurchaseRequisitionConvertCreate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(purchasing_user),
 ):
     return PurchaseRequisitionService.convert_to_purchase_order(
         db=db,

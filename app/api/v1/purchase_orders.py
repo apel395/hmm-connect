@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import require_roles
 from app.models.approval_request import ApprovalRequest
 from app.models.purchase_order import PurchaseOrder
 from app.models.department import Department
@@ -15,6 +16,7 @@ from app.services.document_context import document_context, print_metadata
 
 
 router = APIRouter(prefix="/purchase-orders", tags=["Purchase Orders"])
+purchasing_user = require_roles("PURCHASING")
 
 ACTIVE_STATUSES = {"DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED"}
 HISTORY_STATUSES = {"RECEIVED", "CLOSED", "REJECTED", "CANCELLED", "EXPIRED"}
@@ -168,7 +170,7 @@ def purchase_order_form_options(db: Session = Depends(get_db), _=Depends(get_cur
 def create_purchase_order(
     data: PurchaseOrderCreate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(purchasing_user),
 ):
     purchase_order = PurchaseOrderService.create(db=db, data=data, user=user)
     return serialize_purchase_order(
@@ -180,7 +182,7 @@ def create_purchase_order(
 @router.put("/{purchase_order_id}")
 @router.patch("/{purchase_order_id}")
 def update_purchase_order(purchase_order_id: int, data: PurchaseOrderCreate,
-                          db: Session = Depends(get_db), user=Depends(get_current_user)):
+                          db: Session = Depends(get_db), user=Depends(purchasing_user)):
     purchase_order = PurchaseOrderService.update(db=db, purchase_order_id=purchase_order_id, data=data, user=user)
     result = serialize_purchase_order(purchase_order, *approval_state(db, purchase_order))
     result.update(document_context(db, "PURCHASE_ORDER", purchase_order.id, purchase_order.status, user))
@@ -214,7 +216,7 @@ def print_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), 
 def submit_purchase_order(
     purchase_order_id: int,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(purchasing_user),
 ):
     purchase_order = PurchaseOrderService.submit(
         db=db, purchase_order_id=purchase_order_id, user=user
@@ -261,7 +263,7 @@ def reject_purchase_order(
 def cancel_purchase_order(
     purchase_order_id: int,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(purchasing_user),
 ):
     purchase_order = PurchaseOrderService.cancel(
         db=db, purchase_order_id=purchase_order_id, user=user

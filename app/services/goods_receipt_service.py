@@ -11,6 +11,7 @@ from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.stock_movement import StockMovement
 from app.models.warehouse import Warehouse
 from app.schemas.goods_receipt import GoodsReceiptCreate
+from app.dependencies.authorization import has_any_role
 from app.services.activity_service import ActivityService
 from app.services.document_number import next_document_number
 
@@ -21,14 +22,13 @@ class GoodsReceiptService:
         return next_document_number(db, "GR", digits=5, day=True)
 
     @staticmethod
-    def _check_access(user):
-        roles = {role.name for role in user.roles}
-        if not roles.intersection({"WAREHOUSE", "ADMIN"}):
-            raise HTTPException(status_code=403, detail="Warehouse access required")
+    def _check_access(user, *roles):
+        if not has_any_role(user, *roles):
+            raise HTTPException(status_code=403, detail="Receiving access required")
 
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
-        cls._check_access(user)
+        cls._check_access(user, "WAREHOUSE", "PURCHASING")
         purchase_order = db.get(PurchaseOrder, data.purchase_order_id)
         if not purchase_order:
             raise HTTPException(status_code=404, detail="Purchase order not found")
@@ -81,7 +81,7 @@ class GoodsReceiptService:
 
     @classmethod
     def post(cls, db: Session, *, receipt_id: int, user):
-        cls._check_access(user)
+        cls._check_access(user, "WAREHOUSE")
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt:
             raise HTTPException(status_code=404, detail="Goods receipt not found")

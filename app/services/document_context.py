@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.approval_request import ApprovalRequest
 from app.models.document_attachment import DocumentAttachment
 from app.models.audit_log import AuditLog
+from app.dependencies.authorization import has_any_role, is_superuser, role_names
 
 
 def document_context(db: Session, entity_type: str, entity_id: int, status: str, user) -> dict:
@@ -13,17 +14,17 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         ApprovalRequest.entity_id == entity_id,
     ).first()
     current = next((step for step in request.steps if step.step_order == request.current_step_order), None) if request else None
-    roles = {role.name for role in user.roles}
+    roles = role_names(user)
     can_decide = bool(current and (
-        "ADMIN" in roles or (
-            current.approver_role_name in roles
+        is_superuser(user) or (
+            current.approver_role_name.strip().upper() in roles
             and (not current.department_name or (user.department and user.department.name == current.department_name))
             and (not current.location_name or (user.location and user.location.name == current.location_name))
         )
     ))
     pending = status == "PENDING_APPROVAL"
     can_receive = entity_type == "PURCHASE_ORDER" and status in {"APPROVED", "PARTIALLY_RECEIVED"} and (
-        "ADMIN" in roles or "WAREHOUSE" in roles
+        has_any_role(user, "WAREHOUSE")
     )
     events = db.query(AuditLog).filter(
         AuditLog.entity_type == entity_type,
