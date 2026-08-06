@@ -27,6 +27,22 @@ export function useGoodsReceipt(id: number) {
   });
 }
 
+export function useReceivablePurchaseOrders(enabled = true) {
+  return useQuery({
+    queryKey: ["receivable-purchase-orders"],
+    queryFn: async () => (await goodsReceiptApi.receivablePurchaseOrders()).data,
+    enabled,
+  });
+}
+
+export function useRemainingPurchaseOrderItems(purchaseOrderId?: number) {
+  return useQuery({
+    queryKey: ["remaining-purchase-order-items", purchaseOrderId],
+    queryFn: async () => (await goodsReceiptApi.remainingItems(purchaseOrderId!)).data,
+    enabled: Boolean(purchaseOrderId),
+  });
+}
+
 
 export function useGoodsReceipts(
   purchaseOrderId?: number
@@ -80,9 +96,8 @@ export function useReceiveGoods() {
 
       payload: GoodsReceiptCreatePayload;
     }) =>
-      goodsReceiptApi.receive(
-        purchaseOrderId,
-        payload
+      goodsReceiptApi.receive(purchaseOrderId, payload).then(
+        (created) => goodsReceiptApi.post(created.data.id),
       ),
 
 
@@ -97,6 +112,10 @@ export function useReceiveGoods() {
         ],
       });
 
+      qc.invalidateQueries({ queryKey: ["goods-receipts"] });
+      qc.invalidateQueries({ queryKey: ["receivable-purchase-orders"] });
+      qc.invalidateQueries({ queryKey: ["remaining-purchase-order-items", variables.purchaseOrderId] });
+
 
       qc.invalidateQueries({
         queryKey: [
@@ -109,4 +128,16 @@ export function useReceiveGoods() {
 
   });
 
+}
+
+export function usePostGoodsReceipt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => goodsReceiptApi.post(id),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ["goods-receipt", id] });
+      qc.invalidateQueries({ queryKey: ["goods-receipts"] });
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+    },
+  });
 }

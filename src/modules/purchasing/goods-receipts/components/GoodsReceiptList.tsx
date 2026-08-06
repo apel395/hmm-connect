@@ -143,7 +143,7 @@ export default function GoodsReceiptList({
 
                       <div className="font-medium">
 
-                        {receipt.destination_type === "INVENTORY" ? "Warehouse inventory" : "Direct consumption"}
+                        {receipt.destination_type === "WAREHOUSE" ? "Warehouse inventory" : "Direct use"}
 
                       </div>
 

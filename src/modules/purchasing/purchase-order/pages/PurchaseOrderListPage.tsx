@@ -7,7 +7,7 @@ import ListToolbar from "@/components/common/ListToolbar";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
-import useAuthStore from "@/store/auth";
+import useAuthorization from "@/hooks/useAuthorization";
 import { exportCsv } from "@/utils/exportCsv";
 import PurchaseOrderTable from "../components/PurchaseOrderTable";
 import PurchaseOrderForm from "../components/PurchaseOrderForm";
@@ -23,8 +23,8 @@ function errorMessage(error: unknown) {
 
 export default function PurchaseOrderListPage() {
   const navigate = useNavigate();
-  const roles = (useAuthStore((state) => state.user)?.roles ?? []).map((role) => role.name);
-  const canCreate = roles.includes("ADMIN") || roles.includes("PURCHASING");
+  const { canPerform } = useAuthorization();
+  const canCreate = canPerform("create", ["PURCHASING"]);
   const [scope, setScope] = useState<Scope>("all");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");

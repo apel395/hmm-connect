@@ -19,6 +19,8 @@ import PurchaseRequisitionDetailPage from "@/modules/purchasing/requisition/page
 
 import PurchaseOrderListPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderListPage";
 import PurchaseOrderDetailPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderDetailPage";
+import ReceivingPage from "@/modules/purchasing/goods-receipts/pages/ReceivingPage";
+import ReceivingDetailPage from "@/modules/purchasing/goods-receipts/pages/ReceivingDetailPage";
 import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDocumentsPage";
 import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
@@ -48,6 +50,7 @@ import BankReconciliationDetailPage from "@/modules/finance/bank-reconciliation/
 import BudgetListPage from "@/modules/finance/budgets/BudgetListPage";import BudgetDetailPage from "@/modules/finance/budgets/BudgetDetailPage";import BudgetVsActualPage from "@/modules/finance/budgets/BudgetVsActualPage";
 import FixedAssetListPage from "@/modules/finance/fixed-assets/FixedAssetListPage";import FixedAssetFormPage from "@/modules/finance/fixed-assets/FixedAssetFormPage";import FixedAssetDetailPage from "@/modules/finance/fixed-assets/FixedAssetDetailPage";import AssetCategoryPage from "@/modules/finance/fixed-assets/AssetCategoryPage";import DepreciationRunsPage from "@/modules/finance/fixed-assets/DepreciationRunsPage";import FixedAssetReportPage from "@/modules/finance/fixed-assets/FixedAssetReportPage";import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationReportPage";
 import useAuthStore from "@/store/auth";
+import { canAccess } from "@/lib/access";
 
 /* Warehouse */
 
@@ -80,7 +83,7 @@ import InternalServerErrorPage from "@/pages/errors/InternalServerErrorPage";
 
 function RoleLanding() {
   const roles = useAuthStore((state) => state.user?.roles ?? []);
-  return <Navigate to={roles.some((role) => role.name === "FINANCE" || role.name === "ADMIN") ? "/finance-dashboard" : "/dashboard"} replace />;
+  return <Navigate to={canAccess({ roles }, ["FINANCE"]) ? "/finance-dashboard" : "/dashboard"} replace />;
 }
 
 const router = createBrowserRouter([
@@ -133,6 +136,8 @@ const router = createBrowserRouter([
         path: "purchasing-documents",
         element: <PurchasingDocumentsPage />,
       },
+      { path: "receiving", element: <ReceivingPage /> },
+      { path: "receiving/:id", element: <ReceivingDetailPage /> },
       { path: "purchase-requisitions/:id/print", element: <PrintDocumentPage kind="purchase-requisitions" /> },
       { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
       { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },

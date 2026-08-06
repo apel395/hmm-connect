@@ -1,6 +1,7 @@
 import {
   useNavigate,
   useParams,
+  Link,
 } from "react-router-dom";
 
 import { toast } from "sonner";
@@ -10,8 +11,8 @@ import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Loading from "@/components/ui/Loading";
+import Button from "@/components/ui/Button";
 
-import useAuthStore from "@/store/auth";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 
 import WorkflowHeader from "../components/WorkflowHeader";
@@ -23,7 +24,11 @@ import {
   useSubmitPurchaseRequisition,
   useApprovePurchaseRequisition,
   useRejectPurchaseRequisition,
+  useUpdatePurchaseRequisition,
 } from "../hooks/usePurchaseRequisitions";
+import { useState } from "react";
+import Input from "@/components/ui/Input";
+import DocumentActivity from "../../components/DocumentActivity";
 
 import {
   useApproval,
@@ -100,13 +105,6 @@ export default function PurchaseRequisitionDetailPage() {
   const prId =
     Number(id);
 
-  const user =
-    useAuthStore(
-      (
-        state: any,
-      ) => state.user,
-    );
-
   const {
     data,
     isLoading,
@@ -133,6 +131,9 @@ export default function PurchaseRequisitionDetailPage() {
 
   const reject =
     useRejectPurchaseRequisition();
+  const update = useUpdatePurchaseRequisition();
+  const [editing, setEditing] = useState(false);
+  const [notes, setNotes] = useState("");
 
   if (
 
@@ -162,52 +163,10 @@ export default function PurchaseRequisitionDetailPage() {
 
   }
 
-  const workflowStatus =
-    approval?.status?.toUpperCase();
+  const canSubmit = data.allowed_actions?.can_submit ?? false;
 
-  const currentRole =
-    approval?.current_approver_role;
-
-  const documentStatus =
-    data.status?.toUpperCase();
-
-  const userRoles =
-    (
-      user?.roles ?? []
-    ).map(
-      (
-        role: any,
-      ) =>
-        role.name?.toUpperCase(),
-    );
-
-  const isAdmin =
-    userRoles.includes(
-      "ADMIN",
-    );
-
-  const isCurrentApprover =
-    isAdmin ||
-
-    (
-      currentRole &&
-
-      userRoles.includes(
-        currentRole.toUpperCase(),
-      )
-
-    );
-
-  const canSubmit =
-    documentStatus ===
-    "DRAFT";
-
-  const canApprove =
-    documentStatus ===
-      "PENDING_APPROVAL" &&
-    workflowStatus ===
-      "PENDING" &&
-    isCurrentApprover;
+  const canApprove = data.allowed_actions?.can_approve ?? false;
+  const canReject = data.allowed_actions?.can_reject ?? false;
 
   const grandTotal =
   (data?.items ?? []).reduce(
@@ -388,6 +347,9 @@ export default function PurchaseRequisitionDetailPage() {
         canApprove={
           canApprove
         }
+        canReject={canReject}
+        canEdit={data.allowed_actions?.can_edit ?? false}
+        canPrint={data.allowed_actions?.can_print !== false}
 
         submitting={
           submit.isPending
@@ -410,6 +372,7 @@ export default function PurchaseRequisitionDetailPage() {
         onSubmit={
           handleSubmit
         }
+        onEdit={() => { setNotes(data.notes ?? ""); setEditing(true); }}
 
         onApprove={
           handleApprove
@@ -420,6 +383,8 @@ export default function PurchaseRequisitionDetailPage() {
         }
 
       />
+
+      {editing && <Card><h2 className="mb-4 font-semibold">Edit Purchase Requisition</h2><label className="text-sm font-medium">Notes<Input value={notes} onChange={(event) => setNotes(event.target.value)}/></label><div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button loading={update.isPending} onClick={async () => { await update.mutateAsync({ id: data.id, data: { request_date: data.request_date, expiry_date: data.expiry_date ?? null, notes, items: data.items.map((item: any) => ({ product_id: item.product_id, quantity: Number(item.quantity), estimated_price: Number(item.estimated_price) })) } }); setEditing(false); toast.success("Purchase requisition updated."); }}>Save</Button></div></Card>}
 
       <div className="grid grid-cols-12 gap-6">
 
@@ -617,6 +582,7 @@ export default function PurchaseRequisitionDetailPage() {
             </h3>
 
             <div className="space-y-4">
+              {!!data.generated_purchase_orders?.length && <div><div className="mb-2 text-slate-500">Generated Purchase Orders</div>{data.generated_purchase_orders.map((order: { id:number; document_number:string }) => <Link key={order.id} className="mr-3 font-medium text-emerald-700 hover:underline" to={`/purchase-orders/${order.id}`}>{order.document_number}</Link>)}</div>}
 
               <div className="flex justify-between">
 
@@ -738,10 +704,11 @@ export default function PurchaseRequisitionDetailPage() {
 
       </div>
 
-      <DocumentAttachments
+      {data.allowed_actions?.can_manage_attachments !== false && <DocumentAttachments
         entityType="PURCHASE_REQUISITION"
         entityId={data.id}
-      />
+      />}
+      {data.allowed_actions?.can_view_history !== false && <DocumentActivity events={data.activity_history}/>}
 
     </div>
 

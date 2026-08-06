@@ -19,25 +19,6 @@ interface Props {
     row: any,
   ) => void;
 
-  onSubmit?: (
-    row: any,
-  ) => void;
-
-  onApprove?: (
-    row: any,
-  ) => void;
-
-  onReject?: (
-    row: any,
-  ) => void;
-
-  onConvert?: (
-    row: any,
-  ) => void;
-
-  onTraceability?: (
-    row: any,
-  ) => void;
 }
 
 function formatDate(
@@ -100,16 +81,6 @@ export default function PurchaseRequisitionTable({
   rows = [],
 
   onView,
-
-  onSubmit,
-
-  onApprove,
-
-  onReject,
-
-  onConvert,
-
-  onTraceability,
 
 }: Props) {
 
@@ -240,93 +211,6 @@ export default function PurchaseRequisitionTable({
                           View
 
                         </Button>
-
-                        {row.status ===
-                          "DRAFT" &&
-                          onSubmit && (
-
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              onSubmit?.(
-                                row,
-                              )
-                            }
-                          >
-
-                            Submit
-
-                          </Button>
-
-                        )}
-
-                        {row.status ===
-                          "PENDING_APPROVAL" &&
-                          (onApprove || onReject) && (
-
-                          <>
-
-                            <Button
-                              size="sm"
-                              onClick={() =>
-                                onApprove?.(
-                                  row,
-                                )
-                              }
-                            >
-
-                              Approve
-
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              onClick={() =>
-                                onReject?.(
-                                  row,
-                                )
-                              }
-                            >
-
-                              Reject
-
-                            </Button>
-
-                          </>
-
-                        )}
-
-                        {row.status ===
-                          "APPROVED" &&
-                          onConvert && (
-
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              onConvert?.(
-                                row,
-                              )
-                            }
-                          >
-
-                            Convert PO
-
-                          </Button>
-
-                        )}
-
-                        {onTraceability && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              onTraceability(row)
-                            }
-                          >
-                            Trace
-                          </Button>
-                        )}
 
                       </div>
 

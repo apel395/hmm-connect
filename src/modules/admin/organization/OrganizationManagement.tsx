@@ -6,6 +6,7 @@ import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import useAuthStore from "@/store/auth";
+import { isSuperuser } from "@/lib/access";
 import {
   BusinessUnit, OrganizationPayload, OrganizationRecord,
   createBusinessUnit, createDepartment, createLocation, filterBusinessUnits,
@@ -29,8 +30,7 @@ export default function OrganizationManagement({ fixedSection }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<OrganizationPayload>(blank());
   const user = useAuthStore((state) => state.user);
-  const roleNames = (user?.roles ?? []).map((role) => role.name.toUpperCase());
-  const canManage = roleNames.some((role) => ["ADMIN", "ADMINISTRATOR", "SUPER_ADMIN"].includes(role)) ||
+  const canManage = isSuperuser(user) ||
     (user?.roles ?? []).some((role) => role.permissions?.some((permission) => permission.code === "organization_dimensions.manage"));
 
   useEffect(() => { if (fixedSection) setSection(fixedSection); }, [fixedSection]);

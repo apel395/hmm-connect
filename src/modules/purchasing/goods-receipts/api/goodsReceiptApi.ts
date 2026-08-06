@@ -11,6 +11,10 @@ export const goodsReceiptApi = {
 
   detail: (id: number) => api.get(`/goods-receipts/${id}`),
 
+  receivablePurchaseOrders: () => api.get("/goods-receipts/receivable-purchase-orders"),
+
+  remainingItems: (purchaseOrderId: number) => api.get(`/goods-receipts/receivable-purchase-orders/${purchaseOrderId}/items`),
+
   listByPurchaseOrder: (
     purchaseOrderId: number
   ) =>
@@ -31,6 +35,10 @@ export const goodsReceiptApi = {
         purchase_order_id: purchaseOrderId,
       }
     ),
+
+  post: (id: number) => api.post(`/goods-receipts/${id}/post`),
+
+  allowedActions: (id: number) => api.get(`/goods-receipts/${id}/allowed-actions`),
 
 };
 

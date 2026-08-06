@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import api from "@/api/interceptor";
+import { isSuperuser } from "@/lib/access";
 
 
 export interface LoginRequest {
@@ -120,11 +121,7 @@ export const useAuthStore = create<AuthState>(
       return false;
     }
 
-    if (
-      user.roles.some(
-        role => role.name === "ADMIN"
-      )
-    ) {
+    if (isSuperuser(user)) {
       return true;
     }
 

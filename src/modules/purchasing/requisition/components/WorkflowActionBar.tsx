@@ -1,4 +1,5 @@
 import Button from "@/components/ui/Button";
+import { ArrowLeft, Printer } from "lucide-react";
 
 interface Props {
   document: any;
@@ -6,6 +7,9 @@ interface Props {
 
   canSubmit: boolean;
   canApprove: boolean;
+  canReject: boolean;
+  canEdit: boolean;
+  canPrint: boolean;
 
   submitting?: boolean;
   approving?: boolean;
@@ -13,17 +17,23 @@ interface Props {
 
   onBack: () => void;
   onSubmit: () => void;
+  onEdit: () => void;
   onApprove: () => void;
   onReject: () => void;
 }
 
 export default function WorkflowActionBar({
 
+  document,
+
   approval,
 
   canSubmit,
 
   canApprove,
+  canReject,
+  canEdit,
+  canPrint,
 
   submitting = false,
 
@@ -34,6 +44,7 @@ export default function WorkflowActionBar({
   onBack,
 
   onSubmit,
+  onEdit,
 
   onApprove,
 
@@ -58,9 +69,11 @@ export default function WorkflowActionBar({
 
         >
 
-          Back
+          <ArrowLeft size={17}/> Back
 
         </Button>
+        {canPrint && <Button variant="outline" aria-label="Print purchase requisition" title="Print" onClick={() => window.open(`/purchase-requisitions/${document.id}/print`, "_blank")}><Printer size={18}/></Button>}
+        {canEdit && <Button variant="outline" onClick={onEdit}>Edit</Button>}
 
         {canSubmit && (
 
@@ -78,24 +91,7 @@ export default function WorkflowActionBar({
 
         )}
 
-        {canApprove && (
-
-          <>
-
-            <Button
-
-              variant="success"
-
-              loading={approving}
-
-              onClick={onApprove}
-
-            >
-
-              Approve
-
-            </Button>
-
+        {canReject && (
             <Button
 
               variant="danger"
@@ -109,10 +105,8 @@ export default function WorkflowActionBar({
               Reject
 
             </Button>
-
-          </>
-
         )}
+        {canApprove && <Button variant="success" loading={approving} onClick={onApprove}>Approve</Button>}
 
         <div className="ml-auto flex items-center rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
 
