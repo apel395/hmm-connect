@@ -1,7 +1,6 @@
 import csv, io, json, re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from openpyxl import load_workbook
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from app.models.bank_reconciliation import BankReconciliation, BankStatementLine, BankReconciliationMatch
@@ -69,9 +68,9 @@ class BankReconciliationService:
     def parse(self,content,filename,mapping):
         suffix=filename.lower().rsplit(".",1)[-1]
         if suffix=="csv":records=list(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
-        elif suffix=="xlsx":
-            ws=load_workbook(io.BytesIO(content),read_only=True,data_only=True).active;rows=list(ws.iter_rows(values_only=True));headers=[str(x or "").strip() for x in rows[0]];records=[dict(zip(headers,row)) for row in rows[1:]]
-        else:raise ValueError("Only CSV and XLSX files are supported")
+        elif suffix in {"xlsx","xls"}:
+            raise ValueError("Excel bank-statement parsing is available only through the EC2 reconciliation worker; upload CSV to the Lambda API")
+        else:raise ValueError("Only CSV files are supported by the Lambda API")
         def value(row,key):return row.get(mapping.get(key,key))
         parsed=[];errors=[]
         for number,row in enumerate(records,2):
