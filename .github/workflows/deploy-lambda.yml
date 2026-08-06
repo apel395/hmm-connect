@@ -10,6 +10,7 @@ on:
       - "app/**"
       - "alembic/versions/**"
       - "scripts/validate_migration_chain.py"
+      - "scripts/validate_lambda_dependencies.py"
       - "lambda_handler.py"
       - "requirements-api.txt"
       - ".github/workflows/deploy-lambda.yml"
@@ -42,6 +43,15 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/validate_migration_chain.py
+
+      - name: Validate Lambda dependencies
+        run: |
+          set -euo pipefail
+          python scripts/validate_lambda_dependencies.py
+          if grep -Eiq '^(openpyxl|pandas|xlsxwriter|xlrd|xlwt|pyarrow|polars|numpy)([<=> ]|$)' requirements-api.txt; then
+            echo "Worker-only data-processing dependencies must not be packaged in Lambda."
+            exit 1
+          fi
 
       - name: Build Lambda ZIP
         run: |
@@ -78,10 +88,6 @@ jobs:
           set -euo pipefail
           python -m compileall -q build/app build/lambda_handler.py
           python -c "from lambda_handler import handler; from app.main import app; assert handler is not None; assert app.title"
-          if grep -Eiq '^(openpyxl|pandas)([<=> ]|$)' requirements-api.txt; then
-            echo "Worker-only spreadsheet dependencies must not be packaged in Lambda."
-            exit 1
-          fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
