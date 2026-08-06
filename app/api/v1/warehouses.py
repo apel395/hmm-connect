@@ -3,16 +3,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import is_superuser
 from app.models.warehouse import Warehouse
 from app.schemas.warehouse import WarehouseCreate
 from app.services.activity_service import ActivityService
 
 
 router = APIRouter(prefix="/warehouses", tags=["Warehouses"])
-
-
-def _is_admin(user) -> bool:
-    return any(role.name == "ADMIN" for role in user.roles)
 
 
 @router.get("")
@@ -33,7 +30,7 @@ def create_warehouse(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    if not _is_admin(user):
+    if not is_superuser(user):
         raise HTTPException(status_code=403, detail="Administrator access required")
     code = data.code.strip().upper()
     if db.query(Warehouse).filter(Warehouse.code == code).first():
