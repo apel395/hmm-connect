@@ -50,6 +50,10 @@ export function canPerform(
   allowedRoles: string[],
   actionAvailable = true,
 ): boolean {
+  // Superusers bypass role restrictions, but never document-state restrictions.
+  // Example: a DRAFT document may be submitted, but it cannot be approved until
+  // the backend has started an approval request and marks approval as available.
+  if (!actionAvailable) return false;
   if (isSuperuser(user)) return true;
-  return actionAvailable && canAccess(user, allowedRoles);
+  return canAccess(user, allowedRoles);
 }
