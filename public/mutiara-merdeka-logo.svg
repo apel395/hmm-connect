@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">Hotel Mutiara Merdeka</title>
+  <desc id="desc">Green Hotel Mutiara Merdeka emblem with four gold stars</desc>
+  <rect width="1200" height="700" fill="none"/>
+  <g transform="translate(600 165)">
+    <circle r="112" fill="#00ad63"/>
+    <circle r="65" fill="none" stroke="#ffffff" stroke-width="9"/>
+    <rect x="-18" y="-118" width="36" height="92" fill="#ffffff"/>
+    <rect x="-18" y="26" width="36" height="92" fill="#ffffff"/>
+    <path d="M-68-78v57h136v-57h-24v34h-88v-34zm0 156V21h136v57h-24V44h-88v34z" fill="#ffffff"/>
+  </g>
+  <g fill="#d4aa1d" transform="translate(0 315)">
+    <path transform="translate(470) scale(1.55)" d="M0-20 6-6 22-5 10 5 14 20 0 12-14 20-10 5-22-5-6-6z"/>
+    <path transform="translate(555) scale(1.55)" d="M0-20 6-6 22-5 10 5 14 20 0 12-14 20-10 5-22-5-6-6z"/>
+    <path transform="translate(640) scale(1.55)" d="M0-20 6-6 22-5 10 5 14 20 0 12-14 20-10 5-22-5-6-6z"/>
+    <path transform="translate(725) scale(1.55)" d="M0-20 6-6 22-5 10 5 14 20 0 12-14 20-10 5-22-5-6-6z"/>
+  </g>
+  <text x="600" y="505" text-anchor="middle" fill="#00ad63" font-family="Georgia, 'Times New Roman', serif" font-size="132" font-weight="700" letter-spacing="3">MUTIARA</text>
+  <text x="600" y="610" text-anchor="middle" fill="#00ad63" font-family="Arial, Helvetica, sans-serif" font-size="64" letter-spacing="34">MERDEKA</text>
+</svg>
