@@ -4,7 +4,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.approval_request import ApprovalRequest, ApprovalRequestStep
-from app.models.approval_workflow import ApprovalWorkflow
+from app.models.approval_workflow import ApprovalWorkflow, ApprovalWorkflowStep
+from app.models.role import Role
 from app.dependencies.authorization import is_superuser, role_names
 
 
@@ -17,6 +18,62 @@ def get_request(db: Session, entity_type: str, entity_id: int):
         )
         .first()
     )
+
+
+def _normalized_role_name(value: str) -> str:
+    return "_".join(part for part in "".join(character if character.isalnum() else " " for character in value.upper()).split() if part)
+
+
+def _administrator_role(db: Session) -> Role | None:
+    roles = db.query(Role).order_by(Role.id).all()
+    preferred = {
+        "SYSTEM_ADMINISTRATOR",
+        "ERP_ADMINISTRATOR",
+        "SUPER_ADMIN",
+        "ADMINISTRATOR",
+        "SYSTEM_ADMIN",
+        "ERP_ADMIN",
+        "ADMIN",
+    }
+    for role in roles:
+        if _normalized_role_name(role.name) in preferred:
+            return role
+    for role in roles:
+        normalized = _normalized_role_name(role.name)
+        if "ADMIN" in normalized or "ADMINISTRATOR" in normalized:
+            return role
+    return None
+
+
+def _ensure_default_workflow(db: Session, *, workflow_code: str) -> ApprovalWorkflow | None:
+    entity_by_code = {
+        "PR_APPROVAL": "PURCHASE_REQUISITION",
+        "PO_APPROVAL": "PURCHASE_ORDER",
+    }
+    entity_type = entity_by_code.get(workflow_code)
+    if not entity_type:
+        return None
+
+    administrator_role = _administrator_role(db)
+    if not administrator_role:
+        return None
+
+    workflow = ApprovalWorkflow(
+        code=workflow_code,
+        name="Purchase Requisition Approval" if workflow_code == "PR_APPROVAL" else "Purchase Order Approval",
+        entity_type=entity_type,
+        is_active=True,
+    )
+    workflow.steps.append(
+        ApprovalWorkflowStep(
+            step_order=1,
+            name="Administrator Approval",
+            approver_role_id=administrator_role.id,
+        )
+    )
+    db.add(workflow)
+    db.flush()
+    return workflow
 
 
 def start_approval(
@@ -38,10 +95,12 @@ def start_approval(
         )
         .first()
     )
+    if not workflow:
+        workflow = _ensure_default_workflow(db, workflow_code=workflow_code)
     if not workflow or not workflow.steps:
         raise HTTPException(
             status_code=400,
-            detail=f"Active approval workflow {workflow_code!r} is not configured",
+            detail=f"Active approval workflow {workflow_code!r} is not configured and no administrator role is available for the default workflow",
         )
 
     request = ApprovalRequest(
