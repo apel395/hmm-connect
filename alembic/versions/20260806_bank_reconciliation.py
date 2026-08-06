@@ -1,7 +1,7 @@
 """bank reconciliation
 
 Revision ID: 20260806_bank_reconciliation
-Revises: 20260805_financial_groups
+Revises: 20260806_org_master_data
 """
 from alembic import op
 import sqlalchemy as sa
