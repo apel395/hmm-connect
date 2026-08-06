@@ -5,54 +5,51 @@ import Dialog, { DialogContent } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Textarea from "@/components/ui/Textarea";
 import { productApi } from "@/modules/master/products/api/productApi";
-import {
-  filterBusinessUnits,
-  listDepartments,
-  listLocations,
-} from "@/modules/admin/organization/api";
+import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 
-import PurchaseRequisitionItems, {
-  PurchaseRequisitionItemRow,
-  Product,
-} from "./PurchaseRequisitionItems";
+import PurchaseRequisitionItems, { PurchaseRequisitionItemRow, Product } from "./PurchaseRequisitionItems";
 
 interface Props {
   onClose: () => void;
   onSubmit: (payload: any) => Promise<void>;
+  initialData?: any;
 }
 
-export default function PurchaseRequisitionForm({ onClose, onSubmit }: Props) {
+export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData }: Props) {
+  const editing = Boolean(initialData);
   const [businessUnitId, setBusinessUnitId] = useState<number>();
   const [departmentId, setDepartmentId] = useState<number>();
   const [locationId, setLocationId] = useState<number>();
   const [notes, setNotes] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
+  const [requestDate, setRequestDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
-  const [items, setItems] = useState<PurchaseRequisitionItemRow[]>([
-    { product_id: 0, quantity: 1, estimated_price: 0 },
-  ]);
+  const [items, setItems] = useState<PurchaseRequisitionItemRow[]>([{ product_id: 0, quantity: 1, estimated_price: 0 }]);
 
-  const businessUnits = useQuery({
-    queryKey: ["business-units", "pr-form"],
-    queryFn: () => filterBusinessUnits({ is_active: true }),
-  });
-  const departments = useQuery({
-    queryKey: ["departments", "pr-form", businessUnitId],
-    queryFn: () => listDepartments({ business_unit_id: businessUnitId, is_active: true }),
-    enabled: Boolean(businessUnitId),
-  });
-  const locations = useQuery({
-    queryKey: ["locations", "pr-form", businessUnitId],
-    queryFn: () => listLocations({ business_unit_id: businessUnitId, is_active: true }),
-    enabled: Boolean(businessUnitId),
-  });
-
+  const businessUnits = useQuery({ queryKey: ["business-units", "pr-form"], queryFn: () => filterBusinessUnits({ is_active: true }) });
+  const departments = useQuery({ queryKey: ["departments", "pr-form", businessUnitId], queryFn: () => listDepartments({ business_unit_id: businessUnitId, is_active: true }), enabled: Boolean(businessUnitId) });
+  const locations = useQuery({ queryKey: ["locations", "pr-form", businessUnitId], queryFn: () => listLocations({ business_unit_id: businessUnitId, is_active: true }), enabled: Boolean(businessUnitId) });
   const activeDepartments = useMemo(() => departments.data ?? [], [departments.data]);
   const activeLocations = useMemo(() => locations.data ?? [], [locations.data]);
 
-  useEffect(() => { loadProducts(); }, []);
+  useEffect(() => {
+    loadProducts();
+    if (initialData) {
+      setBusinessUnitId(initialData.business_unit_id ?? undefined);
+      setDepartmentId(initialData.department_id ?? undefined);
+      setLocationId(initialData.location_id ?? undefined);
+      setNotes(initialData.notes ?? "");
+      setExpiryDate(initialData.expiry_date ?? "");
+      setRequestDate(initialData.request_date ?? "");
+      setItems((initialData.items ?? []).map((item: any) => ({
+        product_id: Number(item.product_id),
+        quantity: Number(item.quantity),
+        estimated_price: Number(item.estimated_price),
+      })));
+    }
+  }, [initialData]);
 
   async function loadProducts() {
     try {
@@ -62,12 +59,7 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit }: Props) {
       else if (Array.isArray(data?.items)) setProducts(data.items);
       else if (Array.isArray(data?.data)) setProducts(data.data);
       else setProducts([]);
-    } catch (err) {
-      console.error(err);
-      setProducts([]);
-    } finally {
-      setLoadingProducts(false);
-    }
+    } finally { setLoadingProducts(false); }
   }
 
   function changeBusinessUnit(id?: number) {
@@ -78,129 +70,42 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit }: Props) {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const validItems = items.filter(
-      (item) => item.product_id > 0 && item.quantity > 0 && item.estimated_price >= 0,
-    );
-
+    const validItems = items.filter((item) => item.product_id > 0 && item.quantity > 0 && item.estimated_price >= 0);
     if (!businessUnitId) return alert("Business Unit is required.");
     if (!departmentId) return alert("Department is required.");
     if (!locationId) return alert("Location is required.");
-    if (validItems.length === 0) return alert("Please add valid products.");
-
+    if (!validItems.length) return alert("Please add valid products.");
     try {
       setSaving(true);
       await onSubmit({
         business_unit_id: businessUnitId,
         department_id: departmentId,
         location_id: locationId,
+        request_date: requestDate || undefined,
         notes,
         expiry_date: expiryDate || null,
         items: validItems,
       });
       onClose();
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   const selectClass = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden p-0">
-        <form onSubmit={handleSubmit} className="flex h-full flex-col">
-          <div className="shrink-0 border-b border-slate-200 px-6 py-5">
-            <h2 className="text-xl font-semibold">Create Purchase Requisition</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Create a purchasing request before approval and purchase order creation.
-            </p>
-          </div>
-
-          <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6">
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              <label className="text-sm font-medium">
-                Business Unit
-                <select
-                  required
-                  className={selectClass}
-                  value={businessUnitId ?? ""}
-                  onChange={(event) => changeBusinessUnit(event.target.value ? Number(event.target.value) : undefined)}
-                >
-                  <option value="">Select business unit</option>
-                  {(businessUnits.data ?? []).map((item) => (
-                    <option key={item.id} value={item.id}>{item.code} - {item.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-sm font-medium">
-                Department
-                <select
-                  required
-                  disabled={!businessUnitId || departments.isLoading}
-                  className={selectClass}
-                  value={departmentId ?? ""}
-                  onChange={(event) => setDepartmentId(event.target.value ? Number(event.target.value) : undefined)}
-                >
-                  <option value="">Select department</option>
-                  {activeDepartments.map((item) => (
-                    <option key={item.id} value={item.id}>{item.code} - {item.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-sm font-medium">
-                Location
-                <select
-                  required
-                  disabled={!businessUnitId || locations.isLoading}
-                  className={selectClass}
-                  value={locationId ?? ""}
-                  onChange={(event) => setLocationId(event.target.value ? Number(event.target.value) : undefined)}
-                >
-                  <option value="">Select location</option>
-                  {activeLocations.map((item) => (
-                    <option key={item.id} value={item.id}>{item.code} - {item.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-sm font-medium">
-                Valid Until
-                <input
-                  type="date"
-                  value={expiryDate}
-                  min={new Date().toISOString().slice(0, 10)}
-                  onChange={(event) => setExpiryDate(event.target.value)}
-                  className={selectClass}
-                />
-              </label>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium">Purpose / Notes</label>
-              <Textarea
-                rows={3}
-                placeholder="Describe why this purchase is needed..."
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-            </div>
-
-            <PurchaseRequisitionItems
-              items={items}
-              products={products}
-              loadingProducts={loadingProducts}
-              onChange={setItems}
-            />
-          </div>
-
-          <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 px-6 py-4">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" loading={saving}>Create Purchase Requisition</Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden p-0">
+    <form onSubmit={handleSubmit} className="flex h-full flex-col">
+      <div className="shrink-0 border-b border-slate-200 px-6 py-5"><h2 className="text-xl font-semibold">{editing ? "Edit Purchase Requisition" : "Create Purchase Requisition"}</h2><p className="mt-1 text-sm text-slate-500">{editing ? "Update all requisition details except the PR number." : "Create a purchasing request before approval and purchase order creation."}</p></div>
+      <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6">
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+          <label className="text-sm font-medium">Business Unit<select required className={selectClass} value={businessUnitId ?? ""} onChange={(e) => changeBusinessUnit(e.target.value ? Number(e.target.value) : undefined)}><option value="">Select business unit</option>{(businessUnits.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} - {item.name}</option>)}</select></label>
+          <label className="text-sm font-medium">Department<select required disabled={!businessUnitId || departments.isLoading} className={selectClass} value={departmentId ?? ""} onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : undefined)}><option value="">Select department</option>{activeDepartments.map((item) => <option key={item.id} value={item.id}>{item.code} - {item.name}</option>)}</select></label>
+          <label className="text-sm font-medium">Location<select required disabled={!businessUnitId || locations.isLoading} className={selectClass} value={locationId ?? ""} onChange={(e) => setLocationId(e.target.value ? Number(e.target.value) : undefined)}><option value="">Select location</option>{activeLocations.map((item) => <option key={item.id} value={item.id}>{item.code} - {item.name}</option>)}</select></label>
+          <label className="text-sm font-medium">Request Date<input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={selectClass}/></label>
+          <label className="text-sm font-medium">Valid Until<input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={selectClass}/></label>
+        </div>
+        <div><label className="mb-2 block text-sm font-medium">Purpose / Notes</label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}/></div>
+        <PurchaseRequisitionItems items={items} products={products} loadingProducts={loadingProducts} onChange={setItems}/>
+      </div>
+      <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 px-6 py-4"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" loading={saving}>{editing ? "Save Changes" : "Create Purchase Requisition"}</Button></div>
+    </form>
+  </DialogContent></Dialog>;
 }
