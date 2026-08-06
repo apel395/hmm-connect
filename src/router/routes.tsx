@@ -1,22 +1,11 @@
-import {
-  createBrowserRouter,
-  Navigate,
-} from "react-router-dom";
-
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import AppLayout from "@/layouts/AppLayout";
 import AuthGuard from "@/components/guard/AuthGuard";
-
-/* Authentication */
 import LoginPage from "@/modules/auth/pages/LoginPage";
 import SignupPage from "@/modules/auth/pages/SignupPage";
-
-/* Dashboard */
 import DashboardPage from "@/modules/dashboard/DashboardPage";
-
-/* Purchasing */
 import PurchaseRequisitionListPage from "@/modules/purchasing/requisition/pages/PurchaseRequisitionListPage";
 import PurchaseRequisitionDetailPage from "@/modules/purchasing/requisition/pages/PurchaseRequisitionDetailPage";
-
 import PurchaseOrderListPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderListPage";
 import PurchaseOrderDetailPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderDetailPage";
 import ReceivingPage from "@/modules/purchasing/goods-receipts/pages/ReceivingPage";
@@ -26,6 +15,7 @@ import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
 import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/SupplierInvoiceListPage";
 import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
+import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
 import JournalListPage from "@/modules/finance/journals/JournalListPage";
 import JournalDetailPage from "@/modules/finance/journals/JournalDetailPage";
 import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
@@ -47,39 +37,37 @@ import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPag
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
 import BankReconciliationListPage from "@/modules/finance/bank-reconciliation/BankReconciliationListPage";
 import BankReconciliationDetailPage from "@/modules/finance/bank-reconciliation/BankReconciliationDetailPage";
-import BudgetListPage from "@/modules/finance/budgets/BudgetListPage";import BudgetDetailPage from "@/modules/finance/budgets/BudgetDetailPage";import BudgetVsActualPage from "@/modules/finance/budgets/BudgetVsActualPage";
-import FixedAssetListPage from "@/modules/finance/fixed-assets/FixedAssetListPage";import FixedAssetFormPage from "@/modules/finance/fixed-assets/FixedAssetFormPage";import FixedAssetDetailPage from "@/modules/finance/fixed-assets/FixedAssetDetailPage";import AssetCategoryPage from "@/modules/finance/fixed-assets/AssetCategoryPage";import DepreciationRunsPage from "@/modules/finance/fixed-assets/DepreciationRunsPage";import FixedAssetReportPage from "@/modules/finance/fixed-assets/FixedAssetReportPage";import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationReportPage";
-import useAuthStore from "@/store/auth";
-import { canAccess } from "@/lib/access";
-
-/* Warehouse */
-
+import BudgetListPage from "@/modules/finance/budgets/BudgetListPage";
+import BudgetDetailPage from "@/modules/finance/budgets/BudgetDetailPage";
+import BudgetVsActualPage from "@/modules/finance/budgets/BudgetVsActualPage";
+import FixedAssetListPage from "@/modules/finance/fixed-assets/FixedAssetListPage";
+import FixedAssetFormPage from "@/modules/finance/fixed-assets/FixedAssetFormPage";
+import FixedAssetDetailPage from "@/modules/finance/fixed-assets/FixedAssetDetailPage";
+import AssetCategoryPage from "@/modules/finance/fixed-assets/AssetCategoryPage";
+import DepreciationRunsPage from "@/modules/finance/fixed-assets/DepreciationRunsPage";
+import FixedAssetReportPage from "@/modules/finance/fixed-assets/FixedAssetReportPage";
+import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationReportPage";
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
 import InventoryMovementPage from "@/modules/warehouse/inventory/pages/InventoryMovementPage";
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
-
-/* Master */
 import ProductPage from "@/modules/master/products/pages/ProductPage";
 import SupplierPage from "@/modules/master/suppliers/pages/SupplierPage";
 import WarehousePage from "@/modules/master/warehouses/WarehousePage";
 import ChartOfAccountPage from "@/modules/master/chart-of-accounts/pages/ChartOfAccountPage";
-
-/* Administration */
 import UserPage from "@/modules/admin/users/UserPage";
 import RolePage from "@/modules/admin/roles/RolePage";
 import SettingPage from "@/modules/admin/settings/SettingPage";
 import OrganizationDimensionsPage from "@/modules/admin/organization/OrganizationDimensionsPage";
-
-/* Others */
 import AuditLogPage from "@/modules/audit/AuditLogPage";
 import TraceabilityPage from "@/modules/audit/TraceabilityPage";
 import ProfilePage from "@/modules/profile/ProfilePage";
 import NotificationPage from "@/modules/notification/NotificationPage";
-
 import NotFoundPage from "@/pages/errors/NotFoundPage";
 import ForbiddenPage from "@/pages/errors/ForbiddenPage";
 import UnauthorizedPage from "@/pages/errors/UnauthorizedPage";
 import InternalServerErrorPage from "@/pages/errors/InternalServerErrorPage";
+import useAuthStore from "@/store/auth";
+import { canAccess } from "@/lib/access";
 
 function RoleLanding() {
   const roles = useAuthStore((state) => state.user?.roles ?? []);
@@ -87,61 +75,26 @@ function RoleLanding() {
 }
 
 const router = createBrowserRouter([
-  {
-    path: "/login",
-    element: <LoginPage />,
-  },
-  {
-    path: "/signup",
-    element: <SignupPage />,
-  },
-
+  { path: "/login", element: <LoginPage /> },
+  { path: "/signup", element: <SignupPage /> },
   {
     path: "/",
-    element: (
-      <AuthGuard>
-        <AppLayout />
-      </AuthGuard>
-    ),
-
+    element: <AuthGuard><AppLayout /></AuthGuard>,
     children: [
-      {
-        index: true,
-        element: <RoleLanding />,
-      },
-
-      {
-        path: "dashboard",
-        element: <DashboardPage />,
-      },
-
-      {
-        path: "purchase-requisitions",
-        element: <PurchaseRequisitionListPage />,
-      },
-      {
-        path: "purchase-requisitions/:id",
-        element: <PurchaseRequisitionDetailPage />,
-      },
-
-      {
-        path: "purchase-orders",
-        element: <PurchaseOrderListPage />,
-      },
-      {
-        path: "purchase-orders/:id",
-        element: <PurchaseOrderDetailPage />,
-      },
-      {
-        path: "purchasing-documents",
-        element: <PurchasingDocumentsPage />,
-      },
+      { index: true, element: <RoleLanding /> },
+      { path: "dashboard", element: <DashboardPage /> },
+      { path: "purchase-requisitions", element: <PurchaseRequisitionListPage /> },
+      { path: "purchase-requisitions/:id", element: <PurchaseRequisitionDetailPage /> },
+      { path: "purchase-orders", element: <PurchaseOrderListPage /> },
+      { path: "purchase-orders/:id", element: <PurchaseOrderDetailPage /> },
+      { path: "purchasing-documents", element: <PurchasingDocumentsPage /> },
       { path: "receiving", element: <ReceivingPage /> },
       { path: "receiving/:id", element: <ReceivingDetailPage /> },
       { path: "purchase-requisitions/:id/print", element: <PrintDocumentPage kind="purchase-requisitions" /> },
       { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
       { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },
       { path: "posting-rules", element: <PostingRulesPage /> },
+      { path: "accounts-payable", element: <AccountsPayablePage /> },
       { path: "supplier-invoices", element: <SupplierInvoiceListPage /> },
       { path: "supplier-invoices/:id", element: <SupplierInvoiceDetailPage /> },
       { path: "supplier-invoices/:id/print", element: <AccountingPrintPage kind="supplier-invoices" /> },
@@ -167,104 +120,38 @@ const router = createBrowserRouter([
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
       { path: "bank-reconciliations", element: <BankReconciliationListPage /> },
       { path: "bank-reconciliations/:id", element: <BankReconciliationDetailPage /> },
-      { path: "budgets", element: <BudgetListPage /> }, { path: "budgets/:id", element: <BudgetDetailPage /> }, { path: "budget-vs-actual", element: <BudgetVsActualPage /> },
-      { path: "fixed-assets", element: <FixedAssetListPage /> }, { path: "fixed-assets/new", element: <FixedAssetFormPage /> }, { path: "fixed-assets/:id", element: <FixedAssetDetailPage /> }, { path: "asset-categories", element: <AssetCategoryPage /> }, { path: "depreciation-runs", element: <DepreciationRunsPage /> }, { path: "reports/fixed-assets", element: <FixedAssetReportPage /> }, { path: "reports/depreciation", element: <DepreciationReportPage /> },
-
-      {
-        path: "inventory",
-        element: <InventoryPage />,
-      },
-      {
-        path: "inventory/movements",
-        element: <InventoryMovementPage />,
-      },
-
-      {
-        path: "put-away",
-        element: <PutAwayPage />,
-      },
-
-      {
-        path: "products",
-        element: <ProductPage />,
-      },
-
-      {
-        path: "suppliers",
-        element: <SupplierPage />,
-      },
-
-      {
-        path: "warehouses",
-        element: <WarehousePage />,
-      },
-
-      {
-        path: "chart-of-accounts",
-        element: <ChartOfAccountPage />,
-      },
-
-      {
-        path: "users",
-        element: <UserPage />,
-      },
-
-      {
-        path: "roles",
-        element: <RolePage />,
-      },
-
-      {
-        path: "settings",
-        element: <SettingPage />,
-      },
+      { path: "budgets", element: <BudgetListPage /> },
+      { path: "budgets/:id", element: <BudgetDetailPage /> },
+      { path: "budget-vs-actual", element: <BudgetVsActualPage /> },
+      { path: "fixed-assets", element: <FixedAssetListPage /> },
+      { path: "fixed-assets/new", element: <FixedAssetFormPage /> },
+      { path: "fixed-assets/:id", element: <FixedAssetDetailPage /> },
+      { path: "asset-categories", element: <AssetCategoryPage /> },
+      { path: "depreciation-runs", element: <DepreciationRunsPage /> },
+      { path: "reports/fixed-assets", element: <FixedAssetReportPage /> },
+      { path: "reports/depreciation", element: <DepreciationReportPage /> },
+      { path: "inventory", element: <InventoryPage /> },
+      { path: "inventory/movements", element: <InventoryMovementPage /> },
+      { path: "put-away", element: <PutAwayPage /> },
+      { path: "products", element: <ProductPage /> },
+      { path: "suppliers", element: <SupplierPage /> },
+      { path: "warehouses", element: <WarehousePage /> },
+      { path: "chart-of-accounts", element: <ChartOfAccountPage /> },
+      { path: "users", element: <UserPage /> },
+      { path: "roles", element: <RolePage /> },
+      { path: "settings", element: <SettingPage /> },
       { path: "organization-dimensions", element: <OrganizationDimensionsPage /> },
-
-      {
-        path: "audit",
-        element: <AuditLogPage />,
-      },
-      {
-        path: "traceability/:documentType/:id",
-        element: <TraceabilityPage />,
-      },
-
-      {
-        path: "notifications",
-        element: <NotificationPage />,
-      },
-
-      {
-        path: "profile",
-        element: <ProfilePage />,
-      },
-
-      {
-        path: "403",
-        element: <ForbiddenPage />,
-      },
-
-      {
-        path: "401",
-        element: <UnauthorizedPage />,
-      },
-
-      {
-        path: "500",
-        element: <InternalServerErrorPage />,
-      },
-
-      {
-        path: "*",
-        element: <NotFoundPage />,
-      },
+      { path: "audit", element: <AuditLogPage /> },
+      { path: "traceability/:documentType/:id", element: <TraceabilityPage /> },
+      { path: "notifications", element: <NotificationPage /> },
+      { path: "profile", element: <ProfilePage /> },
+      { path: "403", element: <ForbiddenPage /> },
+      { path: "401", element: <UnauthorizedPage /> },
+      { path: "500", element: <InternalServerErrorPage /> },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
-
-  {
-    path: "*",
-    element: <Navigate to="/" replace />,
-  },
+  { path: "*", element: <Navigate to="/" replace /> },
 ]);
 
 export default router;
