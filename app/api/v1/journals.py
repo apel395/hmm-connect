@@ -6,18 +6,20 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import has_any_role
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.supplier_invoice import SupplierInvoice
-from app.schemas.journal import JournalUpdate
+from app.schemas.journal import JournalCreate,JournalUpdate
 from app.services.audit import record_audit
 from app.services.document_context import print_metadata
+from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
 router=APIRouter(prefix="/journal-entries",tags=["Journal Entries"])
 ZERO=Decimal("0")
 def access(user):
-    if not {r.name for r in user.roles}.intersection({"FINANCE","ADMIN"}):raise HTTPException(403,"Finance access required")
+    if not has_any_role(user,"FINANCE"):raise HTTPException(403,"Finance access required")
 def get(db,id):
     x=db.get(JournalEntry,id)
     if not x:raise HTTPException(404,"Journal entry not found")
@@ -46,6 +48,14 @@ def listing(page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),search:st
     if reference_type:q=q.filter(JournalEntry.reference_type==reference_type)
     if account_id:q=q.join(JournalEntry.lines).filter(JournalLine.account_id==account_id)
     total=q.count();rows=q.order_by(JournalEntry.posting_date.desc(),JournalEntry.id.desc()).offset((page-1)*page_size).limit(page_size).all();return {"items":[serialize(x) for x in rows],"page":page,"page_size":page_size,"total_items":total,"total_pages":ceil(total/page_size) if total else 0,"has_next":page*page_size<total,"has_previous":page>1}
+@router.post("",status_code=201)
+def create(data:JournalCreate,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user)
+    debit,credit=validate(db,data.lines)
+    if debit!=credit:raise HTTPException(422,"Journal debit and credit must be balanced")
+    x=JournalEntry(journal_number=next_document_number(db,"JV"),posting_date=data.posting_date,document_type=data.document_type,document_number=data.document_number,reference_type=data.reference_type,reference_id=data.reference_id,description=data.description,status="DRAFT",created_by_id=user.id,business_unit_id=data.business_unit_id,location_id=data.location_id,department_id=data.department_id)
+    for i,line in enumerate(data.lines,1):x.lines.append(JournalLine(line_number=i,**line.model_dump()))
+    db.add(x);db.flush();record_audit(db,user,"JOURNAL_CREATED","JOURNAL_ENTRY",f"Created {x.journal_number}",entity_id=x.id,reference_document=x.document_number);db.commit();db.refresh(x);return serialize(x)
 @router.get("/{journal_id}")
 def detail(journal_id:int,db:Session=Depends(get_db),_=Depends(get_current_user)):return serialize(get(db,journal_id))
 @router.patch("/{journal_id}")
@@ -65,7 +75,7 @@ def post(journal_id:int,db:Session=Depends(get_db),user=Depends(get_current_user
     if x.status!="DRAFT":raise HTTPException(409,"Only draft journals can be posted")
     debit,credit=validate(db,x.lines)
     if debit!=credit:raise HTTPException(409,"Journal is not balanced")
-    for l in x.lines:GeneralLedgerService.post(db=db,account_id=l.account_id,debit=l.debit,credit=l.credit,posting_date=x.posting_date,journal_source="SUPPLIER_INVOICE",document_type=x.document_type,document_number=x.document_number,reference_type=x.reference_type,reference_id=x.reference_id,reference_number=x.journal_number,description=l.description,user_id=user.id)
+    for l in x.lines:GeneralLedgerService.post(db=db,account_id=l.account_id,debit=l.debit,credit=l.credit,posting_date=x.posting_date,journal_source=x.reference_type,document_type=x.document_type,document_number=x.document_number,reference_type=x.reference_type,reference_id=x.reference_id,reference_number=x.journal_number,description=l.description,user_id=user.id)
     x.status="POSTED";x.posted_by_id=user.id;x.posted_at=datetime.now(timezone.utc)
     if x.reference_type=="SUPPLIER_INVOICE":
         invoice=db.get(SupplierInvoice,x.reference_id)
