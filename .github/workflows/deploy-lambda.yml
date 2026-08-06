@@ -79,14 +79,12 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
       - name: Upload ZIP to Lambda
         run: |
+          set -euo pipefail
           aws lambda update-function-code --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" --zip-file fileb://hmm-connect-lambda.zip
-          aws lambda wait function-updated-v2 --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}"
-      - name: Enforce Lambda runtime configuration
-        run: |
-          aws lambda update-function-configuration --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" --handler lambda_handler.handler
           aws lambda wait function-updated-v2 --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}"
       - name: Verify deployed function
         run: |
+          set -euo pipefail
           CONFIG=$(aws lambda get-function-configuration --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Architectures:Architectures,CodeSize:CodeSize,LastModified:LastModified,State:State,LastUpdateStatus:LastUpdateStatus}' --output json)
           echo "$CONFIG"
           test "$(echo "$CONFIG" | jq -r '.Handler')" = "lambda_handler.handler"
@@ -97,9 +95,16 @@ jobs:
         env:
           FUNCTION_URL: ${{ vars.AWS_LAMBDA_FUNCTION_URL }}
         run: |
+          set -euo pipefail
           BASE_URL="${FUNCTION_URL%/}"
           for attempt in 1 2 3 4 5; do
-            if curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "${BASE_URL}/health"; then exit 0; fi
+            if curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "${BASE_URL}/health"; then
+              echo
+              echo "Lambda health check passed."
+              exit 0
+            fi
+            echo "Health check attempt ${attempt} failed; retrying in 10 seconds."
             sleep 10
           done
+          echo "Lambda health check failed after 5 attempts."
           exit 1
