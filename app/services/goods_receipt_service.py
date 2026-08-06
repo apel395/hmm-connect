@@ -41,6 +41,8 @@ class GoodsReceiptService:
                 raise HTTPException(status_code=404, detail="Warehouse not found")
         if not data.items:
             raise HTTPException(status_code=400, detail="Receipt must contain items")
+        from app.services.organization_dimensions import validate_dimensions
+        validate_dimensions(db,data.business_unit_id or purchase_order.business_unit_id,data.location_id or purchase_order.location_id,data.department_id or purchase_order.department_id,True)
 
         receipt = GoodsReceipt(
             receipt_number=cls._number(db), status="DRAFT",
@@ -50,6 +52,9 @@ class GoodsReceiptService:
             receipt_type=data.receipt_type, destination_type=data.destination_type,
             warehouse_id=data.warehouse_id if data.destination_type == "WAREHOUSE" else None,
             notes=data.notes,
+            business_unit_id=data.business_unit_id or purchase_order.business_unit_id,
+            location_id=data.location_id or purchase_order.location_id,
+            department_id=data.department_id or purchase_order.department_id,
         )
         seen = set()
         for incoming in data.items:

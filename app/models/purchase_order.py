@@ -31,6 +31,7 @@ class PurchaseOrder(Base, TimestampMixin):
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
+    business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True, index=True)
 
     purchase_requisition_id: Mapped[int | None] = mapped_column(
         ForeignKey("purchase_requisitions.id", ondelete="SET NULL"),

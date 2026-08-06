@@ -6,6 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 AccountType = Literal["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"]
 NormalBalance = Literal["DEBIT", "CREDIT"]
+AccountSubtype = Literal["CASH", "BANK", "PETTY_CASH", "OTHER"]
+CashFlowCategory = Literal["OPERATING", "INVESTING", "FINANCING", "NON_CASH", "UNCLASSIFIED"]
+FinancialStatementGroup = Literal[
+    "CURRENT_ASSET", "NON_CURRENT_ASSET", "CURRENT_LIABILITY",
+    "NON_CURRENT_LIABILITY", "EQUITY", "OPERATING_REVENUE",
+    "OTHER_REVENUE", "COST_OF_REVENUE", "OPERATING_EXPENSE", "OTHER_EXPENSE",
+]
 
 
 class ChartOfAccountBase(BaseModel):
@@ -17,7 +24,9 @@ class ChartOfAccountBase(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     is_posting: bool = True
     is_active: bool = True
-    cash_flow_category: str | None = Field(default=None, max_length=30)
+    account_subtype: AccountSubtype = "OTHER"
+    cash_flow_category: CashFlowCategory | None = None
+    financial_statement_group: FinancialStatementGroup | None = None
 
     @field_validator("account_code", "account_name")
     @classmethod
@@ -44,7 +53,9 @@ class ChartOfAccountUpdate(BaseModel):
     parent_account_id: int | None = None
     normal_balance: NormalBalance | None = None
     description: str | None = Field(default=None, max_length=500)
-    cash_flow_category: str | None = Field(default=None, max_length=30)
+    account_subtype: AccountSubtype | None = None
+    cash_flow_category: CashFlowCategory | None = None
+    financial_statement_group: FinancialStatementGroup | None = None
     is_posting: bool | None = None
     is_active: bool | None = None
 
@@ -81,6 +92,9 @@ class ChartOfAccountLookup(BaseModel):
     normal_balance: NormalBalance
     is_posting: bool
     is_active: bool
+    account_subtype: AccountSubtype
+    cash_flow_category: CashFlowCategory | None = None
+    financial_statement_group: FinancialStatementGroup | None = None
 
 
 class ChartOfAccountPage(BaseModel):

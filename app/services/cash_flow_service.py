@@ -18,7 +18,7 @@ class CashFlowService:
         q=self.db.query(ChartOfAccount).filter(ChartOfAccount.account_subtype.in_(subtypes or CASH_TYPES))
         if active_only:q=q.filter(ChartOfAccount.is_active.is_(True),ChartOfAccount.is_posting.is_(True),ChartOfAccount.account_type=="ASSET")
         return q.order_by(ChartOfAccount.account_number).all()
-    def journals(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None):
+    def journals(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
         q=self.db.query(JournalEntry).options(joinedload(JournalEntry.lines).joinedload(JournalLine.account),joinedload(JournalEntry.lines).joinedload(JournalLine.supplier)).filter(JournalEntry.status=="POSTED")
         if date_from:q=q.filter(JournalEntry.posting_date>=date_from)
         if date_to:q=q.filter(JournalEntry.posting_date<=date_to)
@@ -26,6 +26,7 @@ class CashFlowService:
         if subtypes:q=q.filter(JournalEntry.lines.any(JournalLine.account.has(ChartOfAccount.account_subtype.in_(subtypes))))
         if location_id:q=q.filter(JournalEntry.lines.any(JournalLine.location_id==location_id))
         if department_id:q=q.filter(JournalEntry.lines.any(JournalLine.department_id==department_id))
+        if business_unit_id:q=q.filter(JournalEntry.lines.any(JournalLine.business_unit_id==business_unit_id))
         return q.order_by(JournalEntry.posting_date,JournalEntry.posted_at,JournalEntry.id).all()
     @staticmethod
     def cash_lines(journal):
@@ -42,9 +43,9 @@ class CashFlowService:
             category=line.cash_flow_category or line.account.cash_flow_category
             if category in CATEGORIES:values.add(category)
         return next(iter(values)) if len(values)==1 else "UNCLASSIFIED"
-    def movements(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None):
+    def movements(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
         result=[]
-        for journal in self.journals(date_from,date_to,account_id,subtypes,location_id,department_id):
+        for journal in self.journals(date_from,date_to,account_id,subtypes,location_id,department_id,business_unit_id):
             transfer=self.is_transfer(journal)
             for line in self.cash_lines(journal):
                 if account_id and line.account_id!=account_id:continue
@@ -55,11 +56,11 @@ class CashFlowService:
                 supplier=next((x.supplier for x in journal.lines if x.supplier),None)
                 result.append({"journal":journal,"line":line,"account":line.account,"date":journal.posting_date,"direction":direction,"category":self.category(journal,line),"debit":debit,"credit":credit,"inflow":delta if delta>0 else ZERO,"outflow":-delta if delta<0 else ZERO,"delta":delta,"counterparty":supplier.name if supplier else None})
         return result
-    def opening(self,date_from,account_id=None,subtypes=None,location_id=None,department_id=None):
+    def opening(self,date_from,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
         if not date_from:return ZERO
-        return sum((m["delta"] for m in self.movements(date_to=date_from,account_id=account_id,subtypes=subtypes,location_id=location_id,department_id=department_id) if m["date"]<date_from),ZERO)
-    def summary(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None):
-        opening=self.opening(date_from,account_id,subtypes,location_id,department_id);items=self.movements(date_from,date_to,account_id,subtypes,location_id,department_id);totals={category:{"inflow":ZERO,"outflow":ZERO} for category in CATEGORIES};inflow=outflow=transfers=ZERO
+        return sum((m["delta"] for m in self.movements(date_to=date_from,account_id=account_id,subtypes=subtypes,location_id=location_id,department_id=department_id,business_unit_id=business_unit_id) if m["date"]<date_from),ZERO)
+    def summary(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
+        opening=self.opening(date_from,account_id,subtypes,location_id,department_id,business_unit_id);items=self.movements(date_from,date_to,account_id,subtypes,location_id,department_id,business_unit_id);totals={category:{"inflow":ZERO,"outflow":ZERO} for category in CATEGORIES};inflow=outflow=transfers=ZERO
         seen_transfers=set()
         for m in items:
             if m["direction"]=="TRANSFER":
@@ -73,10 +74,10 @@ class CashFlowService:
         for key,label in (("OPERATING","operating"),("INVESTING","investing"),("FINANCING","financing"),("UNCLASSIFIED","unclassified")):
             data[f"{label}_inflow"]=totals[key]["inflow"];data[f"{label}_outflow"]=totals[key]["outflow"];data[f"{label}_net"]=totals[key]["inflow"]-totals[key]["outflow"]
         data["unclassified_count"]=sum(m["category"]=="UNCLASSIFIED" and m["direction"]!="TRANSFER" for m in items);return data
-    def accounts_summary(self,date_from=None,date_to=None,location_id=None):
+    def accounts_summary(self,date_from=None,date_to=None,location_id=None,business_unit_id=None):
         result=[]
         for account in self.cash_accounts():
-            opening=self.opening(date_from,account.id,location_id=location_id);items=self.movements(date_from,date_to,account.id,location_id=location_id);inflow=sum((m["inflow"] for m in items),ZERO);outflow=sum((m["outflow"] for m in items),ZERO)
+            opening=self.opening(date_from,account.id,location_id=location_id,business_unit_id=business_unit_id);items=self.movements(date_from,date_to,account.id,location_id=location_id,business_unit_id=business_unit_id);inflow=sum((m["inflow"] for m in items),ZERO);outflow=sum((m["outflow"] for m in items),ZERO)
             result.append({"account_id":account.id,"account_code":account.account_number,"account_name":account.account_name,"account_subtype":account.account_subtype,"opening_balance":opening,"total_inflow":inflow,"total_outflow":outflow,"closing_balance":opening+inflow-outflow,"last_transaction_date":max((m["date"] for m in items),default=None)})
         return result
     def activity(self,account_id,page=1,page_size=20,date_from=None,date_to=None,search=None,direction=None,reference_type=None,category=None):

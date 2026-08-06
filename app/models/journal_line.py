@@ -43,6 +43,7 @@ class JournalLine(Base):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
+    business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True, index=True)
     cash_flow_category: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     cash_flow_direction: Mapped[str | None] = mapped_column(String(20), nullable=True)
 

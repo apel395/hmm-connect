@@ -15,6 +15,7 @@ class PurchaseOrderItemCreate(BaseModel):
 
 
 class PurchaseOrderCreate(BaseModel):
+    business_unit_id: int | None = None
     supplier_id: int
     department_id: int | None = None
     location_id: int | None = None

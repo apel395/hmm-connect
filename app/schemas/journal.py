@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class JournalLineCreate(BaseModel):
+    business_unit_id: int | None = None
     account_id: int
     debit: Decimal = Field(default=Decimal("0"))
     credit: Decimal = Field(default=Decimal("0"))
@@ -15,6 +16,9 @@ class JournalLineCreate(BaseModel):
 
 
 class JournalCreate(BaseModel):
+    business_unit_id: int | None = None
+    location_id: int | None = None
+    department_id: int | None = None
     posting_date: date
     document_type: str
     document_number: str

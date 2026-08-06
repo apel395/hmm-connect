@@ -45,9 +45,9 @@ def account_tree(is_active: bool | None = None, db: Session = Depends(get_db), _
 
 @router.get("/lookup", response_model=list[ChartOfAccountLookup])
 def account_lookup(search: str | None = None, is_active: bool | None = None,
-                   account_type: AccountType | None = None, is_posting: bool | None = None,
+                   account_type: AccountType | None = None, account_subtype: list[str] | None = Query(None), is_posting: bool | None = None,
                    db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return ChartOfAccountService(db).lookup(search, is_active, account_type, is_posting)
+    return ChartOfAccountService(db).lookup(search, is_active, account_type, is_posting, account_subtype)
 
 
 @router.get("/{account_id}", response_model=ChartOfAccountRead)
@@ -77,6 +77,12 @@ def update_account(account_id: int, data: ChartOfAccountUpdate,
     action = "COA_ARCHIVED" if before["is_active"] and not updated.is_active else "COA_UPDATED"
     record_audit(db, user, action, "CHART_OF_ACCOUNT", f"Updated COA {updated.account_number}",
                  entity_id=updated.id, before_data=before, after_data=jsonable_encoder(service.serialize(updated)))
+    if before.get("account_subtype")!=updated.account_subtype:
+        record_audit(db,user,"CASH_ACCOUNT_CLASSIFICATION_UPDATED","CHART_OF_ACCOUNT",f"Classified COA {updated.account_number} as {updated.account_subtype}",entity_id=updated.id)
+    if before.get("cash_flow_category")!=updated.cash_flow_category:
+        record_audit(db,user,"CASH_FLOW_CATEGORY_UPDATED","CHART_OF_ACCOUNT",f"Updated cash-flow category for {updated.account_number}",entity_id=updated.id)
+    if before.get("financial_statement_group")!=updated.financial_statement_group:
+        record_audit(db,user,"FINANCIAL_STATEMENT_GROUP_UPDATED","CHART_OF_ACCOUNT",f"Updated financial-statement group for {updated.account_number}",entity_id=updated.id)
     db.commit(); db.refresh(updated)
     return service.serialize(updated)
 

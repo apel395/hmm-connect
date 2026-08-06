@@ -17,6 +17,7 @@ class SupplierInvoice(Base, TimestampMixin):
     goods_receipt_id: Mapped[int | None] = mapped_column(ForeignKey("goods_receipts.id", ondelete="SET NULL"), index=True)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"))
+    business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id", ondelete="SET NULL"), index=True)
     currency: Mapped[str] = mapped_column(String(3), default="IDR", nullable=False)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)

@@ -50,11 +50,12 @@ class FinancialStatementService:
     def _period_amount(row: dict) -> Decimal:
         return row["period_credit"] - row["period_debit"] if row["account_type"] == "REVENUE" else row["period_debit"] - row["period_credit"]
 
-    def _filters(self, account_id, parent_account_id, include_inactive, location_id, department_id):
+    def _filters(self, account_id, parent_account_id, include_inactive, location_id, department_id, business_unit_id=None):
         return {
             "account_id": account_id, "parent_account_id": parent_account_id,
             "include_inactive": include_inactive, "location_id": location_id,
             "department_id": department_id,
+            "business_unit_id": business_unit_id,
         }
 
     def earnings(self, as_of_date: date, **filters) -> Decimal:
@@ -65,10 +66,10 @@ class FinancialStatementService:
 
     def balance_sheet(
         self, *, as_of_date: date, comparative_date: date | None = None,
-        account_id=None, parent_account_id=None, location_id=None, department_id=None,
+        account_id=None, parent_account_id=None, location_id=None, department_id=None, business_unit_id=None,
         include_zero_balance=False, include_inactive=False, detail_level="DETAIL",
     ) -> dict:
-        filters = self._filters(account_id, parent_account_id, include_inactive, location_id, department_id)
+        filters = self._filters(account_id, parent_account_id, include_inactive, location_id, department_id, business_unit_id)
         current_rows = self._trial(date(as_of_date.year, 1, 1), as_of_date, **filters)
         comparative_rows = self._trial(date(comparative_date.year, 1, 1), comparative_date, **filters) if comparative_date else []
         comparisons = {row["account_id"]: row for row in comparative_rows}
@@ -137,7 +138,7 @@ class FinancialStatementService:
     def profit_and_loss(
         self, *, date_from: date, date_to: date, comparative_date_from: date | None = None,
         comparative_date_to: date | None = None, account_id=None, parent_account_id=None,
-        location_id=None, department_id=None, include_zero_balance=False,
+        location_id=None, department_id=None, business_unit_id=None, include_zero_balance=False,
         include_inactive=False, detail_level="DETAIL",
     ) -> dict:
         if date_from > date_to:
@@ -146,7 +147,7 @@ class FinancialStatementService:
             raise ValueError("both comparative dates are required")
         if comparative_date_from and comparative_date_from > comparative_date_to:
             raise ValueError("comparative_date_from must be on or before comparative_date_to")
-        filters = self._filters(account_id, parent_account_id, include_inactive, location_id, department_id)
+        filters = self._filters(account_id, parent_account_id, include_inactive, location_id, department_id, business_unit_id)
         rows = self._trial(date_from, date_to, **filters)
         comp_rows = self._trial(comparative_date_from, comparative_date_to, **filters) if comparative_date_from else []
         comparisons = {row["account_id"]: row for row in comp_rows}

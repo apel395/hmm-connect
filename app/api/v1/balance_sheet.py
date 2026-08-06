@@ -1,100 +1,29 @@
 from datetime import date
-
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
+from decimal import Decimal
+from fastapi import APIRouter,Depends,HTTPException,Query
 from sqlalchemy.orm import Session
-
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.services.financial_statement_service import FinancialStatementService
+from app.services.financial_report_export import export_statement
 
-from app.models.chart_of_account import ChartOfAccount
-from app.models.journal_entry import JournalEntry
-from app.models.journal_line import JournalLine
-
-router = APIRouter(
-    prefix="/balance-sheet",
-    tags=["Financial Reports"],
-)
-
-
+router=APIRouter(prefix="/balance-sheet",tags=["Financial Reports"])
+def access(user):
+    if not {role.name for role in user.roles}.intersection({"FINANCE","ADMIN"}):raise HTTPException(403,"Finance report access required")
+def serialize(value):
+    if isinstance(value,Decimal):return f"{value:.2f}"
+    if isinstance(value,date):return value.isoformat()
+    if isinstance(value,dict):return {key:serialize(item) for key,item in value.items()}
+    if isinstance(value,list):return [serialize(item) for item in value]
+    return value
+def build(db,as_of_date,comparative_date,account_id,parent_account_id,location_id,department_id,include_zero_balance,include_inactive,detail_level,business_unit_id=None):
+    return FinancialStatementService(db).balance_sheet(as_of_date=as_of_date,comparative_date=comparative_date,account_id=account_id,parent_account_id=parent_account_id,location_id=location_id,department_id=department_id,business_unit_id=business_unit_id,include_zero_balance=include_zero_balance,include_inactive=include_inactive,detail_level=detail_level)
 @router.get("")
-def get_balance_sheet(
-    posting_date: date | None = Query(None),
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-
-    query = (
-        db.query(
-            ChartOfAccount.account_number,
-            ChartOfAccount.account_name,
-            ChartOfAccount.account_type,
-            func.coalesce(func.sum(JournalLine.debit), 0).label("debit"),
-            func.coalesce(func.sum(JournalLine.credit), 0).label("credit"),
-        )
-        .join(
-            JournalLine,
-            JournalLine.account_id == ChartOfAccount.id,
-        )
-        .join(
-            JournalEntry,
-            JournalEntry.id == JournalLine.journal_entry_id,
-        )
-    )
-
-    if posting_date:
-        query = query.filter(
-            JournalEntry.posting_date <= posting_date
-        )
-
-    rows = (
-        query.group_by(
-            ChartOfAccount.account_number,
-            ChartOfAccount.account_name,
-            ChartOfAccount.account_type,
-        )
-        .order_by(
-            ChartOfAccount.account_number,
-        )
-        .all()
-    )
-
-    assets = []
-    liabilities = []
-    equity = []
-
-    total_assets = 0
-    total_liabilities = 0
-    total_equity = 0
-
-    for row in rows:
-
-        balance = row.debit - row.credit
-
-        data = {
-            "account_number": row.account_number,
-            "account_name": row.account_name,
-            "balance": balance,
-        }
-
-        if row.account_type == "ASSET":
-            assets.append(data)
-            total_assets += balance
-
-        elif row.account_type == "LIABILITY":
-            liabilities.append(data)
-            total_liabilities += -balance
-
-        elif row.account_type == "EQUITY":
-            equity.append(data)
-            total_equity += -balance
-
-    return {
-        "assets": assets,
-        "liabilities": liabilities,
-        "equity": equity,
-        "total_assets": total_assets,
-        "total_liabilities": total_liabilities,
-        "total_equity": total_equity,
-        "balanced": total_assets == (total_liabilities + total_equity),
-    }
+def get_balance_sheet(as_of_date:date,comparative_date:date|None=None,account_id:int|None=None,parent_account_id:int|None=None,location_id:int|None=None,department_id:int|None=None,business_unit_id:int|None=None,include_zero_balance:bool=False,include_inactive:bool=False,detail_level:str=Query("DETAIL",pattern="^(SUMMARY|DETAIL)$"),db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);return serialize(build(db,as_of_date,comparative_date,account_id,parent_account_id,location_id,department_id,include_zero_balance,include_inactive,detail_level,business_unit_id))
+@router.get("/export")
+def export_balance_sheet(as_of_date:date,format:str=Query("xlsx",pattern="^(xlsx|csv)$"),comparative_date:date|None=None,account_id:int|None=None,parent_account_id:int|None=None,location_id:int|None=None,department_id:int|None=None,include_zero_balance:bool=False,include_inactive:bool=False,detail_level:str=Query("DETAIL",pattern="^(SUMMARY|DETAIL)$"),db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);report=build(db,as_of_date,comparative_date,account_id,parent_account_id,location_id,department_id,include_zero_balance,include_inactive,"DETAIL");s=report["summary"]
+    filters=f"Account={account_id or 'All'}; Parent={parent_account_id or 'All'}; Location={location_id or 'All'}; Department={department_id or 'All'}; Include inactive={include_inactive}"
+    summary=[("Total Assets",s["total_assets"]),("Total Liabilities",s["total_liabilities"]),("Total Equity",s["total_equity"]),("Liabilities + Equity",s["total_liabilities_and_equity"]),("Difference",s["difference"])]
+    return export_statement(report,"Balance Sheet",f"As of {as_of_date}"+(f" compared with {comparative_date}" if comparative_date else ""),filters,format,f"balance-sheet-{as_of_date}",summary)

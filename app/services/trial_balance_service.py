@@ -37,6 +37,7 @@ class TrialBalanceService:
         before: date | None = None,
         location_id: int | None = None,
         department_id: int | None = None,
+        business_unit_id: int | None = None,
     ) -> dict[int, tuple[Decimal, Decimal]]:
         query = (
             self.db.query(
@@ -57,6 +58,8 @@ class TrialBalanceService:
             query = query.filter(JournalLine.location_id == location_id)
         if department_id:
             query = query.filter(JournalLine.department_id == department_id)
+        if business_unit_id:
+            query = query.filter(JournalLine.business_unit_id == business_unit_id)
         return {
             account_id: (Decimal(debit), Decimal(credit))
             for account_id, debit, credit in query.group_by(JournalLine.account_id).all()
@@ -77,6 +80,7 @@ class TrialBalanceService:
         include_inactive: bool = False,
         location_id: int | None = None,
         department_id: int | None = None,
+        business_unit_id: int | None = None,
         sort_by: str = "account_code",
         sort_order: str = "asc",
         paginate: bool = True,
@@ -99,12 +103,13 @@ class TrialBalanceService:
         if parent_account_id:
             accounts_query = accounts_query.filter(ChartOfAccount.parent_account_id == parent_account_id)
 
-        opening = self._activity(before=date_from, location_id=location_id, department_id=department_id)
+        opening = self._activity(before=date_from, location_id=location_id, department_id=department_id, business_unit_id=business_unit_id)
         period = self._activity(
             date_from=date_from,
             date_to=date_to,
             location_id=location_id,
             department_id=department_id,
+            business_unit_id=business_unit_id,
         )
         rows = []
         for account in accounts_query.all():

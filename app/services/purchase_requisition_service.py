@@ -95,7 +95,12 @@ class PurchaseRequisitionService:
             notes=data.notes,
             expiry_date=data.expiry_date,
             total_amount=Decimal("0"),
+            business_unit_id=data.business_unit_id or current_user.default_business_unit_id,
+            location_id=data.location_id or current_user.default_location_id or current_user.location_id,
+            department_id=data.department_id or current_user.default_department_id or current_user.department_id,
         )
+        from app.services.organization_dimensions import validate_dimensions
+        validate_dimensions(db,purchase_requisition.business_unit_id,purchase_requisition.location_id,purchase_requisition.department_id,True)
 
         total_amount = Decimal("0")
 

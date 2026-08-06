@@ -47,6 +47,9 @@ def user_detail(user: User) -> dict:
         "is_active": user.is_active,
         "department_id": user.department_id,
         "location_id": user.location_id,
+        "default_business_unit_id": user.default_business_unit_id,
+        "default_location_id": user.default_location_id,
+        "default_department_id": user.default_department_id,
         "department": user.department,
         "location": user.location,
         "role_ids": [role.id for role in user.roles],
@@ -190,6 +193,16 @@ def update_user(
         location = db.get(Location, changes["location_id"])
         if not location:
             raise HTTPException(status_code=422, detail="Location does not exist")
+    business_unit_id=changes.get("default_business_unit_id",user.default_business_unit_id)
+    default_location_id=changes.get("default_location_id",user.default_location_id)
+    default_department_id=changes.get("default_department_id",user.default_department_id)
+    if business_unit_id:
+        from app.models.business_unit import BusinessUnit
+        if not db.get(BusinessUnit,business_unit_id):raise HTTPException(422,detail="Business Unit does not exist")
+        if default_location_id and db.get(Location,default_location_id).business_unit_id!=business_unit_id:raise HTTPException(422,detail="Default Location does not belong to Business Unit")
+        if default_department_id:
+            selected_department=db.get(Department,default_department_id)
+            if selected_department and selected_department.business_unit_id not in (None,business_unit_id):raise HTTPException(422,detail="Default Department does not belong to Business Unit")
 
     before_data = {
         field: getattr(user, field)

@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel,Field,model_validator
 class PaymentAllocationInput(BaseModel):supplier_invoice_id:int;allocated_amount:Decimal=Field(gt=0)
 class PaymentCreate(BaseModel):
+    business_unit_id:int|None=None;location_id:int|None=None;department_id:int|None=None
     supplier_id:int;payment_date:date;payment_method:Literal["BANK_TRANSFER","CASH","CHEQUE","CREDIT_CARD","PETTY_CASH","OTHER"]
     payment_account_id:int;currency:str=Field(default="IDR",min_length=3,max_length=3);total_amount:Decimal=Field(gt=0);reference_number:str|None=None;cheque_number:str|None=None;notes:str|None=None;source_type:Literal["LIVE","HISTORICAL_IMPORT"]="LIVE";allocations:list[PaymentAllocationInput]
     @model_validator(mode="after")

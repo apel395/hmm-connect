@@ -26,7 +26,7 @@ def get(db,id):
     return x
 def validate_account(db,id):
     a=db.get(ChartOfAccount,id)
-    if not a or not a.is_active or not a.is_posting or a.account_type!="ASSET":raise HTTPException(400,"Payment account must be an active posting ASSET account")
+    if not a or not a.is_active or not a.is_posting or a.account_type!="ASSET" or a.account_subtype not in {"CASH","BANK","PETTY_CASH"}:raise HTTPException(400,"Payment account must be an active posting cash, bank, or petty-cash account")
     return a
 def validate_data(db,data,exclude=None):
     validate_account(db,data.payment_account_id);total=ZERO
@@ -104,7 +104,8 @@ def generate(payment_id:int,db:Session=Depends(get_db),user=Depends(get_current_
     bank=validate_account(db,x.payment_account_id)
     if rule.debit_account_id==bank.id:raise HTTPException(409,"Payable and payment accounts must differ")
     journal=JournalEntry(journal_number=next_document_number(db,"JV"),posting_date=x.payment_date,status="DRAFT",document_type="SUPPLIER_PAYMENT",document_number=x.payment_number,reference_type="SUPPLIER_PAYMENT",reference_id=x.id,description=f"Supplier payment {x.payment_number}",created_by_id=user.id,posted_at=None)
-    journal.lines=[JournalLine(line_number=1,account_id=rule.debit_account_id,debit=x.amount,credit=0,description="Accounts Payable",supplier_id=x.supplier_id),JournalLine(line_number=2,account_id=bank.id,debit=0,credit=x.amount,description="Cash / Bank",supplier_id=x.supplier_id)]
+    category=rule.debit_account.cash_flow_category if rule.debit_account.cash_flow_category in {"OPERATING","INVESTING","FINANCING"} else "OPERATING"
+    journal.lines=[JournalLine(line_number=1,account_id=rule.debit_account_id,debit=x.amount,credit=0,description="Accounts Payable",supplier_id=x.supplier_id,cash_flow_category=category,cash_flow_direction="OUTFLOW"),JournalLine(line_number=2,account_id=bank.id,debit=0,credit=x.amount,description="Cash / Bank",supplier_id=x.supplier_id,cash_flow_category=category,cash_flow_direction="OUTFLOW")]
     db.add(journal);db.flush();x.journal_entry_id=journal.id;record_audit(db,user,"PAYMENT_JOURNAL_GENERATED","PAYMENT",f"Generated {journal.journal_number} for {x.payment_number}",entity_id=x.id);db.commit();db.refresh(x);return result(db,x,user)
 @router.post("/{payment_id}/post")
 def post(payment_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):

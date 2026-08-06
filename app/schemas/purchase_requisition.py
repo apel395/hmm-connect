@@ -12,6 +12,9 @@ class PurchaseRequisitionItemCreate(BaseModel):
 
 
 class PurchaseRequisitionCreate(BaseModel):
+    business_unit_id: int | None = None
+    location_id: int | None = None
+    department_id: int | None = None
     request_date: date | None = None
     source_type: Literal["LIVE", "HISTORICAL_IMPORT"] = "LIVE"
     external_reference: str | None = Field(default=None, max_length=100)

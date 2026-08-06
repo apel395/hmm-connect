@@ -54,6 +54,7 @@ def finance_dashboard(
     date_to: date | None = None,
     location_id: int | None = None,
     department_id: int | None = None,
+    business_unit_id: int | None = None,
     cash_account_id: int | None = None,
     currency: str | None = None,
     db: Session = Depends(get_db),
@@ -70,6 +71,7 @@ def finance_dashboard(
             date_to=end,
             location_id=location_id,
             department_id=department_id,
+            business_unit_id=business_unit_id,
             cash_account_id=cash_account_id,
             currency=currency,
         )

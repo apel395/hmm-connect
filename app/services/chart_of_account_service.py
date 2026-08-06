@@ -26,6 +26,8 @@ class ChartOfAccountService:
             "normal_balance": account.normal_balance,
             "description": account.description,
             "cash_flow_category": account.cash_flow_category,
+            "account_subtype": account.account_subtype,
+            "financial_statement_group": account.financial_statement_group,
             "is_posting": account.is_posting,
             "is_system": account.is_system,
             "is_active": account.is_active,
@@ -99,7 +101,7 @@ class ChartOfAccountService:
         return roots
 
     def lookup(self, search: str | None, is_active: bool | None, account_type: str | None,
-               is_posting: bool | None) -> list[dict]:
+               is_posting: bool | None, account_subtypes: list[str] | None = None) -> list[dict]:
         query = self.db.query(ChartOfAccount)
         if is_active is not None:
             query = query.filter(ChartOfAccount.is_active.is_(is_active))
@@ -107,12 +109,16 @@ class ChartOfAccountService:
             query = query.filter(ChartOfAccount.account_type == account_type)
         if is_posting is not None:
             query = query.filter(ChartOfAccount.is_posting.is_(is_posting))
+        if account_subtypes:
+            query = query.filter(ChartOfAccount.account_subtype.in_(account_subtypes))
         if search:
             term = f"%{search.strip()}%"
             query = query.filter(or_(ChartOfAccount.account_number.ilike(term), ChartOfAccount.account_name.ilike(term)))
         return [{"id": row.id, "account_code": row.account_number, "account_name": row.account_name,
                  "account_type": row.account_type, "normal_balance": row.normal_balance,
-                 "is_posting": row.is_posting, "is_active": row.is_active}
+                 "is_posting": row.is_posting, "is_active": row.is_active,
+                 "account_subtype": row.account_subtype, "cash_flow_category": row.cash_flow_category}
+                | {"financial_statement_group": row.financial_statement_group}
                 for row in query.order_by(ChartOfAccount.account_number).limit(200).all()]
 
     def create(self, payload: ChartOfAccountCreate) -> ChartOfAccount:
@@ -129,7 +135,11 @@ class ChartOfAccountService:
             is_posting=payload.is_posting,
             is_system=False,
             cash_flow_category=payload.cash_flow_category,
+            account_subtype=payload.account_subtype,
+            financial_statement_group=payload.financial_statement_group,
         )
+        self._validate_cash_classification(account.account_type, account.account_subtype, account.is_posting, account.is_active, account.parent_account_id)
+        self._validate_statement_group(account.account_type, account.financial_statement_group)
         self.db.add(account)
         self.db.flush()
         return account
@@ -152,6 +162,8 @@ class ChartOfAccountService:
             raise HTTPException(status_code=409, detail="Protected fields of a system account cannot be changed")
         if data.get("normal_balance") is None:
             data.pop("normal_balance", None)
+        self._validate_cash_classification(data.get("account_type",account.account_type),data.get("account_subtype",account.account_subtype),data.get("is_posting",account.is_posting),data.get("is_active",account.is_active),data.get("parent_account_id",account.parent_account_id))
+        self._validate_statement_group(data.get("account_type",account.account_type),data.get("financial_statement_group",account.financial_statement_group))
         for key, value in data.items():
             setattr(account, "account_number" if key == "account_code" else key, value)
         self.db.flush()
@@ -180,6 +192,19 @@ class ChartOfAccountService:
     @staticmethod
     def _default_balance(account_type: str) -> str:
         return "DEBIT" if account_type in {"ASSET", "EXPENSE"} else "CREDIT"
+
+    @staticmethod
+    def _validate_cash_classification(account_type, subtype, is_posting, is_active, parent_account_id):
+        if subtype in {"CASH","BANK","PETTY_CASH"} and account_type!="ASSET":
+            raise HTTPException(status_code=422,detail="Cash-like subtypes require ASSET account type")
+        if subtype in {"CASH","BANK","PETTY_CASH"} and (not is_posting or not is_active):
+            raise HTTPException(status_code=422,detail="Cash-like accounts must be active posting accounts")
+
+    @staticmethod
+    def _validate_statement_group(account_type, group):
+        allowed={"ASSET":{"CURRENT_ASSET","NON_CURRENT_ASSET"},"LIABILITY":{"CURRENT_LIABILITY","NON_CURRENT_LIABILITY"},"EQUITY":{"EQUITY"},"REVENUE":{"OPERATING_REVENUE","OTHER_REVENUE"},"EXPENSE":{"COST_OF_REVENUE","OPERATING_EXPENSE","OTHER_EXPENSE"}}
+        if group and group not in allowed.get(account_type,set()):
+            raise HTTPException(status_code=422,detail=f"Financial statement group {group} is invalid for {account_type}")
 
     def _validate_unique(self, code: str, name: str, exclude_id: int | None = None) -> None:
         query = self.db.query(ChartOfAccount).filter(ChartOfAccount.id != exclude_id) if exclude_id else self.db.query(ChartOfAccount)

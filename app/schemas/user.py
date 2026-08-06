@@ -30,6 +30,9 @@ class UserResponse(BaseModel):
     is_active: bool
     department_id: int | None = None
     location_id: int | None = None
+    default_business_unit_id: int | None = None
+    default_location_id: int | None = None
+    default_department_id: int | None = None
     department: DepartmentSummary | None = None
     location: LocationSummary | None = None
     roles: list[RoleSummary] = Field(default_factory=list)
@@ -55,6 +58,9 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     department_id: int | None = None
     location_id: int | None = None
+    default_business_unit_id: int | None = None
+    default_location_id: int | None = None
+    default_department_id: int | None = None
 
     @field_validator("username", "email", "full_name", mode="before")
     @classmethod

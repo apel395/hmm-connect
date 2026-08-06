@@ -138,6 +138,7 @@ class PurchaseOrderService:
             supplier_id=data.supplier_id,
             department_id=data.department_id,
             location_id=data.location_id,
+            business_unit_id=data.business_unit_id,
             status="DRAFT",
             order_date=data.order_date or date.today(),
             source_type=data.source_type,

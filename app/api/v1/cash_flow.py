@@ -1,113 +1,56 @@
+from collections import defaultdict
 from datetime import date
-
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
+from decimal import Decimal
+from fastapi import APIRouter,Depends,HTTPException,Query
 from sqlalchemy.orm import Session
-
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.services.cash_flow_service import CASH_TYPES,CashFlowService,ZERO
 
-from app.models.chart_of_account import ChartOfAccount
-from app.models.journal_entry import JournalEntry
-from app.models.journal_line import JournalLine
-
-router = APIRouter(
-    prefix="/cash-flow",
-    tags=["Financial Reports"],
-)
-
+router=APIRouter(prefix="/cash-flow",tags=["Cash Flow"])
+def access(user):
+    if not {r.name for r in user.roles}.intersection({"FINANCE","ADMIN"}):raise HTTPException(403,"Finance access required")
+def subtypes(value):return [x.strip().upper() for x in value.split(",") if x.strip()] if value else None
 
 @router.get("")
-def cash_flow(
-    posting_date_from: date | None = Query(None),
-    posting_date_to: date | None = Query(None),
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
+def legacy(posting_date_from:date|None=None,posting_date_to:date|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):return statement(posting_date_from,posting_date_to,None,None,db,user)
 
-    query = (
-        db.query(
-            ChartOfAccount.cash_flow_category,
-            ChartOfAccount.account_number,
-            ChartOfAccount.account_name,
-            func.sum(JournalLine.debit).label("debit"),
-            func.sum(JournalLine.credit).label("credit"),
-        )
-        .join(
-            JournalLine,
-            JournalLine.account_id == ChartOfAccount.id,
-        )
-        .join(
-            JournalEntry,
-            JournalEntry.id == JournalLine.journal_entry_id,
-        )
-        .filter(
-            ChartOfAccount.cash_flow_category.is_not(None)
-        )
-    )
+@router.get("/accounts")
+def accounts(date_from:date|None=None,date_to:date|None=None,location_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);return CashFlowService(db).accounts_summary(date_from,date_to,location_id)
 
-    if posting_date_from:
-        query = query.filter(
-            JournalEntry.posting_date >= posting_date_from
-        )
+@router.get("/accounts/{account_id}/activity")
+def activity(account_id:int,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),date_from:date|None=None,date_to:date|None=None,search:str|None=None,direction:str|None=None,reference_type:str|None=None,cash_flow_category:str|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user)
+    try:return CashFlowService(db).activity(account_id,page,page_size,date_from,date_to,search,direction,reference_type,cash_flow_category)
+    except ValueError as exc:raise HTTPException(404,str(exc)) from exc
 
-    if posting_date_to:
-        query = query.filter(
-            JournalEntry.posting_date <= posting_date_to
-        )
+@router.get("/summary")
+def summary(date_from:date|None=None,date_to:date|None=None,account_id:int|None=None,account_subtype:str|None=None,location_id:int|None=None,department_id:int|None=None,business_unit_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);return CashFlowService(db).summary(date_from,date_to,account_id,subtypes(account_subtype),location_id,department_id,business_unit_id)
 
-    rows = (
-        query.group_by(
-            ChartOfAccount.cash_flow_category,
-            ChartOfAccount.account_number,
-            ChartOfAccount.account_name,
-        )
-        .order_by(
-            ChartOfAccount.account_number,
-        )
-        .all()
-    )
+@router.get("/timeline")
+def timeline(date_from:date|None=None,date_to:date|None=None,interval:str=Query("DAILY",pattern="^(DAILY|WEEKLY|MONTHLY)$"),account_id:int|None=None,category:str|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);svc=CashFlowService(db);opening=svc.opening(date_from,account_id);groups=defaultdict(lambda:{"inflow":ZERO,"outflow":ZERO})
+    for m in svc.movements(date_from,date_to,account_id):
+        if m["direction"]=="TRANSFER" or category and m["category"]!=category:continue
+        d=m["date"];period=d.isoformat() if interval=="DAILY" else f"{d.isocalendar().year}-W{d.isocalendar().week:02d}" if interval=="WEEKLY" else d.strftime("%Y-%m");groups[period]["inflow"]+=m["inflow"];groups[period]["outflow"]+=m["outflow"]
+    balance=opening;points=[]
+    for period,values in sorted(groups.items()):balance+=values["inflow"]-values["outflow"];points.append({"period":period,"inflow":values["inflow"],"outflow":values["outflow"],"net":values["inflow"]-values["outflow"],"closing_balance":balance})
+    return {"opening_balance":opening,"items":points}
 
-    operating = []
-    investing = []
-    financing = []
+@router.get("/statement")
+def statement(date_from:date|None=None,date_to:date|None=None,account_id:int|None=None,location_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);svc=CashFlowService(db);summary_data=svc.summary(date_from,date_to,account_id,location_id=location_id);sections={key:defaultdict(lambda:{"inflow":ZERO,"outflow":ZERO}) for key in ("OPERATING","INVESTING","FINANCING","UNCLASSIFIED")}
+    for m in svc.movements(date_from,date_to,account_id,location_id=location_id):
+        if m["direction"]=="TRANSFER":continue
+        key=m["category"] if m["category"] in sections else "UNCLASSIFIED";label=m["journal"].reference_type or "OTHER";sections[key][label]["inflow"]+=m["inflow"];sections[key][label]["outflow"]+=m["outflow"]
+    result={}
+    for category,groups in sections.items():result[category.lower()]={"items":[{"transaction_group":label,**values,"net":values["inflow"]-values["outflow"]} for label,values in groups.items()],"net":sum((v["inflow"]-v["outflow"] for v in groups.values()),ZERO)}
+    result.update({"net_operating_cash_flow":summary_data["operating_net"],"net_investing_cash_flow":summary_data["investing_net"],"net_financing_cash_flow":summary_data["financing_net"],"net_change_in_cash":summary_data["net_cash_flow"],"opening_cash":summary_data["opening_cash_balance"],"closing_cash":summary_data["closing_cash_balance"],"unclassified_transactions":summary_data["unclassified_count"]});return result
 
-    total_operating = 0
-    total_investing = 0
-    total_financing = 0
-
-    for row in rows:
-
-        amount = float(row.debit or 0) - float(row.credit or 0)
-
-        item = {
-            "account_number": row.account_number,
-            "account_name": row.account_name,
-            "amount": amount,
-        }
-
-        if row.cash_flow_category == "OPERATING":
-
-            operating.append(item)
-            total_operating += amount
-
-        elif row.cash_flow_category == "INVESTING":
-
-            investing.append(item)
-            total_investing += amount
-
-        elif row.cash_flow_category == "FINANCING":
-
-            financing.append(item)
-            total_financing += amount
-
-    return {
-        "operating": operating,
-        "investing": investing,
-        "financing": financing,
-        "net_cash_flow": (
-            total_operating
-            + total_investing
-            + total_financing
-        ),
-    }
+@router.get("/movements/{journal_line_id}/trace")
+def trace(journal_line_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user)
+    try:return CashFlowService(db).trace(journal_line_id)
+    except ValueError as exc:raise HTTPException(404,str(exc)) from exc

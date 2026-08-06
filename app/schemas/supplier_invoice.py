@@ -7,6 +7,7 @@ class SupplierInvoiceLineInput(BaseModel):
     description: str = Field(min_length=1); quantity: Decimal = Field(ge=0); uom: str | None = None
     unit_price: Decimal = Field(ge=0); account_id: int | None = None; department_id: int | None = None; notes: str | None = None
 class SupplierInvoiceInput(BaseModel):
+    business_unit_id: int | None = None
     supplier_invoice_number: str = Field(min_length=1, max_length=100); supplier_id: int; invoice_date: date
     received_date: date | None = None; due_date: date | None = None; purchase_order_id: int | None = None; goods_receipt_id: int | None = None
     department_id: int | None = None; location_id: int | None = None; currency: str = Field(default="IDR", min_length=3, max_length=3)

@@ -1,118 +1,30 @@
 from datetime import date
-
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
+from decimal import Decimal
+from fastapi import APIRouter,Depends,HTTPException,Query
 from sqlalchemy.orm import Session
-
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.services.financial_statement_service import FinancialStatementService
+from app.services.financial_report_export import export_statement
 
-from app.models.chart_of_account import ChartOfAccount
-from app.models.journal_entry import JournalEntry
-from app.models.journal_line import JournalLine
-
-router = APIRouter(
-    prefix="/profit-loss",
-    tags=["Financial Reports"],
-)
-
-
+router=APIRouter(prefix="/profit-loss",tags=["Financial Reports"])
+def access(user):
+    if not {role.name for role in user.roles}.intersection({"FINANCE","ADMIN"}):raise HTTPException(403,"Finance report access required")
+def serialize(value):
+    if isinstance(value,Decimal):return f"{value:.2f}"
+    if isinstance(value,date):return value.isoformat()
+    if isinstance(value,dict):return {key:serialize(item) for key,item in value.items()}
+    if isinstance(value,list):return [serialize(item) for item in value]
+    return value
+def build(db,date_from,date_to,comparative_date_from,comparative_date_to,account_id,parent_account_id,location_id,department_id,include_zero_balance,include_inactive,detail_level,business_unit_id=None):
+    try:return FinancialStatementService(db).profit_and_loss(date_from=date_from,date_to=date_to,comparative_date_from=comparative_date_from,comparative_date_to=comparative_date_to,account_id=account_id,parent_account_id=parent_account_id,location_id=location_id,department_id=department_id,business_unit_id=business_unit_id,include_zero_balance=include_zero_balance,include_inactive=include_inactive,detail_level=detail_level)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
 @router.get("")
-def get_profit_loss(
-    posting_date_from: date | None = Query(None),
-    posting_date_to: date | None = Query(None),
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-
-    query = (
-        db.query(
-            ChartOfAccount.account_number,
-            ChartOfAccount.account_name,
-            ChartOfAccount.account_type,
-            func.coalesce(func.sum(JournalLine.debit), 0).label("debit"),
-            func.coalesce(func.sum(JournalLine.credit), 0).label("credit"),
-        )
-        .join(
-            JournalLine,
-            JournalLine.account_id == ChartOfAccount.id,
-        )
-        .join(
-            JournalEntry,
-            JournalEntry.id == JournalLine.journal_entry_id,
-        )
-        .filter(
-            ChartOfAccount.account_type.in_(
-                [
-                    "REVENUE",
-                    "EXPENSE",
-                ]
-            )
-        )
-    )
-
-    if posting_date_from:
-        query = query.filter(
-            JournalEntry.posting_date >= posting_date_from
-        )
-
-    if posting_date_to:
-        query = query.filter(
-            JournalEntry.posting_date <= posting_date_to
-        )
-
-    rows = (
-        query.group_by(
-            ChartOfAccount.account_number,
-            ChartOfAccount.account_name,
-            ChartOfAccount.account_type,
-        )
-        .order_by(
-            ChartOfAccount.account_number,
-        )
-        .all()
-    )
-
-    revenues = []
-    expenses = []
-
-    total_revenue = 0
-    total_expense = 0
-
-    for row in rows:
-
-        if row.account_type == "REVENUE":
-
-            amount = row.credit - row.debit
-
-            revenues.append(
-                {
-                    "account_number": row.account_number,
-                    "account_name": row.account_name,
-                    "amount": amount,
-                }
-            )
-
-            total_revenue += amount
-
-        else:
-
-            amount = row.debit - row.credit
-
-            expenses.append(
-                {
-                    "account_number": row.account_number,
-                    "account_name": row.account_name,
-                    "amount": amount,
-                }
-            )
-
-            total_expense += amount
-
-    return {
-        "revenues": revenues,
-        "expenses": expenses,
-        "total_revenue": total_revenue,
-        "total_expense": total_expense,
-        "net_profit": total_revenue - total_expense,
-    }
+def get_profit_loss(date_from:date,date_to:date,comparative_date_from:date|None=None,comparative_date_to:date|None=None,account_id:int|None=None,parent_account_id:int|None=None,location_id:int|None=None,department_id:int|None=None,business_unit_id:int|None=None,include_zero_balance:bool=False,include_inactive:bool=False,detail_level:str=Query("DETAIL",pattern="^(SUMMARY|DETAIL)$"),db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);return serialize(build(db,date_from,date_to,comparative_date_from,comparative_date_to,account_id,parent_account_id,location_id,department_id,include_zero_balance,include_inactive,detail_level,business_unit_id))
+@router.get("/export")
+def export_profit_loss(date_from:date,date_to:date,format:str=Query("xlsx",pattern="^(xlsx|csv)$"),comparative_date_from:date|None=None,comparative_date_to:date|None=None,account_id:int|None=None,parent_account_id:int|None=None,location_id:int|None=None,department_id:int|None=None,include_zero_balance:bool=False,include_inactive:bool=False,detail_level:str=Query("DETAIL",pattern="^(SUMMARY|DETAIL)$"),db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);report=build(db,date_from,date_to,comparative_date_from,comparative_date_to,account_id,parent_account_id,location_id,department_id,include_zero_balance,include_inactive,"DETAIL");s=report["summary"]
+    filters=f"Account={account_id or 'All'}; Parent={parent_account_id or 'All'}; Location={location_id or 'All'}; Department={department_id or 'All'}; Include inactive={include_inactive}"
+    summary=[("Total Revenue",s["total_revenue"]),("Cost of Revenue",s["cost_of_revenue"]),("Gross Profit",s["gross_profit"]),("Operating Profit",s["operating_profit"]),("Net Profit",s["net_profit_after_tax"])]
+    return export_statement(report,"Profit & Loss",f"{date_from} to {date_to}"+(f" compared with {comparative_date_from} to {comparative_date_to}" if comparative_date_from else ""),filters,format,f"profit-loss-{date_from}-{date_to}",summary)

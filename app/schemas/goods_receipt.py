@@ -11,6 +11,9 @@ class GoodsReceiptItemCreate(BaseModel):
 
 
 class GoodsReceiptCreate(BaseModel):
+    business_unit_id: int | None = None
+    location_id: int | None = None
+    department_id: int | None = None
     purchase_order_id: int
     received_at: datetime | None = None
     source_type: Literal["LIVE", "HISTORICAL_IMPORT"] = "LIVE"

@@ -29,8 +29,11 @@ from app.models.journal_voucher_line import JournalVoucherLine
 from app.models.location import Location
 from app.models.notification import Notification
 from app.models.payment import Payment, PaymentAllocation
-from app.models.business_unit import BusinessUnit
 from app.models.bank_transfer import BankTransfer
+from app.models.bank_reconciliation import BankReconciliation, BankStatementLine, BankReconciliationMatch
+from app.models.budget import Budget, BudgetLine
+from app.models.business_unit import BusinessUnit
+from app.models.fixed_asset import FixedAsset, FixedAssetCategory, FixedAssetDepreciationSchedule, FixedAssetMovement, FixedAssetDepreciationRun
 from app.models.permission import Permission
 from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
