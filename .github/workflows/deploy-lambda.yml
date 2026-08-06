@@ -7,6 +7,8 @@ on:
       - backend
     paths:
       - "app/**"
+      - "alembic/versions/**"
+      - "scripts/validate_migration_chain.py"
       - "lambda_handler.py"
       - "requirements-api.txt"
       - ".github/workflows/deploy-lambda.yml"
@@ -34,6 +36,11 @@ jobs:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: requirements-api.txt
+
+      - name: Validate migration chain
+        run: |
+          set -euo pipefail
+          python scripts/validate_migration_chain.py
 
       - name: Build Lambda ZIP
         run: |
@@ -70,21 +77,10 @@ jobs:
           set -euo pipefail
           python -m compileall -q build/app build/lambda_handler.py
           python -c "from lambda_handler import handler; from app.main import app; assert handler is not None; assert app.title"
-
-      - name: Inspect GitHub OIDC claims
-        shell: bash
-        run: |
-          set -euo pipefail
-          RESPONSE=$(curl --fail --silent --show-error \
-            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
-          TOKEN=$(printf '%s' "$RESPONSE" | jq -r '.value')
-          PAYLOAD=$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
-          case $((${#PAYLOAD} % 4)) in
-            2) PAYLOAD="${PAYLOAD}==" ;;
-            3) PAYLOAD="${PAYLOAD}=" ;;
-          esac
-          printf '%s' "$PAYLOAD" | base64 --decode | jq '{aud, sub, repository, ref, environment, workflow}'
+          if grep -Eiq '^(openpyxl|pandas)([<=> ]|$)' requirements-api.txt; then
+            echo "Worker-only spreadsheet dependencies must not be packaged in Lambda."
+            exit 1
+          fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -101,11 +97,26 @@ jobs:
           aws lambda wait function-updated-v2 \
             --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}"
 
+      - name: Enforce Lambda runtime configuration
+        run: |
+          set -euo pipefail
+          aws lambda update-function-configuration \
+            --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" \
+            --handler lambda_handler.handler
+          aws lambda wait function-updated-v2 \
+            --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}"
+
       - name: Verify deployed function
         run: |
-          aws lambda get-function-configuration \
+          set -euo pipefail
+          CONFIG=$(aws lambda get-function-configuration \
             --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" \
-            --query '{FunctionName:FunctionName,Runtime:Runtime,Architectures:Architectures,CodeSize:CodeSize,LastModified:LastModified,State:State,LastUpdateStatus:LastUpdateStatus}'
+            --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Architectures:Architectures,CodeSize:CodeSize,LastModified:LastModified,State:State,LastUpdateStatus:LastUpdateStatus}' \
+            --output json)
+          echo "$CONFIG"
+          test "$(echo "$CONFIG" | jq -r '.Handler')" = "lambda_handler.handler"
+          test "$(echo "$CONFIG" | jq -r '.State')" = "Active"
+          test "$(echo "$CONFIG" | jq -r '.LastUpdateStatus')" = "Successful"
 
       - name: Smoke test health endpoint
         if: ${{ vars.AWS_LAMBDA_FUNCTION_URL != '' }}
