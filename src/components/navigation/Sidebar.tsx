@@ -50,12 +50,15 @@ const groups: Group[] = [
   ] },
 ];
 
+const normalizeRoleName = (name: string) => name.trim().toUpperCase().replace(/[\s-]+/g, "_");
+const SUPERUSER_ROLES = new Set(["ADMIN", "ADMINISTRATOR", "SUPER_ADMIN"]);
+
 export default function Sidebar({ open = false, onClose }: Props) {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
-  const roleNames = (user?.roles ?? []).map((role) => role.name);
-  const isAdmin = roleNames.includes("ADMIN");
-  const allowed = (roles?: string[]) => !roles || isAdmin || roles.some((role) => roleNames.includes(role));
+  const roleNames = (user?.roles ?? []).map((role) => normalizeRoleName(role.name));
+  const isAdmin = roleNames.some((role) => SUPERUSER_ROLES.has(role));
+  const allowed = (roles?: string[]) => !roles || isAdmin || roles.some((role) => roleNames.includes(normalizeRoleName(role)));
   const activeParent = groups.find((group) => group.children?.some((child) => child.url && location.pathname.startsWith(child.url)))?.title;
   const [expanded, setExpanded] = useState<string[]>(activeParent ? [activeParent] : []);
   useEffect(() => { if (activeParent) setExpanded((value) => value.includes(activeParent) ? value : [...value, activeParent]); }, [activeParent]);
