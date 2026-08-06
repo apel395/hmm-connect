@@ -21,7 +21,13 @@ def get_request(db: Session, entity_type: str, entity_id: int):
 
 
 def _normalized_role_name(value: str) -> str:
-    return "_".join(part for part in "".join(character if character.isalnum() else " " for character in value.upper()).split() if part)
+    return "_".join(
+        part
+        for part in "".join(
+            character if character.isalnum() else " " for character in value.upper()
+        ).split()
+        if part
+    )
 
 
 def _administrator_role(db: Session) -> Role | None:
@@ -45,6 +51,20 @@ def _administrator_role(db: Session) -> Role | None:
     return None
 
 
+def _is_generated_default(workflow: ApprovalWorkflow) -> bool:
+    expected_names = {
+        "PURCHASE REQUISITION APPROVAL",
+        "PURCHASE ORDER APPROVAL",
+    }
+    if workflow.name.strip().upper() not in expected_names:
+        return False
+    return all(
+        "ADMIN" in _normalized_role_name(step.approver_role.name)
+        or "ADMINISTRATOR" in _normalized_role_name(step.approver_role.name)
+        for step in workflow.steps
+    )
+
+
 def _ensure_default_workflow(db: Session, *, workflow_code: str) -> ApprovalWorkflow | None:
     entity_by_code = {
         "PR_APPROVAL": "PURCHASE_REQUISITION",
@@ -58,21 +78,48 @@ def _ensure_default_workflow(db: Session, *, workflow_code: str) -> ApprovalWork
     if not administrator_role:
         return None
 
-    workflow = ApprovalWorkflow(
-        code=workflow_code,
-        name="Purchase Requisition Approval" if workflow_code == "PR_APPROVAL" else "Purchase Order Approval",
-        entity_type=entity_type,
-        is_active=True,
+    workflow = (
+        db.query(ApprovalWorkflow)
+        .filter(ApprovalWorkflow.code == workflow_code)
+        .first()
     )
-    workflow.steps.append(
-        ApprovalWorkflowStep(
-            step_order=1,
-            name="Administrator Approval",
-            approver_role_id=administrator_role.id,
+    if not workflow:
+        workflow = ApprovalWorkflow(
+            code=workflow_code,
+            name=(
+                "Purchase Requisition Approval"
+                if workflow_code == "PR_APPROVAL"
+                else "Purchase Order Approval"
+            ),
+            entity_type=entity_type,
+            is_active=True,
         )
-    )
-    db.add(workflow)
-    db.flush()
+        db.add(workflow)
+        db.flush()
+    elif not workflow.is_active:
+        return None
+
+    # The generated workflow has three stages in the business flow:
+    # Submit -> Approval Level 1 -> Approval Level 2.
+    # Preserve genuinely custom workflows, but upgrade our prior one-step default.
+    if not workflow.steps or _is_generated_default(workflow):
+        workflow.steps.clear()
+        workflow.steps.extend(
+            [
+                ApprovalWorkflowStep(
+                    step_order=1,
+                    name="Approval Level 1",
+                    approver_role_id=administrator_role.id,
+                ),
+                ApprovalWorkflowStep(
+                    step_order=2,
+                    name="Approval Level 2",
+                    approver_role_id=administrator_role.id,
+                ),
+            ]
+        )
+        db.flush()
+
     return workflow
 
 
@@ -87,20 +134,14 @@ def start_approval(
     if get_request(db, entity_type, entity_id):
         raise HTTPException(status_code=409, detail="Approval already started")
 
-    workflow = (
-        db.query(ApprovalWorkflow)
-        .filter(
-            ApprovalWorkflow.code == workflow_code,
-            ApprovalWorkflow.is_active.is_(True),
-        )
-        .first()
-    )
-    if not workflow:
-        workflow = _ensure_default_workflow(db, workflow_code=workflow_code)
+    workflow = _ensure_default_workflow(db, workflow_code=workflow_code)
     if not workflow or not workflow.steps:
         raise HTTPException(
             status_code=400,
-            detail=f"Active approval workflow {workflow_code!r} is not configured and no administrator role is available for the default workflow",
+            detail=(
+                f"Active approval workflow {workflow_code!r} is not configured "
+                "and no administrator role is available for the default workflow"
+            ),
         )
 
     request = ApprovalRequest(
