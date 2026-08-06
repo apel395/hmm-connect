@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import require_roles
+from app.models.business_unit import BusinessUnit
+from app.models.department import Department
+from app.models.location import Location
 from app.models.purchase_requisition import PurchaseRequisition
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
@@ -20,6 +23,20 @@ from app.services.document_context import document_context, print_metadata
 router = APIRouter(prefix="/purchase-requisitions", tags=["Purchase Requisitions"])
 requester_user = require_roles("REQUESTER")
 purchasing_user = require_roles("PURCHASING")
+
+
+def _organization_context(db: Session, requisition: PurchaseRequisition) -> dict:
+    business_unit = db.get(BusinessUnit, requisition.business_unit_id) if requisition.business_unit_id else None
+    department = db.get(Department, requisition.department_id) if requisition.department_id else None
+    location = db.get(Location, requisition.location_id) if requisition.location_id else None
+    return {
+        "business_unit_id": requisition.business_unit_id,
+        "business_unit_name": business_unit.name if business_unit else None,
+        "department_id": requisition.department_id,
+        "department_name": department.name if department else None,
+        "location_id": requisition.location_id,
+        "location_name": location.name if location else None,
+    }
 
 
 @router.get("")
@@ -55,8 +72,9 @@ def list_requisitions_eligible_for_po(
         .order_by(PurchaseRequisition.id.desc())
         .all()
     )
-    return [
-        {
+    result = []
+    for requisition in requisitions:
+        payload = {
             "id": requisition.id,
             "pr_number": requisition.pr_number,
             "status": requisition.status,
@@ -64,13 +82,24 @@ def list_requisitions_eligible_for_po(
             "expiry_date": requisition.expiry_date,
             "notes": requisition.notes,
             "total_amount": requisition.total_amount,
-            "business_unit_id": requisition.business_unit_id,
-            "business_unit_name": requisition.business_unit.name if requisition.business_unit else None,
-            "department_id": requisition.department_id,
-            "department_name": requisition.department.name if requisition.department else None,
-            "location_id": requisition.location_id,
-            "location_name": requisition.location.name if requisition.location else None,
-            "items": [
+            **_organization_context(db, requisition),
+            "items": [],
+        }
+        for item in requisition.items:
+            already_ordered = (
+                db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0))
+                .join(PurchaseOrder)
+                .filter(
+                    PurchaseOrderItem.purchase_requisition_item_id == item.id,
+                    PurchaseOrder.status != "CANCELLED",
+                )
+                .scalar()
+                or 0
+            )
+            remaining = item.quantity - already_ordered
+            if remaining <= 0:
+                continue
+            payload["items"].append(
                 {
                     "id": item.id,
                     "product_id": item.product_id,
@@ -79,22 +108,13 @@ def list_requisitions_eligible_for_po(
                     "description": item.product.description,
                     "uom": item.product_uom,
                     "quantity": item.quantity,
-                    "remaining_quantity": item.quantity - (db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(
-                        PurchaseOrderItem.purchase_requisition_item_id == item.id,
-                        PurchaseOrder.status != "CANCELLED",
-                    ).scalar() or 0),
+                    "remaining_quantity": remaining,
                     "estimated_price": item.estimated_price,
                     "total_price": item.total_price,
                 }
-                for item in requisition.items
-                if item.quantity > (db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(
-                    PurchaseOrderItem.purchase_requisition_item_id == item.id,
-                    PurchaseOrder.status != "CANCELLED",
-                ).scalar() or 0)
-            ],
-        }
-        for requisition in requisitions
-    ]
+            )
+        result.append(payload)
+    return result
 
 
 @router.get("/{requisition_id}")
@@ -117,12 +137,7 @@ def get_requisition(
         "expiry_date": requisition.expiry_date,
         "notes": requisition.notes,
         "total_amount": requisition.total_amount,
-        "business_unit_id": requisition.business_unit_id,
-        "business_unit_name": requisition.business_unit.name if requisition.business_unit else None,
-        "department_id": requisition.department_id,
-        "department_name": requisition.department.name if requisition.department else None,
-        "location_id": requisition.location_id,
-        "location_name": requisition.location.name if requisition.location else None,
+        **_organization_context(db, requisition),
         "created_at": requisition.created_at,
         "updated_at": requisition.updated_at,
         "items": [
@@ -148,7 +163,11 @@ def get_requisition(
 
 
 @router.get("/{requisition_id}/print")
-def print_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def print_requisition(
+    requisition_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
     result = get_requisition(requisition_id, db, user)
     return {**result, "document_type": "Purchase Requisition", **print_metadata(user)}
 
@@ -164,10 +183,18 @@ def create_requisition(
 
 @router.put("/{requisition_id}")
 @router.patch("/{requisition_id}")
-def update_requisition(requisition_id: int, data: PurchaseRequisitionCreate,
-                       db: Session = Depends(get_db), user=Depends(requester_user)):
-    return PurchaseRequisitionService.update(db=db, purchase_requisition_id=requisition_id,
-        data=data, current_user=user)
+def update_requisition(
+    requisition_id: int,
+    data: PurchaseRequisitionCreate,
+    db: Session = Depends(get_db),
+    user=Depends(requester_user),
+):
+    return PurchaseRequisitionService.update(
+        db=db,
+        purchase_requisition_id=requisition_id,
+        data=data,
+        current_user=user,
+    )
 
 
 @router.post("/{requisition_id}/submit")
@@ -177,7 +204,9 @@ def submit_requisition(
     user=Depends(requester_user),
 ):
     return PurchaseRequisitionService.submit(
-        db=db, purchase_requisition_id=requisition_id, current_user=user
+        db=db,
+        purchase_requisition_id=requisition_id,
+        current_user=user,
     )
 
 
