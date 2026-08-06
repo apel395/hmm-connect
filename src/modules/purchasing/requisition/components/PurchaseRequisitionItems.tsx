@@ -1,7 +1,7 @@
 import Button from "@/components/ui/Button";
-import Input from "@/components/ui/Input";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import ProductCombobox from "@/components/form/ProductCombobox";
+import QuantityInput from "@/components/form/QuantityInput";
 
 export interface Product { id:number; code?:string; product_code?:string; product_name?:string; name?:string }
 export interface PurchaseRequisitionItemRow { product_id:number; quantity:number; estimated_price:number }
@@ -17,7 +17,7 @@ export default function PurchaseRequisitionItems({items, products, loadingProduc
     <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="table-grid min-w-[850px] w-full"><thead className="bg-slate-50"><tr><th className="p-3 text-left">Product</th><th className="w-32 p-3">Qty</th><th className="w-44 p-3">Estimated Price</th><th className="w-44 p-3">Line Total</th><th/></tr></thead>
       <tbody>{items.map((row,index) => <tr key={index} className="border-t">
         <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)}/></td>
-        <td className="p-2"><Input type="number" min={1} value={row.quantity} onChange={(event) => updateRow(index,"quantity",Number(event.target.value))}/></td>
+        <td className="p-2"><QuantityInput value={row.quantity} min={0} step={0.01} onValueChange={(value) => updateRow(index,"quantity",value)}/></td>
         <td className="p-2"><CurrencyInput value={row.estimated_price} onValueChange={(value) => updateRow(index,"estimated_price",value)}/></td>
         <td className="pr-3 text-right font-semibold tabular-nums">{(row.quantity * row.estimated_price).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
         <td className="p-2"><Button type="button" variant="danger" size="sm" disabled={items.length === 1} onClick={() => removeRow(index)}>Remove</Button></td>
