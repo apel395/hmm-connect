@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  BarChart3, Boxes, Building2, ChevronDown, CircleDollarSign, ClipboardList,
-  FileBarChart, Files, Landmark, LayoutDashboard, PackageSearch, Settings,
-  ShoppingCart, Users, Warehouse, X,
+  BarChart3, Boxes, Building2, ChevronDown, FileBarChart, Landmark,
+  LayoutDashboard, Settings, ShoppingCart, X,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
@@ -15,11 +14,15 @@ interface Group { title: string; icon: typeof LayoutDashboard; url?: string; rol
 const groups: Group[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Master Data", icon: Building2, children: [
-    { title: "Items", url: "/products" }, { title: "Suppliers", url: "/suppliers", roles: ["PURCHASING"] },
-    { title: "Warehouses", url: "/warehouses" }, { title: "Departments", disabled: true }, { title: "Locations", disabled: true },
+    { title: "Items", url: "/products" },
+    { title: "Suppliers", url: "/suppliers", roles: ["PURCHASING"] },
+    { title: "Warehouses", url: "/warehouses" },
+    { title: "Departments", url: "/settings", roles: ["ADMIN"] },
+    { title: "Locations", url: "/settings", roles: ["ADMIN"] },
   ] },
   { title: "Purchasing", icon: ShoppingCart, children: [
-    { title: "Purchase Requisition", url: "/purchase-requisitions" }, { title: "Purchase Order", url: "/purchase-orders" },
+    { title: "Purchase Requisition", url: "/purchase-requisitions" },
+    { title: "Purchase Order", url: "/purchase-orders" },
     { title: "Receiving", url: "/receiving", roles: ["WAREHOUSE", "PURCHASING"] },
     { title: "Purchasing Documents", url: "/purchasing-documents", roles: ["PURCHASING", "FINANCE"] },
     { title: "Approval Inbox", disabled: true },
@@ -32,22 +35,37 @@ const groups: Group[] = [
   { title: "Finance", icon: Landmark, roles: ["FINANCE"], children: [
     { title: "Finance Dashboard", url: "/finance-dashboard" },
     { title: "Bank Reconciliation", url: "/bank-reconciliations" },
-    { title: "Budgets", url: "/budgets" }, { title: "Budget vs Actual", url: "/budget-vs-actual" },
-    { title: "Fixed Assets", url: "/fixed-assets" }, { title: "Asset Categories", url: "/asset-categories" }, { title: "Depreciation Runs", url: "/depreciation-runs" },
-    { title: "Chart of Accounts", url: "/chart-of-accounts" }, { title: "Posting Rules", url: "/posting-rules" },
-    { title: "Supplier Invoices", url: "/supplier-invoices" }, { title: "Journal Entries", url: "/journal-entries" },
-    { title: "Payments", url: "/payments" }, { title: "General Ledger", url: "/general-ledger" },
-    { title: "Cash Flow Dashboard", url: "/cash-flow" }, { title: "Cash & Bank Accounts", url: "/cash-accounts" },
-    { title: "Bank Transfers", url: "/bank-transfers" }, { title: "Cash Flow Statement", url: "/cash-flow-statement" },
-    { title: "Historical Import", url: "/historical-import" },
-    { title: "Trial Balance", url: "/trial-balance" }, { title: "Balance Sheet", url: "/balance-sheet" }, { title: "Profit & Loss", url: "/profit-loss" },
+    { title: "Budgets", url: "/budgets" },
+    { title: "Budget vs Actual", url: "/budget-vs-actual" },
+    { title: "Fixed Assets", url: "/fixed-assets" },
+    { title: "Asset Categories", url: "/asset-categories" },
+    { title: "Depreciation Runs", url: "/depreciation-runs" },
+    { title: "Chart of Accounts", url: "/chart-of-accounts" },
+    { title: "Posting Rules", url: "/posting-rules" },
+    { title: "Supplier Invoices", url: "/supplier-invoices" },
+    { title: "Journal Entries", url: "/journal-entries" },
+    { title: "Payments", url: "/payments" },
+    { title: "General Ledger", url: "/general-ledger" },
+    { title: "Cash Flow Dashboard", url: "/cash-flow" },
+    { title: "Cash & Bank Accounts", url: "/cash-accounts" },
+    { title: "Bank Transfers", url: "/bank-transfers" },
+    { title: "Cash Flow Statement", url: "/cash-flow-statement" },
+    { title: "Historical Import", disabled: true },
+    { title: "Trial Balance", url: "/trial-balance" },
+    { title: "Balance Sheet", url: "/balance-sheet" },
+    { title: "Profit & Loss", url: "/profit-loss" },
   ] },
   { title: "Reports", icon: FileBarChart, children: [
-    { title: "Purchasing Reports", url: "/audit", roles: ["ADMIN"] }, { title: "Inventory Reports", disabled: true }, { title: "Fixed Asset Register", url: "/reports/fixed-assets", roles:["FINANCE"] }, { title: "Depreciation Report", url: "/reports/depreciation", roles:["FINANCE"] },
+    { title: "Purchasing Reports", url: "/audit", roles: ["ADMIN"] },
+    { title: "Inventory Reports", disabled: true },
+    { title: "Fixed Asset Register", url: "/reports/fixed-assets", roles:["FINANCE"] },
+    { title: "Depreciation Report", url: "/reports/depreciation", roles:["FINANCE"] },
   ] },
   { title: "Administration", icon: Settings, roles: ["ADMIN"], children: [
     { title: "Business Units", url: "/organization-dimensions" },
-    { title: "Users", url: "/users" }, { title: "Roles", url: "/roles" }, { title: "Settings", url: "/settings" },
+    { title: "Users", url: "/users" },
+    { title: "Roles", url: "/roles" },
+    { title: "Settings", url: "/settings" },
   ] },
 ];
 
@@ -62,9 +80,18 @@ export default function Sidebar({ open = false, onClose }: Props) {
   return <>
     {open && <button className="fixed inset-0 z-40 bg-black/40 lg:hidden" aria-label="Close navigation" onClick={onClose}/>}
     <aside className={`fixed inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col overflow-hidden bg-[#073F37] text-white transition-transform lg:static lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
-      <div className="shrink-0 border-b border-white/10 px-4 py-4">
+      <div className="relative shrink-0 border-b border-white/10 px-4 py-3">
         <button className="absolute right-3 top-3 rounded-lg p-2 text-white/70 hover:bg-white/10 lg:hidden" aria-label="Close navigation" onClick={onClose}><X className="h-5 w-5"/></button>
-        <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl border border-[#C49A4A]/60 bg-white/5 font-serif text-base font-bold tracking-wider text-[#E4C57E]">HMM</div><div className="min-w-0"><div className="truncate text-sm font-semibold tracking-wide" title="HMM-Connect">HMM-Connect</div><div className="truncate text-[11px] text-emerald-100/70" title="Hotel Mutiara Merdeka">Hotel Mutiara Merdeka</div><div className="text-[9px] text-[#C49A4A]">★★★★</div></div></div>
+        <div className="flex items-center gap-3 pr-9 lg:pr-0">
+          <div className="grid h-12 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-white p-1">
+            <img src="/mutiara-merdeka-logo.svg" alt="Mutiara Merdeka" className="h-full w-full object-contain" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold tracking-wide" title="HMM-Connect">HMM-Connect</div>
+            <div className="truncate text-[11px] text-emerald-100/70" title="Hotel Mutiara Merdeka">Hotel Mutiara Merdeka</div>
+            <div className="text-[9px] tracking-[0.12em] text-[#D4AA1D]">★★★★</div>
+          </div>
+        </div>
       </div>
       <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden p-2.5">
         {groups.filter((group) => allowed(group.roles)).map((group) => {
@@ -78,7 +105,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
           </div>;
         })}
       </nav>
-      <div className="shrink-0 border-t border-white/10 p-3 text-[11px] text-emerald-100/55"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#C49A4A]"/>Premium hotel operations</div></div>
+      <div className="shrink-0 border-t border-white/10 p-3 text-[11px] text-emerald-100/55"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#D4AA1D]"/>Premium hotel operations</div></div>
     </aside>
   </>;
 }
