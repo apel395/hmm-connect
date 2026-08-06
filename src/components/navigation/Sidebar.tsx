@@ -65,7 +65,6 @@ const groups: Group[] = [
   { title: "Administration", icon: Settings, roles: ["ADMIN"], children: [
     { title: "Users", url: "/users" },
     { title: "Roles", url: "/roles" },
-    { title: "Permissions", url: "/settings" },
     { title: "Audit Logs", url: "/audit" },
     { title: "System Settings", url: "/settings" },
   ] },
@@ -75,12 +74,13 @@ export default function Sidebar({ open = false, onClose }: Props) {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const allowed = (roles?: string[]) => canAccess(user, roles);
-  const activeParent = groups.find((group) => group.children?.some((child) => {
-    if (!child.url) return false;
-    const [path, query] = child.url.split("?");
-    if (!location.pathname.startsWith(path)) return false;
-    return !query || location.search === `?${query}`;
-  }))?.title;
+  const childIsActive = (url?: string) => {
+    if (!url) return false;
+    const [path, query] = url.split("?");
+    if (location.pathname !== path && !location.pathname.startsWith(`${path}/`)) return false;
+    return query ? location.search === `?${query}` : true;
+  };
+  const activeParent = groups.find((group) => group.children?.some((child) => childIsActive(child.url)))?.title;
   const [expanded, setExpanded] = useState<string[]>(activeParent ? [activeParent] : []);
   useEffect(() => { if (activeParent) setExpanded((value) => value.includes(activeParent) ? value : [...value, activeParent]); }, [activeParent]);
 
@@ -108,7 +108,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
           const isExpanded = expanded.includes(group.title);
           return <div key={group.title}>
             <button type="button" title={group.title} aria-expanded={isExpanded} onClick={() => setExpanded((value) => value.includes(group.title) ? value.filter((item) => item !== group.title) : [...value, group.title])} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium text-emerald-50/75 hover:bg-white/10"><Icon className="h-4 w-4 shrink-0"/><span className="min-w-0 flex-1 truncate text-left">{group.title}</span><ChevronDown className={`h-4 w-4 shrink-0 transition ${isExpanded ? "rotate-180" : ""}`}/></button>
-            {isExpanded && <div className="ml-4 border-l border-white/10 pl-2">{children.map((child) => child.disabled ? <div key={child.title} className="flex h-8 items-center justify-between gap-2 px-2.5 text-xs text-emerald-100/35" title={`${child.title} — Coming Soon`}><span className="truncate">{child.title}</span><span className="text-[9px] uppercase">Soon</span></div> : <NavLink key={child.title} to={child.url!} title={child.title} onClick={onClose} className={({isActive}) => `flex h-8 items-center justify-between rounded-lg px-2.5 text-xs ${isActive ? "bg-[#0F6758] text-white" : "text-emerald-50/70 hover:bg-white/10 hover:text-white"}`}><span className="truncate">{child.title}</span>{child.badge && <span className="ml-2 text-[8px] uppercase tracking-wide text-[#D4AA1D]">{child.badge}</span>}</NavLink>)}</div>}
+            {isExpanded && <div className="ml-4 border-l border-white/10 pl-2">{children.map((child) => child.disabled ? <div key={child.title} className="flex h-8 items-center justify-between gap-2 px-2.5 text-xs text-emerald-100/35" title={`${child.title} — Coming Soon`}><span className="truncate">{child.title}</span><span className="text-[9px] uppercase">Soon</span></div> : <NavLink key={child.title} to={child.url!} title={child.title} onClick={onClose} className={() => `flex h-8 items-center justify-between rounded-lg px-2.5 text-xs ${childIsActive(child.url) ? "bg-[#0F6758] text-white" : "text-emerald-50/70 hover:bg-white/10 hover:text-white"}`}><span className="truncate">{child.title}</span>{child.badge && <span className="ml-2 text-[8px] uppercase tracking-wide text-[#D4AA1D]">{child.badge}</span>}</NavLink>)}</div>}
           </div>;
         })}
       </nav>
