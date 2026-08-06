@@ -10,11 +10,12 @@ import PurchaseOrderItems, { PurchaseOrderItemRow } from "./PurchaseOrderItems";
 import PurchaseOrderSummary from "./PurchaseOrderSummary";
 import PurchaseOrderFooter from "./PurchaseOrderFooter";
 
-interface Props { open:boolean; loading?:boolean; onClose:()=>void; onSubmit:(payload:any)=>Promise<void>|void }
+interface Props { open:boolean; loading?:boolean; onClose:()=>void; onSubmit:(payload:any)=>Promise<void>|void; initialData?:any }
 type CreationType = "FROM_PR" | "DIRECT";
 const today = () => new Date().toISOString().slice(0, 10);
 
-export default function PurchaseOrderForm({open, loading, onClose, onSubmit}:Props) {
+export default function PurchaseOrderForm({open, loading, onClose, onSubmit, initialData}:Props) {
+  const editing = Boolean(initialData);
   const {data:suppliers=[]} = useSuppliers();
   const {data:approvedPRs=[]} = useApprovedPurchaseRequisitions();
   const {data:products=[]} = useProducts();
@@ -30,47 +31,72 @@ export default function PurchaseOrderForm({open, loading, onClose, onSubmit}:Pro
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<PurchaseOrderItemRow[]>([]);
 
-  useEffect(() => { if (open) { setCreationType("FROM_PR"); setSupplierId(undefined); setSelectedPR(undefined); setDepartmentId(undefined); setLocationId(undefined); setOrderDate(today()); setExpectedDate(""); setNotes(""); setItems([]); } }, [open]);
-  const changeType = (type:CreationType) => { setCreationType(type); setSelectedPR(undefined); setItems([]); };
+  useEffect(() => {
+    if (!open) return;
+    if (initialData) {
+      const type: CreationType = initialData.creation_type === "FROM_PR" ? "FROM_PR" : "DIRECT";
+      setCreationType(type);
+      setSupplierId(initialData.supplier_id ?? undefined);
+      setSelectedPR(type === "FROM_PR" ? { id: initialData.source_pr_id, pr_number: initialData.source_pr_number } : undefined);
+      setDepartmentId(initialData.department_id ?? undefined);
+      setLocationId(initialData.location_id ?? undefined);
+      setOrderDate(initialData.order_date ?? today());
+      setExpectedDate(initialData.expected_date ?? "");
+      setNotes(initialData.notes ?? "");
+      setItems((initialData.items ?? []).map((item:any) => ({
+        product_id:item.product_id,
+        product_code:item.product_code,
+        product_name:item.product_name,
+        description:item.description ?? "",
+        uom:item.uom ?? "",
+        requested_quantity:Number(item.quantity),
+        remaining_quantity:Number(item.remaining_quantity ?? item.quantity),
+        quantity:Number(item.quantity),
+        unit_price:Number(item.unit_price),
+        purchase_requisition_item_id:item.purchase_requisition_item_id ?? null,
+      })));
+      return;
+    }
+    setCreationType("FROM_PR"); setSupplierId(undefined); setSelectedPR(undefined); setDepartmentId(undefined); setLocationId(undefined); setOrderDate(today()); setExpectedDate(""); setNotes(""); setItems([]);
+  }, [open, initialData]);
+
+  const changeType = (type:CreationType) => { if (editing) return; setCreationType(type); setSelectedPR(undefined); setItems([]); };
   const selectPR = (id:number) => {
     const requisition = approvedPRs.find((item:any) => item.id === id);
     setSelectedPR(requisition);
     setItems((requisition?.items ?? []).map((item:any) => ({
-      product_code:item.product_code, product_name:item.product_name, description:item.description ?? "",
-      uom:item.uom, requested_quantity:Number(item.quantity), remaining_quantity:Number(item.remaining_quantity),
-      quantity:Number(item.remaining_quantity), unit_price:0, purchase_requisition_item_id:item.id,
+      product_code:item.product_code, product_name:item.product_name, description:item.description ?? "", uom:item.uom,
+      requested_quantity:Number(item.quantity), remaining_quantity:Number(item.remaining_quantity), quantity:Number(item.remaining_quantity), unit_price:0,
+      purchase_requisition_item_id:item.id,
     })));
   };
   const total = useMemo(() => items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0), [items]);
 
   const save = async () => {
     if (!supplierId) return alert("Supplier is required.");
-    if (creationType === "FROM_PR" && !selectedPR) return alert("Select one approved purchase requisition.");
-    if (creationType === "DIRECT" && (!departmentId || !locationId)) return alert("Department and location are required for a direct purchase order.");
-    if (creationType === "DIRECT" && (!orderDate || !expectedDate)) return alert("Order date and estimated delivery date are required.");
-    if (!items.length) return alert(creationType === "FROM_PR" ? "The requisition has no eligible items." : "Add at least one item.");
-    if (items.some((item) => !item.product_id && creationType === "DIRECT")) return alert("Select an item for every line.");
+    if (creationType === "FROM_PR" && !selectedPR && !editing) return alert("Select one approved purchase requisition.");
+    if (!departmentId || !locationId) return alert("Department and location are required.");
+    if (!orderDate || !expectedDate) return alert("Order date and estimated delivery date are required.");
+    if (!items.length) return alert("Add at least one item.");
+    if (creationType === "DIRECT" && items.some((item) => !item.product_id)) return alert("Select an item for every line.");
     if (items.some((item) => item.quantity <= 0 || item.unit_price < 0)) return alert("Quantities must be positive and unit costs cannot be negative.");
-    if (creationType === "FROM_PR" && items.some((item) => item.quantity > Number(item.remaining_quantity))) return alert("Selected quantities cannot exceed the remaining PR quantities.");
     await onSubmit({
       supplier_id:supplierId,
-      department_id:creationType === "DIRECT" ? departmentId : undefined,
-      location_id:creationType === "DIRECT" ? locationId : undefined,
-      order_date:creationType === "DIRECT" ? orderDate : today(),
-      expected_date:creationType === "DIRECT" ? expectedDate : undefined,
-      notes:creationType === "DIRECT" ? notes : undefined,
-      purchase_requisition_ids:creationType === "FROM_PR" ? [selectedPR.id] : [],
-      items:items.map(({product_code, product_name, requested_quantity, remaining_quantity, ...item}) => creationType === "FROM_PR" ? {...item, product_id:undefined, description:undefined, uom:undefined} : item),
+      department_id:departmentId,
+      location_id:locationId,
+      order_date:orderDate,
+      expected_date:expectedDate,
+      notes,
+      purchase_requisition_ids:creationType === "FROM_PR" ? (initialData?.purchase_requisition_ids ?? (selectedPR?.id ? [selectedPR.id] : [])) : [],
+      items:items.map(({product_code, product_name, requested_quantity, remaining_quantity, ...item}) => item),
     });
   };
 
-  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden"><DialogHeader><DialogTitle>Create Purchase Order</DialogTitle></DialogHeader><DialogBody className="flex-1 overflow-y-auto">
-    <fieldset className="mb-6 rounded-lg border border-slate-200 p-4"><legend className="px-2 font-semibold">Choose Creation Type</legend><div className="flex flex-wrap gap-6">
-      <label className="flex items-center gap-2"><input type="radio" checked={creationType === "FROM_PR"} onChange={() => changeType("FROM_PR")}/> From Purchase Requisition</label>
-      <label className="flex items-center gap-2"><input type="radio" checked={creationType === "DIRECT"} onChange={() => changeType("DIRECT")}/> Direct Purchase Order</label>
-    </div></fieldset>
-    <PurchaseOrderHeader fromRequisition={creationType === "FROM_PR"} suppliers={suppliers} approvedPRs={approvedPRs} departments={departments} locations={locations} supplierId={supplierId} selectedPR={selectedPR} departmentId={departmentId} locationId={locationId} orderDate={orderDate} expectedDate={expectedDate} notes={notes} onSupplierChange={setSupplierId} onSelectPR={selectPR} onDepartmentChange={setDepartmentId} onLocationChange={setLocationId} onOrderDateChange={setOrderDate} onExpectedDateChange={setExpectedDate} onNotesChange={setNotes}/>
-    <div className="mt-8"><PurchaseOrderItems items={items} products={products} fromRequisition={creationType === "FROM_PR"} onChange={setItems}/></div>
+  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden"><DialogHeader><DialogTitle>{editing ? "Edit Purchase Order" : "Create Purchase Order"}</DialogTitle></DialogHeader><DialogBody className="flex-1 overflow-y-auto">
+    {!editing && <fieldset className="mb-6 rounded-lg border border-slate-200 p-4"><legend className="px-2 font-semibold">Choose Creation Type</legend><div className="flex flex-wrap gap-6"><label className="flex items-center gap-2"><input type="radio" checked={creationType === "FROM_PR"} onChange={() => changeType("FROM_PR")}/> From Purchase Requisition</label><label className="flex items-center gap-2"><input type="radio" checked={creationType === "DIRECT"} onChange={() => changeType("DIRECT")}/> Direct Purchase Order</label></div></fieldset>}
+    {editing && <div className="mb-5 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">PO number <strong>{initialData.po_number}</strong> is locked. All other draft fields can be updated.</div>}
+    <PurchaseOrderHeader fromRequisition={creationType === "FROM_PR" && !editing} suppliers={suppliers} approvedPRs={approvedPRs} departments={departments} locations={locations} supplierId={supplierId} selectedPR={selectedPR} departmentId={departmentId} locationId={locationId} orderDate={orderDate} expectedDate={expectedDate} notes={notes} onSupplierChange={setSupplierId} onSelectPR={selectPR} onDepartmentChange={setDepartmentId} onLocationChange={setLocationId} onOrderDateChange={setOrderDate} onExpectedDateChange={setExpectedDate} onNotesChange={setNotes}/>
+    <div className="mt-8"><PurchaseOrderItems items={items} products={products} fromRequisition={creationType === "FROM_PR" && !editing} onChange={setItems}/></div>
     <div className="mt-8"><PurchaseOrderSummary total={total}/></div>
   </DialogBody><PurchaseOrderFooter loading={loading} onCancel={onClose} onSubmit={save}/></DialogContent></Dialog>;
 }
