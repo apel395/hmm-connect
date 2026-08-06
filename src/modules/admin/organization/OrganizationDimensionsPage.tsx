@@ -1,4 +1,3 @@
-import { useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import OrganizationManagement, { OrganizationSection } from "./OrganizationManagement";
 
@@ -17,15 +16,11 @@ const pageCopy: Record<OrganizationSection, { title: string; description: string
   },
 };
 
-function normalizeSection(value: string | null): OrganizationSection | undefined {
-  return value === "business-units" || value === "departments" || value === "locations"
-    ? value
-    : undefined;
+interface Props {
+  section?: OrganizationSection;
 }
 
-export default function OrganizationDimensionsPage() {
-  const [searchParams] = useSearchParams();
-  const section = normalizeSection(searchParams.get("section"));
+export default function OrganizationDimensionsPage({ section }: Props) {
   const copy = section
     ? pageCopy[section]
     : {
