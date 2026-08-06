@@ -5,8 +5,7 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
-import useAuthStore from "@/store/auth";
-import { isSuperuser } from "@/lib/access";
+import useAuthorization from "@/hooks/useAuthorization";
 import {
   BusinessUnit, OrganizationPayload, OrganizationRecord,
   createBusinessUnit, createDepartment, createLocation, filterBusinessUnits,
@@ -22,6 +21,8 @@ const errorMessage = (error: any) => error?.response?.data?.detail || "The maste
 
 export default function OrganizationManagement({ fixedSection }: Props) {
   const queryClient = useQueryClient();
+  const { canPerform } = useAuthorization();
+  const canManage = canPerform("edit", ["ADMIN", "ADMINISTRATOR", "MASTER_DATA"]);
   const [section, setSection] = useState<OrganizationSection>(fixedSection ?? "business-units");
   const [businessUnitId, setBusinessUnitId] = useState<number | undefined>();
   const [activeOnly, setActiveOnly] = useState(false);
@@ -29,9 +30,6 @@ export default function OrganizationManagement({ fixedSection }: Props) {
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<OrganizationPayload>(blank());
-  const user = useAuthStore((state) => state.user);
-  const canManage = isSuperuser(user) ||
-    (user?.roles ?? []).some((role) => role.permissions?.some((permission) => permission.code === "organization_dimensions.manage"));
 
   useEffect(() => { if (fixedSection) setSection(fixedSection); }, [fixedSection]);
   useEffect(() => { setEditingId(null); setForm(blank()); }, [section]);
