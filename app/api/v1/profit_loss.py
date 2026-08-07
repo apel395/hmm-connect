@@ -4,12 +4,13 @@ from fastapi import APIRouter,Depends,HTTPException,Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import has_any_role
 from app.services.financial_statement_service import FinancialStatementService
 from app.services.financial_report_export import export_statement
 
 router=APIRouter(prefix="/profit-loss",tags=["Financial Reports"])
 def access(user):
-    if not {role.name for role in user.roles}.intersection({"FINANCE","ADMIN"}):raise HTTPException(403,"Finance report access required")
+    if not has_any_role(user,"FINANCE"):raise HTTPException(403,"Finance report access required")
 def serialize(value):
     if isinstance(value,Decimal):return f"{value:.2f}"
     if isinstance(value,date):return value.isoformat()
