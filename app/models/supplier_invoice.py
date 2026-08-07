@@ -25,6 +25,7 @@ class SupplierInvoice(Base, TimestampMixin):
     withholding_tax_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
     paid_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
+    adjustment_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
     balance_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
     payment_status: Mapped[str] = mapped_column(String(20), default="UNPAID", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="DRAFT", nullable=False, index=True)
