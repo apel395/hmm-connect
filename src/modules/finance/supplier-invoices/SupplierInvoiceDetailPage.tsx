@@ -1,4 +1,4 @@
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Loading from "@/components/ui/Loading";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 import DocumentActivity from "@/modules/purchasing/components/DocumentActivity";
 import { getInvoice, invoiceAction } from "./api";
@@ -40,7 +41,7 @@ export default function SupplierInvoiceDetailPage() {
     <PageHeader
       title={<span className="flex items-center gap-3"><Button size="sm" variant="outline" onClick={() => navigate("/supplier-invoices")}><ArrowLeft size={16} /> Back</Button>{invoice.internal_invoice_number}<Badge>{invoice.status}</Badge></span> as any}
       actions={<div className="flex gap-2">
-        <Button variant="outline" title="Print" aria-label="Print supplier invoice" onClick={() => window.open(`/supplier-invoices/${invoice.id}/print`, "_blank")}><Printer size={18} /></Button>
+        <PrintPreviewButton src={`/supplier-invoices/${invoice.id}/print`} title={`Supplier Invoice ${invoice.internal_invoice_number}`} ariaLabel="Preview supplier invoice" />
         {allowed.can_edit && <Button variant="outline">Edit</Button>}
         {allowed.can_verify && <Button onClick={() => action.mutate("verify")}>Verify</Button>}
         {allowed.can_reject && <Button variant="danger" onClick={() => { if (window.confirm("Reject this supplier invoice?")) action.mutate("reject"); }}>Reject</Button>}
@@ -64,43 +65,16 @@ export default function SupplierInvoiceDetailPage() {
 
     {match && <Card>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">Three-Way Matching</h2>
-          <p className="text-sm text-slate-500">Purchase Order vs Goods Receipt vs Supplier Invoice</p>
-        </div>
+        <div><h2 className="font-semibold">Three-Way Matching</h2><p className="text-sm text-slate-500">Purchase Order vs Goods Receipt vs Supplier Invoice</p></div>
         <Badge variant={matchVariant as any}>{match.status.replaceAll("_", " ")}</Badge>
       </div>
       <p className={`mb-4 text-sm ${match.status === "MISMATCH" ? "text-red-700" : "text-slate-600"}`}>{match.message}</p>
-      {match.status === "MISMATCH" && match.issues.length > 0 && <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-        <div className="font-semibold">Matching exceptions</div>
-        <ul className="mt-2 list-disc space-y-1 pl-5">{match.issues.map((issue, index) => <li key={`${issue}-${index}`}>{issue}</li>)}</ul>
-      </div>}
-      {match.lines.length > 0 && <div className="overflow-x-auto"><table className="table-grid min-w-[1000px] w-full text-sm">
-        <thead><tr><th className="text-left">Item</th><th>Received Qty</th><th>Previously Invoiced</th><th>Available Qty</th><th>Invoice Qty</th><th>PO Price</th><th>Invoice Price</th><th>UOM</th><th>Status</th></tr></thead>
-        <tbody>{match.lines.map((line, index) => <tr key={line.invoice_line_id ?? index} className="border-t">
-          <td>{line.product_code ? `${line.product_code} — ` : ""}{line.product_name || "Manual line"}</td>
-          <td className="text-right">{line.received_quantity}</td>
-          <td className="text-right">{line.previously_invoiced_quantity}</td>
-          <td className="text-right">{line.available_quantity}</td>
-          <td className="text-right">{line.invoice_quantity}</td>
-          <td className="text-right">{line.po_unit_price == null ? "—" : money(line.po_unit_price)}</td>
-          <td className="text-right">{money(line.invoice_unit_price)}</td>
-          <td>{line.uom || "—"}{line.reference_uom && line.reference_uom !== line.uom ? ` / ${line.reference_uom}` : ""}</td>
-          <td><Badge variant={(line.status === "MATCHED" ? "success" : "danger") as any}>{line.status}</Badge></td>
-        </tr>)}</tbody>
-      </table></div>}
+      {match.status === "MISMATCH" && match.issues.length > 0 && <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800"><div className="font-semibold">Matching exceptions</div><ul className="mt-2 list-disc space-y-1 pl-5">{match.issues.map((issue, index) => <li key={`${issue}-${index}`}>{issue}</li>)}</ul></div>}
+      {match.lines.length > 0 && <div className="overflow-x-auto"><table className="table-grid min-w-[1000px] w-full text-sm"><thead><tr><th className="text-left">Item</th><th>Received Qty</th><th>Previously Invoiced</th><th>Available Qty</th><th>Invoice Qty</th><th>PO Price</th><th>Invoice Price</th><th>UOM</th><th>Status</th></tr></thead><tbody>{match.lines.map((line, index) => <tr key={line.invoice_line_id ?? index} className="border-t"><td>{line.product_code ? `${line.product_code} — ` : ""}{line.product_name || "Manual line"}</td><td className="text-right">{line.received_quantity}</td><td className="text-right">{line.previously_invoiced_quantity}</td><td className="text-right">{line.available_quantity}</td><td className="text-right">{line.invoice_quantity}</td><td className="text-right">{line.po_unit_price == null ? "—" : money(line.po_unit_price)}</td><td className="text-right">{money(line.invoice_unit_price)}</td><td>{line.uom || "—"}{line.reference_uom && line.reference_uom !== line.uom ? ` / ${line.reference_uom}` : ""}</td><td><Badge variant={(line.status === "MATCHED" ? "success" : "danger") as any}>{line.status}</Badge></td></tr>)}</tbody></table></div>}
       {invoice.status === "DRAFT" && !allowed.can_verify && match.status === "MISMATCH" && <p className="mt-3 text-sm font-medium text-red-700">Verify is disabled until all matching exceptions are resolved.</p>}
     </Card>}
 
-    <Card className="overflow-x-auto">
-      <table className="table-grid w-full text-sm">
-        <thead><tr><th className="text-left">Item</th><th>Description</th><th>Qty</th><th>UOM</th><th>Unit Price</th><th>Account</th><th>Amount</th></tr></thead>
-        <tbody>{invoice.lines.map((line) => <tr key={line.id} className="border-t">
-          <td>{line.product_name || "Manual"}</td><td>{line.description}</td><td>{line.quantity}</td><td>{line.uom || "—"}</td><td>{money(line.unit_price)}</td><td>{line.account_code ? `${line.account_code} — ${line.account_name}` : "Posting rule"}</td><td>{money(line.line_amount)}</td>
-        </tr>)}</tbody>
-      </table>
-      <div className="mt-4 text-right"><div>Subtotal: {money(invoice.subtotal)}</div><div className="text-lg font-bold">Total: {money(invoice.total_amount)}</div></div>
-    </Card>
+    <Card className="overflow-x-auto"><table className="table-grid w-full text-sm"><thead><tr><th className="text-left">Item</th><th>Description</th><th>Qty</th><th>UOM</th><th>Unit Price</th><th>Account</th><th>Amount</th></tr></thead><tbody>{invoice.lines.map((line) => <tr key={line.id} className="border-t"><td>{line.product_name || "Manual"}</td><td>{line.description}</td><td>{line.quantity}</td><td>{line.uom || "—"}</td><td>{money(line.unit_price)}</td><td>{line.account_code ? `${line.account_code} — ${line.account_name}` : "Posting rule"}</td><td>{money(line.line_amount)}</td></tr>)}</tbody></table><div className="mt-4 text-right"><div>Subtotal: {money(invoice.subtotal)}</div><div className="text-lg font-bold">Total: {money(invoice.total_amount)}</div></div></Card>
 
     <Card><h2 className="font-semibold">Notes</h2><p>{invoice.notes || "—"}</p>{invoice.related_journal && <p className="mt-3">Related Journal: <Link className="text-emerald-700" to={`/journal-entries/${invoice.related_journal.id}`}>{invoice.related_journal.journal_number}</Link></p>}</Card>
     <DocumentAttachments entityType="SUPPLIER_INVOICE" entityId={invoice.id} />
