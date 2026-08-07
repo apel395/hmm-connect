@@ -8,7 +8,7 @@ from app.api.v1 import (
     fixed_assets_core, general_ledger, goods_receipts, inventory, journal_detail, journals,
     organization_dimensions, payments, products, profit_loss, purchase_orders,
     purchase_requisitions, purchasing_documents, roles, supplier_adjustments, supplier_invoices,
-    supplier_products, suppliers, system_capabilities, users, warehouses,
+    supplier_products, suppliers, system_capabilities, trial_balance, users, warehouses,
     year_end,
 )
 
@@ -47,6 +47,7 @@ for router in (
     amortizations.router,
     ap_aging.router,
     ar_aging.router,
+    trial_balance.router,
     users.router,
     roles.router,
     warehouses.router,
