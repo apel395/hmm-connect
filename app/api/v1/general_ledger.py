@@ -6,12 +6,13 @@ from sqlalchemy import func,or_
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import has_any_role
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 router=APIRouter(prefix="/general-ledger",tags=["General Ledger"]);ZERO=Decimal("0")
 def access(user):
-    if not {r.name for r in user.roles}.intersection({"FINANCE","ADMIN"}):raise HTTPException(403,"Finance access required")
+    if not has_any_role(user,"FINANCE"):raise HTTPException(403,"Finance access required")
 def base(db,account_id=None,date_from=None,date_to=None,reference_type=None,supplier_id=None,department_id=None,location_id=None,search=None,business_unit_id=None):
     q=db.query(JournalLine).join(JournalEntry).filter(JournalEntry.status=="POSTED")
     if account_id:q=q.filter(JournalLine.account_id==account_id)
