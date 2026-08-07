@@ -2,6 +2,8 @@ name: Backend Organization Dimension Audit
 on:
   push:
     branches: [feature/org-dimension-audit-backend]
+  pull_request:
+    branches: [backend]
   workflow_dispatch:
 jobs:
   audit:
