@@ -1,0 +1,28 @@
+name: Organization Dimension Audit
+on:
+  push:
+    branches: [feature/org-dimension-audit]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Frontend dimension references
+        run: |
+          echo '=== business_unit_id ==='
+          grep -Rni 'business_unit_id' src --include='*.ts' --include='*.tsx' || true
+          echo '=== department_id ==='
+          grep -Rni 'department_id' src --include='*.ts' --include='*.tsx' || true
+          echo '=== location_id ==='
+          grep -Rni 'location_id' src --include='*.ts' --include='*.tsx' || true
+          echo '=== Business Unit required messages ==='
+          grep -Rni 'Business Unit.*required\|required.*Business Unit' src --include='*.ts' --include='*.tsx' || true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
