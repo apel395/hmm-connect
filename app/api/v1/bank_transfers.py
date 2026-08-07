@@ -5,6 +5,7 @@ from fastapi import APIRouter,Depends,HTTPException,Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import has_any_role
 from app.models.bank_transfer import BankTransfer
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
@@ -17,7 +18,7 @@ from app.services.general_ledger import GeneralLedgerService
 
 router=APIRouter(prefix="/bank-transfers",tags=["Bank Transfers"]);CASH_TYPES={"CASH","BANK","PETTY_CASH"}
 def access(user):
-    if not {r.name for r in user.roles}.intersection({"FINANCE","ADMIN"}):raise HTTPException(403,"Finance access required")
+    if not has_any_role(user,"FINANCE"):raise HTTPException(403,"Finance access required")
 def get(db,id):
     x=db.get(BankTransfer,id)
     if not x:raise HTTPException(404,"Bank transfer not found")
