@@ -1,0 +1,25 @@
+name: Worker Backend Check
+
+on:
+  push:
+    branches:
+      - feature/worker-cleanup-backend
+  pull_request:
+    branches:
+      - backend
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile backend
+        run: python -m compileall -q app
+      - name: Validate migration chain
+        run: python scripts/validate_migration_chain.py
+      - name: Validate Lambda dependencies
+        run: python scripts/validate_lambda_dependencies.py
