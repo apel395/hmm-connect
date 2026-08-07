@@ -9,11 +9,11 @@ import type { PurchaseOrder } from "@/modules/purchasing/purchase-order/types";
 import { usePurchaseRequisitions } from "@/modules/purchasing/requisition/hooks/usePurchaseRequisitions";
 import type { PurchaseRequisition } from "@/modules/purchasing/requisition/types";
 
-type Envelope<T> = T[] | { items?: T[]; data?: T[] };
+type ListEnvelope<T> = { items?: T[]; data?: T[] };
 const listFrom = <T,>(value: unknown): T[] => {
   if (Array.isArray(value)) return value as T[];
   if (value && typeof value === "object") {
-    const envelope = value as Envelope<T>;
+    const envelope = value as ListEnvelope<T>;
     if (Array.isArray(envelope.items)) return envelope.items;
     if (Array.isArray(envelope.data)) return envelope.data;
   }
