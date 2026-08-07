@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 import ReceiveGoodsDialog from "@/modules/purchasing/goods-receipts/components/ReceiveGoodsDialog";
 import GoodsReceiptHistory from "../components/GoodsReceiptHistory";
@@ -58,7 +59,7 @@ export default function PurchaseOrderDetailPage() {
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-4"><Button variant="outline" size="sm" onClick={() => navigate("/purchase-orders")}><ArrowLeft size={17}/> Back</Button><div><div className="text-sm text-slate-500">Purchase Order</div><div className="flex items-center gap-3"><h1 className="text-2xl font-bold">{data.po_number}</h1><Badge>{data.creation_type === "FROM_PR" ? "From PR" : "Direct"}</Badge><Badge>{data.status}</Badge></div></div></div>
       <div className="flex flex-wrap items-center gap-2">
-        {actions.can_print !== false && <Button variant="outline" title="Print" onClick={() => window.open(`/purchase-orders/${data.id}/print`, "_blank")}><Printer size={18}/></Button>}
+        {actions.can_print !== false && <PrintPreviewButton src={`/purchase-orders/${data.id}/print`} title={`Purchase Order ${data.po_number}`} ariaLabel="Preview purchase order" />}
         {canEdit && <Button variant="outline" onClick={() => setEditing(true)}>Edit</Button>}
         {actions.can_submit && <Button loading={submit.isPending} onClick={() => run("submit")}>Submit</Button>}
         {canReject && data.status === "PENDING_APPROVAL" && <Button variant="danger" loading={reject.isPending} onClick={() => run("reject")}>Reject</Button>}

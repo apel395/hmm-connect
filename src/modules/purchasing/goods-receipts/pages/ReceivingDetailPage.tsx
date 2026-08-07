@@ -1,10 +1,11 @@
-import { ArrowLeft, FilePlus2, Printer, RotateCcw } from "lucide-react";
+import { ArrowLeft, FilePlus2, RotateCcw } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 import { useGoodsReceipt, usePostGoodsReceipt, useReturnGoodsReceipt } from "../hooks/useGoodsReceipts";
 import DocumentActivity from "../../components/DocumentActivity";
@@ -28,7 +29,7 @@ export default function ReceivingDetailPage() {
       <div className="flex items-center gap-4"><Button variant="outline" size="sm" onClick={() => navigate("/receiving")}><ArrowLeft size={17}/> Back</Button><div><div className="text-sm text-slate-500">Receiving</div><div className="flex items-center gap-3"><h1 className="text-2xl font-bold">{data.receipt_number}</h1><Badge>{data.status}</Badge>{data.source_mode === "DIRECT" && <Badge variant="warning">Direct</Badge>}</div></div></div>
       <div className="flex flex-wrap gap-2">
         {data.status === "POSTED" && <Button onClick={() => navigate(`/supplier-invoices?receipt_id=${data.id}`)}><FilePlus2 size={16}/> Create Supplier Invoice</Button>}
-        {actions?.can_print !== false && <Button variant="outline" aria-label="Print receiving document" title="Print" onClick={() => window.open(`/receiving/${data.id}/print`, `_blank`)}><Printer size={18}/></Button>}
+        {actions?.can_print !== false && <PrintPreviewButton src={`/receiving/${data.id}/print`} title={`Receiving ${data.receipt_number}`} ariaLabel="Preview receiving document" />}
         {canPerform("post", ["WAREHOUSE", "PURCHASING"], actions?.can_post ?? false) && <Button loading={post.isPending} onClick={() => post.mutate(data.id)}>Post</Button>}
         {canReturn && <Button variant="danger" loading={returned.isPending} onClick={() => { if (window.confirm("Return all quantities from this receipt?")) returned.mutate(data.id, { onSuccess: () => toast.success("Receipt returned.") }); }}><RotateCcw size={16}/> Return</Button>}
       </div>
