@@ -18,6 +18,9 @@ from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.services.audit import record_audit
 from app.services.document_number import next_document_number
 
+ZERO = Decimal("0")
+PRICE_TOLERANCE = Decimal("0.01")
+
 
 class SupplierInvoiceService:
     def __init__(self, db: Session):
@@ -64,32 +67,35 @@ class SupplierInvoiceService:
             "voided_at": x.voided_at,
             "related_journal": {"id": journal.id, "journal_number": journal.journal_number, "status": journal.status} if journal else None,
             "lines": [{
-                "id": l.id,
-                "product_id": l.product_id,
-                "product_code": l.product.code if l.product else None,
-                "product_name": l.product.name if l.product else None,
-                "purchase_order_item_id": l.purchase_order_item_id,
-                "goods_receipt_item_id": l.goods_receipt_item_id,
-                "description": l.description,
-                "quantity": l.quantity,
-                "uom": l.uom,
-                "unit_price": l.unit_price,
-                "line_amount": l.line_amount,
-                "account_id": l.account_id,
-                "account_code": l.account.account_number if l.account else None,
-                "account_name": l.account.account_name if l.account else None,
-                "department_id": l.department_id,
-                "notes": l.notes,
-            } for l in x.lines],
+                "id": line.id,
+                "product_id": line.product_id,
+                "product_code": line.product.code if line.product else None,
+                "product_name": line.product.name if line.product else None,
+                "purchase_order_item_id": line.purchase_order_item_id,
+                "goods_receipt_item_id": line.goods_receipt_item_id,
+                "description": line.description,
+                "quantity": line.quantity,
+                "uom": line.uom,
+                "unit_price": line.unit_price,
+                "line_amount": line.line_amount,
+                "account_id": line.account_id,
+                "account_code": line.account.account_number if line.account else None,
+                "account_name": line.account.account_name if line.account else None,
+                "department_id": line.department_id,
+                "notes": line.notes,
+            } for line in x.lines],
         }
 
-    def attach_journal(self, x):
-        x._journals = self.db.query(JournalEntry).filter(JournalEntry.reference_type == "SUPPLIER_INVOICE", JournalEntry.reference_id == x.id).all()
-        return x
+    def attach_journal(self, invoice):
+        invoice._journals = self.db.query(JournalEntry).filter(
+            JournalEntry.reference_type == "SUPPLIER_INVOICE",
+            JournalEntry.reference_id == invoice.id,
+        ).all()
+        return invoice
 
     def _inherit_source_context(self, data: SupplierInvoiceInput):
         receipt = self.db.get(GoodsReceipt, data.goods_receipt_id) if data.goods_receipt_id else None
-        po = self.db.get(PurchaseOrder, data.purchase_order_id) if data.purchase_order_id else None
+        purchase_order = self.db.get(PurchaseOrder, data.purchase_order_id) if data.purchase_order_id else None
         if receipt:
             if receipt.status != "POSTED":
                 raise HTTPException(409, "Supplier invoice can only be created from a posted receipt")
@@ -100,18 +106,18 @@ class SupplierInvoiceService:
             data.business_unit_id = receipt.business_unit_id
             data.department_id = receipt.department_id
             data.location_id = receipt.location_id
-            po = receipt.purchase_order
-        elif po:
-            data.supplier_id = po.supplier_id
-            data.business_unit_id = po.business_unit_id
-            data.department_id = po.department_id
-            data.location_id = po.location_id
-        return po, receipt
+            purchase_order = receipt.purchase_order
+        elif purchase_order:
+            data.supplier_id = purchase_order.supplier_id
+            data.business_unit_id = purchase_order.business_unit_id
+            data.department_id = purchase_order.department_id
+            data.location_id = purchase_order.location_id
+        return purchase_order, receipt
 
     def validate(self, data: SupplierInvoiceInput, exclude_id=None):
         from app.services.organization_dimensions import validate_dimensions
 
-        po, receipt = self._inherit_source_context(data)
+        purchase_order, receipt = self._inherit_source_context(data)
         validate_dimensions(self.db, data.business_unit_id, data.location_id, data.department_id, True)
         if not self.db.get(Supplier, data.supplier_id):
             raise HTTPException(404, "Supplier not found")
@@ -123,23 +129,146 @@ class SupplierInvoiceService:
             query = query.filter(SupplierInvoice.id != exclude_id)
         if query.first():
             raise HTTPException(409, "Supplier invoice number already exists for this supplier")
-        if po and po.supplier_id != data.supplier_id:
+        if purchase_order and purchase_order.supplier_id != data.supplier_id:
             raise HTTPException(400, "Purchase order does not belong to selected supplier")
-        if receipt and receipt.purchase_order_id and po and receipt.purchase_order_id != po.id:
+        if receipt and receipt.purchase_order_id and purchase_order and receipt.purchase_order_id != purchase_order.id:
             raise HTTPException(400, "Receipt does not belong to selected purchase order")
         if receipt:
             receipt_item_ids = {item.id for item in receipt.items}
             if any(line.goods_receipt_item_id and line.goods_receipt_item_id not in receipt_item_ids for line in data.lines):
                 raise HTTPException(400, "Invoice line does not belong to selected receipt")
-        subtotal = sum((line.quantity * line.unit_price for line in data.lines), Decimal("0"))
+        subtotal = sum((line.quantity * line.unit_price for line in data.lines), ZERO)
         total = subtotal - data.discount_amount + data.tax_amount - data.withholding_tax_amount
         if data.total_amount is not None and data.total_amount != total:
             raise HTTPException(400, "Invoice total does not match line totals and adjustments")
         return subtotal, total
 
+    def _previous_invoiced_quantity(self, invoice: SupplierInvoice, receipt_item_id: int) -> Decimal:
+        query = self.db.query(func.coalesce(func.sum(SupplierInvoiceLine.quantity), 0)).join(
+            SupplierInvoice, SupplierInvoice.id == SupplierInvoiceLine.supplier_invoice_id,
+        ).filter(
+            SupplierInvoiceLine.goods_receipt_item_id == receipt_item_id,
+            SupplierInvoice.status.notin_({"REJECTED", "VOID"}),
+        )
+        if invoice.id:
+            query = query.filter(SupplierInvoice.id != invoice.id)
+        return Decimal(query.scalar() or 0)
+
+    def match_summary(self, invoice: SupplierInvoice) -> dict:
+        if not invoice.goods_receipt_id:
+            return {
+                "status": "NOT_APPLICABLE",
+                "can_verify": True,
+                "message": "Direct supplier invoice; three-way matching is not applicable.",
+                "supplier_match": True,
+                "line_count": len(invoice.lines),
+                "matched_lines": len(invoice.lines),
+                "issues": [],
+                "lines": [],
+            }
+
+        receipt = invoice.goods_receipt
+        purchase_order = invoice.purchase_order or (receipt.purchase_order if receipt else None)
+        issues: list[str] = []
+        line_results = []
+        supplier_match = bool(
+            receipt
+            and invoice.supplier_id == (receipt.supplier_id or (receipt.purchase_order.supplier_id if receipt.purchase_order else None))
+            and (not purchase_order or invoice.supplier_id == purchase_order.supplier_id)
+        )
+        if not supplier_match:
+            issues.append("Supplier does not match the receipt/purchase order.")
+        if not receipt or receipt.status != "POSTED":
+            issues.append("Goods receipt must be posted before invoice verification.")
+
+        receipt_items = {item.id: item for item in receipt.items} if receipt else {}
+        po_items = {item.id: item for item in purchase_order.items} if purchase_order else {}
+
+        for line in invoice.lines:
+            receipt_item = receipt_items.get(line.goods_receipt_item_id) if line.goods_receipt_item_id else None
+            po_item = None
+            if line.purchase_order_item_id:
+                po_item = po_items.get(line.purchase_order_item_id)
+            elif receipt_item and receipt_item.purchase_order_item_id:
+                po_item = po_items.get(receipt_item.purchase_order_item_id)
+
+            line_issues = []
+            if not receipt_item:
+                line_issues.append("Invoice line is not linked to the selected receipt line.")
+            elif line.product_id and receipt_item.product_id != line.product_id:
+                line_issues.append("Product does not match the receipt line.")
+
+            received_quantity = Decimal(receipt_item.quantity) if receipt_item else ZERO
+            previously_invoiced = self._previous_invoiced_quantity(invoice, receipt_item.id) if receipt_item else ZERO
+            available_quantity = max(ZERO, received_quantity - previously_invoiced)
+            invoice_quantity = Decimal(line.quantity)
+            if receipt_item and invoice_quantity > available_quantity:
+                line_issues.append(
+                    f"Invoice quantity {invoice_quantity} exceeds uninvoiced received quantity {available_quantity}."
+                )
+
+            po_unit_price = Decimal(po_item.unit_price) if po_item else None
+            invoice_unit_price = Decimal(line.unit_price)
+            price_difference = abs(invoice_unit_price - po_unit_price) if po_unit_price is not None else None
+            if purchase_order and not po_item:
+                line_issues.append("Receipt line is not linked to a purchase order line.")
+            elif po_unit_price is not None and price_difference > PRICE_TOLERANCE:
+                line_issues.append(
+                    f"Invoice unit price {invoice_unit_price} differs from PO unit price {po_unit_price}."
+                )
+
+            receipt_uom = None
+            if po_item:
+                receipt_uom = po_item.uom
+            elif receipt_item and receipt_item.product:
+                receipt_uom = receipt_item.product.uom
+            if line.uom and receipt_uom and line.uom.strip().upper() != receipt_uom.strip().upper():
+                line_issues.append(f"Invoice UOM {line.uom} differs from receipt/PO UOM {receipt_uom}.")
+
+            line_results.append({
+                "invoice_line_id": line.id,
+                "product_id": line.product_id,
+                "product_code": line.product.code if line.product else None,
+                "product_name": line.product.name if line.product else line.description,
+                "receipt_item_id": receipt_item.id if receipt_item else None,
+                "purchase_order_item_id": po_item.id if po_item else None,
+                "received_quantity": received_quantity,
+                "previously_invoiced_quantity": previously_invoiced,
+                "available_quantity": available_quantity,
+                "invoice_quantity": invoice_quantity,
+                "po_unit_price": po_unit_price,
+                "invoice_unit_price": invoice_unit_price,
+                "price_difference": price_difference,
+                "uom": line.uom,
+                "reference_uom": receipt_uom,
+                "status": "MATCHED" if not line_issues else "MISMATCH",
+                "issues": line_issues,
+            })
+            issues.extend(f"{line.product.name if line.product else line.description}: {issue}" for issue in line_issues)
+
+        matched_lines = sum(1 for line in line_results if line["status"] == "MATCHED")
+        status = "MATCHED" if supplier_match and not issues and len(line_results) == len(invoice.lines) else "MISMATCH"
+        return {
+            "status": status,
+            "can_verify": status == "MATCHED",
+            "message": "PO, receipt, and invoice match." if status == "MATCHED" else "Resolve matching exceptions before verification.",
+            "supplier_match": supplier_match,
+            "line_count": len(invoice.lines),
+            "matched_lines": matched_lines,
+            "issues": issues,
+            "lines": line_results,
+        }
+
+    def assert_match(self, invoice: SupplierInvoice):
+        summary = self.match_summary(invoice)
+        if not summary["can_verify"]:
+            detail = summary["issues"][0] if summary["issues"] else "Three-way matching failed"
+            raise HTTPException(409, f"Three-way match required: {detail}")
+        return summary
+
     def create(self, data, user):
         subtotal, total = self.validate(data)
-        x = SupplierInvoice(
+        invoice = SupplierInvoice(
             internal_invoice_number=next_document_number(self.db, "INV"),
             supplier_invoice_number=data.supplier_invoice_number.strip(),
             supplier_id=data.supplier_id,
@@ -164,100 +293,151 @@ class SupplierInvoiceService:
             created_by_id=user.id,
         )
         for line in data.lines:
-            x.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=line.quantity * line.unit_price))
-        self.db.add(x)
+            invoice.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=line.quantity * line.unit_price))
+        self.db.add(invoice)
         self.db.flush()
-        record_audit(self.db, user, "SUPPLIER_INVOICE_CREATED", "SUPPLIER_INVOICE", f"Created {x.internal_invoice_number}", entity_id=x.id)
+        record_audit(self.db, user, "SUPPLIER_INVOICE_CREATED", "SUPPLIER_INVOICE", f"Created {invoice.internal_invoice_number}", entity_id=invoice.id)
         self.db.commit()
-        self.db.refresh(x)
-        return self.attach_journal(x)
+        self.db.refresh(invoice)
+        return self.attach_journal(invoice)
 
-    def update(self, x, data, user):
-        if x.status != "DRAFT":
+    def update(self, invoice, data, user):
+        if invoice.status != "DRAFT":
             raise HTTPException(409, "Only draft invoices can be edited")
-        subtotal, total = self.validate(data, x.id)
+        subtotal, total = self.validate(data, invoice.id)
         for key, value in data.model_dump(exclude={"lines", "total_amount"}).items():
-            setattr(x, key, value)
-        x.subtotal = subtotal
-        x.total_amount = total
-        x.balance_amount = total - Decimal(x.paid_amount or 0)
-        x.lines.clear()
+            setattr(invoice, key, value)
+        invoice.subtotal = subtotal
+        invoice.total_amount = total
+        invoice.balance_amount = total - Decimal(invoice.paid_amount or 0)
+        invoice.lines.clear()
         for line in data.lines:
-            x.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=line.quantity * line.unit_price))
-        record_audit(self.db, user, "SUPPLIER_INVOICE_UPDATED", "SUPPLIER_INVOICE", f"Updated {x.internal_invoice_number}", entity_id=x.id)
+            invoice.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=line.quantity * line.unit_price))
+        record_audit(self.db, user, "SUPPLIER_INVOICE_UPDATED", "SUPPLIER_INVOICE", f"Updated {invoice.internal_invoice_number}", entity_id=invoice.id)
         self.db.commit()
-        self.db.refresh(x)
-        return self.attach_journal(x)
+        self.db.refresh(invoice)
+        return self.attach_journal(invoice)
 
-    def verify(self, x, user):
-        if x.status != "DRAFT":
+    def verify(self, invoice, user):
+        if invoice.status != "DRAFT":
             raise HTTPException(409, "Only draft invoices can be verified")
-        x.status = "VERIFIED"
-        x.verified_at = datetime.now(timezone.utc)
+        match = self.assert_match(invoice)
+        invoice.status = "VERIFIED"
+        invoice.verified_at = datetime.now(timezone.utc)
         payable = self.db.query(AccountPayable).filter(
-            AccountPayable.supplier_id == x.supplier_id,
-            AccountPayable.invoice_number == x.internal_invoice_number,
+            AccountPayable.supplier_id == invoice.supplier_id,
+            AccountPayable.invoice_number == invoice.internal_invoice_number,
         ).first()
         if not payable:
             payable = AccountPayable(
-                supplier_id=x.supplier_id,
-                purchase_order_id=x.purchase_order_id,
-                invoice_number=x.internal_invoice_number,
-                invoice_date=x.invoice_date,
-                due_date=x.due_date,
-                amount=x.total_amount,
+                supplier_id=invoice.supplier_id,
+                purchase_order_id=invoice.purchase_order_id,
+                invoice_number=invoice.internal_invoice_number,
+                invoice_date=invoice.invoice_date,
+                due_date=invoice.due_date,
+                amount=invoice.total_amount,
                 status="OPEN",
-                paid_amount=Decimal("0"),
-                outstanding_amount=x.total_amount,
+                paid_amount=ZERO,
+                outstanding_amount=invoice.total_amount,
                 payment_status="UNPAID",
+                matched=match["status"] in {"MATCHED", "NOT_APPLICABLE"},
+                match_status=match["status"],
+                match_note=match["message"],
             )
             self.db.add(payable)
-        record_audit(self.db, user, "SUPPLIER_INVOICE_VERIFIED", "SUPPLIER_INVOICE", f"Verified {x.internal_invoice_number}", entity_id=x.id)
+        else:
+            payable.matched = match["status"] in {"MATCHED", "NOT_APPLICABLE"}
+            payable.match_status = match["status"]
+            payable.match_note = match["message"]
+        record_audit(
+            self.db,
+            user,
+            "SUPPLIER_INVOICE_VERIFIED",
+            "SUPPLIER_INVOICE",
+            f"Verified {invoice.internal_invoice_number}",
+            entity_id=invoice.id,
+            after_data={"match_status": match["status"]},
+        )
         self.db.commit()
-        self.db.refresh(x)
-        return self.attach_journal(x)
+        self.db.refresh(invoice)
+        return self.attach_journal(invoice)
 
-    def generate_journal(self, x, user):
-        if x.status != "VERIFIED":
+    def generate_journal(self, invoice, user):
+        if invoice.status != "VERIFIED":
             raise HTTPException(409, "Invoice must be verified before journal generation")
-        existing = self.db.query(JournalEntry).filter(JournalEntry.reference_type == "SUPPLIER_INVOICE", JournalEntry.reference_id == x.id, JournalEntry.status != "VOID").first()
+        existing = self.db.query(JournalEntry).filter(
+            JournalEntry.reference_type == "SUPPLIER_INVOICE",
+            JournalEntry.reference_id == invoice.id,
+            JournalEntry.status != "VOID",
+        ).first()
         if existing:
             return existing
-        event = "SUPPLIER_INVOICE_INVENTORY" if x.goods_receipt and x.goods_receipt.destination_type == "WAREHOUSE" else "SUPPLIER_INVOICE_DIRECT_USE"
-        rule = self.db.query(AccountingPostingRule).filter(AccountingPostingRule.event_type == event, AccountingPostingRule.is_active.is_(True)).first()
+        event = "SUPPLIER_INVOICE_INVENTORY" if invoice.goods_receipt and invoice.goods_receipt.destination_type == "WAREHOUSE" else "SUPPLIER_INVOICE_DIRECT_USE"
+        rule = self.db.query(AccountingPostingRule).filter(
+            AccountingPostingRule.event_type == event,
+            AccountingPostingRule.is_active.is_(True),
+        ).first()
         if not rule:
             raise HTTPException(409, f"No active posting rule configured for {event}")
         grouped = {}
-        for line in x.lines:
+        for line in invoice.lines:
             account_id = line.account_id or rule.debit_account_id
             account = self.db.get(ChartOfAccount, account_id)
             if not account or not account.is_active or not account.is_posting:
                 raise HTTPException(409, "Invoice line requires a valid active posting account")
-            grouped[account_id] = grouped.get(account_id, Decimal("0")) + line.line_amount
+            grouped[account_id] = grouped.get(account_id, ZERO) + line.line_amount
         if not rule.credit_account.is_active or not rule.credit_account.is_posting:
             raise HTTPException(409, "Accounts Payable posting account is invalid")
-        if x.total_amount != x.subtotal:
+        if invoice.total_amount != invoice.subtotal:
             raise HTTPException(409, "Discount and tax account configuration is not available; journal cannot be generated")
         journal = JournalEntry(
             journal_number=next_document_number(self.db, "JV", digits=4),
-            posting_date=x.invoice_date,
+            posting_date=invoice.invoice_date,
             status="DRAFT",
             document_type="SUPPLIER_INVOICE",
-            document_number=x.internal_invoice_number,
+            document_number=invoice.internal_invoice_number,
             reference_type="SUPPLIER_INVOICE",
-            reference_id=x.id,
-            description=f"Supplier invoice {x.supplier_invoice_number}",
+            reference_id=invoice.id,
+            description=f"Supplier invoice {invoice.supplier_invoice_number}",
             created_by_id=user.id,
-            business_unit_id=x.business_unit_id,
-            location_id=x.location_id,
-            department_id=x.department_id,
+            business_unit_id=invoice.business_unit_id,
+            location_id=invoice.location_id,
+            department_id=invoice.department_id,
         )
         for index, (account_id, amount) in enumerate(grouped.items(), 1):
-            journal.lines.append(JournalLine(line_number=index, account_id=account_id, debit=amount, credit=0, description=x.notes, business_unit_id=x.business_unit_id, department_id=x.department_id, location_id=x.location_id, supplier_id=x.supplier_id))
-        journal.lines.append(JournalLine(line_number=len(grouped) + 1, account_id=rule.credit_account_id, debit=0, credit=x.total_amount, description=f"Payable to {x.supplier.name}", business_unit_id=x.business_unit_id, department_id=x.department_id, location_id=x.location_id, supplier_id=x.supplier_id))
+            journal.lines.append(JournalLine(
+                line_number=index,
+                account_id=account_id,
+                debit=amount,
+                credit=0,
+                description=invoice.notes,
+                business_unit_id=invoice.business_unit_id,
+                department_id=invoice.department_id,
+                location_id=invoice.location_id,
+                supplier_id=invoice.supplier_id,
+            ))
+        journal.lines.append(JournalLine(
+            line_number=len(grouped) + 1,
+            account_id=rule.credit_account_id,
+            debit=0,
+            credit=invoice.total_amount,
+            description=f"Payable to {invoice.supplier.name}",
+            business_unit_id=invoice.business_unit_id,
+            department_id=invoice.department_id,
+            location_id=invoice.location_id,
+            supplier_id=invoice.supplier_id,
+        ))
         self.db.add(journal)
         self.db.flush()
-        record_audit(self.db, user, "JOURNAL_GENERATED", "JOURNAL_ENTRY", f"Generated {journal.journal_number}", entity_id=journal.id, reference_document=x.internal_invoice_number)
+        record_audit(
+            self.db,
+            user,
+            "JOURNAL_GENERATED",
+            "JOURNAL_ENTRY",
+            f"Generated {journal.journal_number}",
+            entity_id=journal.id,
+            reference_document=invoice.internal_invoice_number,
+        )
         self.db.commit()
         self.db.refresh(journal)
         return journal
