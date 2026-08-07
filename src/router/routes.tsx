@@ -22,8 +22,6 @@ import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
 import PaymentListPage from "@/modules/finance/payments/PaymentListPage";
 import PaymentDetailPage from "@/modules/finance/payments/PaymentDetailPage";
 import GeneralLedgerPage from "@/modules/finance/general-ledger/GeneralLedgerPage";
-import HistoricalImportPage from "@/modules/finance/historical-import/HistoricalImportPage";
-import HistoricalImportDetailPage from "@/modules/finance/historical-import/HistoricalImportDetailPage";
 import CashFlowDashboardPage from "@/modules/finance/cash-flow/CashFlowDashboardPage";
 import CashAccountsPage from "@/modules/finance/cash-flow/CashAccountsPage";
 import CashAccountActivityPage from "@/modules/finance/cash-flow/CashAccountActivityPage";
@@ -37,9 +35,6 @@ import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPag
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
 import BankReconciliationListPage from "@/modules/finance/bank-reconciliation/BankReconciliationListPage";
 import BankReconciliationDetailPage from "@/modules/finance/bank-reconciliation/BankReconciliationDetailPage";
-import BudgetListPage from "@/modules/finance/budgets/BudgetListPage";
-import BudgetDetailPage from "@/modules/finance/budgets/BudgetDetailPage";
-import BudgetVsActualPage from "@/modules/finance/budgets/BudgetVsActualPage";
 import FixedAssetListPage from "@/modules/finance/fixed-assets/FixedAssetListPage";
 import FixedAssetFormPage from "@/modules/finance/fixed-assets/FixedAssetFormPage";
 import FixedAssetDetailPage from "@/modules/finance/fixed-assets/FixedAssetDetailPage";
@@ -47,6 +42,7 @@ import AssetCategoryPage from "@/modules/finance/fixed-assets/AssetCategoryPage"
 import DepreciationRunsPage from "@/modules/finance/fixed-assets/DepreciationRunsPage";
 import FixedAssetReportPage from "@/modules/finance/fixed-assets/FixedAssetReportPage";
 import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationReportPage";
+import AmortizationPage from "@/modules/finance/fixed-assets/AmortizationPage";
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
 import InventoryMovementPage from "@/modules/warehouse/inventory/pages/InventoryMovementPage";
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
@@ -105,8 +101,6 @@ const router = createBrowserRouter([
       { path: "payments/:id", element: <PaymentDetailPage /> },
       { path: "payments/:id/print", element: <AccountingPrintPage kind="payments" /> },
       { path: "general-ledger", element: <GeneralLedgerPage /> },
-      { path: "historical-import", element: <HistoricalImportPage /> },
-      { path: "historical-import/:id", element: <HistoricalImportDetailPage /> },
       { path: "cash-flow", element: <CashFlowDashboardPage /> },
       { path: "cash-accounts", element: <CashAccountsPage /> },
       { path: "cash-accounts/:id", element: <CashAccountActivityPage /> },
@@ -120,11 +114,9 @@ const router = createBrowserRouter([
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
       { path: "bank-reconciliations", element: <BankReconciliationListPage /> },
       { path: "bank-reconciliations/:id", element: <BankReconciliationDetailPage /> },
-      { path: "budgets", element: <BudgetListPage /> },
-      { path: "budgets/:id", element: <BudgetDetailPage /> },
-      { path: "budget-vs-actual", element: <BudgetVsActualPage /> },
       { path: "fixed-assets", element: <FixedAssetListPage /> },
       { path: "fixed-assets/new", element: <FixedAssetFormPage /> },
+      { path: "fixed-assets/amortization", element: <AmortizationPage /> },
       { path: "fixed-assets/:id", element: <FixedAssetDetailPage /> },
       { path: "asset-categories", element: <AssetCategoryPage /> },
       { path: "depreciation-runs", element: <DepreciationRunsPage /> },
