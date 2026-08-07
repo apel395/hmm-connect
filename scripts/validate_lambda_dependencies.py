@@ -8,9 +8,6 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 BLOCKED_MODULES = {"openpyxl", "pandas", "xlsxwriter", "xlrd", "xlwt", "pyarrow", "polars", "numpy"}
 WORKER_ONLY_FILES = {
-    Path("api/v1/budgets.py"),
-    Path("api/v1/fixed_assets.py"),
-    Path("api/v1/trial_balance.py"),
     Path("scripts/create_historical_import_samples.py"),
     Path("services/historical_import_service.py"),
 }
