@@ -19,6 +19,37 @@ export type InvoiceLine = {
   notes?: string | null;
 };
 
+export type ThreeWayMatchLine = {
+  invoice_line_id?: number | null;
+  product_id?: number | null;
+  product_code?: string | null;
+  product_name?: string | null;
+  receipt_item_id?: number | null;
+  purchase_order_item_id?: number | null;
+  received_quantity: number;
+  previously_invoiced_quantity: number;
+  available_quantity: number;
+  invoice_quantity: number;
+  po_unit_price?: number | null;
+  invoice_unit_price: number;
+  price_difference?: number | null;
+  uom?: string | null;
+  reference_uom?: string | null;
+  status: "MATCHED" | "MISMATCH";
+  issues: string[];
+};
+
+export type ThreeWayMatch = {
+  status: "MATCHED" | "MISMATCH" | "NOT_APPLICABLE";
+  can_verify: boolean;
+  message: string;
+  supplier_match: boolean;
+  line_count: number;
+  matched_lines: number;
+  issues: string[];
+  lines: ThreeWayMatchLine[];
+};
+
 export type SupplierInvoice = {
   id: number;
   internal_invoice_number: string;
@@ -50,6 +81,7 @@ export type SupplierInvoice = {
   notes?: string | null;
   source_type: string;
   lines: InvoiceLine[];
+  three_way_match?: ThreeWayMatch;
   related_journal?: { id: number; journal_number: string; status: string } | null;
   allowed_actions?: Record<string, boolean>;
   activity_history?: any[];
