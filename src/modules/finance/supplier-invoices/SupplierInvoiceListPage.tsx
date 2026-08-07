@@ -20,7 +20,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const blankLine = (): InvoiceLine => ({ description: "", quantity: 0, uom: "", unit_price: 0, account_id: null });
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const emptyForm = () => ({ supplier_id: 0, supplier_invoice_number: "", invoice_date: today(), received_date: today(), due_date: "", purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, tax_amount: 0, withholding_tax_amount: 0, notes: "", source_type: "LIVE", lines: [blankLine()] });
+const emptyForm = (): any => ({ supplier_id: 0, supplier_invoice_number: "", invoice_date: today(), received_date: today(), due_date: "", purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, tax_amount: 0, withholding_tax_amount: 0, notes: "", source_type: "LIVE", lines: [blankLine()] });
 
 export default function SupplierInvoiceListPage() {
   const navigate = useNavigate();
