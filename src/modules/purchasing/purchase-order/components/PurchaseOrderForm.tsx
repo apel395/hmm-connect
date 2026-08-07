@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogBody, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
-import { userApi } from "@/modules/admin/users/userApi";
+import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { useProducts } from "@/modules/master/products/hooks/useProducts";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
 import { useApprovedPurchaseRequisitions } from "../hooks/usePurchaseOrders";
@@ -12,129 +12,20 @@ import PurchaseOrderFooter from "./PurchaseOrderFooter";
 
 interface Props { open:boolean; loading?:boolean; onClose:()=>void; onSubmit:(payload:any)=>Promise<void>|void; initialData?:any }
 type CreationType = "FROM_PR" | "DIRECT";
-const today = () => new Date().toISOString().slice(0, 10);
+const today=()=>new Date().toISOString().slice(0,10);
 
-export default function PurchaseOrderForm({open, loading, onClose, onSubmit, initialData}:Props) {
-  const editing = Boolean(initialData);
-  const {data:suppliers=[]} = useSuppliers();
-  const {data:approvedPRs=[]} = useApprovedPurchaseRequisitions();
-  const {data:products=[]} = useProducts();
-  const {data:departments=[]} = useQuery({queryKey:["user-departments"], queryFn:userApi.departments, enabled:open});
-  const {data:locations=[]} = useQuery({queryKey:["user-locations"], queryFn:userApi.locations, enabled:open});
-  const [creationType, setCreationType] = useState<CreationType>("FROM_PR");
-  const [supplierId, setSupplierId] = useState<number>();
-  const [selectedPR, setSelectedPR] = useState<any>();
-  const [departmentId, setDepartmentId] = useState<number>();
-  const [locationId, setLocationId] = useState<number>();
-  const [businessUnitId, setBusinessUnitId] = useState<number>();
-  const [orderDate, setOrderDate] = useState(today());
-  const [expectedDate, setExpectedDate] = useState("");
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<PurchaseOrderItemRow[]>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (initialData) {
-      const type: CreationType = initialData.creation_type === "FROM_PR" ? "FROM_PR" : "DIRECT";
-      const source = type === "FROM_PR" ? {
-        id: initialData.source_pr_id,
-        pr_number: initialData.source_pr_number,
-        business_unit_id: initialData.business_unit_id,
-        department_id: initialData.department_id,
-        department_name: initialData.department_name,
-        location_id: initialData.location_id,
-        location_name: initialData.location_name,
-      } : undefined;
-      setCreationType(type);
-      setSupplierId(initialData.supplier_id ?? undefined);
-      setSelectedPR(source);
-      setBusinessUnitId(initialData.business_unit_id ?? undefined);
-      setDepartmentId(initialData.department_id ?? undefined);
-      setLocationId(initialData.location_id ?? undefined);
-      setOrderDate(initialData.order_date ?? today());
-      setExpectedDate(initialData.expected_date ?? "");
-      setNotes(initialData.notes ?? "");
-      setItems((initialData.items ?? []).map((item:any) => ({
-        product_id:item.product_id,
-        product_code:item.product_code,
-        product_name:item.product_name,
-        description:item.description ?? "",
-        uom:item.uom ?? "",
-        requested_quantity:Number(item.quantity),
-        remaining_quantity:Number(item.remaining_quantity ?? item.quantity),
-        quantity:Number(item.quantity),
-        unit_price:Number(item.unit_price),
-        purchase_requisition_item_id:item.purchase_requisition_item_id ?? null,
-      })));
-      return;
-    }
-    setCreationType("FROM_PR"); setSupplierId(undefined); setSelectedPR(undefined); setBusinessUnitId(undefined); setDepartmentId(undefined); setLocationId(undefined); setOrderDate(today()); setExpectedDate(""); setNotes(""); setItems([]);
-  }, [open, initialData]);
-
-  const availablePRs = useMemo(() => {
-    if (!selectedPR?.id || approvedPRs.some((item:any) => item.id === selectedPR.id)) return approvedPRs;
-    return [selectedPR, ...approvedPRs];
-  }, [approvedPRs, selectedPR]);
-
-  const changeType = (type:CreationType) => {
-    if (editing) return;
-    setCreationType(type);
-    setSelectedPR(undefined);
-    setBusinessUnitId(undefined);
-    setDepartmentId(undefined);
-    setLocationId(undefined);
-    setItems([]);
-  };
-
-  const selectPR = (id:number) => {
-    const requisition = approvedPRs.find((item:any) => item.id === id);
-    setSelectedPR(requisition);
-    setBusinessUnitId(requisition?.business_unit_id ?? undefined);
-    setDepartmentId(requisition?.department_id ?? undefined);
-    setLocationId(requisition?.location_id ?? undefined);
-    setNotes(requisition?.notes ?? "");
-    setItems((requisition?.items ?? []).map((item:any) => ({
-      product_id:item.product_id,
-      product_code:item.product_code,
-      product_name:item.product_name,
-      description:item.description ?? "",
-      uom:item.uom,
-      requested_quantity:Number(item.quantity),
-      remaining_quantity:Number(item.remaining_quantity),
-      quantity:Number(item.remaining_quantity),
-      unit_price:0,
-      purchase_requisition_item_id:item.id,
-    })));
-  };
-
-  const total = useMemo(() => items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0), [items]);
-
-  const save = async () => {
-    if (!supplierId) return alert("Supplier is required.");
-    if (creationType === "FROM_PR" && !selectedPR) return alert("Select one approved purchase requisition.");
-    if (creationType === "DIRECT" && (!departmentId || !locationId)) return alert("Department and location are required for a direct purchase order.");
-    if (!orderDate || !expectedDate) return alert("Order date and estimated delivery date are required.");
-    if (!items.length) return alert("Add at least one item.");
-    if (creationType === "DIRECT" && items.some((item) => !item.product_id)) return alert("Select an item for every line.");
-    if (items.some((item) => item.quantity <= 0 || item.unit_price < 0)) return alert("Quantities must be positive and unit costs cannot be negative.");
-    await onSubmit({
-      supplier_id:supplierId,
-      business_unit_id:businessUnitId,
-      department_id:departmentId,
-      location_id:locationId,
-      order_date:orderDate,
-      expected_date:expectedDate,
-      notes,
-      purchase_requisition_ids:creationType === "FROM_PR" ? (initialData?.purchase_requisition_ids ?? (selectedPR?.id ? [selectedPR.id] : [])) : [],
-      items:items.map(({product_code, product_name, requested_quantity, remaining_quantity, ...item}) => item),
-    });
-  };
-
-  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden"><DialogHeader><DialogTitle>{editing ? "Edit Purchase Order" : "Create Purchase Order"}</DialogTitle></DialogHeader><DialogBody className="flex-1 overflow-y-auto">
-    {!editing && <fieldset className="mb-6 rounded-lg border border-slate-200 p-4"><legend className="px-2 font-semibold">Choose Creation Type</legend><div className="flex flex-wrap gap-6"><label className="flex items-center gap-2"><input type="radio" checked={creationType === "FROM_PR"} onChange={() => changeType("FROM_PR")}/> From Purchase Requisition</label><label className="flex items-center gap-2"><input type="radio" checked={creationType === "DIRECT"} onChange={() => changeType("DIRECT")}/> Direct Purchase Order</label></div></fieldset>}
-    {editing && <div className="mb-5 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">PO number <strong>{initialData.po_number}</strong> and its creation source are locked. Other draft fields can be updated.</div>}
-    <PurchaseOrderHeader fromRequisition={creationType === "FROM_PR"} sourceLocked={editing && creationType === "FROM_PR"} suppliers={suppliers} approvedPRs={availablePRs} departments={departments} locations={locations} supplierId={supplierId} selectedPR={selectedPR} departmentId={departmentId} locationId={locationId} orderDate={orderDate} expectedDate={expectedDate} notes={notes} onSupplierChange={setSupplierId} onSelectPR={selectPR} onDepartmentChange={setDepartmentId} onLocationChange={setLocationId} onOrderDateChange={setOrderDate} onExpectedDateChange={setExpectedDate} onNotesChange={setNotes}/>
-    <div className="mt-8"><PurchaseOrderItems items={items} products={products} fromRequisition={creationType === "FROM_PR"} onChange={setItems}/></div>
-    <div className="mt-8"><PurchaseOrderSummary total={total}/></div>
-  </DialogBody><PurchaseOrderFooter loading={loading} onCancel={onClose} onSubmit={save}/></DialogContent></Dialog>;
+export default function PurchaseOrderForm({open,loading,onClose,onSubmit,initialData}:Props){
+ const editing=Boolean(initialData);const{data:suppliers=[]}=useSuppliers();const{data:approvedPRs=[]}=useApprovedPurchaseRequisitions();const{data:products=[]}=useProducts();
+ const[creationType,setCreationType]=useState<CreationType>("FROM_PR");const[supplierId,setSupplierId]=useState<number>();const[selectedPR,setSelectedPR]=useState<any>();const[businessUnitId,setBusinessUnitId]=useState<number>();const[departmentId,setDepartmentId]=useState<number>();const[locationId,setLocationId]=useState<number>();const[orderDate,setOrderDate]=useState(today());const[expectedDate,setExpectedDate]=useState("");const[notes,setNotes]=useState("");const[items,setItems]=useState<PurchaseOrderItemRow[]>([]);
+ const businessUnits=useQuery({queryKey:["business-units","po-form"],queryFn:()=>filterBusinessUnits({is_active:true}),enabled:open});
+ const departments=useQuery({queryKey:["departments","po-form",businessUnitId],queryFn:()=>listDepartments({business_unit_id:businessUnitId,is_active:true}),enabled:open&&Boolean(businessUnitId)});
+ const locations=useQuery({queryKey:["locations","po-form",businessUnitId],queryFn:()=>listLocations({business_unit_id:businessUnitId,is_active:true}),enabled:open&&Boolean(businessUnitId)});
+ useEffect(()=>{if(!open)return;if(initialData){const type:CreationType=initialData.creation_type==="FROM_PR"?"FROM_PR":"DIRECT";const source=type==="FROM_PR"?{id:initialData.source_pr_id,pr_number:initialData.source_pr_number,business_unit_id:initialData.business_unit_id,business_unit_name:initialData.business_unit_name,department_id:initialData.department_id,department_name:initialData.department_name,location_id:initialData.location_id,location_name:initialData.location_name}:undefined;setCreationType(type);setSupplierId(initialData.supplier_id??undefined);setSelectedPR(source);setBusinessUnitId(initialData.business_unit_id??undefined);setDepartmentId(initialData.department_id??undefined);setLocationId(initialData.location_id??undefined);setOrderDate(initialData.order_date??today());setExpectedDate(initialData.expected_date??"");setNotes(initialData.notes??"");setItems((initialData.items??[]).map((item:any)=>({product_id:item.product_id,product_code:item.product_code,product_name:item.product_name,description:item.description??"",uom:item.uom??"",requested_quantity:Number(item.quantity),remaining_quantity:Number(item.remaining_quantity??item.quantity),quantity:Number(item.quantity),unit_price:Number(item.unit_price),purchase_requisition_item_id:item.purchase_requisition_item_id??null})));return}setCreationType("FROM_PR");setSupplierId(undefined);setSelectedPR(undefined);setBusinessUnitId(undefined);setDepartmentId(undefined);setLocationId(undefined);setOrderDate(today());setExpectedDate("");setNotes("");setItems([])},[open,initialData]);
+ const availablePRs=useMemo(()=>!selectedPR?.id||approvedPRs.some((item:any)=>item.id===selectedPR.id)?approvedPRs:[selectedPR,...approvedPRs],[approvedPRs,selectedPR]);
+ const changeType=(type:CreationType)=>{if(editing)return;setCreationType(type);setSelectedPR(undefined);setBusinessUnitId(undefined);setDepartmentId(undefined);setLocationId(undefined);setItems([])};
+ const changeBusinessUnit=(id?:number)=>{setBusinessUnitId(id);setDepartmentId(undefined);setLocationId(undefined)};
+ const selectPR=(id:number)=>{const requisition=approvedPRs.find((item:any)=>item.id===id);setSelectedPR(requisition);setBusinessUnitId(requisition?.business_unit_id??undefined);setDepartmentId(requisition?.department_id??undefined);setLocationId(requisition?.location_id??undefined);setNotes(requisition?.notes??"");setItems((requisition?.items??[]).map((item:any)=>({product_id:item.product_id,product_code:item.product_code,product_name:item.product_name,description:item.description??"",uom:item.uom,requested_quantity:Number(item.quantity),remaining_quantity:Number(item.remaining_quantity),quantity:Number(item.remaining_quantity),unit_price:0,purchase_requisition_item_id:item.id})))};
+ const total=useMemo(()=>items.reduce((sum,item)=>sum+item.quantity*item.unit_price,0),[items]);
+ const save=async()=>{if(!supplierId)return alert("Supplier is required.");if(creationType==="FROM_PR"&&!selectedPR)return alert("Select one approved purchase requisition.");if(creationType==="DIRECT"&&!businessUnitId)return alert("Business Unit is required for a direct purchase order.");if(creationType==="DIRECT"&&(!departmentId||!locationId))return alert("Department and location are required for a direct purchase order.");if(!orderDate||!expectedDate)return alert("Order date and estimated delivery date are required.");if(!items.length)return alert("Add at least one item.");if(creationType==="DIRECT"&&items.some(item=>!item.product_id))return alert("Select an item for every line.");if(items.some(item=>item.quantity<=0||item.unit_price<0))return alert("Quantities must be positive and unit costs cannot be negative.");await onSubmit({supplier_id:supplierId,business_unit_id:businessUnitId,department_id:departmentId,location_id:locationId,order_date:orderDate,expected_date:expectedDate,notes,purchase_requisition_ids:creationType==="FROM_PR"?(initialData?.purchase_requisition_ids??(selectedPR?.id?[selectedPR.id]:[])):[],items:items.map(({product_code,product_name,requested_quantity,remaining_quantity,...item})=>item)})};
+ return <Dialog open={open} onOpenChange={(value)=>!value&&onClose()}><DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden"><DialogHeader><DialogTitle>{editing?"Edit Purchase Order":"Create Purchase Order"}</DialogTitle></DialogHeader><DialogBody className="flex-1 overflow-y-auto">{!editing&&<fieldset className="mb-6 rounded-lg border border-slate-200 p-4"><legend className="px-2 font-semibold">Choose Creation Type</legend><div className="flex flex-wrap gap-6"><label className="flex items-center gap-2"><input type="radio" checked={creationType==="FROM_PR"} onChange={()=>changeType("FROM_PR")}/> From Purchase Requisition</label><label className="flex items-center gap-2"><input type="radio" checked={creationType==="DIRECT"} onChange={()=>changeType("DIRECT")}/> Direct Purchase Order</label></div></fieldset>}{editing&&<div className="mb-5 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">PO number <strong>{initialData.po_number}</strong> and its creation source are locked. Other draft fields can be updated.</div>}<PurchaseOrderHeader fromRequisition={creationType==="FROM_PR"} sourceLocked={editing&&creationType==="FROM_PR"} suppliers={suppliers} approvedPRs={availablePRs} businessUnits={businessUnits.data??[]} departments={departments.data??[]} locations={locations.data??[]} supplierId={supplierId} selectedPR={selectedPR} businessUnitId={businessUnitId} departmentId={departmentId} locationId={locationId} orderDate={orderDate} expectedDate={expectedDate} notes={notes} onSupplierChange={setSupplierId} onSelectPR={selectPR} onBusinessUnitChange={changeBusinessUnit} onDepartmentChange={setDepartmentId} onLocationChange={setLocationId} onOrderDateChange={setOrderDate} onExpectedDateChange={setExpectedDate} onNotesChange={setNotes}/><div className="mt-8"><PurchaseOrderItems items={items} products={products} fromRequisition={creationType==="FROM_PR"} onChange={setItems}/></div><div className="mt-8"><PurchaseOrderSummary total={total}/></div></DialogBody><PurchaseOrderFooter loading={loading} onCancel={onClose} onSubmit={save}/></DialogContent></Dialog>
 }
