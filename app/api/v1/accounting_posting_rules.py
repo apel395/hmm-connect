@@ -2,13 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import has_any_role
 from app.models.accounting_posting_rule import AccountingPostingRule
 from app.schemas.accounting_posting_rule import PostingRuleCreate, PostingRuleUpdate
 from app.services.accounting_posting_rule_service import AccountingPostingRuleService
 from app.services.audit import record_audit
 router=APIRouter(prefix="/accounting/posting-rules",tags=["Accounting Posting Rules"])
 def access(user):
-    if not {r.name for r in user.roles}.intersection({"FINANCE","ADMIN"}): raise HTTPException(403,"Finance access required")
+    if not has_any_role(user,"FINANCE"): raise HTTPException(403,"Finance access required")
 @router.get("")
 def list_rules(db:Session=Depends(get_db),_=Depends(get_current_user)):
     svc=AccountingPostingRuleService(db); return [svc.serialize(x) for x in db.query(AccountingPostingRule).order_by(AccountingPostingRule.event_type).all()]
