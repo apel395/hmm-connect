@@ -5,11 +5,12 @@ from fastapi import APIRouter,Depends,HTTPException,Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import has_any_role
 from app.services.cash_flow_service import CASH_TYPES,CashFlowService,ZERO
 
 router=APIRouter(prefix="/cash-flow",tags=["Cash Flow"])
 def access(user):
-    if not {r.name for r in user.roles}.intersection({"FINANCE","ADMIN"}):raise HTTPException(403,"Finance access required")
+    if not has_any_role(user,"FINANCE"):raise HTTPException(403,"Finance access required")
 def subtypes(value):return [x.strip().upper() for x in value.split(",") if x.strip()] if value else None
 
 @router.get("")
