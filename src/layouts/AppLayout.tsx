@@ -1,10 +1,15 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "@/components/navigation/Sidebar";
 import Header from "@/components/navigation/Header";
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  if (location.pathname.endsWith("/print")) {
+    return <Outlet />;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#F8F6F1] text-[#202723]">
