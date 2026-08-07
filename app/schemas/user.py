@@ -46,6 +46,35 @@ class UserDetailResponse(UserResponse):
     role_ids: list[int] = Field(default_factory=list)
 
 
+class UserCreate(BaseModel):
+    username: str = Field(min_length=1, max_length=50)
+    email: str = Field(min_length=3, max_length=120, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    full_name: str = Field(min_length=1, max_length=150)
+    password: str = Field(min_length=8, max_length=128)
+    is_active: bool = True
+    department_id: int | None = None
+    location_id: int | None = None
+    default_business_unit_id: int | None = None
+    default_location_id: int | None = None
+    default_department_id: int | None = None
+    role_ids: list[int] = Field(default_factory=list)
+
+    @field_validator("username", "email", "full_name", mode="before")
+    @classmethod
+    def trim_text(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be empty")
+        return normalized
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.lower()
+
+
 class UserUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=50)
     email: str | None = Field(
