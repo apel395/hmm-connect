@@ -54,8 +54,9 @@ jobs:
           python -m pip install --requirement requirements-api.txt --target build --only-binary=:all:
           cp -R app build/app
           cp lambda_handler.py build/lambda_handler.py
-          rm -f build/app/api/v1/budgets.py build/app/api/v1/fixed_assets.py build/app/api/v1/trial_balance.py
+          rm -f build/app/api/v1/budgets.py build/app/api/v1/fixed_assets.py
           rm -f build/app/scripts/create_historical_import_samples.py build/app/services/historical_import_service.py
+          test -f build/app/api/v1/trial_balance.py
           find build -type d -name '__pycache__' -prune -exec rm -rf {} +
           find build -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
           SIZE_MB=$(du -sm build | cut -f1)
@@ -67,11 +68,13 @@ jobs:
           SECRET_KEY: ci-only-secret-key-that-is-longer-than-32-characters
           DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:5432/ci_db
           CORS_ORIGINS: http://localhost:5173
-          PYTHONPATH: build
         run: |
           set -euo pipefail
           python -m compileall -q build/app build/lambda_handler.py
-          python -c "from lambda_handler import handler; from app.main import app; assert handler is not None; assert app.title"
+          (
+            cd build
+            PYTHONPATH=. python -c "from lambda_handler import handler; from app.main import app; assert handler is not None; assert app.title"
+          )
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
