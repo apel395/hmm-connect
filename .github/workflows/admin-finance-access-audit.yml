@@ -2,6 +2,8 @@ name: Admin Finance Access Audit
 on:
   push:
     branches: [feature/admin-finance-access-backend]
+  pull_request:
+    branches: [backend]
   workflow_dispatch:
 jobs:
   audit:
