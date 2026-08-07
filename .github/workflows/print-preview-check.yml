@@ -2,6 +2,8 @@ name: Print Preview Check
 on:
   push:
     branches: [feature/print-preview-dialog]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   validate:
