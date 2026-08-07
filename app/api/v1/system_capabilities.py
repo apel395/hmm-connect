@@ -5,20 +5,18 @@ router = APIRouter(prefix="/system", tags=["System"])
 
 @router.get("/capabilities")
 def capabilities():
-    """Describe optional services available to the current runtime.
-
-    Lambda intentionally exposes only lightweight transactional features. The
-    EC2 worker will override these flags when its processing routes are enabled.
-    """
+    """Describe optional runtime capabilities exposed by the Lambda API."""
     return {
         "runtime": "lambda",
         "worker": False,
-        "excel_import": False,
-        "excel_export": False,
-        "financial_export": False,
-        "bank_statement_xlsx_import": False,
-        "budget_import": False,
-        "fixed_asset_processing": False,
+        "trial_balance": True,
+        "fixed_assets": True,
+        "depreciation": True,
+        "amortization": True,
+        "bank_reconciliation": True,
+        "bank_statement_csv_import": True,
+        "spreadsheet_import": False,
+        "spreadsheet_export": False,
         "historical_import": False,
         "scheduled_jobs": False,
     }
