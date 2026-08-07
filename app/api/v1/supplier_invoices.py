@@ -33,10 +33,12 @@ def get(db, invoice_id):
 def result(db, invoice, user):
     service = SupplierInvoiceService(db)
     data = service.serialize(service.attach_journal(invoice))
+    match = service.match_summary(invoice)
+    data["three_way_match"] = match
     data.update(document_context(db, "SUPPLIER_INVOICE", invoice.id, invoice.status, user))
     data["allowed_actions"] = {
         "can_edit": invoice.status == "DRAFT",
-        "can_verify": invoice.status == "DRAFT",
+        "can_verify": invoice.status == "DRAFT" and match["can_verify"],
         "can_reject": invoice.status in {"DRAFT", "VERIFIED"} and not data["related_journal"],
         "can_generate_journal": invoice.status == "VERIFIED" and not data["related_journal"],
         "can_void": invoice.status in {"DRAFT", "VERIFIED"},
@@ -64,29 +66,29 @@ def listing(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    q = db.query(SupplierInvoice)
+    query = db.query(SupplierInvoice)
     if search:
-        q = q.filter(or_(SupplierInvoice.internal_invoice_number.ilike(f"%{search}%"), SupplierInvoice.supplier_invoice_number.ilike(f"%{search}%")))
+        query = query.filter(or_(SupplierInvoice.internal_invoice_number.ilike(f"%{search}%"), SupplierInvoice.supplier_invoice_number.ilike(f"%{search}%")))
     if supplier_id:
-        q = q.filter(SupplierInvoice.supplier_id == supplier_id)
+        query = query.filter(SupplierInvoice.supplier_id == supplier_id)
     if status:
-        q = q.filter(SupplierInvoice.status == status)
+        query = query.filter(SupplierInvoice.status == status)
     if date_from:
-        q = q.filter(SupplierInvoice.invoice_date >= date_from)
+        query = query.filter(SupplierInvoice.invoice_date >= date_from)
     if date_to:
-        q = q.filter(SupplierInvoice.invoice_date <= date_to)
+        query = query.filter(SupplierInvoice.invoice_date <= date_to)
     if due_from:
-        q = q.filter(SupplierInvoice.due_date >= due_from)
+        query = query.filter(SupplierInvoice.due_date >= due_from)
     if due_to:
-        q = q.filter(SupplierInvoice.due_date <= due_to)
+        query = query.filter(SupplierInvoice.due_date <= due_to)
     if po_number:
-        q = q.join(SupplierInvoice.purchase_order).filter_by(po_number=po_number)
+        query = query.join(SupplierInvoice.purchase_order).filter_by(po_number=po_number)
     if receipt_number:
-        q = q.join(SupplierInvoice.goods_receipt).filter_by(receipt_number=receipt_number)
+        query = query.join(SupplierInvoice.goods_receipt).filter_by(receipt_number=receipt_number)
     if source_type:
-        q = q.filter(SupplierInvoice.source_type == source_type)
-    total = q.count()
-    rows = q.order_by(SupplierInvoice.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        query = query.filter(SupplierInvoice.source_type == source_type)
+    total = query.count()
+    rows = query.order_by(SupplierInvoice.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     service = SupplierInvoiceService(db)
     return {
         "items": [service.serialize(service.attach_journal(item)) for item in rows],
@@ -128,12 +130,25 @@ def reject(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curr
     invoice = get(db, invoice_id)
     if invoice.status not in {"DRAFT", "VERIFIED"}:
         raise HTTPException(409, "Only draft or verified invoices without a journal can be rejected")
-    journal = db.query(JournalEntry).filter(JournalEntry.reference_type == "SUPPLIER_INVOICE", JournalEntry.reference_id == invoice.id, JournalEntry.status != "VOID").first()
+    journal = db.query(JournalEntry).filter(
+        JournalEntry.reference_type == "SUPPLIER_INVOICE",
+        JournalEntry.reference_id == invoice.id,
+        JournalEntry.status != "VOID",
+    ).first()
     if journal:
         raise HTTPException(409, "Invoice with a journal cannot be rejected")
     previous = invoice.status
     invoice.status = "REJECTED"
-    record_audit(db, user, "SUPPLIER_INVOICE_REJECTED", "SUPPLIER_INVOICE", f"Rejected {invoice.internal_invoice_number}", entity_id=invoice.id, before_data={"status": previous}, after_data={"status": "REJECTED"})
+    record_audit(
+        db,
+        user,
+        "SUPPLIER_INVOICE_REJECTED",
+        "SUPPLIER_INVOICE",
+        f"Rejected {invoice.internal_invoice_number}",
+        entity_id=invoice.id,
+        before_data={"status": previous},
+        after_data={"status": "REJECTED"},
+    )
     db.commit()
     db.refresh(invoice)
     return result(db, invoice, user)
@@ -157,12 +172,31 @@ def void(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     now = datetime.now(timezone.utc)
     invoice.status = "VOID"
     invoice.voided_at = now
-    journal = db.query(JournalEntry).filter(JournalEntry.reference_type == "SUPPLIER_INVOICE", JournalEntry.reference_id == invoice.id, JournalEntry.status == "DRAFT").first()
+    journal = db.query(JournalEntry).filter(
+        JournalEntry.reference_type == "SUPPLIER_INVOICE",
+        JournalEntry.reference_id == invoice.id,
+        JournalEntry.status == "DRAFT",
+    ).first()
     if journal:
         journal.status = "VOID"
         journal.voided_at = now
-        record_audit(db, user, "JOURNAL_VOIDED", "JOURNAL_ENTRY", f"Voided {journal.journal_number}", entity_id=journal.id, reference_document=invoice.internal_invoice_number)
-    record_audit(db, user, "SUPPLIER_INVOICE_VOIDED", "SUPPLIER_INVOICE", f"Voided {invoice.internal_invoice_number}", entity_id=invoice.id)
+        record_audit(
+            db,
+            user,
+            "JOURNAL_VOIDED",
+            "JOURNAL_ENTRY",
+            f"Voided {journal.journal_number}",
+            entity_id=journal.id,
+            reference_document=invoice.internal_invoice_number,
+        )
+    record_audit(
+        db,
+        user,
+        "SUPPLIER_INVOICE_VOIDED",
+        "SUPPLIER_INVOICE",
+        f"Voided {invoice.internal_invoice_number}",
+        entity_id=invoice.id,
+    )
     db.commit()
     db.refresh(invoice)
     return result(db, invoice, user)
