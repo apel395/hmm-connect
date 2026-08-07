@@ -1,0 +1,22 @@
+name: Print Preview Check
+on:
+  push:
+    branches: [feature/print-preview-dialog]
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Find remaining new-tab print actions
+        run: |
+          if grep -RniE 'window\.open\([^\n]*(/print|print)' src --include='*.tsx' --include='*.ts'; then
+            echo 'New-tab print action remains.'
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run build
