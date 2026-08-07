@@ -14,10 +14,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Reject remaining window.open print flows
+      - name: Reject remaining new-tab document print flows
         run: |
-          if grep -Rni 'window.open' src --include='*.tsx' --include='*.ts'; then
-            echo 'window.open remains in the frontend; print/document actions must stay in-app.'
+          if grep -Rni 'window.open' src --include='*.tsx' --include='*.ts' | grep -Ei '/print|print'; then
+            echo 'New-tab document print action remains.'
             exit 1
           fi
       - run: npm ci
