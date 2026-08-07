@@ -43,6 +43,17 @@ export interface EditableUser extends AdminUser {
   role_ids: number[];
 }
 
+export interface UserCreatePayload {
+  username: string;
+  email: string;
+  full_name: string;
+  password: string;
+  is_active?: boolean;
+  department_id?: number | null;
+  location_id?: number | null;
+  role_ids: number[];
+}
+
 export interface UserDetailsUpdate {
   username?: string;
   email?: string;
