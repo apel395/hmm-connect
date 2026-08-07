@@ -1,0 +1,16 @@
+name: Admin Finance Access Audit
+on:
+  push:
+    branches: [feature/admin-finance-access-backend]
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find raw role authorization checks
+        run: |
+          echo '=== raw user.roles / role.name checks in API ==='
+          grep -RniE 'user\.roles|role\.name|r\.name' app/api/v1 --include='*.py' || true
+          echo '=== finance access messages ==='
+          grep -RniE 'Finance access|required.*FINANCE|FINANCE.*ADMIN' app/api/v1 --include='*.py' || true
