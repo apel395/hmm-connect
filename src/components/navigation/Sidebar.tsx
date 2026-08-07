@@ -34,6 +34,7 @@ const groups: Group[] = [
     { title: "Finance Dashboard", url: "/finance-dashboard" },
     { title: "Accounts Payable", url: "/accounts-payable" },
     { title: "Supplier Invoices", url: "/supplier-invoices" },
+    { title: "Credit / Debit Notes", url: "/supplier-adjustments" },
     { title: "Payments", url: "/payments" },
     { title: "Journal Entries", url: "/journal-entries" },
     { title: "Cash & Bank Accounts", url: "/cash-accounts" },

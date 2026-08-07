@@ -1,13 +1,29 @@
 import api from "@/api/client";
 
 export type Payment = {
-  id: number; payment_number: string; supplier_id: number; supplier_name: string;
-  payment_date: string; payment_method: string; payment_account_id: number;
-  payment_account_code: string; payment_account_name: string; currency: string;
-  total_amount: number; allocated_amount: number; reference_number?: string | null;
-  cheque_number?: string | null; status: string; notes?: string | null;
-  journal_entry_id?: number | null; journal_number?: string | null;
-  allocations: any[]; allowed_actions?: Record<string, boolean>; activity_history?: any[];
+  id: number;
+  payment_number: string;
+  supplier_id: number;
+  supplier_name: string;
+  payment_date: string;
+  payment_method: string;
+  currency: string;
+  total_amount: number;
+  allocated_amount: number;
+  funded_amount: number;
+  reference_number?: string | null;
+  cheque_number?: string | null;
+  status: string;
+  notes?: string | null;
+  journal_entry_id?: number | null;
+  journal_number?: string | null;
+  business_unit_id?: number | null;
+  location_id?: number | null;
+  department_id?: number | null;
+  allocations: any[];
+  funding_lines: any[];
+  allowed_actions?: Record<string, boolean>;
+  activity_history?: any[];
 };
 
 export const listPayments = async (params: any = {}) => (await api.get("/payments", { params })).data;
