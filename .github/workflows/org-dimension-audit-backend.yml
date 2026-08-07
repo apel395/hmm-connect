@@ -1,0 +1,23 @@
+name: Backend Organization Dimension Audit
+on:
+  push:
+    branches: [feature/org-dimension-audit-backend]
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend dimension references
+        run: |
+          echo '=== required dimension validation ==='
+          grep -RniE 'validate_dimensions\(.*required=True|Business Unit is required|business_unit_id' app --include='*.py' || true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile backend
+        run: python -m compileall -q app
+      - name: Validate migration chain
+        run: python scripts/validate_migration_chain.py
+      - name: Validate Lambda dependencies
+        run: python scripts/validate_lambda_dependencies.py
