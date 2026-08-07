@@ -7,7 +7,7 @@ from app.api.v1 import (
     document_attachments, document_drilldown, document_events, fiscal_periods,
     general_ledger, goods_receipts, inventory, journal_detail, journals,
     organization_dimensions, payments, products, profit_loss, purchase_orders,
-    purchase_requisitions, purchasing_documents, supplier_invoices,
+    purchase_requisitions, purchasing_documents, roles, supplier_invoices,
     supplier_products, suppliers, system_capabilities, users, warehouses,
     year_end,
 )
@@ -44,6 +44,7 @@ for router in (
     ap_aging.router,
     ar_aging.router,
     users.router,
+    roles.router,
     warehouses.router,
     year_end.router,
     audit_trail.router,
