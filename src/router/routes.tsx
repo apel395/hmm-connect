@@ -15,6 +15,7 @@ import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
 import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/SupplierInvoiceListPage";
 import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
+import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
 import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
 import JournalListPage from "@/modules/finance/journals/JournalListPage";
 import JournalDetailPage from "@/modules/finance/journals/JournalDetailPage";
@@ -94,6 +95,7 @@ const router = createBrowserRouter([
       { path: "supplier-invoices", element: <SupplierInvoiceListPage /> },
       { path: "supplier-invoices/:id", element: <SupplierInvoiceDetailPage /> },
       { path: "supplier-invoices/:id/print", element: <AccountingPrintPage kind="supplier-invoices" /> },
+      { path: "supplier-adjustments", element: <SupplierAdjustmentsPage /> },
       { path: "journal-entries", element: <JournalListPage /> },
       { path: "journal-entries/:id", element: <JournalDetailPage /> },
       { path: "journal-entries/:id/print", element: <AccountingPrintPage kind="journal-entries" /> },
