@@ -13,15 +13,12 @@ class GoodsReceipt(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     receipt_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     status: Mapped[str] = mapped_column(String(20), default="DRAFT", nullable=False)
-    purchase_order_id: Mapped[int] = mapped_column(ForeignKey("purchase_orders.id"), nullable=False, index=True)
+    purchase_order_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id"), nullable=True, index=True)
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True, index=True)
     received_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     destination_type: Mapped[str] = mapped_column(String(30), default="INVENTORY", nullable=False)
-    warehouse_id: Mapped[int | None] = mapped_column(
-        ForeignKey("warehouses.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
+    warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id", ondelete="SET NULL"), nullable=True, index=True)
     business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True, index=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -35,6 +32,7 @@ class GoodsReceipt(Base):
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     purchase_order = relationship("PurchaseOrder", back_populates="goods_receipts")
+    supplier = relationship("Supplier")
     received_by = relationship("User", foreign_keys=[received_by_id])
     warehouse = relationship("Warehouse")
     items = relationship("GoodsReceiptItem", back_populates="goods_receipt", cascade="all, delete-orphan")
@@ -45,7 +43,7 @@ class GoodsReceiptItem(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     goods_receipt_id: Mapped[int] = mapped_column(ForeignKey("goods_receipts.id", ondelete="CASCADE"), nullable=False, index=True)
-    purchase_order_item_id: Mapped[int] = mapped_column(ForeignKey("purchase_order_items.id"), nullable=False)
+    purchase_order_item_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_order_items.id"), nullable=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
