@@ -5,95 +5,51 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-
 from app.models.account_payable import AccountPayable
 
-router = APIRouter(
-    prefix="/ap-aging",
-    tags=["Accounts Payable"],
-)
+router = APIRouter(prefix="/ap-aging", tags=["Accounts Payable"])
 
 
 @router.get("")
-def get_ap_aging(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-
+def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     today = date.today()
-
-    rows = (
-        db.query(AccountPayable)
-        .filter(
-            AccountPayable.outstanding_amount > 0
-        )
-        .all()
-    )
+    rows = db.query(AccountPayable).filter(AccountPayable.outstanding_amount > 0).all()
 
     report = []
-
-    total_current = 0
-    total_30 = 0
-    total_60 = 0
-    total_90 = 0
-    total_over_90 = 0
-
+    totals = {"current": 0, "1_30": 0, "31_60": 0, "61_90": 0, "over_90": 0}
     for ap in rows:
+        days = (today - ap.due_date).days if ap.due_date else 0
+        bucket = "current" if days <= 0 else "1_30" if days <= 30 else "31_60" if days <= 60 else "61_90" if days <= 90 else "over_90"
+        values = {key: 0 for key in totals}
+        values[bucket] = ap.outstanding_amount
+        totals[bucket] += ap.outstanding_amount
+        report.append({
+            "id": ap.id,
+            "invoice_number": ap.invoice_number,
+            "supplier_id": ap.supplier_id,
+            "supplier_name": ap.supplier.name if ap.supplier else None,
+            "invoice_date": ap.invoice_date,
+            "due_date": ap.due_date,
+            "amount": ap.amount,
+            "paid_amount": ap.paid_amount,
+            "outstanding": ap.outstanding_amount,
+            "payment_status": ap.payment_status,
+            **values,
+        })
 
-        days = (today - ap.due_date).days
+    paid = db.query(AccountPayable).filter(AccountPayable.paid_amount > 0).order_by(AccountPayable.last_payment_date.desc().nullslast(), AccountPayable.id.desc()).all()
+    paid_rows = [{
+        "id": ap.id,
+        "invoice_number": ap.invoice_number,
+        "supplier_id": ap.supplier_id,
+        "supplier_name": ap.supplier.name if ap.supplier else None,
+        "invoice_date": ap.invoice_date,
+        "due_date": ap.due_date,
+        "amount": ap.amount,
+        "paid_amount": ap.paid_amount,
+        "outstanding": ap.outstanding_amount,
+        "payment_status": ap.payment_status,
+        "last_payment_date": ap.last_payment_date,
+    } for ap in paid]
 
-        current = 0
-        bucket30 = 0
-        bucket60 = 0
-        bucket90 = 0
-        bucket_over90 = 0
-
-        if days <= 0:
-
-            current = ap.outstanding_amount
-            total_current += current
-
-        elif days <= 30:
-
-            bucket30 = ap.outstanding_amount
-            total_30 += bucket30
-
-        elif days <= 60:
-
-            bucket60 = ap.outstanding_amount
-            total_60 += bucket60
-
-        elif days <= 90:
-
-            bucket90 = ap.outstanding_amount
-            total_90 += bucket90
-
-        else:
-
-            bucket_over90 = ap.outstanding_amount
-            total_over_90 += bucket_over90
-
-        report.append(
-            {
-                "invoice_number": ap.invoice_number,
-                "supplier_id": ap.supplier_id,
-                "due_date": ap.due_date,
-                "outstanding": ap.outstanding_amount,
-                "current": current,
-                "1_30": bucket30,
-                "31_60": bucket60,
-                "61_90": bucket90,
-                "over_90": bucket_over90,
-            }
-        )
-
-    return {
-        "summary": {
-            "current": total_current,
-            "1_30": total_30,
-            "31_60": total_60,
-            "61_90": total_90,
-            "over_90": total_over_90,
-        },
-        "details": report,
-    }
+    return {"summary": totals, "details": report, "paid": paid_rows}
