@@ -13,6 +13,7 @@ export interface TrialBalanceFilters {
   include_inactive?: boolean;
   location_id?: number;
   department_id?: number;
+  business_unit_id?: number;
   sort_by?: string;
   sort_order?: "asc" | "desc";
 }
@@ -50,12 +51,12 @@ export async function getTrialBalance(params: TrialBalanceFilters) {
   return (await api.get<TrialBalanceResponse>("/trial-balance", { params })).data;
 }
 
-export async function exportTrialBalance(params: TrialBalanceFilters, format: "xlsx" | "csv") {
-  const response = await api.get("/trial-balance/export", { params: { ...params, format }, responseType: "blob" });
+export async function exportTrialBalanceCsv(params: TrialBalanceFilters) {
+  const response = await api.get("/trial-balance/export", { params, responseType: "blob" });
   const url = URL.createObjectURL(response.data);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `trial-balance-${params.date_from}-${params.date_to}.${format}`;
+  link.download = `trial-balance-${params.date_from}-${params.date_to}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
