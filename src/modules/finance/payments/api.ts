@@ -28,6 +28,6 @@ export type Payment = {
 
 export const listPayments = async (params: any = {}) => (await api.get("/payments", { params })).data;
 export const getPayment = async (id: number) => (await api.get<Payment>(`/payments/${id}`)).data;
-export const eligibleInvoices = async (supplier_id: number, currency = "IDR") => (await api.get("/payments/eligible-invoices", { params: { supplier_id, currency } })).data;
+export const eligibleInvoices = async (supplier_id: number, currency = "IDR") => (await api.get("/payments/eligible-invoices-available", { params: { supplier_id, currency } })).data;
 export const createPayment = async (payload: any) => (await api.post<Payment>("/payments", payload)).data;
 export const paymentAction = async (id: number, action: string) => (await api.post<Payment>(`/payments/${id}/${action}`)).data;
