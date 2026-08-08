@@ -57,6 +57,7 @@ class PurchaseOrder(Base, TimestampMixin):
     supplier = relationship("Supplier", back_populates="purchase_orders")
     department = relationship("Department")
     location = relationship("Location")
+    business_unit = relationship("BusinessUnit")
 
     purchase_requisition = relationship(
         "PurchaseRequisition",
