@@ -35,6 +35,9 @@ class GoodsReceipt(Base):
     supplier = relationship("Supplier")
     received_by = relationship("User", foreign_keys=[received_by_id])
     warehouse = relationship("Warehouse")
+    business_unit = relationship("BusinessUnit")
+    department = relationship("Department")
+    location = relationship("Location")
     items = relationship("GoodsReceiptItem", back_populates="goods_receipt", cascade="all, delete-orphan")
 
 
