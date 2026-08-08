@@ -1,8 +1,8 @@
-name: Validate P2P Finance Frontend
+name: Validate Combined Receiving P2P Frontend
 on:
   push:
     branches:
-      - feature/p2p-finance-completion-frontend
+      - release/receiving-p2p-frontend
 jobs:
   build:
     runs-on: ubuntu-latest
