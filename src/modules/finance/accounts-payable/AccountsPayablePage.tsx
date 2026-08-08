@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { AlertCircle, FileText, LayoutDashboard, WalletCards } from "lucide-react";
-import PageHeader from "@/components/common/PageHeader";
+import { Link, useLocation } from "react-router-dom";
+import { AlertCircle } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import api from "@/api/interceptor";
+import APWorkspaceHeader from "./APWorkspaceHeader";
 
 type PayableRow={id:number;supplier_invoice_id?:number;invoice_number:string|null;supplier_invoice_number?:string|null;supplier_id:number;supplier_name?:string|null;invoice_date?:string|null;due_date:string|null;amount:number|string;paid_amount:number|string;outstanding:number|string;payment_status?:string;last_payment_date?:string|null;days_overdue?:number;aging_bucket?:string;current?:number|string;"1_30"?:number|string;"31_60"?:number|string;"61_90"?:number|string;over_90?:number|string};
 type BucketSummary={amount:number|string;invoice_count:number;supplier_count:number;percentage:number};
@@ -16,15 +16,16 @@ const money=(value:unknown)=>`Rp ${Number(value||0).toLocaleString("id-ID",{mini
 const bucketLabel:Record<string,string>={current:"Current","1_30":"1–30 Days","31_60":"31–60 Days","61_90":"61–90 Days",over_90:"Over 90 Days"};
 
 export default function AccountsPayablePage(){
-  const [tab,setTab]=useState<"AGING"|"PAID">("AGING");
+  const location=useLocation();
+  const isAging=location.pathname.endsWith("/aging");
+  const [agingTab,setAgingTab]=useState<"OPEN"|"PAID">("OPEN");
   const aging=useQuery({queryKey:["accounts-payable-aging"],queryFn:async()=>(await api.get<AgingResponse>("/ap-aging")).data});
   const paidTotal=useMemo(()=>(aging.data?.paid??[]).reduce((sum,row)=>sum+Number(row.paid_amount||0),0),[aging.data]);
   const metrics=aging.data?.metrics;
+
   return <div className="space-y-5">
-    <PageHeader title="Accounts Payable" description="One workspace for supplier liabilities, supplier invoices, aging, and supplier payments." />
-    <Card className="p-3"><div className="flex flex-wrap gap-2"><Button><LayoutDashboard className="h-4 w-4"/> AP Overview</Button><Link to="/supplier-invoices"><Button variant="outline"><FileText className="h-4 w-4"/> Supplier Invoices</Button></Link><Link to="/payments"><Button variant="outline"><WalletCards className="h-4 w-4"/> Payments</Button></Link></div><p className="mt-2 text-xs text-slate-500">Supplier Invoices and Payments are managed as part of Accounts Payable. Their direct URLs remain available for document links and history.</p></Card>
-    <div className="flex gap-2"><Button variant={tab==="AGING"?"primary":"outline"} onClick={()=>setTab("AGING")}>Open / Aging</Button><Button variant={tab==="PAID"?"primary":"outline"} onClick={()=>setTab("PAID")}>Paid</Button></div>
-    {tab==="AGING"?<>
+    <APWorkspaceHeader />
+    {!isAging ? <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Metric label="Outstanding AP" value={money(metrics?.total_outstanding)}/>
         <Metric label="Due Today" value={money(metrics?.due_today)}/>
@@ -32,9 +33,21 @@ export default function AccountsPayablePage(){
         <Metric label="Open Invoices" value={String(metrics?.open_invoice_count??0)}/>
         <Metric label="Average Overdue Age" value={`${Number(metrics?.average_overdue_days??0).toFixed(1)} days`}/>
       </div>
-      <Card className="p-4"><h2 className="mb-3 text-base font-semibold">Aging Buckets</h2><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{Object.entries(bucketLabel).map(([key,label])=>{const item=aging.data?.buckets?.[key];return <div key={key} className="rounded-lg border bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{label}</div><div className="mt-1 font-semibold">{money(item?.amount)}</div><div className="mt-2 text-xs text-slate-500">{item?.invoice_count??0} invoices · {item?.supplier_count??0} suppliers · {Number(item?.percentage??0).toFixed(1)}%</div></div>})}</div></Card>
-      <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]"><PayableTable title="Open Supplier Payables" rows={aging.data?.details??[]} loading={aging.isLoading} error={aging.isError} onRetry={()=>aging.refetch()}/><TopSupplierTable rows={aging.data?.top_suppliers??[]}/></div>
-    </>:<><div className="grid gap-3 md:grid-cols-2"><Metric label="Total Payments Allocated" value={money(paidTotal)}/><Metric label="Invoices With Payment" value={String(aging.data?.paid?.length??0)}/></div><PaidTable rows={aging.data?.paid??[]} loading={aging.isLoading}/></>}
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
+        <Card className="p-4">
+          <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="font-semibold">Payables Snapshot</h2><p className="text-sm text-slate-500">Current supplier liability by aging bucket.</p></div><Link to="/accounts-payable/aging" className="text-sm font-medium text-[#086B5A] hover:underline">View Aging</Link></div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{Object.entries(bucketLabel).map(([key,label])=>{const item=aging.data?.buckets?.[key];return <div key={key} className="rounded-lg border bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{label}</div><div className="mt-1 font-semibold">{money(item?.amount)}</div><div className="mt-2 text-xs text-slate-500">{item?.invoice_count??0} invoices</div></div>})}</div>
+        </Card>
+        <TopSupplierTable rows={aging.data?.top_suppliers??[]}/>
+      </div>
+      <PayableTable title="Open Supplier Payables" rows={(aging.data?.details??[]).slice(0,8)} loading={aging.isLoading} error={aging.isError} onRetry={()=>aging.refetch()}/>
+    </> : <>
+      <div className="flex gap-5 border-b border-slate-200"><button className={`pb-2 text-sm font-medium ${agingTab==="OPEN"?"border-b-2 border-[#086B5A] text-[#086B5A]":"text-slate-500"}`} onClick={()=>setAgingTab("OPEN")}>Open / Aging</button><button className={`pb-2 text-sm font-medium ${agingTab==="PAID"?"border-b-2 border-[#086B5A] text-[#086B5A]":"text-slate-500"}`} onClick={()=>setAgingTab("PAID")}>Paid History</button></div>
+      {agingTab==="OPEN"?<>
+        <Card className="p-4"><h2 className="mb-3 text-base font-semibold">Aging Buckets</h2><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{Object.entries(bucketLabel).map(([key,label])=>{const item=aging.data?.buckets?.[key];return <div key={key} className="rounded-lg border bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{label}</div><div className="mt-1 font-semibold">{money(item?.amount)}</div><div className="mt-2 text-xs text-slate-500">{item?.invoice_count??0} invoices · {item?.supplier_count??0} suppliers · {Number(item?.percentage??0).toFixed(1)}%</div></div>})}</div></Card>
+        <PayableTable title="Open Supplier Payables" rows={aging.data?.details??[]} loading={aging.isLoading} error={aging.isError} onRetry={()=>aging.refetch()}/>
+      </>:<><div className="grid gap-3 md:grid-cols-2"><Metric label="Total Payments Allocated" value={money(paidTotal)}/><Metric label="Invoices With Payment" value={String(aging.data?.paid?.length??0)}/></div><PaidTable rows={aging.data?.paid??[]} loading={aging.isLoading}/></>}
+    </>}
   </div>
 }
 
