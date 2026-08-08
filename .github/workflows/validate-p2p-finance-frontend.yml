@@ -1,8 +1,8 @@
-name: Validate Combined Receiving P2P Frontend
+name: Validate Finance Stabilization Frontend
 on:
   push:
     branches:
-      - release/receiving-p2p-frontend
+      - feature/finance-stabilization-frontend
 jobs:
   build:
     runs-on: ubuntu-latest
