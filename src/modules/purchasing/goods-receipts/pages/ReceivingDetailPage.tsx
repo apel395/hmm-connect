@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { ArrowLeft, FilePlus2, PencilLine, RotateCcw } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -39,7 +39,7 @@ export default function ReceivingDetailPage() {
   const actions = data.allowed_actions;
   const canReturn = canPerform("receive", ["WAREHOUSE", "PURCHASING"], actions?.can_return ?? false);
   const canCorrectCost = Boolean(actions?.can_correct_cost);
-  const correctedTotal = useMemo(() => data.items.reduce((sum, item) => sum + Number(item.quantity) * Number(costs[item.id] ?? item.unit_cost), 0), [costs, data.items]);
+  const correctedTotal = data.items.reduce((sum, item) => sum + Number(item.quantity) * Number(costs[item.id] ?? item.unit_cost), 0);
   const changedItems = data.items.filter((item) => Number(costs[item.id] ?? item.unit_cost) !== Number(item.unit_cost));
 
   const submitCostCorrection = async () => {
