@@ -17,6 +17,12 @@ export interface GoodsReceiptCreatePayload {
   notes?: string | null;
   received_at?: string;
   external_reference?: string | null;
+  cost_correction_reason?: string | null;
+}
+
+export interface GoodsReceiptCostCorrectionPayload {
+  reason: string;
+  items: Array<{ item_id: number; unit_cost: number }>;
 }
 
 export interface GoodsReceiptItem {
@@ -54,7 +60,7 @@ export interface GoodsReceipt {
   total_value?: number;
   items: GoodsReceiptItem[];
   allowed_actions?: {
-    can_edit: boolean; can_post: boolean; can_return?: boolean; can_print: boolean; can_view_history: boolean; can_manage_attachments: boolean;
+    can_edit: boolean; can_post: boolean; can_return?: boolean; can_correct_cost?: boolean; can_print: boolean; can_view_history: boolean; can_manage_attachments: boolean;
   };
   activity_history?: import("../components/DocumentActivity").DocumentActivityItem[];
 }
