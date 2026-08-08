@@ -1,18 +1,38 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
-import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
+import DocumentPrintTemplate from "@/components/print/DocumentPrintTemplate";
 import { getTransfer } from "./api";
+
+const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function BankTransferPrintPage() {
   const { id } = useParams();
   const query = useQuery({ queryKey: ["bank-transfer", id, "print"], queryFn: () => getTransfer(Number(id)), enabled: !!id });
   if (query.isLoading) return <Loading />;
   if (!query.data) return <p>Transfer could not be loaded.</p>;
-  const transfer = query.data;
-  return <article className="mx-auto max-w-[210mm] bg-white p-8 text-black">
-    <div className="mb-6 flex justify-end print:hidden"><Button onClick={() => window.print()}>Print</Button></div>
-    <header className="mb-8 flex justify-between border-b-2 border-black pb-5"><div><h1 className="text-2xl font-bold">HMM-Connect</h1><div>Hotel Mutiara Merdeka</div></div><div className="text-right"><h2 className="text-2xl font-bold">BANK TRANSFER</h2><div>{transfer.transfer_number}</div></div></header>
-    <div className="grid grid-cols-2 gap-4"><div>Date: {transfer.transfer_date}</div><div>Status: {transfer.status}</div><div>Source: {transfer.source_account_code} — {transfer.source_account_name}</div><div>Destination: {transfer.destination_account_code} — {transfer.destination_account_name}</div><div>Amount: {Number(transfer.amount).toLocaleString()} {transfer.currency}</div><div>Reference: {transfer.reference_number || "—"}</div><div className="col-span-2">Notes: {transfer.notes || "—"}</div><div>Journal: {transfer.journal_number || "—"}</div></div>
-  </article>;
+  const transfer: any = query.data;
+  const rows = [{ id: transfer.id, description: `${transfer.source_account_code} — ${transfer.source_account_name} → ${transfer.destination_account_code} — ${transfer.destination_account_name}`, amount: transfer.amount }];
+  return <DocumentPrintTemplate
+    title="Bank Transfer"
+    documentNumber={transfer.transfer_number}
+    documentDate={transfer.transfer_date ? new Date(transfer.transfer_date).toLocaleDateString() : "—"}
+    status={transfer.status}
+    fields={[
+      { label: "SOURCE", value: `${transfer.source_account_code} — ${transfer.source_account_name}` },
+      { label: "DESTINATION", value: `${transfer.destination_account_code} — ${transfer.destination_account_name}` },
+      { label: "CURRENCY", value: transfer.currency },
+      { label: "REFERENCE", value: transfer.reference_number },
+      { label: "JOURNAL", value: transfer.journal_number },
+    ]}
+    columns={[
+      { label: "DESCRIPTION", align: "left", render: (row: any) => row.description },
+      { label: "AMOUNT", align: "right", render: (row: any) => money(row.amount) },
+    ]}
+    rows={rows}
+    rowKey={(row: any) => row.id}
+    totals={[{ label: "TOTAL", value: `${money(transfer.amount)} ${transfer.currency}`, emphasis: true }]}
+    notes={transfer.notes}
+    signatures={[{ label: "Prepared By" }, { label: "Checked By" }, { label: "Approved By" }]}
+  />;
 }
