@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import goodsReceiptApi from "../api/goodsReceiptApi";
-import type { GoodsReceipt, GoodsReceiptCreatePayload } from "../types";
+import type { GoodsReceipt, GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload } from "../types";
 
 export function useAllGoodsReceipts(){return useQuery({queryKey:["goods-receipts"],queryFn:async()=>(await goodsReceiptApi.list()).data as GoodsReceipt[]})}
 export function useGoodsReceipt(id:number){return useQuery({queryKey:["goods-receipt",id],queryFn:async()=>(await goodsReceiptApi.detail(id)).data as GoodsReceipt,enabled:Boolean(id)})}
@@ -10,4 +10,5 @@ export function useGoodsReceipts(purchaseOrderId?:number){return useQuery({query
 
 export function useReceiveGoods(){const qc=useQueryClient();return useMutation({mutationFn:async({purchaseOrderId,payload}:{purchaseOrderId?:number;payload:GoodsReceiptCreatePayload})=>{const created=purchaseOrderId?await goodsReceiptApi.receive(purchaseOrderId,payload):await goodsReceiptApi.createDirect(payload);return goodsReceiptApi.post(created.data.id)},onSuccess:(_,variables)=>{qc.invalidateQueries({queryKey:["purchase-orders"]});qc.invalidateQueries({queryKey:["goods-receipts"]});qc.invalidateQueries({queryKey:["receivable-purchase-orders"]});if(variables.purchaseOrderId){qc.invalidateQueries({queryKey:["remaining-purchase-order-items",variables.purchaseOrderId]});qc.invalidateQueries({queryKey:["goods-receipts",variables.purchaseOrderId]})}}})}
 export function usePostGoodsReceipt(){const qc=useQueryClient();return useMutation({mutationFn:(id:number)=>goodsReceiptApi.post(id),onSuccess:(_,id)=>{qc.invalidateQueries({queryKey:["goods-receipt",id]});qc.invalidateQueries({queryKey:["goods-receipts"]});qc.invalidateQueries({queryKey:["purchase-orders"]})}})}
+export function useCorrectGoodsReceiptCosts(){const qc=useQueryClient();return useMutation({mutationFn:({id,payload}:{id:number;payload:GoodsReceiptCostCorrectionPayload})=>goodsReceiptApi.correctCosts(id,payload),onSuccess:(_,variables)=>{qc.invalidateQueries({queryKey:["goods-receipt",variables.id]});qc.invalidateQueries({queryKey:["goods-receipts"]});qc.invalidateQueries({queryKey:["inventory"]});qc.invalidateQueries({queryKey:["inventory-movements"]})}})}
 export function useReturnGoodsReceipt(){const qc=useQueryClient();return useMutation({mutationFn:(id:number)=>goodsReceiptApi.returnReceipt(id),onSuccess:(_,id)=>{qc.invalidateQueries({queryKey:["goods-receipt",id]});qc.invalidateQueries({queryKey:["goods-receipts"]});qc.invalidateQueries({queryKey:["purchase-orders"]});qc.invalidateQueries({queryKey:["inventory"]})}})}
