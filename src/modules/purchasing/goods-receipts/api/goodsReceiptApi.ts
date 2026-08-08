@@ -1,5 +1,5 @@
 import api from "@/api/client";
-import type { GoodsReceiptCreatePayload } from "../types";
+import type { GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload } from "../types";
 
 export const goodsReceiptApi = {
   list: () => api.get("/goods-receipts"),
@@ -10,6 +10,7 @@ export const goodsReceiptApi = {
   receive: (purchaseOrderId: number, payload: GoodsReceiptCreatePayload) => api.post("/goods-receipts", { ...payload, purchase_order_id: purchaseOrderId }),
   createDirect: (payload: GoodsReceiptCreatePayload) => api.post("/goods-receipts", { ...payload, purchase_order_id: null }),
   post: (id: number) => api.post(`/goods-receipts/${id}/post`),
+  correctCosts: (id: number, payload: GoodsReceiptCostCorrectionPayload) => api.patch(`/goods-receipts/${id}/costs`, payload),
   returnReceipt: (id: number) => api.post(`/goods-receipts/${id}/return`),
   allowedActions: (id: number) => api.get(`/goods-receipts/${id}/allowed-actions`),
 };
