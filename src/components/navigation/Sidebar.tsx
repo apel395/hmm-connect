@@ -42,6 +42,7 @@ const groups: Group[] = [
     { title: "Bank Reconciliation", url: "/bank-reconciliations" },
     { title: "Chart of Accounts", url: "/chart-of-accounts" },
     { title: "Posting Rules", url: "/posting-rules" },
+    { title: "Fiscal Periods", url: "/fiscal-periods", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE"] },
     { title: "Fixed Assets", url: "/fixed-assets" },
   ] },
   { title: "Reports", icon: FileBarChart, children: [
