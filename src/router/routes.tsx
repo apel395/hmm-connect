@@ -13,6 +13,7 @@ import ReceivingDetailPage from "@/modules/purchasing/goods-receipts/pages/Recei
 import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDocumentsPage";
 import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
+import FiscalPeriodsPage from "@/modules/finance/fiscal-periods/FiscalPeriodsPage";
 import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/SupplierInvoiceListPage";
 import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
@@ -91,6 +92,7 @@ const router = createBrowserRouter([
       { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
       { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },
       { path: "posting-rules", element: <PostingRulesPage /> },
+      { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
       { path: "accounts-payable", element: <AccountsPayablePage /> },
       { path: "supplier-invoices", element: <SupplierInvoiceListPage /> },
       { path: "supplier-invoices/:id", element: <SupplierInvoiceDetailPage /> },
