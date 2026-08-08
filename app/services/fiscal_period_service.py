@@ -30,13 +30,16 @@ class FiscalPeriodService:
         if not period:
             raise HTTPException(
                 status_code=400,
-                detail="No fiscal period found for posting date.",
+                detail=(
+                    f"No fiscal period configured for {posting_date.isoformat()}. "
+                    f"Initialize fiscal year {posting_date.year} in Finance > Fiscal Periods before posting."
+                ),
             )
 
-        if not period.is_open:
+        if not period.is_open or period.is_closed:
             raise HTTPException(
                 status_code=400,
-                detail=f"Fiscal period {period.period_name} is closed.",
+                detail=f"Fiscal period {period.period_name} is closed. Reopen it with a reason before posting.",
             )
 
         return period

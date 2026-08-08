@@ -57,6 +57,8 @@ def serialize_purchase_order(
         "po_number": purchase_order.po_number,
         "supplier_id": purchase_order.supplier_id,
         "supplier_name": purchase_order.supplier.name if purchase_order.supplier else None,
+        "business_unit_id": purchase_order.business_unit_id,
+        "business_unit_name": purchase_order.business_unit.name if purchase_order.business_unit else None,
         "department_id": purchase_order.department_id,
         "department_name": purchase_order.department.name if purchase_order.department else None,
         "location_id": purchase_order.location_id,
@@ -128,6 +130,7 @@ def list_purchase_orders(
     orders = (
         query.options(
             selectinload(PurchaseOrder.supplier),
+            selectinload(PurchaseOrder.business_unit),
             selectinload(PurchaseOrder.department),
             selectinload(PurchaseOrder.location),
             selectinload(PurchaseOrder.purchase_requisitions),
