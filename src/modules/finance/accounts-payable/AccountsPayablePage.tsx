@@ -17,7 +17,7 @@ const bucketLabel:Record<string,string>={current:"Current","1_30":"1–30 Days",
 
 export default function AccountsPayablePage(){
   const [tab,setTab]=useState<"AGING"|"PAID">("AGING");
-  const aging=useQuery({queryKey:["accounts-payable-aging"],queryFn:async()=>(await api.get<AgingResponse>("/api/v1/ap-aging")).data});
+  const aging=useQuery({queryKey:["accounts-payable-aging"],queryFn:async()=>(await api.get<AgingResponse>("/ap-aging")).data});
   const paidTotal=useMemo(()=>(aging.data?.paid??[]).reduce((sum,row)=>sum+Number(row.paid_amount||0),0),[aging.data]);
   const metrics=aging.data?.metrics;
   return <div className="space-y-5">
