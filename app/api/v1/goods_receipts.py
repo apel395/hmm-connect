@@ -50,6 +50,46 @@ def remaining_items(purchase_order:PurchaseOrder):
     return [{"purchase_order_item_id":item.id,"product_id":item.product_id,"product_code":item.product.code if item.product else None,"product_name":item.product.name if item.product else None,"uom":item.uom or (item.product.uom if item.product else None),"ordered_quantity":item.quantity,"received_quantity":item.received_quantity,"remaining_quantity":Decimal(item.quantity)-Decimal(item.received_quantity or 0),"unit_cost":item.unit_price} for item in purchase_order.items if Decimal(item.quantity)>Decimal(item.received_quantity or 0)]
 
 
+def inherit_purchase_order_dimensions(order: PurchaseOrder, data: GoodsReceiptCreate, db: Session):
+    """Use PO dimensions, falling back to its source PRs for legacy/incomplete POs.
+
+    Older POs created from PRs could be saved without organization dimensions because
+    the PO form intentionally did not ask for them. Receiving must inherit those
+    values, not force users to re-enter them. When the source PR provides a missing
+    value we also repair the PO in the same transaction so downstream documents keep
+    the same dimensions.
+    """
+    requisitions = order.source_purchase_requisitions
+
+    def inherited(field: str):
+        current = getattr(order, field)
+        if current is not None:
+            return current
+        values = {getattr(pr, field) for pr in requisitions if getattr(pr, field) is not None}
+        if len(values) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Source purchase requisitions have different {field.replace('_id', '').replace('_', ' ')} values. Correct the PO before receiving.",
+            )
+        return next(iter(values), None)
+
+    business_unit_id = inherited("business_unit_id")
+    location_id = inherited("location_id")
+    department_id = inherited("department_id")
+
+    if order.business_unit_id is None and business_unit_id is not None:
+        order.business_unit_id = business_unit_id
+    if order.location_id is None and location_id is not None:
+        order.location_id = location_id
+    if order.department_id is None and department_id is not None:
+        order.department_id = department_id
+
+    data.business_unit_id = data.business_unit_id or business_unit_id
+    data.location_id = data.location_id or location_id
+    data.department_id = data.department_id or department_id
+    db.flush()
+
+
 @router.get("")
 def list_receipts(purchase_order_id:int|None=None,db:Session=Depends(get_db),_=Depends(get_current_user)):
     query=db.query(GoodsReceipt).options(
@@ -77,6 +117,11 @@ def get_remaining_purchase_order_items(purchase_order_id:int,db:Session=Depends(
 
 @router.post("",status_code=201)
 def create_receipt(data:GoodsReceiptCreate,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    if data.purchase_order_id:
+        order = db.get(PurchaseOrder, data.purchase_order_id)
+        if not order:
+            raise HTTPException(404, "Purchase order not found")
+        inherit_purchase_order_dimensions(order, data, db)
     return serialize_receipt(GoodsReceiptService.create(db=db,data=data,user=user))
 
 
