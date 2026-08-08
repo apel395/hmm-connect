@@ -1,30 +1,103 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import api from "@/api/client";
-import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
+import DocumentPrintTemplate from "@/components/print/DocumentPrintTemplate";
 
 const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const date = (value: unknown) => value ? new Date(String(value)).toLocaleDateString() : "—";
 
 export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices" | "journal-entries" | "payments" }) {
   const { id } = useParams();
   const query = useQuery({ queryKey: [kind, id, "print"], queryFn: async () => (await api.get(`/${kind}/${id}/print`)).data, enabled: !!id });
   if (query.isLoading) return <Loading/>;
   if (!query.data) return <p>Document could not be loaded.</p>;
-  const data = query.data;
+  const data = query.data as any;
   const isJournal = kind === "journal-entries";
   const isPayment = kind === "payments";
-  const rows = isPayment ? data.allocations : data.lines;
-  const documentTitle = isPayment ? "Payment Voucher" : data.document_type;
+  const rows: any[] = isPayment ? (data.allocations ?? []) : (data.lines ?? []);
+  const title = isPayment ? "Payment Voucher" : isJournal ? "Journal Entry" : "Supplier Invoice";
+  const documentNumber = data.payment_number || data.journal_number || data.internal_invoice_number;
+  const documentDate = data.payment_date || data.journal_date || data.posting_date || data.invoice_date;
 
-  return <article className="print-document mx-auto max-w-[210mm] bg-white p-8 text-black">
-    <div className="print-actions mb-6 flex justify-end"><Button onClick={() => window.print()}>Print</Button></div>
-    <header className="mb-8 flex justify-between border-b-2 border-black pb-5"><div><h1 className="text-2xl font-bold">HMM-Connect</h1><div>Hotel Mutiara Merdeka</div></div><div className="text-right"><h2 className="text-2xl font-bold">{documentTitle}</h2><div>{data.payment_number || data.journal_number || data.internal_invoice_number}</div></div></header>
-    <div className="mb-6 grid grid-cols-2 gap-3"><div>Date: {data.payment_date || data.journal_date || data.invoice_date}</div><div>Status: {data.status}</div><div>Reference: {data.reference_number || data.supplier_invoice_number || "—"}</div><div>Description: {data.description || data.notes || "—"}</div>{isPayment && <><div>Supplier: {data.supplier_name}</div><div>Payment Method: {String(data.payment_method || "—").replaceAll("_", " ")}</div></>}</div>
-    <table className="w-full border-collapse text-sm"><thead><tr><th className="border p-2 text-left">{isPayment ? "Invoice" : "Account / Item"}</th><th className="border p-2 text-left">Description</th>{isJournal ? <><th className="border p-2 text-right">Debit</th><th className="border p-2 text-right">Credit</th></> : isPayment ? <><th className="border p-2 text-right">Invoice Total</th><th className="border p-2 text-right">Allocated</th></> : <><th className="border p-2 text-right">Quantity</th><th className="border p-2 text-right">Amount</th></>}</tr></thead><tbody>{rows.map((line: any) => <tr key={line.id}><td className="border p-2">{isPayment ? line.invoice_number : isJournal ? `${line.account_code} — ${line.account_name}` : line.product_name || "Manual line"}</td><td className="border p-2">{isPayment ? (line.due_date ? `Due ${line.due_date}` : "—") : line.description}</td>{isJournal ? <><td className="border p-2 text-right">{money(line.debit)}</td><td className="border p-2 text-right">{money(line.credit)}</td></> : isPayment ? <><td className="border p-2 text-right">{money(line.invoice_total)}</td><td className="border p-2 text-right">{money(line.allocated_amount)}</td></> : <><td className="border p-2 text-right">{line.quantity}</td><td className="border p-2 text-right">{money(line.line_amount)}</td></>}</tr>)}</tbody></table>
-    {isPayment && <section className="mt-6"><h3 className="mb-2 font-bold">Funding Accounts</h3><table className="w-full border-collapse text-sm"><thead><tr><th className="border p-2 text-left">Bank</th><th className="border p-2 text-left">Account</th><th className="border p-2 text-left">Account Number</th><th className="border p-2 text-right">Amount</th></tr></thead><tbody>{data.funding_lines?.map((line: any) => <tr key={line.id}><td className="border p-2">{line.bank_name}</td><td className="border p-2">{line.account_name}</td><td className="border p-2">{line.account_number}</td><td className="border p-2 text-right">{money(line.amount)}</td></tr>)}</tbody></table></section>}
-    {isJournal && <div className="mt-5 text-right font-bold">Total Debit: {money(data.total_debit)} · Total Credit: {money(data.total_credit)}</div>}
-    {isPayment && <><div className="mt-5 space-y-1 text-right"><div className="font-bold">Payment Total: {money(data.total_amount)}</div><div>Related Journal: {data.journal_number || "—"}</div></div><div className="mt-14 grid grid-cols-3 gap-10 text-center text-sm"><div><div className="h-16"/><div className="border-t border-black pt-2">Prepared By</div><div className="text-xs text-slate-600">{data.created_by_name || "Finance"}</div></div><div><div className="h-16"/><div className="border-t border-black pt-2">Approved By</div><div className="text-xs text-slate-600">{data.approved_by_name || "—"}</div></div><div><div className="h-16"/><div className="border-t border-black pt-2">Receiver / Bank Reference</div><div className="text-xs text-slate-600">{data.reference_number || "—"}</div></div></div></>}
-    <footer className="mt-10 border-t pt-3 text-xs">Created by {data.created_by_name || "—"} · Posted by {data.posted_by_name || "—"} · Printed at {new Date(data.generated_at).toLocaleString()}</footer>
-  </article>;
+  const fields = isPayment ? [
+    { label: "PAY TO", value: data.supplier_name },
+    { label: "PAYMENT METHOD", value: String(data.payment_method || "—").replaceAll("_", " ") },
+    { label: "REFERENCE", value: data.reference_number },
+    { label: "UNIT BISNIS", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
+    { label: "LOCATION", value: data.location_name ?? (data.location_id ? `#${data.location_id}` : undefined) },
+    { label: "DEPARTMENT", value: data.department_name ?? (data.department_id ? `#${data.department_id}` : undefined) },
+  ] : isJournal ? [
+    { label: "REFERENCE", value: data.reference_number || data.document_number },
+    { label: "DESCRIPTION", value: data.description },
+    { label: "UNIT BISNIS", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
+    { label: "LOCATION", value: data.location_name ?? (data.location_id ? `#${data.location_id}` : undefined) },
+    { label: "DEPARTMENT", value: data.department_name ?? (data.department_id ? `#${data.department_id}` : undefined) },
+  ] : [
+    { label: "SUPPLIER", value: data.supplier_name },
+    { label: "SUPPLIER INVOICE #", value: data.supplier_invoice_number },
+    { label: "PO #", value: data.purchase_order_number },
+    { label: "RECEIVING #", value: data.receipt_number },
+    { label: "UNIT BISNIS", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
+    { label: "LOCATION", value: data.location_name ?? (data.location_id ? `#${data.location_id}` : undefined) },
+    { label: "DEPARTMENT", value: data.department_name ?? (data.department_id ? `#${data.department_id}` : undefined) },
+    { label: "DUE DATE", value: data.due_date ? date(data.due_date) : undefined },
+  ];
+
+  const columns = isJournal ? [
+    { label: "ACCOUNT", align: "left" as const, render: (line: any) => `${line.account_code ?? ""} — ${line.account_name ?? ""}` },
+    { label: "DESCRIPTION", align: "left" as const, render: (line: any) => line.description || "—" },
+    { label: "DEBIT", align: "right" as const, render: (line: any) => money(line.debit) },
+    { label: "CREDIT", align: "right" as const, render: (line: any) => money(line.credit) },
+  ] : isPayment ? [
+    { label: "INVOICE", align: "left" as const, render: (line: any) => line.invoice_number || line.internal_invoice_number || "—" },
+    { label: "DUE DATE", align: "center" as const, render: (line: any) => line.due_date ? date(line.due_date) : "—" },
+    { label: "INVOICE TOTAL", align: "right" as const, render: (line: any) => money(line.invoice_total) },
+    { label: "AMOUNT", align: "right" as const, render: (line: any) => money(line.allocated_amount) },
+  ] : [
+    { label: "DESCRIPTION", align: "left" as const, render: (line: any) => <><div>{line.product_name || line.description || "Manual line"}</div>{line.product_code && <div className="text-[10px] text-slate-500">{line.product_code}</div>}</> },
+    { label: "Qty", align: "right" as const, render: (line: any) => line.quantity },
+    { label: "Uom", align: "center" as const, render: (line: any) => line.uom || "—" },
+    { label: "Price", align: "right" as const, render: (line: any) => money(line.unit_price) },
+    { label: "AMOUNT", align: "right" as const, render: (line: any) => money(line.line_amount) },
+  ];
+
+  const totals = isJournal ? [
+    { label: "TOTAL DEBIT", value: money(data.total_debit), emphasis: true },
+    { label: "TOTAL CREDIT", value: money(data.total_credit), emphasis: true },
+  ] : isPayment ? [
+    { label: "TOTAL", value: money(data.total_amount), emphasis: true },
+  ] : [
+    { label: "SUBTOTAL", value: money(data.subtotal) },
+    ...(Number(data.discount_amount || 0) ? [{ label: "DISCOUNT", value: money(-Number(data.discount_amount)) }] : []),
+    ...(Number(data.tax_amount || 0) ? [{ label: "VAT / TAX", value: money(data.tax_amount) }] : []),
+    ...(Number(data.withholding_tax_amount || 0) ? [{ label: "WITHHOLDING TAX", value: money(-Number(data.withholding_tax_amount)) }] : []),
+    { label: "TOTAL", value: money(data.total_amount), emphasis: true },
+  ];
+
+  const funding = isPayment && data.funding_lines?.length ? <section className="avoid-break mt-6"><div className="mb-2 font-semibold">FUNDING ACCOUNTS</div><table className="w-full border-collapse text-[11px]"><thead><tr><th className="border-y border-black px-2 py-1 text-left">BANK</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT NUMBER</th><th className="border-y border-black px-2 py-1 text-right">AMOUNT</th></tr></thead><tbody>{data.funding_lines.map((line: any) => <tr key={line.id}><td className="border-b px-2 py-1">{line.bank_name}</td><td className="border-b px-2 py-1">{line.account_name}</td><td className="border-b px-2 py-1">{line.account_number}</td><td className="border-b px-2 py-1 text-right">{money(line.amount)}</td></tr>)}</tbody></table></section> : undefined;
+
+  return <DocumentPrintTemplate
+    title={title}
+    documentNumber={documentNumber}
+    documentDate={date(documentDate)}
+    status={data.status}
+    fields={fields}
+    columns={columns}
+    rows={rows}
+    rowKey={(row: any, index) => row.id ?? index}
+    totals={totals}
+    notes={data.notes || data.description}
+    extraAfterTable={funding}
+    signatures={isPayment ? [
+      { label: "Prepared By", name: data.created_by_name || "Finance" },
+      { label: "Approved By", name: data.approved_by_name },
+      { label: "Receiver / Bank Reference", name: data.reference_number },
+    ] : [
+      { label: "Prepared By", name: data.created_by_name },
+      { label: "Checked By", name: data.posted_by_name },
+      { label: "Approved By", name: data.approved_by_name },
+    ]}
+    footer={<>Created by {data.created_by_name || "—"} · Posted by {data.posted_by_name || "—"} · Printed at {new Date(data.generated_at).toLocaleString()}</>}
+  />;
 }
