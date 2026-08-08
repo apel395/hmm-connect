@@ -18,6 +18,8 @@ import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/Supplie
 import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
 import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
+import APInvoicesPage from "@/modules/finance/accounts-payable/APInvoicesPage";
+import APPaymentsPage from "@/modules/finance/accounts-payable/APPaymentsPage";
 import JournalListPage from "@/modules/finance/journals/JournalListPage";
 import JournalDetailPage from "@/modules/finance/journals/JournalDetailPage";
 import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
@@ -94,6 +96,9 @@ const router = createBrowserRouter([
       { path: "posting-rules", element: <PostingRulesPage /> },
       { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
       { path: "accounts-payable", element: <AccountsPayablePage /> },
+      { path: "accounts-payable/aging", element: <AccountsPayablePage /> },
+      { path: "accounts-payable/invoices", element: <APInvoicesPage /> },
+      { path: "accounts-payable/payments", element: <APPaymentsPage /> },
       { path: "supplier-invoices", element: <SupplierInvoiceListPage /> },
       { path: "supplier-invoices/:id", element: <SupplierInvoiceDetailPage /> },
       { path: "supplier-invoices/:id/print", element: <AccountingPrintPage kind="supplier-invoices" /> },
