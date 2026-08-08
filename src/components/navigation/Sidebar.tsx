@@ -33,15 +33,14 @@ const groups: Group[] = [
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Finance Dashboard", url: "/finance-dashboard" },
     { title: "Accounts Payable", url: "/accounts-payable" },
-    { title: "Supplier Invoices", url: "/supplier-invoices" },
     { title: "Credit / Debit Notes", url: "/supplier-adjustments" },
-    { title: "Payments", url: "/payments" },
     { title: "Journal Entries", url: "/journal-entries" },
     { title: "Cash & Bank Accounts", url: "/cash-accounts" },
     { title: "Bank Transfers", url: "/bank-transfers" },
     { title: "Bank Reconciliation", url: "/bank-reconciliations" },
     { title: "Chart of Accounts", url: "/chart-of-accounts" },
     { title: "Posting Rules", url: "/posting-rules" },
+    { title: "Fiscal Periods", url: "/fiscal-periods", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE"] },
     { title: "Fixed Assets", url: "/fixed-assets" },
   ] },
   { title: "Reports", icon: FileBarChart, children: [

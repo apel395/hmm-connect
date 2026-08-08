@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import Button from "@/components/ui/Button";
 
 export interface PrintField {
   label: string;
@@ -52,8 +51,6 @@ export default function DocumentPrintTemplate<Row>({
   footer,
 }: Props<Row>) {
   return <article className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
-    <div className="print-actions mb-4 flex justify-end"><Button onClick={() => window.print()}>Print</Button></div>
-
     <header className="grid grid-cols-[1.35fr_1fr] gap-8 border-b border-black pb-4">
       <div className="leading-5">
         <div className="text-[17px] font-bold tracking-wide">PT. MUTIARA MERDEKA HOTEL</div>

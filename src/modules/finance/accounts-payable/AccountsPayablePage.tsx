@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { AlertCircle, FileText, WalletCards } from "lucide-react";
+import { AlertCircle, FileText, LayoutDashboard, WalletCards } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -17,11 +17,12 @@ const bucketLabel:Record<string,string>={current:"Current","1_30":"1–30 Days",
 
 export default function AccountsPayablePage(){
   const [tab,setTab]=useState<"AGING"|"PAID">("AGING");
-  const aging=useQuery({queryKey:["accounts-payable-aging"],queryFn:async()=>(await api.get<AgingResponse>("/api/v1/ap-aging")).data});
+  const aging=useQuery({queryKey:["accounts-payable-aging"],queryFn:async()=>(await api.get<AgingResponse>("/ap-aging")).data});
   const paidTotal=useMemo(()=>(aging.data?.paid??[]).reduce((sum,row)=>sum+Number(row.paid_amount||0),0),[aging.data]);
   const metrics=aging.data?.metrics;
   return <div className="space-y-5">
-    <PageHeader title="Accounts Payable" description="Supplier invoice liabilities calculated from posted payment allocations, with open, overdue, aging, and paid views." actions={<div className="flex gap-2"><Link to="/supplier-invoices"><Button variant="outline"><FileText className="h-4 w-4"/> Supplier Invoices</Button></Link><Link to="/payments"><Button><WalletCards className="h-4 w-4"/> Open Payments</Button></Link></div>}/>
+    <PageHeader title="Accounts Payable" description="One workspace for supplier liabilities, supplier invoices, aging, and supplier payments." />
+    <Card className="p-3"><div className="flex flex-wrap gap-2"><Button><LayoutDashboard className="h-4 w-4"/> AP Overview</Button><Link to="/supplier-invoices"><Button variant="outline"><FileText className="h-4 w-4"/> Supplier Invoices</Button></Link><Link to="/payments"><Button variant="outline"><WalletCards className="h-4 w-4"/> Payments</Button></Link></div><p className="mt-2 text-xs text-slate-500">Supplier Invoices and Payments are managed as part of Accounts Payable. Their direct URLs remain available for document links and history.</p></Card>
     <div className="flex gap-2"><Button variant={tab==="AGING"?"primary":"outline"} onClick={()=>setTab("AGING")}>Open / Aging</Button><Button variant={tab==="PAID"?"primary":"outline"} onClick={()=>setTab("PAID")}>Paid</Button></div>
     {tab==="AGING"?<>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
