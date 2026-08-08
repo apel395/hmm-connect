@@ -9,7 +9,7 @@ class GoodsReceiptItemCreate(BaseModel):
     purchase_order_item_id: int | None = None
     product_id: int | None = None
     quantity: Decimal = Field(gt=0)
-    unit_cost: Decimal | None = Field(default=None, ge=0)
+    unit_cost: Decimal | None = Field(default=None, gt=0)
 
 
 class GoodsReceiptCreate(BaseModel):
@@ -25,6 +25,7 @@ class GoodsReceiptCreate(BaseModel):
     warehouse_id: int | None = None
     destination_type: Literal["WAREHOUSE", "DIRECT_USE"] = "WAREHOUSE"
     notes: str | None = None
+    cost_correction_reason: str | None = Field(default=None, max_length=500)
     items: list[GoodsReceiptItemCreate]
 
     @model_validator(mode="after")
@@ -41,4 +42,22 @@ class GoodsReceiptCreate(BaseModel):
                 raise ValueError("Direct receipts require business unit, department and location")
             if any(item.product_id is None or item.unit_cost is None for item in self.items):
                 raise ValueError("Direct receipt lines require product_id and unit_cost")
+        return self
+
+
+class GoodsReceiptCostCorrectionLine(BaseModel):
+    item_id: int
+    unit_cost: Decimal = Field(gt=0)
+
+
+class GoodsReceiptCostCorrection(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+    items: list[GoodsReceiptCostCorrectionLine]
+
+    @model_validator(mode="after")
+    def validate_items(self):
+        if not self.items:
+            raise ValueError("At least one receipt item cost is required")
+        if len({item.item_id for item in self.items}) != len(self.items):
+            raise ValueError("A receipt item may appear only once")
         return self

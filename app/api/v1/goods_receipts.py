@@ -8,7 +8,7 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_any_role
 from app.models.goods_receipt import GoodsReceipt
 from app.models.purchase_order import PurchaseOrder
-from app.schemas.goods_receipt import GoodsReceiptCreate
+from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate
 from app.services.document_context import document_context, print_metadata
 from app.services.goods_receipt_service import GoodsReceiptService
 
@@ -17,7 +17,15 @@ router = APIRouter(prefix="/goods-receipts", tags=["Goods Receipts"])
 
 def receipt_actions(receipt: GoodsReceipt, user):
     receiving_role = has_any_role(user, "WAREHOUSE", "PURCHASING")
-    return {"can_edit":False,"can_post":receipt.status=="DRAFT" and receiving_role,"can_return":receipt.status=="POSTED" and receiving_role,"can_print":True,"can_view_history":True,"can_manage_attachments":True}
+    return {
+        "can_edit": False,
+        "can_post": receipt.status == "DRAFT" and receiving_role,
+        "can_return": receipt.status == "POSTED" and receiving_role,
+        "can_correct_cost": receipt.status in {"DRAFT", "POSTED"} and GoodsReceiptService.can_correct_cost(user),
+        "can_print": True,
+        "can_view_history": True,
+        "can_manage_attachments": True,
+    }
 
 
 def serialize_receipt(receipt: GoodsReceipt):
@@ -30,7 +38,9 @@ def serialize_receipt(receipt: GoodsReceipt):
         "supplier_name":supplier.name if supplier else None,"received_by_id":receipt.received_by_id,"received_by_name":receipt.received_by.full_name if receipt.received_by else None,
         "received_at":receipt.received_at,"source_type":receipt.source_type,"external_reference":receipt.external_reference,"delivery_note_number":receipt.external_reference,
         "receipt_type":receipt.receipt_type,"destination_type":receipt.destination_type,"warehouse_id":receipt.warehouse_id,"warehouse_name":receipt.warehouse.name if receipt.warehouse else None,
-        "business_unit_id":receipt.business_unit_id,"location_id":receipt.location_id,"department_id":receipt.department_id,"notes":receipt.notes,
+        "business_unit_id":receipt.business_unit_id,"business_unit_name":receipt.business_unit.name if receipt.business_unit else None,
+        "location_id":receipt.location_id,"location_name":receipt.location.name if receipt.location else None,
+        "department_id":receipt.department_id,"department_name":receipt.department.name if receipt.department else None,"notes":receipt.notes,
         "total_value":sum(Decimal(item.quantity)*Decimal(item.unit_cost) for item in receipt.items),
         "items":[{"id":item.id,"purchase_order_item_id":item.purchase_order_item_id,"product_id":item.product_id,"product_code":item.product.code if item.product else None,"product_name":item.product.name if item.product else None,"uom":(item.purchase_order_item.uom if item.purchase_order_item else None) or (item.product.uom if item.product else None),"quantity":item.quantity,"unit_cost":item.unit_cost,"line_total":Decimal(item.quantity)*Decimal(item.unit_cost)} for item in receipt.items],
     }
@@ -42,7 +52,11 @@ def remaining_items(purchase_order:PurchaseOrder):
 
 @router.get("")
 def list_receipts(purchase_order_id:int|None=None,db:Session=Depends(get_db),_=Depends(get_current_user)):
-    query=db.query(GoodsReceipt).options(selectinload(GoodsReceipt.purchase_order),selectinload(GoodsReceipt.supplier),selectinload(GoodsReceipt.items),selectinload(GoodsReceipt.received_by),selectinload(GoodsReceipt.warehouse))
+    query=db.query(GoodsReceipt).options(
+        selectinload(GoodsReceipt.purchase_order),selectinload(GoodsReceipt.supplier),selectinload(GoodsReceipt.items),
+        selectinload(GoodsReceipt.received_by),selectinload(GoodsReceipt.warehouse),selectinload(GoodsReceipt.business_unit),
+        selectinload(GoodsReceipt.department),selectinload(GoodsReceipt.location),
+    )
     if purchase_order_id:query=query.filter(GoodsReceipt.purchase_order_id==purchase_order_id)
     return [serialize_receipt(item) for item in query.order_by(GoodsReceipt.id.desc()).all()]
 
@@ -78,6 +92,11 @@ def post_receipt(receipt_id:int,db:Session=Depends(get_db),user=Depends(get_curr
     return serialize_receipt(GoodsReceiptService.post(db=db,receipt_id=receipt_id,user=user))
 
 
+@router.patch("/{receipt_id}/costs")
+def correct_receipt_costs(receipt_id:int,data:GoodsReceiptCostCorrection,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    return serialize_receipt(GoodsReceiptService.correct_costs(db=db,receipt_id=receipt_id,data=data,user=user))
+
+
 @router.post("/{receipt_id}/return")
 def return_receipt(receipt_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
     return serialize_receipt(GoodsReceiptService.return_receipt(db=db,receipt_id=receipt_id,user=user))
@@ -92,4 +111,4 @@ def get_allowed_actions(receipt_id:int,db:Session=Depends(get_db),user=Depends(g
 
 @router.get("/{receipt_id}/print")
 def print_receipt(receipt_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    return {**get_receipt(receipt_id,db,user),"document_type":"Goods Receipt",**print_metadata(user)}
+    return {**get_receipt(receipt_id,db,user),"document_type":"Receiving Report",**print_metadata(user)}
