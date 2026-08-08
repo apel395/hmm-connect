@@ -38,7 +38,9 @@ def serialize_receipt(receipt: GoodsReceipt):
         "supplier_name":supplier.name if supplier else None,"received_by_id":receipt.received_by_id,"received_by_name":receipt.received_by.full_name if receipt.received_by else None,
         "received_at":receipt.received_at,"source_type":receipt.source_type,"external_reference":receipt.external_reference,"delivery_note_number":receipt.external_reference,
         "receipt_type":receipt.receipt_type,"destination_type":receipt.destination_type,"warehouse_id":receipt.warehouse_id,"warehouse_name":receipt.warehouse.name if receipt.warehouse else None,
-        "business_unit_id":receipt.business_unit_id,"location_id":receipt.location_id,"department_id":receipt.department_id,"notes":receipt.notes,
+        "business_unit_id":receipt.business_unit_id,"business_unit_name":receipt.business_unit.name if receipt.business_unit else None,
+        "location_id":receipt.location_id,"location_name":receipt.location.name if receipt.location else None,
+        "department_id":receipt.department_id,"department_name":receipt.department.name if receipt.department else None,"notes":receipt.notes,
         "total_value":sum(Decimal(item.quantity)*Decimal(item.unit_cost) for item in receipt.items),
         "items":[{"id":item.id,"purchase_order_item_id":item.purchase_order_item_id,"product_id":item.product_id,"product_code":item.product.code if item.product else None,"product_name":item.product.name if item.product else None,"uom":(item.purchase_order_item.uom if item.purchase_order_item else None) or (item.product.uom if item.product else None),"quantity":item.quantity,"unit_cost":item.unit_cost,"line_total":Decimal(item.quantity)*Decimal(item.unit_cost)} for item in receipt.items],
     }
@@ -50,7 +52,11 @@ def remaining_items(purchase_order:PurchaseOrder):
 
 @router.get("")
 def list_receipts(purchase_order_id:int|None=None,db:Session=Depends(get_db),_=Depends(get_current_user)):
-    query=db.query(GoodsReceipt).options(selectinload(GoodsReceipt.purchase_order),selectinload(GoodsReceipt.supplier),selectinload(GoodsReceipt.items),selectinload(GoodsReceipt.received_by),selectinload(GoodsReceipt.warehouse))
+    query=db.query(GoodsReceipt).options(
+        selectinload(GoodsReceipt.purchase_order),selectinload(GoodsReceipt.supplier),selectinload(GoodsReceipt.items),
+        selectinload(GoodsReceipt.received_by),selectinload(GoodsReceipt.warehouse),selectinload(GoodsReceipt.business_unit),
+        selectinload(GoodsReceipt.department),selectinload(GoodsReceipt.location),
+    )
     if purchase_order_id:query=query.filter(GoodsReceipt.purchase_order_id==purchase_order_id)
     return [serialize_receipt(item) for item in query.order_by(GoodsReceipt.id.desc()).all()]
 
