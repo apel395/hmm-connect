@@ -9,6 +9,29 @@ ZERO = Decimal("0")
 OPEN_AP_STATUSES = ("VERIFIED", "POSTED")
 
 
+def effective_invoice_balance(invoice: SupplierInvoice) -> Decimal:
+    """Authoritative AP balance, including legacy rows with stale balance_amount."""
+    return max(
+        ZERO,
+        Decimal(invoice.total_amount or 0)
+        - Decimal(invoice.paid_amount or 0)
+        - Decimal(invoice.adjustment_amount or 0),
+    )
+
+
+def sync_invoice_balance(invoice: SupplierInvoice) -> Decimal:
+    balance = effective_invoice_balance(invoice)
+    invoice.balance_amount = balance
+    invoice.payment_status = (
+        "PAID"
+        if balance == ZERO and Decimal(invoice.total_amount or 0) > ZERO
+        else "PARTIALLY_PAID"
+        if Decimal(invoice.paid_amount or 0) > ZERO or Decimal(invoice.adjustment_amount or 0) > ZERO
+        else "UNPAID"
+    )
+    return balance
+
+
 def open_invoice_query(
     db: Session,
     *,
@@ -16,13 +39,12 @@ def open_invoice_query(
     location_id: int | None = None,
     department_id: int | None = None,
 ):
+    # Do not filter on persisted balance_amount here. Older production rows may
+    # contain a stale zero even when the invoice is genuinely outstanding.
     query = (
         db.query(SupplierInvoice)
         .options(joinedload(SupplierInvoice.supplier))
-        .filter(
-            SupplierInvoice.status.in_(OPEN_AP_STATUSES),
-            SupplierInvoice.balance_amount > 0,
-        )
+        .filter(SupplierInvoice.status.in_(OPEN_AP_STATUSES))
     )
     if business_unit_id:
         query = query.filter(SupplierInvoice.business_unit_id == business_unit_id)
@@ -41,12 +63,16 @@ def ap_metrics(
     location_id: int | None = None,
     department_id: int | None = None,
 ):
-    invoices = open_invoice_query(
+    candidates = open_invoice_query(
         db,
         business_unit_id=business_unit_id,
         location_id=location_id,
         department_id=department_id,
     ).all()
+    invoices = []
+    for invoice in candidates:
+        if sync_invoice_balance(invoice) > ZERO:
+            invoices.append(invoice)
 
     result = {
         "total_outstanding_ap": ZERO,
