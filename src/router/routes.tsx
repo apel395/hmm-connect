@@ -42,7 +42,6 @@ import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPag
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
 import BankReconciliationListPage from "@/modules/finance/bank-reconciliation/BankReconciliationListPage";
 import BankReconciliationDetailPage from "@/modules/finance/bank-reconciliation/BankReconciliationDetailPage";
-import FixedAssetListPage from "@/modules/finance/fixed-assets/FixedAssetListPage";
 import FixedAssetFormPage from "@/modules/finance/fixed-assets/FixedAssetFormPage";
 import FixedAssetDetailPage from "@/modules/finance/fixed-assets/FixedAssetDetailPage";
 import AssetCategoryPage from "@/modules/finance/fixed-assets/AssetCategoryPage";
@@ -52,6 +51,8 @@ import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationR
 import AmortizationPage from "@/modules/finance/fixed-assets/AmortizationPage";
 import FixedAssetsWorkspacePage from "@/modules/finance/fixed-assets/FixedAssetsWorkspacePage";
 import FinanceSetupWorkspacePage from "@/modules/finance/setup/FinanceSetupWorkspacePage";
+import ApprovalCenterPage from "@/modules/approval/ApprovalCenterPage";
+import ApprovalConfigurationPage from "@/modules/approval/ApprovalConfigurationPage";
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
 import InventoryMovementPage from "@/modules/warehouse/inventory/pages/InventoryMovementPage";
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
@@ -88,6 +89,8 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <RoleLanding /> },
       { path: "dashboard", element: <DashboardPage /> },
+      { path: "approval-center", element: <ApprovalCenterPage /> },
+      { path: "approval-configuration", element: <ApprovalConfigurationPage /> },
       { path: "purchase-requisitions", element: <PurchaseRequisitionListPage /> },
       { path: "purchase-requisitions/:id", element: <PurchaseRequisitionDetailPage /> },
       { path: "purchase-orders", element: <PurchaseOrderListPage /> },
