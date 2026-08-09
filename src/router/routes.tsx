@@ -20,8 +20,10 @@ import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/Supp
 import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
 import APInvoicesPage from "@/modules/finance/accounts-payable/APInvoicesPage";
 import APPaymentsPage from "@/modules/finance/accounts-payable/APPaymentsPage";
+import APAdjustmentsPage from "@/modules/finance/accounts-payable/APAdjustmentsPage";
 import JournalListPage from "@/modules/finance/journals/JournalListPage";
 import JournalDetailPage from "@/modules/finance/journals/JournalDetailPage";
+import JournalWorkspacePage from "@/modules/finance/journals/JournalWorkspacePage";
 import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
 import PaymentListPage from "@/modules/finance/payments/PaymentListPage";
 import PaymentDetailPage from "@/modules/finance/payments/PaymentDetailPage";
@@ -33,6 +35,7 @@ import CashFlowStatementPage from "@/modules/finance/cash-flow/CashFlowStatement
 import BankTransferListPage from "@/modules/finance/cash-flow/BankTransferListPage";
 import BankTransferDetailPage from "@/modules/finance/cash-flow/BankTransferDetailPage";
 import BankTransferPrintPage from "@/modules/finance/cash-flow/BankTransferPrintPage";
+import CashBankWorkspacePage from "@/modules/finance/cash-flow/CashBankWorkspacePage";
 import TrialBalancePage from "@/modules/finance/trial-balance/TrialBalancePage";
 import BalanceSheetPage from "@/modules/finance/financial-statements/BalanceSheetPage";
 import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPage";
@@ -47,6 +50,8 @@ import DepreciationRunsPage from "@/modules/finance/fixed-assets/DepreciationRun
 import FixedAssetReportPage from "@/modules/finance/fixed-assets/FixedAssetReportPage";
 import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationReportPage";
 import AmortizationPage from "@/modules/finance/fixed-assets/AmortizationPage";
+import FixedAssetsWorkspacePage from "@/modules/finance/fixed-assets/FixedAssetsWorkspacePage";
+import FinanceSetupWorkspacePage from "@/modules/finance/setup/FinanceSetupWorkspacePage";
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
 import InventoryMovementPage from "@/modules/warehouse/inventory/pages/InventoryMovementPage";
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
@@ -93,23 +98,25 @@ const router = createBrowserRouter([
       { path: "purchase-requisitions/:id/print", element: <PrintDocumentPage kind="purchase-requisitions" /> },
       { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
       { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },
-      { path: "posting-rules", element: <PostingRulesPage /> },
-      { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
+
       { path: "accounts-payable", element: <AccountsPayablePage /> },
       { path: "accounts-payable/aging", element: <AccountsPayablePage /> },
       { path: "accounts-payable/invoices", element: <APInvoicesPage /> },
       { path: "accounts-payable/payments", element: <APPaymentsPage /> },
+      { path: "accounts-payable/adjustments", element: <APAdjustmentsPage /> },
       { path: "supplier-invoices", element: <SupplierInvoiceListPage /> },
       { path: "supplier-invoices/:id", element: <SupplierInvoiceDetailPage /> },
       { path: "supplier-invoices/:id/print", element: <AccountingPrintPage kind="supplier-invoices" /> },
       { path: "supplier-adjustments", element: <SupplierAdjustmentsPage /> },
-      { path: "journal-entries", element: <JournalListPage /> },
-      { path: "journal-entries/:id", element: <JournalDetailPage /> },
-      { path: "journal-entries/:id/print", element: <AccountingPrintPage kind="journal-entries" /> },
       { path: "payments", element: <PaymentListPage /> },
       { path: "payments/:id", element: <PaymentDetailPage /> },
       { path: "payments/:id/print", element: <AccountingPrintPage kind="payments" /> },
-      { path: "general-ledger", element: <GeneralLedgerPage /> },
+
+      { path: "cash-bank", element: <CashBankWorkspacePage section="overview" /> },
+      { path: "cash-bank/accounts", element: <CashBankWorkspacePage section="accounts" /> },
+      { path: "cash-bank/transfers", element: <CashBankWorkspacePage section="transfers" /> },
+      { path: "cash-bank/reconciliation", element: <CashBankWorkspacePage section="reconciliation" /> },
+      { path: "cash-bank/cash-flow", element: <CashBankWorkspacePage section="cash-flow" /> },
       { path: "cash-flow", element: <CashFlowDashboardPage /> },
       { path: "cash-accounts", element: <CashAccountsPage /> },
       { path: "cash-accounts/:id", element: <CashAccountActivityPage /> },
@@ -117,27 +124,47 @@ const router = createBrowserRouter([
       { path: "bank-transfers", element: <BankTransferListPage /> },
       { path: "bank-transfers/:id", element: <BankTransferDetailPage /> },
       { path: "bank-transfers/:id/print", element: <BankTransferPrintPage /> },
-      { path: "trial-balance", element: <TrialBalancePage /> },
-      { path: "balance-sheet", element: <BalanceSheetPage /> },
-      { path: "profit-loss", element: <ProfitLossPage /> },
-      { path: "finance-dashboard", element: <FinanceDashboardPage /> },
       { path: "bank-reconciliations", element: <BankReconciliationListPage /> },
       { path: "bank-reconciliations/:id", element: <BankReconciliationDetailPage /> },
-      { path: "fixed-assets", element: <FixedAssetListPage /> },
+
+      { path: "journal", element: <JournalWorkspacePage section="journal" /> },
+      { path: "journal/general-ledger", element: <JournalWorkspacePage section="general-ledger" /> },
+      { path: "journal/trial-balance", element: <JournalWorkspacePage section="trial-balance" /> },
+      { path: "journal-entries", element: <JournalListPage /> },
+      { path: "journal-entries/:id", element: <JournalDetailPage /> },
+      { path: "journal-entries/:id/print", element: <AccountingPrintPage kind="journal-entries" /> },
+      { path: "general-ledger", element: <GeneralLedgerPage /> },
+      { path: "trial-balance", element: <TrialBalancePage /> },
+
+      { path: "fixed-assets", element: <FixedAssetsWorkspacePage section="assets" /> },
+      { path: "fixed-assets/categories", element: <FixedAssetsWorkspacePage section="categories" /> },
+      { path: "fixed-assets/depreciation", element: <FixedAssetsWorkspacePage section="depreciation" /> },
+      { path: "fixed-assets/amortization", element: <FixedAssetsWorkspacePage section="amortization" /> },
+      { path: "fixed-assets/reports", element: <FixedAssetsWorkspacePage section="reports" /> },
       { path: "fixed-assets/new", element: <FixedAssetFormPage /> },
-      { path: "fixed-assets/amortization", element: <AmortizationPage /> },
       { path: "fixed-assets/:id", element: <FixedAssetDetailPage /> },
       { path: "asset-categories", element: <AssetCategoryPage /> },
       { path: "depreciation-runs", element: <DepreciationRunsPage /> },
       { path: "reports/fixed-assets", element: <FixedAssetReportPage /> },
       { path: "reports/depreciation", element: <DepreciationReportPage /> },
+      { path: "amortization", element: <AmortizationPage /> },
+
+      { path: "finance-setup", element: <FinanceSetupWorkspacePage section="coa" /> },
+      { path: "finance-setup/posting-rules", element: <FinanceSetupWorkspacePage section="posting-rules" /> },
+      { path: "finance-setup/fiscal-periods", element: <FinanceSetupWorkspacePage section="fiscal-periods" /> },
+      { path: "chart-of-accounts", element: <ChartOfAccountPage /> },
+      { path: "posting-rules", element: <PostingRulesPage /> },
+      { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
+
+      { path: "finance-dashboard", element: <FinanceDashboardPage /> },
+      { path: "balance-sheet", element: <BalanceSheetPage /> },
+      { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "inventory", element: <InventoryPage /> },
       { path: "inventory/movements", element: <InventoryMovementPage /> },
       { path: "put-away", element: <PutAwayPage /> },
       { path: "products", element: <ProductPage /> },
       { path: "suppliers", element: <SupplierPage /> },
       { path: "warehouses", element: <WarehousePage /> },
-      { path: "chart-of-accounts", element: <ChartOfAccountPage /> },
       { path: "users", element: <UserPage /> },
       { path: "roles", element: <RolePage /> },
       { path: "settings", element: <SettingPage /> },
