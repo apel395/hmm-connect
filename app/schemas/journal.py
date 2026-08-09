@@ -22,18 +22,14 @@ class JournalCreate(BaseModel):
     posting_date: date
     document_type: str
     document_number: str
-
     reference_type: str
     reference_id: int
-
     description: str | None = None
-
     lines: list[JournalLineCreate]
 
 
 class JournalLineResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: int
     account_id: int
     debit: Decimal
@@ -43,15 +39,17 @@ class JournalLineResponse(BaseModel):
 
 class JournalResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: int
     journal_number: str
     posting_date: date
     status: str
-
     lines: list[JournalLineResponse]
+
 
 class JournalUpdate(BaseModel):
     posting_date: date | None = None
     description: str | None = None
+    business_unit_id: int | None = None
+    location_id: int | None = None
+    department_id: int | None = None
     lines: list[JournalLineCreate] | None = None
