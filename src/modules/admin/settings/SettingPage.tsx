@@ -33,14 +33,14 @@ export default function SettingPage() {
         <Network className="mb-3 h-5 w-5 text-emerald-700"/>
         <h2 className="font-semibold">Approval Workflow</h2>
         <p className="mt-1 text-sm text-slate-500">Configure sequential and parallel multi-level approval stages for supported documents.</p>
-        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/settings/approval-workflow">Configure Approvals</Link>
+        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/approval-configuration">Configure Approvals</Link>
       </Card>
 
       <Card>
         <Landmark className="mb-3 h-5 w-5 text-emerald-700"/>
         <h2 className="font-semibold">Finance Setup</h2>
         <p className="mt-1 text-sm text-slate-500">Maintain Chart of Accounts, Posting Rules, and Fiscal Periods outside daily Finance operations.</p>
-        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/settings/finance-setup">Open Finance Setup</Link>
+        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/finance-setup">Open Finance Setup</Link>
       </Card>
 
       <Card>
