@@ -24,6 +24,7 @@ from app.services.general_ledger import GeneralLedgerService
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 ZERO = Decimal("0")
+OPEN_INVOICE_STATUSES = {"VERIFIED", "POSTED"}
 
 
 def access(user):
@@ -31,32 +32,81 @@ def access(user):
         raise HTTPException(403, "Finance access required")
 
 
-def get(db, payment_id):
+def get(db: Session, payment_id: int) -> Payment:
     payment = db.get(Payment, payment_id)
     if not payment:
         raise HTTPException(404, "Payment not found")
     return payment
 
 
+def invoice_balance(invoice: SupplierInvoice) -> Decimal:
+    return max(
+        ZERO,
+        Decimal(invoice.total_amount or 0)
+        - Decimal(invoice.paid_amount or 0)
+        - Decimal(invoice.adjustment_amount or 0),
+    )
+
+
+def reserved_amount(db: Session, invoice_id: int, exclude_payment_id: int | None = None) -> Decimal:
+    query = db.query(PaymentAllocation).join(Payment).filter(
+        PaymentAllocation.supplier_invoice_id == invoice_id,
+        Payment.status == "APPROVED",
+    )
+    if exclude_payment_id:
+        query = query.filter(Payment.id != exclude_payment_id)
+    return sum((Decimal(row.allocated_amount or 0) for row in query.all()), ZERO)
+
+
+def sync_payable(db: Session, invoice: SupplierInvoice, payment_date: date | None = None):
+    balance = invoice_balance(invoice)
+    invoice.balance_amount = balance
+    invoice.payment_status = (
+        "PAID"
+        if balance == ZERO
+        else "PARTIALLY_PAID"
+        if Decimal(invoice.paid_amount or 0) > ZERO or Decimal(invoice.adjustment_amount or 0) > ZERO
+        else "UNPAID"
+    )
+    payable = db.query(AccountPayable).filter(
+        AccountPayable.supplier_id == invoice.supplier_id,
+        AccountPayable.invoice_number == invoice.internal_invoice_number,
+    ).first()
+    if payable:
+        payable.amount = invoice.total_amount
+        payable.paid_amount = invoice.paid_amount
+        payable.outstanding_amount = balance
+        payable.payment_status = invoice.payment_status
+        payable.status = "PAID" if balance == ZERO else "OPEN"
+        if payment_date:
+            payable.last_payment_date = payment_date
+    return balance
+
+
 def validate_data(db: Session, data: PaymentCreate, exclude: int | None = None):
     invoices = []
+    seen_invoice_ids: set[int] = set()
     for allocation in data.allocations:
+        if allocation.supplier_invoice_id in seen_invoice_ids:
+            raise HTTPException(422, "The same supplier invoice cannot be allocated more than once")
+        seen_invoice_ids.add(allocation.supplier_invoice_id)
+
         invoice = db.get(SupplierInvoice, allocation.supplier_invoice_id)
         if not invoice or invoice.supplier_id != data.supplier_id:
             raise HTTPException(400, "Allocated invoice does not belong to selected supplier")
-        if invoice.status not in {"VERIFIED", "POSTED"} or invoice.payment_status == "PAID":
+        if invoice.status not in OPEN_INVOICE_STATUSES or invoice.payment_status == "PAID":
             raise HTTPException(409, "Only verified/posted unpaid invoices can be allocated")
-        if invoice.currency != data.currency:
+        if invoice.currency != data.currency.upper():
             raise HTTPException(400, "Payment and invoice currencies must match")
-        reserved = db.query(PaymentAllocation).join(Payment).filter(
-            PaymentAllocation.supplier_invoice_id == invoice.id,
-            Payment.status == "APPROVED",
-        )
-        if exclude:
-            reserved = reserved.filter(Payment.id != exclude)
-        available = Decimal(invoice.balance_amount) - sum((Decimal(row.allocated_amount) for row in reserved.all()), ZERO)
-        if allocation.allocated_amount > available:
-            raise HTTPException(409, f"Allocation exceeds outstanding balance for {invoice.internal_invoice_number}")
+
+        available = invoice_balance(invoice) - reserved_amount(db, invoice.id, exclude)
+        if Decimal(allocation.allocated_amount) <= ZERO:
+            raise HTTPException(422, "Payment allocation must be greater than zero")
+        if Decimal(allocation.allocated_amount) > available:
+            raise HTTPException(
+                409,
+                f"Allocation exceeds available balance for {invoice.internal_invoice_number}: {available}",
+            )
         invoices.append(invoice)
 
     bank_accounts = []
@@ -64,9 +114,19 @@ def validate_data(db: Session, data: PaymentCreate, exclude: int | None = None):
         bank = db.get(BankAccount, funding.bank_account_id)
         if not bank or not bank.is_active:
             raise HTTPException(422, "Funding bank account must be active")
-        if bank.currency != data.currency:
+        if bank.currency != data.currency.upper():
             raise HTTPException(422, "Funding bank account currency must match payment currency")
+        if Decimal(funding.amount) <= ZERO:
+            raise HTTPException(422, "Funding amount must be greater than zero")
         bank_accounts.append(bank)
+
+    allocated_total = sum((Decimal(row.allocated_amount) for row in data.allocations), ZERO)
+    funded_total = sum((Decimal(row.amount) for row in data.funding_lines), ZERO)
+    total = Decimal(data.total_amount)
+    if allocated_total != total:
+        raise HTTPException(422, "Allocations must equal payment total")
+    if funded_total != total:
+        raise HTTPException(422, "Funding lines must equal payment total")
 
     if invoices:
         source = invoices[0]
@@ -152,7 +212,18 @@ def result(db, payment, user):
 
 
 @router.get("")
-def listing(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), search: str | None = None, supplier_id: int | None = None, status: str | None = None, payment_method: str | None = None, payment_date_from: date | None = None, payment_date_to: date | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def listing(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: str | None = None,
+    supplier_id: int | None = None,
+    status: str | None = None,
+    payment_method: str | None = None,
+    payment_date_from: date | None = None,
+    payment_date_to: date | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
     access(user)
     query = db.query(Payment)
     if search:
@@ -169,7 +240,15 @@ def listing(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
         query = query.filter(Payment.payment_date <= payment_date_to)
     total = query.count()
     rows = query.order_by(Payment.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
-    return {"items": [serialize(row) for row in rows], "page": page, "page_size": page_size, "total_items": total, "total_pages": ceil(total / page_size) if total else 0, "has_next": page * page_size < total, "has_previous": page > 1}
+    return {
+        "items": [serialize(row) for row in rows],
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": ceil(total / page_size) if total else 0,
+        "has_next": page * page_size < total,
+        "has_previous": page > 1,
+    }
 
 
 @router.get("/eligible-invoices")
@@ -177,11 +256,24 @@ def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_
     access(user)
     rows = db.query(SupplierInvoice).filter(
         SupplierInvoice.supplier_id == supplier_id,
-        SupplierInvoice.currency == currency,
-        SupplierInvoice.status.in_({"VERIFIED", "POSTED"}),
+        SupplierInvoice.currency == currency.upper(),
+        SupplierInvoice.status.in_(OPEN_INVOICE_STATUSES),
         SupplierInvoice.balance_amount > 0,
-    ).order_by(SupplierInvoice.due_date, SupplierInvoice.id).all()
-    return [{"id": row.id, "invoice_number": row.internal_invoice_number, "supplier_invoice_number": row.supplier_invoice_number, "invoice_date": row.invoice_date, "due_date": row.due_date, "total_amount": row.total_amount, "paid_amount": row.paid_amount, "outstanding_balance": row.balance_amount, "currency": row.currency, "business_unit_id": row.business_unit_id, "location_id": row.location_id, "department_id": row.department_id} for row in rows]
+    ).order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id).all()
+    return [{
+        "id": row.id,
+        "invoice_number": row.internal_invoice_number,
+        "supplier_invoice_number": row.supplier_invoice_number,
+        "invoice_date": row.invoice_date,
+        "due_date": row.due_date,
+        "total_amount": row.total_amount,
+        "paid_amount": row.paid_amount,
+        "outstanding_balance": invoice_balance(row),
+        "currency": row.currency,
+        "business_unit_id": row.business_unit_id,
+        "location_id": row.location_id,
+        "department_id": row.department_id,
+    } for row in rows]
 
 
 @router.get("/{payment_id}")
@@ -195,11 +287,21 @@ def create(data: PaymentCreate, db: Session = Depends(get_db), user=Depends(get_
     access(user)
     validate_data(db, data)
     payment = Payment(
-        payment_number=next_document_number(db, "PAY"), supplier_id=data.supplier_id,
-        payment_date=data.payment_date, amount=data.total_amount, payment_method=data.payment_method,
-        currency=data.currency.upper(), reference_number=data.reference_number, cheque_number=data.cheque_number,
-        notes=data.notes, source_type=data.source_type, status="DRAFT", created_by_id=user.id,
-        business_unit_id=data.business_unit_id, location_id=data.location_id, department_id=data.department_id,
+        payment_number=next_document_number(db, "PAY"),
+        supplier_id=data.supplier_id,
+        payment_date=data.payment_date,
+        amount=data.total_amount,
+        payment_method=data.payment_method,
+        currency=data.currency.upper(),
+        reference_number=data.reference_number,
+        cheque_number=data.cheque_number,
+        notes=data.notes,
+        source_type=data.source_type,
+        status="DRAFT",
+        created_by_id=user.id,
+        business_unit_id=data.business_unit_id,
+        location_id=data.location_id,
+        department_id=data.department_id,
     )
     payment.allocations = [PaymentAllocation(**row.model_dump()) for row in data.allocations]
     payment.funding_lines = [PaymentFundingLine(**row.model_dump()) for row in data.funding_lines]
@@ -241,9 +343,19 @@ def update(payment_id: int, data: PaymentUpdate, db: Session = Depends(get_db), 
 @router.post("/{payment_id}/approve")
 def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    payment = get(db, payment_id)
-    if payment.status != "DRAFT":
+    payment = db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
+    if not payment or payment.status != "DRAFT":
         raise HTTPException(409, "Only draft payments can be approved")
+
+    # Re-check every invoice at approval time so another approved payment cannot reserve it first.
+    for allocation in payment.allocations:
+        invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == allocation.supplier_invoice_id).with_for_update().one()
+        if invoice.status not in OPEN_INVOICE_STATUSES:
+            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} is no longer payable")
+        available = invoice_balance(invoice) - reserved_amount(db, invoice.id, payment.id)
+        if Decimal(allocation.allocated_amount) > available:
+            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} only has {available} available")
+
     if sum((Decimal(row.allocated_amount) for row in payment.allocations), ZERO) != Decimal(payment.amount):
         raise HTTPException(409, "Allocations must equal payment total")
     if sum((Decimal(row.amount) for row in payment.funding_lines), ZERO) != Decimal(payment.amount):
@@ -269,16 +381,47 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cu
     if not rule:
         raise HTTPException(409, "No active SUPPLIER_PAYMENT posting rule configured")
     journal = JournalEntry(
-        journal_number=next_document_number(db, "JV"), posting_date=payment.payment_date, status="DRAFT",
-        document_type="SUPPLIER_PAYMENT", document_number=payment.payment_number,
-        reference_type="SUPPLIER_PAYMENT", reference_id=payment.id,
-        description=f"Supplier payment {payment.payment_number}", created_by_id=user.id,
-        business_unit_id=payment.business_unit_id, location_id=payment.location_id, department_id=payment.department_id,
+        journal_number=next_document_number(db, "JV"),
+        posting_date=payment.payment_date,
+        status="DRAFT",
+        document_type="SUPPLIER_PAYMENT",
+        document_number=payment.payment_number,
+        reference_type="SUPPLIER_PAYMENT",
+        reference_id=payment.id,
+        description=f"Supplier payment {payment.payment_number}",
+        created_by_id=user.id,
+        business_unit_id=payment.business_unit_id,
+        location_id=payment.location_id,
+        department_id=payment.department_id,
     )
     category = rule.debit_account.cash_flow_category if rule.debit_account.cash_flow_category in {"OPERATING", "INVESTING", "FINANCING"} else "OPERATING"
-    journal.lines.append(JournalLine(line_number=1, account_id=rule.debit_account_id, debit=payment.amount, credit=0, description="Accounts Payable", supplier_id=payment.supplier_id, business_unit_id=payment.business_unit_id, location_id=payment.location_id, department_id=payment.department_id, cash_flow_category=category, cash_flow_direction="OUTFLOW"))
+    journal.lines.append(JournalLine(
+        line_number=1,
+        account_id=rule.debit_account_id,
+        debit=payment.amount,
+        credit=0,
+        description="Accounts Payable",
+        supplier_id=payment.supplier_id,
+        business_unit_id=payment.business_unit_id,
+        location_id=payment.location_id,
+        department_id=payment.department_id,
+        cash_flow_category=category,
+        cash_flow_direction="OUTFLOW",
+    ))
     for index, funding in enumerate(payment.funding_lines, 2):
-        journal.lines.append(JournalLine(line_number=index, account_id=funding.bank_account.coa_account_id, debit=0, credit=funding.amount, description=f"{funding.bank_account.bank_name} - {funding.bank_account.account_name}", supplier_id=payment.supplier_id, business_unit_id=payment.business_unit_id, location_id=payment.location_id, department_id=payment.department_id, cash_flow_category=category, cash_flow_direction="OUTFLOW"))
+        journal.lines.append(JournalLine(
+            line_number=index,
+            account_id=funding.bank_account.coa_account_id,
+            debit=0,
+            credit=funding.amount,
+            description=f"{funding.bank_account.bank_name} - {funding.bank_account.account_name}",
+            supplier_id=payment.supplier_id,
+            business_unit_id=payment.business_unit_id,
+            location_id=payment.location_id,
+            department_id=payment.department_id,
+            cash_flow_category=category,
+            cash_flow_direction="OUTFLOW",
+        ))
     db.add(journal)
     db.flush()
     payment.journal_entry_id = journal.id
@@ -301,23 +444,33 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     credit = sum((Decimal(line.credit) for line in journal.lines), ZERO)
     if debit != credit or debit != Decimal(payment.amount):
         raise HTTPException(409, "Payment journal is not balanced")
+
     for allocation in payment.allocations:
         invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == allocation.supplier_invoice_id).with_for_update().one()
         amount = Decimal(allocation.allocated_amount)
-        if amount > Decimal(invoice.balance_amount):
-            raise HTTPException(409, "Allocation exceeds invoice outstanding balance")
-        invoice.paid_amount = Decimal(invoice.paid_amount) + amount
-        invoice.balance_amount = Decimal(invoice.total_amount) - Decimal(invoice.paid_amount)
-        invoice.payment_status = "PAID" if invoice.balance_amount == 0 else "PARTIALLY_PAID"
-        payable = db.query(AccountPayable).filter(AccountPayable.supplier_id == invoice.supplier_id, AccountPayable.invoice_number == invoice.internal_invoice_number).first()
-        if payable:
-            payable.paid_amount = invoice.paid_amount
-            payable.outstanding_amount = invoice.balance_amount
-            payable.payment_status = invoice.payment_status
-            payable.status = "PAID" if invoice.balance_amount == 0 else "OPEN"
-            payable.last_payment_date = payment.payment_date
+        current_balance = invoice_balance(invoice)
+        if amount > current_balance:
+            raise HTTPException(409, f"Allocation exceeds current balance for {invoice.internal_invoice_number}")
+        invoice.paid_amount = Decimal(invoice.paid_amount or 0) + amount
+        sync_payable(db, invoice, payment.payment_date)
+
     for line in journal.lines:
-        GeneralLedgerService.post(db=db, account_id=line.account_id, debit=line.debit, credit=line.credit, posting_date=journal.posting_date, journal_source="SUPPLIER_PAYMENT", document_type=journal.document_type, document_number=journal.document_number, reference_type=journal.reference_type, reference_id=journal.reference_id, reference_number=journal.journal_number, description=line.description, user_id=user.id)
+        GeneralLedgerService.post(
+            db=db,
+            account_id=line.account_id,
+            debit=line.debit,
+            credit=line.credit,
+            posting_date=journal.posting_date,
+            journal_source="SUPPLIER_PAYMENT",
+            document_type=journal.document_type,
+            document_number=journal.document_number,
+            reference_type=journal.reference_type,
+            reference_id=journal.reference_id,
+            reference_number=journal.journal_number,
+            description=line.description,
+            user_id=user.id,
+        )
+
     now = datetime.now(timezone.utc)
     journal.status = "POSTED"
     journal.posted_by_id = user.id
