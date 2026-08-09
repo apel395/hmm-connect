@@ -16,7 +16,21 @@ const money=(value:unknown)=>Number(value||0).toLocaleString("en-US",{minimumFra
 export default function PaymentDetailPage(){
  const{id}=useParams();const navigate=useNavigate();const qc=useQueryClient();
  const query=useQuery({queryKey:["payment",id],queryFn:()=>getPayment(Number(id)),enabled:!!id});
- const refreshFinance=()=>{qc.invalidateQueries({queryKey:["payment",id]});qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["accounts-payable-aging"]})};
+ const refreshFinance=()=>{
+   qc.invalidateQueries({queryKey:["payment",id]});
+   qc.invalidateQueries({queryKey:["payments"]});
+   qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});
+   qc.invalidateQueries({queryKey:["supplier-invoices"]});
+   qc.invalidateQueries({queryKey:["accounts-payable-aging"]});
+   qc.invalidateQueries({queryKey:["finance-dashboard"]});
+   qc.invalidateQueries({queryKey:["cash-flow"]});
+   qc.invalidateQueries({queryKey:["cash-accounts"]});
+   qc.invalidateQueries({queryKey:["journal-entries"]});
+   qc.invalidateQueries({queryKey:["general-ledger"]});
+   qc.invalidateQueries({queryKey:["trial-balance"]});
+   qc.invalidateQueries({queryKey:["balance-sheet"]});
+   qc.invalidateQueries({queryKey:["profit-loss"]});
+ };
  const action=useMutation({mutationFn:async(name:string)=>{if(name==="approve"){await paymentAction(Number(id),"approve");try{await paymentAction(Number(id),"generate-journal")}catch(error:any){throw Object.assign(error,{paymentApproved:true})}return}return paymentAction(Number(id),name)},onSuccess:(_,name)=>{toast.success(name==="approve"?"Payment approved and draft journal generated from Posting Rules":`Payment ${name} complete`);refreshFinance()},onError:(error:any)=>{if(error?.paymentApproved)toast.error(error?.response?.data?.detail||"Payment was approved, but its journal could not be generated. Configure the SUPPLIER_PAYMENT Posting Rule.");else toast.error(error.response?.data?.detail||"Payment action failed");refreshFinance()}});
  if(query.isLoading)return <Loading/>;if(!query.data)return <p>Payment not found.</p>;
  const payment=query.data,allowed=payment.allowed_actions??{};
