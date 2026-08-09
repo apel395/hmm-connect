@@ -107,7 +107,20 @@ export type InvoicePayload = {
   lines: InvoiceLine[];
 };
 
+export type EligibleReceiptSource = {
+  id: number;
+  receipt_number: string;
+  purchase_order_id?: number | null;
+  supplier_id?: number | null;
+  supplier_name?: string | null;
+  business_unit_id?: number | null;
+  department_id?: number | null;
+  location_id?: number | null;
+  received_at?: string | null;
+};
+
 export const listInvoices = async (params: any = {}) => (await api.get("/supplier-invoices", { params })).data;
+export const listEligibleReceiptSources = async () => (await api.get<EligibleReceiptSource[]>("/supplier-invoice-sources/eligible-receipts")).data;
 export const getInvoice = async (id: number) => (await api.get<SupplierInvoice>(`/supplier-invoices/${id}`)).data;
 export const createInvoice = async (payload: InvoicePayload) => (await api.post<SupplierInvoice>("/supplier-invoices", payload)).data;
 export const updateInvoice = async (id: number, payload: InvoicePayload) => (await api.patch<SupplierInvoice>(`/supplier-invoices/${id}`, payload)).data;

@@ -22,6 +22,19 @@ export default function SupplierAdjustmentsPage() {
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
+  const refreshFinance = () => {
+    queryClient.invalidateQueries({ queryKey: ["supplier-adjustments"] });
+    queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] });
+    queryClient.invalidateQueries({ queryKey: ["eligible-payment-invoices"] });
+    queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] });
+    queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
+    queryClient.invalidateQueries({ queryKey: ["general-ledger"] });
+    queryClient.invalidateQueries({ queryKey: ["trial-balance"] });
+    queryClient.invalidateQueries({ queryKey: ["balance-sheet"] });
+    queryClient.invalidateQueries({ queryKey: ["profit-loss"] });
+  };
+
   const adjustments = useQuery({
     queryKey: ["supplier-adjustments", typeFilter, statusFilter],
     queryFn: () => listSupplierAdjustments({ page: 1, page_size: 100, adjustment_type: typeFilter || undefined, status: statusFilter || undefined }),
@@ -41,7 +54,7 @@ export default function SupplierAdjustmentsPage() {
     onSuccess: () => {
       toast.success(form.adjustment_type === "CREDIT_NOTE" ? "Supplier credit note created" : "Supplier debit note created");
       setForm(emptyForm());
-      queryClient.invalidateQueries({ queryKey: ["supplier-adjustments"] });
+      refreshFinance();
     },
     onError: (error: any) => toast.error(error.response?.data?.detail || "Supplier adjustment could not be created"),
   });
@@ -49,9 +62,7 @@ export default function SupplierAdjustmentsPage() {
     mutationFn: ({ id, name }: { id: number; name: "post" | "void" }) => supplierAdjustmentAction(id, name),
     onSuccess: (_, variables) => {
       toast.success(variables.name === "post" ? "Supplier adjustment posted" : "Supplier adjustment voided");
-      queryClient.invalidateQueries({ queryKey: ["supplier-adjustments"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] });
-      queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] });
+      refreshFinance();
     },
     onError: (error: any) => toast.error(error.response?.data?.detail || "Adjustment action failed"),
   });

@@ -14,7 +14,7 @@ import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import purchaseOrderApi from "@/modules/purchasing/purchase-order/api/purchaseOrderApi";
 import goodsReceiptApi from "@/modules/purchasing/goods-receipts/api/goodsReceiptApi";
-import { createInvoice, InvoiceLine, listInvoices } from "./api";
+import { createInvoice, InvoiceLine, listEligibleReceiptSources, listInvoices } from "./api";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const blankLine = (): InvoiceLine => ({ description: "", quantity: 0, uom: "", unit_price: 0, account_id: null });
@@ -37,7 +37,7 @@ export default function SupplierInvoiceListPage() {
   const { data: suppliers = [] } = useSuppliers();
   const accounts = useQuery({ queryKey: ["coa-invoice-lookup"], queryFn: () => getAccountLookup({ is_active: true, is_posting: true }) });
   const purchaseOrders = useQuery({ queryKey: ["invoice-pos"], queryFn: async () => (await purchaseOrderApi.list({ scope: "all", page_size: 100 })).data.items });
-  const receipts = useQuery({ queryKey: ["invoice-receipts"], queryFn: async () => (await goodsReceiptApi.list()).data });
+  const receipts = useQuery({ queryKey: ["invoice-receipts"], queryFn: listEligibleReceiptSources });
   const businessUnits = useQuery({ queryKey: ["business-units", "invoice", "active"], queryFn: () => filterBusinessUnits({ is_active: true }) });
   const departments = useQuery({ queryKey: ["invoice-departments", form.business_unit_id], queryFn: () => listDepartments({ business_unit_id: Number(form.business_unit_id), is_active: true }), enabled: Boolean(form.business_unit_id) });
   const locations = useQuery({ queryKey: ["invoice-locations", form.business_unit_id], queryFn: () => listLocations({ business_unit_id: Number(form.business_unit_id), is_active: true }), enabled: Boolean(form.business_unit_id) });
@@ -71,7 +71,16 @@ export default function SupplierInvoiceListPage() {
 
   const save = useMutation({
     mutationFn: () => createInvoice({ ...form, due_date: form.due_date || null, lines: form.lines.map((line: any) => ({ ...line, line_amount: undefined })) }),
-    onSuccess: (invoice) => { toast.success("Invoice saved as draft"); setOpen(false); setForm(emptyForm()); queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] }); navigate(`/supplier-invoices/${invoice.id}`); },
+    onSuccess: (invoice) => {
+      toast.success("Invoice saved as draft");
+      setOpen(false);
+      setForm(emptyForm());
+      queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] });
+      queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
+      navigate(`/supplier-invoices/${invoice.id}`);
+    },
     onError: (error) => toast.error(axios.isAxiosError(error) && typeof error.response?.data?.detail === "string" ? error.response.data.detail : "Invoice could not be saved"),
   });
 
@@ -91,7 +100,7 @@ export default function SupplierInvoiceListPage() {
 
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-6xl"><DialogHeader><DialogTitle>Create Supplier Invoice</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
-        <label className="text-sm">Posted Receipt<select className={input} value={form.goods_receipt_id ?? ""} onChange={(event) => loadReceipt(Number(event.target.value))}><option value="">Direct / no receipt</option>{receipts.data?.filter((row: any) => row.status === "POSTED").map((row: any) => <option key={row.id} value={row.id}>{row.receipt_number} — {row.supplier_name}</option>)}</select></label>
+        <label className="text-sm">Posted Receipt<select className={input} value={form.goods_receipt_id ?? ""} onChange={(event) => loadReceipt(Number(event.target.value))}><option value="">Direct / no receipt</option>{receipts.data?.map((row: any) => <option key={row.id} value={row.id}>{row.receipt_number} — {row.supplier_name}</option>)}</select></label>
         <label className="text-sm">Purchase Order<select disabled={Boolean(form.goods_receipt_id)} className={input} value={form.purchase_order_id ?? ""} onChange={(event) => loadPo(Number(event.target.value))}><option value="">Direct / no PO</option>{purchaseOrders.data?.map((row: any) => <option key={row.id} value={row.id}>{row.po_number}</option>)}</select></label>
         <label className="text-sm">Supplier *<select disabled={sourceLocked} required className={input} value={form.supplier_id} onChange={(event) => setForm({ ...form, supplier_id: Number(event.target.value) })}><option value={0}>Select supplier</option>{suppliers.map((supplier: any) => <option key={supplier.id} value={supplier.id}>{supplier.code} — {supplier.name}</option>)}</select></label>
         <label className="text-sm">Business Unit *<select disabled={sourceLocked} required className={input} value={form.business_unit_id ?? ""} onChange={(event) => setForm({ ...form, business_unit_id: Number(event.target.value), department_id: null, location_id: null })}><option value="">Select Business Unit</option>{businessUnits.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
