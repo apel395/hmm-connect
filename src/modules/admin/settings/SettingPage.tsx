@@ -1,16 +1,53 @@
-import { KeyRound, ShieldCheck, Users } from "lucide-react";
+import { Building2, KeyRound, Landmark, Network, ShieldCheck, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 
 export default function SettingPage() {
   return <div className="space-y-6">
-    <PageHeader title="System Settings" description="System-level access and security settings. Business Units, Departments, Locations and Warehouses remain separate Master Data modules."/>
-    <div className="grid gap-4 md:grid-cols-3">
-      <Card><ShieldCheck className="mb-3 h-5 w-5 text-emerald-700"/><h2 className="font-semibold">Roles & Permissions</h2><p className="mt-1 text-sm text-slate-500">Manage the HMM-Connect role model and permission mappings.</p><Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/roles">Manage Roles</Link></Card>
-      <Card><Users className="mb-3 h-5 w-5 text-emerald-700"/><h2 className="font-semibold">Users</h2><p className="mt-1 text-sm text-slate-500">Create accounts, assign roles and organizational scope, or deactivate access.</p><Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/users">Manage Users</Link></Card>
-      <Card><KeyRound className="mb-3 h-5 w-5 text-emerald-700"/><h2 className="font-semibold">Authentication</h2><p className="mt-1 text-sm text-slate-500">Self-registration is disabled. Accounts are provisioned by System Administrators.</p></Card>
+    <PageHeader title="System Settings" description="Configure organization, security, approvals, finance policy, and system behavior from one place."/>
+
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <Card>
+        <ShieldCheck className="mb-3 h-5 w-5 text-emerald-700"/>
+        <h2 className="font-semibold">Roles & Permissions</h2>
+        <p className="mt-1 text-sm text-slate-500">Manage access roles and permission mappings.</p>
+        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/roles">Manage Roles</Link>
+      </Card>
+
+      <Card>
+        <Users className="mb-3 h-5 w-5 text-emerald-700"/>
+        <h2 className="font-semibold">Users</h2>
+        <p className="mt-1 text-sm text-slate-500">Provision accounts, assign roles, and manage organizational scope.</p>
+        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/users">Manage Users</Link>
+      </Card>
+
+      <Card>
+        <Building2 className="mb-3 h-5 w-5 text-emerald-700"/>
+        <h2 className="font-semibold">Organization</h2>
+        <p className="mt-1 text-sm text-slate-500">Configure Business Units, Departments, Locations, and related organizational dimensions.</p>
+        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/organization-dimensions">Manage Organization</Link>
+      </Card>
+
+      <Card>
+        <Network className="mb-3 h-5 w-5 text-emerald-700"/>
+        <h2 className="font-semibold">Approval Workflow</h2>
+        <p className="mt-1 text-sm text-slate-500">Configure sequential and parallel multi-level approval stages for supported documents.</p>
+        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/settings/approval-workflow">Configure Approvals</Link>
+      </Card>
+
+      <Card>
+        <Landmark className="mb-3 h-5 w-5 text-emerald-700"/>
+        <h2 className="font-semibold">Finance Setup</h2>
+        <p className="mt-1 text-sm text-slate-500">Maintain Chart of Accounts, Posting Rules, and Fiscal Periods outside daily Finance operations.</p>
+        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/settings/finance-setup">Open Finance Setup</Link>
+      </Card>
+
+      <Card>
+        <KeyRound className="mb-3 h-5 w-5 text-emerald-700"/>
+        <h2 className="font-semibold">Authentication</h2>
+        <p className="mt-1 text-sm text-slate-500">Self-registration is disabled. Accounts are provisioned by System Administrators.</p>
+      </Card>
     </div>
-    <Card className="border-amber-200 bg-amber-50/50"><h2 className="font-semibold">Master Data is managed separately</h2><p className="mt-1 text-sm text-slate-600">Warehouses are physical stock locations. Business Units, Departments and Locations are organization dimensions. They are intentionally not combined with System Settings.</p></Card>
   </div>;
 }
