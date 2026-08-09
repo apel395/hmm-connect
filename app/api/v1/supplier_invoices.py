@@ -13,7 +13,7 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
-from app.services.supplier_invoice_service import SupplierInvoiceService
+from app.services.supplier_invoice_runtime_service import SupplierInvoiceService
 
 router = APIRouter(prefix="/supplier-invoices", tags=["Supplier Invoices"])
 
@@ -34,6 +34,7 @@ def result(db, invoice, user):
     service = SupplierInvoiceService(db)
     data = service.serialize(service.attach_journal(invoice))
     match = service.match_summary(invoice)
+    # Keep the response key for frontend compatibility while the policy is now two-way.
     data["three_way_match"] = match
     data.update(document_context(db, "SUPPLIER_INVOICE", invoice.id, invoice.status, user))
     data["allowed_actions"] = {
@@ -66,6 +67,7 @@ def listing(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
+    access(user)
     query = db.query(SupplierInvoice)
     if search:
         query = query.filter(or_(SupplierInvoice.internal_invoice_number.ilike(f"%{search}%"), SupplierInvoice.supplier_invoice_number.ilike(f"%{search}%")))
@@ -103,6 +105,7 @@ def listing(
 
 @router.get("/{invoice_id}")
 def detail(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user)
     return result(db, get(db, invoice_id), user)
 
 
@@ -204,9 +207,11 @@ def void(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 
 @router.get("/{invoice_id}/allowed-actions")
 def actions(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user)
     return result(db, get(db, invoice_id), user)["allowed_actions"]
 
 
 @router.get("/{invoice_id}/print")
 def printable(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user)
     return {**result(db, get(db, invoice_id), user), "document_type": "Supplier Invoice", **print_metadata(user)}
