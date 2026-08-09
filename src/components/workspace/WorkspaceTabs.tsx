@@ -12,18 +12,19 @@ export default function WorkspaceTabs() {
   const currentPath = `${location.pathname}${location.search}`;
 
   useEffect(() => {
-    if (location.pathname.endsWith("/print")) return;
+    if (location.pathname === "/" || location.pathname.endsWith("/print")) return;
+    const title = workspaceTitle(location.pathname, location.search);
     ensureTab({
       id: currentPath,
       path: currentPath,
-      title: workspaceTitle(location.pathname, location.search),
+      title,
       pinned: location.pathname === "/dashboard",
     });
-    document.title = `${workspaceTitle(location.pathname, location.search)} · HMM-Connect`;
+    document.title = `${title} · HMM-Connect`;
   }, [currentPath, ensureTab, location.pathname, location.search]);
 
   useEffect(() => {
-    const active = stripRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(currentPath)}"]`);
+    const active = stripRef.current?.querySelector<HTMLElement>("[data-active='true']");
     active?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
   }, [currentPath, tabs.length]);
 
@@ -53,34 +54,38 @@ export default function WorkspaceTabs() {
           {tabs.map((tab) => {
             const active = tab.id === currentPath;
             return (
-              <button
+              <div
                 key={tab.id}
-                type="button"
-                data-tab-id={tab.id}
-                title={tab.title}
-                onClick={() => navigate(tab.path)}
-                onAuxClick={(event) => {
-                  if (event.button === 1 && !tab.pinned) close(tab.id);
+                data-active={active ? "true" : "false"}
+                onMouseDown={(event) => {
+                  if (event.button === 1 && !tab.pinned) {
+                    event.preventDefault();
+                    close(tab.id);
+                  }
                 }}
-                className={`group relative flex min-w-[132px] max-w-[240px] items-center gap-2 border-r border-[#DCD6CB] px-3 text-left text-xs transition ${active ? "bg-white text-[#202723]" : "bg-[#F3F0EA] text-[#666C68] hover:bg-[#EDE9E1]"}`}
+                className={`group relative flex min-w-[132px] max-w-[240px] items-stretch border-r border-[#DCD6CB] text-xs transition ${active ? "bg-white text-[#202723]" : "bg-[#F3F0EA] text-[#666C68] hover:bg-[#EDE9E1]"}`}
               >
-                {tab.pinned && <LayoutDashboard className="h-3.5 w-3.5 shrink-0 text-[#0F6758]" />}
-                <span className="min-w-0 flex-1 truncate font-medium">{tab.title}</span>
+                <button
+                  type="button"
+                  title={tab.title}
+                  onClick={() => navigate(tab.path)}
+                  className="flex min-w-0 flex-1 items-center gap-2 px-3 text-left"
+                >
+                  {tab.pinned && <LayoutDashboard className="h-3.5 w-3.5 shrink-0 text-[#0F6758]" />}
+                  <span className="min-w-0 flex-1 truncate font-medium">{tab.title}</span>
+                </button>
                 {!tab.pinned && (
-                  <span
-                    role="button"
+                  <button
+                    type="button"
                     aria-label={`Close ${tab.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      close(tab.id);
-                    }}
-                    className="grid h-5 w-5 shrink-0 place-items-center rounded opacity-50 hover:bg-black/10 hover:opacity-100"
+                    onClick={() => close(tab.id)}
+                    className="mr-1 grid w-6 shrink-0 place-items-center self-center rounded opacity-50 hover:bg-black/10 hover:opacity-100"
                   >
                     <X className="h-3.5 w-3.5" />
-                  </span>
+                  </button>
                 )}
                 {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[#0F6758]" />}
-              </button>
+              </div>
             );
           })}
         </div>
