@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 
+from app.services.ap_metrics import sync_invoice_balance
 from app.services.supplier_invoice_service import SupplierInvoiceService as BaseSupplierInvoiceService
 
 ZERO = Decimal("0")
@@ -10,6 +11,11 @@ PRICE_TOLERANCE = Decimal("0.01")
 
 class SupplierInvoiceService(BaseSupplierInvoiceService):
     """Hotel AP matching policy: posted Goods Receipt ↔ Supplier Invoice only."""
+
+    @staticmethod
+    def serialize(invoice):
+        sync_invoice_balance(invoice)
+        return BaseSupplierInvoiceService.serialize(invoice)
 
     def match_summary(self, invoice):
         if not invoice.goods_receipt_id:
