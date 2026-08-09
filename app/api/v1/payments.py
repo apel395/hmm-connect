@@ -24,7 +24,7 @@ from app.services.general_ledger import GeneralLedgerService
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 ZERO = Decimal("0")
-OPEN_INVOICE_STATUSES = {"VERIFIED", "POSTED"}
+OPEN_INVOICE_STATUSES = {"POSTED"}
 
 
 def access(user):
@@ -95,7 +95,7 @@ def validate_data(db: Session, data: PaymentCreate, exclude: int | None = None):
         if not invoice or invoice.supplier_id != data.supplier_id:
             raise HTTPException(400, "Allocated invoice does not belong to selected supplier")
         if invoice.status not in OPEN_INVOICE_STATUSES or invoice.payment_status == "PAID":
-            raise HTTPException(409, "Only verified/posted unpaid invoices can be allocated")
+            raise HTTPException(409, "Only posted unpaid invoices can be allocated")
         if invoice.currency != data.currency.upper():
             raise HTTPException(400, "Payment and invoice currencies must match")
 
@@ -351,7 +351,7 @@ def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cur
     for allocation in payment.allocations:
         invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == allocation.supplier_invoice_id).with_for_update().one()
         if invoice.status not in OPEN_INVOICE_STATUSES:
-            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} is no longer payable")
+            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} is not posted and cannot be paid")
         available = invoice_balance(invoice) - reserved_amount(db, invoice.id, payment.id)
         if Decimal(allocation.allocated_amount) > available:
             raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} only has {available} available")
@@ -377,6 +377,9 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cu
         raise HTTPException(409, "Payment must be approved")
     if payment.journal_entry_id:
         raise HTTPException(409, "Payment already has a journal")
+    for allocation in payment.allocations:
+        if allocation.supplier_invoice.status not in OPEN_INVOICE_STATUSES:
+            raise HTTPException(409, f"Invoice {allocation.supplier_invoice.internal_invoice_number} is not posted")
     rule = db.query(AccountingPostingRule).filter_by(event_type="SUPPLIER_PAYMENT", is_active=True).first()
     if not rule:
         raise HTTPException(409, "No active SUPPLIER_PAYMENT posting rule configured")
@@ -447,6 +450,8 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 
     for allocation in payment.allocations:
         invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == allocation.supplier_invoice_id).with_for_update().one()
+        if invoice.status not in OPEN_INVOICE_STATUSES:
+            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} is not posted and payment cannot be posted")
         amount = Decimal(allocation.allocated_amount)
         current_balance = invoice_balance(invoice)
         if amount > current_balance:
