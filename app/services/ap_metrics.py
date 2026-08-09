@@ -7,6 +7,8 @@ from app.models.journal_entry import JournalEntry
 from app.models.supplier_invoice import SupplierInvoice
 
 ZERO = Decimal("0")
+# Compatibility for paid-history consumers; open AP itself is journal-derived below.
+OPEN_AP_STATUSES = ("POSTED",)
 
 
 def open_invoice_query(
