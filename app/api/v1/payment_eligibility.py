@@ -9,6 +9,7 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_any_role
 from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier_invoice import SupplierInvoice
+from app.services.ap_metrics import effective_invoice_balance, sync_invoice_balance
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 ZERO = Decimal("0")
@@ -49,7 +50,6 @@ def eligible_invoices_available(
             SupplierInvoice.supplier_id == supplier_id,
             SupplierInvoice.currency == currency.upper(),
             SupplierInvoice.status.in_(("VERIFIED", "POSTED")),
-            SupplierInvoice.balance_amount > 0,
         )
         .order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id.asc())
         .all()
@@ -57,7 +57,10 @@ def eligible_invoices_available(
 
     result = []
     for invoice in invoices:
-        balance = Decimal(invoice.balance_amount or 0)
+        balance = effective_invoice_balance(invoice)
+        if balance <= ZERO:
+            continue
+        sync_invoice_balance(invoice)
         reserved = reserved_by_invoice.get(invoice.id, ZERO)
         available = max(ZERO, balance - reserved)
         if available <= 0:
