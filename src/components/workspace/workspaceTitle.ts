@@ -1,5 +1,7 @@
 const exactTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
+  "/approval-center": "Approval Center",
+  "/approval-configuration": "Approval Configuration",
   "/finance-dashboard": "Finance Dashboard",
   "/purchase-requisitions": "Purchase Requisitions",
   "/purchase-orders": "Purchase Orders",
@@ -84,7 +86,5 @@ export function workspaceTitle(pathname: string, search = ""): string {
   }
 
   const segment = pathname.split("/").filter(Boolean).at(-1) ?? "Workspace";
-  return segment
-    .replaceAll("-", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return segment.replaceAll("-", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
