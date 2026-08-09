@@ -35,7 +35,6 @@ const groups: Group[] = [
     { title: "Cash & Bank", url: "/cash-bank" },
     { title: "Journal", url: "/journal" },
     { title: "Fixed Assets", url: "/fixed-assets" },
-    { title: "Finance Setup", url: "/finance-setup", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE"] },
   ] },
   { title: "Reports", icon: FileBarChart, children: [
     { title: "Purchasing Reports", disabled: true },
@@ -47,7 +46,6 @@ const groups: Group[] = [
   { title: "Administration", icon: Settings, roles: ["SYSTEM_ADMINISTRATOR"], children: [
     { title: "Users", url: "/users" },
     { title: "Roles", url: "/roles" },
-    { title: "Approval Configuration", url: "/approval-configuration" },
     { title: "System Settings", url: "/settings" },
   ] },
 ];
