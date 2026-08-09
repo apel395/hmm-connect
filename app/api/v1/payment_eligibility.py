@@ -48,7 +48,7 @@ def eligible_invoices_available(
         .filter(
             SupplierInvoice.supplier_id == supplier_id,
             SupplierInvoice.currency == currency.upper(),
-            SupplierInvoice.status.in_(("VERIFIED", "POSTED")),
+            SupplierInvoice.status == "POSTED",
             SupplierInvoice.balance_amount > 0,
         )
         .order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id.asc())
