@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Boxes, Building2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Settings, ShoppingCart, X } from "lucide-react";
+import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Settings, ShoppingCart, X } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
@@ -10,6 +10,7 @@ interface Group { title: string; icon: typeof LayoutDashboard; url?: string; rol
 
 const groups: Group[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Approval Center", url: "/approval-center", icon: CheckSquare2, roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
   { title: "Master Data", icon: Building2, roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Items", url: "/products" },
     { title: "Suppliers", url: "/suppliers", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
@@ -22,7 +23,6 @@ const groups: Group[] = [
     { title: "Purchase Requisition", url: "/purchase-requisitions", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Purchase Order", url: "/purchase-orders", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Receiving", url: "/receiving", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-    { title: "Approval Inbox", disabled: true },
   ] },
   { title: "Inventory", icon: Boxes, roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Stock", url: "/inventory" },
@@ -47,6 +47,7 @@ const groups: Group[] = [
   { title: "Administration", icon: Settings, roles: ["SYSTEM_ADMINISTRATOR"], children: [
     { title: "Users", url: "/users" },
     { title: "Roles", url: "/roles" },
+    { title: "Approval Configuration", url: "/approval-configuration" },
     { title: "System Settings", url: "/settings" },
   ] },
 ];
