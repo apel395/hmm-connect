@@ -1,8 +1,11 @@
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, event
+from sqlalchemy.orm import Mapped, Session as OrmSession, mapped_column, relationship
+
 from app.models.base import Base, TimestampMixin
+
 
 class SupplierInvoice(Base, TimestampMixin):
     __tablename__ = "supplier_invoices"
@@ -43,6 +46,7 @@ class SupplierInvoice(Base, TimestampMixin):
     department = relationship("Department"); location = relationship("Location"); created_by = relationship("User", foreign_keys=[created_by_id])
     lines = relationship("SupplierInvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 
+
 class SupplierInvoiceLine(Base):
     __tablename__ = "supplier_invoice_lines"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -59,3 +63,23 @@ class SupplierInvoiceLine(Base):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
     notes: Mapped[str | None] = mapped_column(Text)
     invoice = relationship("SupplierInvoice", back_populates="lines"); product = relationship("Product"); account = relationship("ChartOfAccount")
+
+
+@event.listens_for(OrmSession, "before_flush")
+def _sync_supplier_invoice_balance(session, _flush_context, _instances):
+    """Keep AP balance fields authoritative across payments, notes, edits, and imports."""
+    candidates = set(session.new).union(session.dirty)
+    for invoice in candidates:
+        if not isinstance(invoice, SupplierInvoice):
+            continue
+        total = Decimal(invoice.total_amount or 0)
+        paid = Decimal(invoice.paid_amount or 0)
+        adjustments = Decimal(invoice.adjustment_amount or 0)
+        balance = max(Decimal("0"), total - paid - adjustments)
+        invoice.balance_amount = balance
+        if balance == 0 and total > 0:
+            invoice.payment_status = "PAID"
+        elif paid > 0 or adjustments > 0:
+            invoice.payment_status = "PARTIALLY_PAID"
+        else:
+            invoice.payment_status = "UNPAID"
