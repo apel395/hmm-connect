@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    accounting, accounting_posting_rules, amortizations, ap_aging, approvals, ar_aging,
+    accounting, accounting_posting_rules, amortizations, ap_aging, ap_reconciliation, approvals, ar_aging,
     audit_trail, auth, balance_sheet, bank_accounts, bank_reconciliations, bank_transfers,
     cash_flow, chart_of_accounts, customer_payments, dashboard,
     document_attachments, document_drilldown, document_events, fiscal_periods,
@@ -48,6 +48,7 @@ for router in (
     fixed_assets_core.reports_router,
     amortizations.router,
     ap_aging.router,
+    ap_reconciliation.router,
     ar_aging.router,
     trial_balance.router,
     users.router,

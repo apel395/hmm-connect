@@ -3,9 +3,11 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.journal_entry import JournalEntry
 from app.models.supplier_invoice import SupplierInvoice
 
 ZERO = Decimal("0")
+# Compatibility for paid-history consumers; open AP itself is journal-derived below.
 OPEN_AP_STATUSES = ("POSTED",)
 
 
@@ -18,11 +20,15 @@ def open_invoice_query(
 ):
     query = (
         db.query(SupplierInvoice)
-        .options(joinedload(SupplierInvoice.supplier))
-        .filter(
-            SupplierInvoice.status.in_(OPEN_AP_STATUSES),
-            SupplierInvoice.balance_amount > 0,
+        .join(
+            JournalEntry,
+            (JournalEntry.reference_type == "SUPPLIER_INVOICE")
+            & (JournalEntry.reference_id == SupplierInvoice.id)
+            & (JournalEntry.status == "POSTED"),
         )
+        .options(joinedload(SupplierInvoice.supplier))
+        .filter(SupplierInvoice.balance_amount > 0)
+        .distinct()
     )
     if business_unit_id:
         query = query.filter(SupplierInvoice.business_unit_id == business_unit_id)

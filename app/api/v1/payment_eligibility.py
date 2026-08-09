@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_any_role
+from app.models.journal_entry import JournalEntry
 from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier_invoice import SupplierInvoice
 
@@ -45,12 +46,18 @@ def eligible_invoices_available(
 
     invoices = (
         db.query(SupplierInvoice)
+        .join(
+            JournalEntry,
+            (JournalEntry.reference_type == "SUPPLIER_INVOICE")
+            & (JournalEntry.reference_id == SupplierInvoice.id)
+            & (JournalEntry.status == "POSTED"),
+        )
         .filter(
             SupplierInvoice.supplier_id == supplier_id,
             SupplierInvoice.currency == currency.upper(),
-            SupplierInvoice.status == "POSTED",
             SupplierInvoice.balance_amount > 0,
         )
+        .distinct()
         .order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id.asc())
         .all()
     )
@@ -78,6 +85,7 @@ def eligible_invoices_available(
             "location_id": invoice.location_id,
             "department_id": invoice.department_id,
             "status": invoice.status,
+            "posting_status": "POSTED",
             "payment_status": invoice.payment_status,
         })
 
