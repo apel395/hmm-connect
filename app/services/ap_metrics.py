@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.supplier_invoice import SupplierInvoice
 
 ZERO = Decimal("0")
-OPEN_AP_STATUSES = ("VERIFIED", "POSTED")
+OPEN_AP_STATUSES = ("POSTED",)
 
 
 def open_invoice_query(
