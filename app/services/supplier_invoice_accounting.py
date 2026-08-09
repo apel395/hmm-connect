@@ -32,6 +32,12 @@ def posting_status(db: Session, invoice_id: int) -> str:
     return "UNPOSTED"
 
 
+def document_status(invoice: SupplierInvoice) -> str:
+    # Legacy SupplierInvoice.status used POSTED as both a document and accounting state.
+    # The normalized API keeps verification separate; posting_status owns accounting state.
+    return "VERIFIED" if invoice.status == "POSTED" else invoice.status
+
+
 def has_posted_invoice_journal(db: Session, invoice_id: int) -> bool:
     return (
         db.query(JournalEntry.id)
@@ -60,6 +66,7 @@ def posted_payment_total(db: Session, invoice_id: int) -> Decimal:
 
 def accounting_state(db: Session, invoice: SupplierInvoice) -> dict:
     posting = posting_status(db, invoice.id)
+    document = document_status(invoice)
     posted_payments = posted_payment_total(db, invoice.id)
     exceptions: list[str] = []
 
@@ -67,11 +74,11 @@ def accounting_state(db: Session, invoice: SupplierInvoice) -> dict:
         exceptions.append("PAYMENT_POSTED_BEFORE_INVOICE_JOURNAL")
     if invoice.status == "POSTED" and posting != "POSTED":
         exceptions.append("DOCUMENT_POSTED_WITHOUT_POSTED_JOURNAL")
-    if posting == "POSTED" and invoice.status in {"DRAFT", "REJECTED", "VOID"}:
+    if posting == "POSTED" and document in {"DRAFT", "REJECTED", "VOID"}:
         exceptions.append("POSTED_JOURNAL_WITH_INVALID_DOCUMENT_STATE")
 
     return {
-        "document_status": invoice.status,
+        "document_status": document,
         "posting_status": posting,
         "payment_status": invoice.payment_status,
         "balance_amount": Decimal(invoice.balance_amount or 0),
