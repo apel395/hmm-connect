@@ -1,7 +1,13 @@
-export type AccessAction = "view" | "create" | "edit" | "delete" | "submit" | "approve" | "convert" | "receive" | "post" | "cancel";
+export type AccessAction = "view" | "create" | "edit" | "delete" | "submit" | "approve" | "convert" | "receive" | "post" | "cancel" | "reopen" | "unpost";
 
-type RoleLike = string | { name?: string; code?: string };
-interface UserLike { roles?: RoleLike[]; username?: string; full_name?: string }
+type RoleLike = string | { name?: string; code?: string; role_name?: string; role_code?: string };
+interface UserLike {
+  roles?: RoleLike[];
+  username?: string;
+  full_name?: string;
+  is_admin?: boolean;
+  is_superuser?: boolean;
+}
 
 export const SUPERUSER_ROLES = new Set([
   "ADMIN",
@@ -20,7 +26,9 @@ export function normalizeRoleName(name: string): string {
 
 function roleNames(role: RoleLike): string[] {
   if (typeof role === "string") return [normalizeRoleName(role)];
-  return [role.name, role.code].filter((value): value is string => Boolean(value)).map(normalizeRoleName);
+  return [role.name, role.code, role.role_name, role.role_code]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizeRoleName);
 }
 
 export function userRoleNames(user?: UserLike | null): string[] {
@@ -34,6 +42,7 @@ function isAdministratorRole(role: string): boolean {
 }
 
 export function isSuperuser(user?: UserLike | null): boolean {
+  if (user?.is_admin || user?.is_superuser) return true;
   return userRoleNames(user).some(isAdministratorRole);
 }
 
@@ -50,9 +59,9 @@ export function canPerform(
   allowedRoles: string[],
   actionAvailable = true,
 ): boolean {
-  // Superusers bypass role restrictions, but never document-state restrictions.
-  // Example: a DRAFT document may be submitted, but it cannot be approved until
-  // the backend has started an approval request and marks approval as available.
+  // Administrator bypass is global for role restrictions. Document/accounting
+  // state is still explicit: when a state is locked, the UI exposes Reopen or
+  // Unpost instead of silently editing a posted transaction.
   if (!actionAvailable) return false;
   if (isSuperuser(user)) return true;
   return canAccess(user, allowedRoles);

@@ -31,6 +31,7 @@ export type ThreeWayMatchLine = {
   available_quantity: number;
   invoice_quantity: number;
   po_unit_price?: number | null;
+  receipt_unit_cost?: number | null;
   invoice_unit_price: number;
   price_difference?: number | null;
   uom?: string | null;
@@ -125,3 +126,5 @@ export const getInvoice = async (id: number) => (await api.get<SupplierInvoice>(
 export const createInvoice = async (payload: InvoicePayload) => (await api.post<SupplierInvoice>("/supplier-invoices", payload)).data;
 export const updateInvoice = async (id: number, payload: InvoicePayload) => (await api.patch<SupplierInvoice>(`/supplier-invoices/${id}`, payload)).data;
 export const invoiceAction = async (id: number, action: string) => (await api.post(`/supplier-invoices/${id}/${action}`)).data;
+export const adminUnpostInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/unpost`)).data;
+export const adminReopenInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/reopen`)).data;
