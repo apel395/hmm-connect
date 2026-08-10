@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func, Integer
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func, Integer, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -109,3 +109,32 @@ class JournalEntry(Base, TimestampMixin):
         Integer,
         index=True,
     )
+
+
+JOURNAL_ORIGIN_CODES = {
+    "MANUAL": "MAN",
+    "SUPPLIER_INVOICE": "SI",
+    "SUPPLIER_PAYMENT": "PAY",
+    "SUPPLIER_ADJUSTMENT": "ADJ",
+    "BANK_TRANSFER": "BTR",
+    "FIXED_ASSET": "FA",
+    "DEPRECIATION": "DEP",
+    "AMORTIZATION": "AMO",
+    "GOODS_RECEIPT": "GR",
+    "CUSTOMER_PAYMENT": "CPAY",
+}
+
+
+@event.listens_for(JournalEntry, "before_insert")
+def apply_origin_journal_number(_mapper, _connection, target: JournalEntry):
+    """Replace legacy JV prefixes with an origin code for new journal entries.
+
+    The underlying JV sequence remains globally unique, while the visible number
+    immediately identifies the originating accounting activity. Existing journal
+    numbers and imported/external numbers are intentionally left unchanged.
+    """
+    number = target.journal_number or ""
+    if not number.startswith("JV-"):
+        return
+    origin = JOURNAL_ORIGIN_CODES.get((target.reference_type or "").upper(), "MAN")
+    target.journal_number = f"{origin}-{number[3:]}"
