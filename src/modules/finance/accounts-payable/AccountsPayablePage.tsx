@@ -45,7 +45,7 @@ export default function AccountsPayablePage(){
     </> : <>
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200">
         <div className="flex gap-5"><button className={`pb-2 text-sm font-medium ${agingTab==="OPEN"?"border-b-2 border-[#086B5A] text-[#086B5A]":"text-slate-500"}`} onClick={()=>setAgingTab("OPEN")}>Open / Aging</button><button className={`pb-2 text-sm font-medium ${agingTab==="PAID"?"border-b-2 border-[#086B5A] text-[#086B5A]":"text-slate-500"}`} onClick={()=>setAgingTab("PAID")}>Paid History</button></div>
-        {agingTab==="OPEN"&&<div className="pb-2"><PrintPreviewButton src="/accounts-payable/aging/print" title="Account Payable Aging" ariaLabel="Print AP aging"/></div>}
+        {agingTab==="OPEN"&&<div className="flex gap-2 pb-2"><PrintPreviewButton src="/accounts-payable/aging/print" title="Account Payable Aging" ariaLabel="Print AP aging"/><PrintPreviewButton src="/accounts-payable/payment-request/print" title="Payment Request" ariaLabel="Print payment request"/></div>}
       </div>
       {agingTab==="OPEN"?<>
         <Card className="p-4"><h2 className="mb-3 text-base font-semibold">Aging Buckets</h2><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{Object.entries(bucketLabel).map(([key,label])=>{const item=aging.data?.buckets?.[key];return <div key={key} className="rounded-lg border bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{label}</div><div className="mt-1 font-semibold">{money(item?.amount)}</div><div className="mt-2 text-xs text-slate-500">{item?.invoice_count??0} invoices · {item?.supplier_count??0} suppliers · {Number(item?.percentage??0).toFixed(1)}%</div></div>})}</div></Card>
