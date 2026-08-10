@@ -8,22 +8,21 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_any_role, is_superuser
 from app.models.chart_of_account import ChartOfAccount
-from app.models.general_ledger import GeneralLedger
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.journal import JournalCreate, JournalUpdate
+from app.services.accounting_unpost import SUPPORTED_SOURCE_TYPES, unpost_journal
 from app.services.audit import record_audit
 from app.services.document_context import print_metadata
 from app.services.document_number import next_document_number
-from app.services.fiscal_period_service import FiscalPeriodService
 from app.services.general_ledger import GeneralLedgerService
 
 router = APIRouter(prefix="/journal-entries", tags=["Journal Entries"])
 ZERO = Decimal("0")
-UNPOSTABLE_SOURCES = {"MANUAL", "SUPPLIER_INVOICE"}
+STANDARD_UNPOSTABLE_SOURCES = {"MANUAL", "SUPPLIER_INVOICE"}
 
 
 def access(user):
@@ -57,9 +56,11 @@ def validate(db, lines):
     return debit, credit
 
 
-def serialize(x):
+def serialize(x, user=None):
     debit = sum((Decimal(l.debit) for l in x.lines), ZERO)
     credit = sum((Decimal(l.credit) for l in x.lines), ZERO)
+    source = (x.reference_type or "MANUAL").upper()
+    admin_unpost = bool(user and is_superuser(user) and source in SUPPORTED_SOURCE_TYPES)
     return {
         "id": x.id,
         "journal_number": x.journal_number,
@@ -81,7 +82,9 @@ def serialize(x):
         "allowed_actions": {
             "can_edit": x.status == "DRAFT",
             "can_post": x.status == "DRAFT" and bool(x.lines) and debit == credit,
-            "can_unpost": x.status == "POSTED" and x.reference_type in UNPOSTABLE_SOURCES,
+            "can_unpost": x.status == "POSTED" and (
+                source in STANDARD_UNPOSTABLE_SOURCES or admin_unpost
+            ),
             "can_void": x.status == "DRAFT",
             "can_print": True,
         },
@@ -117,7 +120,7 @@ def listing(
     reference_type: str | None = None,
     account_id: int | None = None,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
     q = db.query(JournalEntry)
     if search:
@@ -139,7 +142,7 @@ def listing(
     total = q.count()
     rows = q.order_by(JournalEntry.posting_date.desc(), JournalEntry.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
-        "items": [serialize(x) for x in rows],
+        "items": [serialize(x, user) for x in rows],
         "page": page,
         "page_size": page_size,
         "total_items": total,
@@ -176,12 +179,12 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(get_
     record_audit(db, user, "JOURNAL_CREATED", "JOURNAL_ENTRY", f"Created {x.journal_number}", entity_id=x.id, reference_document=x.document_number)
     db.commit()
     db.refresh(x)
-    return serialize(x)
+    return serialize(x, user)
 
 
 @router.get("/{journal_id}")
-def detail(journal_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return serialize(get(db, journal_id))
+def detail(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    return serialize(get(db, journal_id), user)
 
 
 @router.patch("/{journal_id}")
@@ -189,7 +192,7 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
     access(user)
     x = get(db, journal_id)
     if x.status != "DRAFT":
-        raise HTTPException(409, "Only draft journals can be edited")
+        raise HTTPException(409, "Unpost the journal before editing it")
     if data.posting_date:
         x.posting_date = data.posting_date
     if data.description is not None:
@@ -202,7 +205,7 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
     record_audit(db, user, "JOURNAL_UPDATED", "JOURNAL_ENTRY", f"Updated {x.journal_number}", entity_id=x.id)
     db.commit()
     db.refresh(x)
-    return serialize(x)
+    return serialize(x, user)
 
 
 @router.post("/{journal_id}/post")
@@ -243,7 +246,7 @@ def post(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     record_audit(db, user, "JOURNAL_POSTED", "JOURNAL_ENTRY", f"Posted {x.journal_number}", entity_id=x.id, reference_document=x.document_number)
     db.commit()
     db.refresh(x)
-    return serialize(x)
+    return serialize(x, user)
 
 
 @router.post("/{journal_id}/unpost")
@@ -252,46 +255,10 @@ def unpost(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curr
     x = db.query(JournalEntry).filter(JournalEntry.id == journal_id).with_for_update().first()
     if not x:
         raise HTTPException(404, "Journal entry not found")
-    if x.status != "POSTED":
-        raise HTTPException(409, "Only posted journals can be unposted")
-    if x.reference_type not in UNPOSTABLE_SOURCES:
-        raise HTTPException(409, "This source journal must be reversed from its originating document")
-
-    FiscalPeriodService.validate_posting_date(db=db, posting_date=x.posting_date)
-    gl_rows = db.query(GeneralLedger).filter(
-        GeneralLedger.reference_number == x.journal_number,
-        GeneralLedger.reference_type == x.reference_type,
-        GeneralLedger.reference_id == x.reference_id,
-    ).all()
-    if not gl_rows:
-        raise HTTPException(409, "Journal has no matching ledger rows to unpost")
-    for row in gl_rows:
-        db.delete(row)
-
-    previous_posted_at = x.posted_at
-    x.status = "DRAFT"
-    x.posted_by_id = None
-    x.posted_at = None
-    if x.reference_type == "SUPPLIER_INVOICE":
-        invoice = db.get(SupplierInvoice, x.reference_id)
-        if invoice:
-            invoice.status = "VERIFIED"
-            invoice.posted_at = None
-
-    record_audit(
-        db,
-        user,
-        "JOURNAL_UNPOSTED",
-        "JOURNAL_ENTRY",
-        f"Unposted {x.journal_number}",
-        entity_id=x.id,
-        reference_document=x.document_number,
-        before_data={"status": "POSTED", "posted_at": str(previous_posted_at) if previous_posted_at else None},
-        after_data={"status": "DRAFT"},
-    )
-    db.commit()
-    db.refresh(x)
-    return serialize(x)
+    source = (x.reference_type or "MANUAL").upper()
+    if source not in STANDARD_UNPOSTABLE_SOURCES and not is_superuser(user):
+        raise HTTPException(403, "Only an administrator can unpost a source-controlled journal")
+    return serialize(unpost_journal(db, journal=x, user=user), user)
 
 
 @router.post("/{journal_id}/void")
@@ -305,9 +272,9 @@ def void(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     record_audit(db, user, "JOURNAL_VOIDED", "JOURNAL_ENTRY", f"Voided {x.journal_number}", entity_id=x.id)
     db.commit()
     db.refresh(x)
-    return serialize(x)
+    return serialize(x, user)
 
 
 @router.get("/{journal_id}/print")
 def printable(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return {**serialize(get(db, journal_id)), "document_type": "Journal Entry", **print_metadata(user)}
+    return {**serialize(get(db, journal_id), user), "document_type": "Journal Entry", **print_metadata(user)}
