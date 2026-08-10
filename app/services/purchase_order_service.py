@@ -25,6 +25,18 @@ from app.services.approval import (
 
 class PurchaseOrderService:
     @staticmethod
+    def _validate_positive_costs(purchase_order: PurchaseOrder):
+        invalid = [item for item in purchase_order.items if Decimal(item.unit_price or 0) <= 0]
+        if not invalid:
+            return
+        item = invalid[0]
+        item_name = item.product.name if item.product else f"item #{item.id}"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Unit price must be greater than zero for {item_name} before this purchase order can continue.",
+        )
+
+    @staticmethod
     def update(db: Session, *, purchase_order_id: int, data: PurchaseOrderCreate, user):
         purchase_order = db.get(PurchaseOrder, purchase_order_id)
         if not purchase_order:
@@ -153,12 +165,14 @@ class PurchaseOrderService:
             product_id = item.product_id
             description = item.description
             uom = item.uom
+            unit_price = item.unit_price
             if item.purchase_requisition_item_id is not None:
                 source_item = remaining_by_item[item.purchase_requisition_item_id][0]
                 product_id = source_item.product_id
                 description = source_item.product.description
                 uom = source_item.product.uom
-            line_total = item.quantity * item.unit_price
+                unit_price = source_item.estimated_price
+            line_total = item.quantity * unit_price
             purchase_order.items.append(
                 PurchaseOrderItem(
                     purchase_requisition_item_id=item.purchase_requisition_item_id,
@@ -167,7 +181,7 @@ class PurchaseOrderService:
                     uom=uom,
                     quantity=item.quantity,
                     received_quantity=Decimal("0"),
-                    unit_price=item.unit_price,
+                    unit_price=unit_price,
                     total_price=line_total,
                 )
             )
@@ -201,6 +215,7 @@ class PurchaseOrderService:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         if purchase_order.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only draft purchase orders can be submitted")
+        PurchaseOrderService._validate_positive_costs(purchase_order)
         if purchase_order.expiry_date and purchase_order.expiry_date < date.today():
             purchase_order.status = "EXPIRED"
             PurchaseOrderService._audit(db, user, purchase_order, "EXPIRE", "DRAFT")
@@ -226,6 +241,7 @@ class PurchaseOrderService:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         if purchase_order.status != "PENDING_APPROVAL":
             raise HTTPException(status_code=409, detail="Purchase order does not have pending approval")
+        PurchaseOrderService._validate_positive_costs(purchase_order)
         request = get_request(db, "PURCHASE_ORDER", purchase_order.id)
         if not request:
             raise HTTPException(status_code=500, detail="Approval workflow not found")
