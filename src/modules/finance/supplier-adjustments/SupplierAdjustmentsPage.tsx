@@ -38,35 +38,15 @@ export default function SupplierAdjustmentsPage() {
     queryClient.invalidateQueries({ queryKey: ["profit-loss"] });
   };
 
-  const adjustments = useQuery({
-    queryKey: ["supplier-adjustments", typeFilter, statusFilter],
-    queryFn: () => listSupplierAdjustments({ page: 1, page_size: 100, adjustment_type: typeFilter || undefined, status: statusFilter || undefined }),
-  });
-  const invoices = useQuery({
-    queryKey: ["posted-supplier-invoices-for-adjustment"],
-    queryFn: () => listInvoices({ page: 1, page_size: 100, status: "POSTED" }),
-  });
-  const accounts = useQuery({
-    queryKey: ["supplier-adjustment-accounts"],
-    queryFn: () => getAccountLookup({ is_active: true, is_posting: true }),
-  });
+  const adjustments = useQuery({ queryKey: ["supplier-adjustments", typeFilter, statusFilter], queryFn: () => listSupplierAdjustments({ page: 1, page_size: 100, adjustment_type: typeFilter || undefined, status: statusFilter || undefined }) });
+  const invoices = useQuery({ queryKey: ["posted-supplier-invoices-for-adjustment"], queryFn: () => listInvoices({ page: 1, page_size: 100, status: "POSTED" }) });
+  const accounts = useQuery({ queryKey: ["supplier-adjustment-accounts"], queryFn: () => getAccountLookup({ is_active: true, is_posting: true }) });
 
   const selectedInvoice = invoices.data?.items?.find((invoice: any) => invoice.id === Number(form.supplier_invoice_id));
-  const create = useMutation({
-    mutationFn: () => createSupplierAdjustment(form),
-    onSuccess: () => {
-      toast.success(form.adjustment_type === "CREDIT_NOTE" ? "Supplier credit note created" : "Supplier debit note created");
-      setForm(emptyForm());
-      refreshFinance();
-    },
-    onError: (error: any) => toast.error(error.response?.data?.detail || "Supplier adjustment could not be created"),
-  });
+  const create = useMutation({ mutationFn: () => createSupplierAdjustment(form), onSuccess: () => { toast.success(form.adjustment_type === "CREDIT_NOTE" ? "Supplier credit note created" : "Supplier debit note created"); setForm(emptyForm()); refreshFinance(); }, onError: (error: any) => toast.error(error.response?.data?.detail || "Supplier adjustment could not be created") });
   const action = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: "post" | "void" }) => supplierAdjustmentAction(id, name),
-    onSuccess: (_, variables) => {
-      toast.success(variables.name === "post" ? "Supplier adjustment posted" : "Supplier adjustment voided");
-      refreshFinance();
-    },
+    mutationFn: ({ id, name }: { id: number; name: "generate-journal" | "void" }) => supplierAdjustmentAction(id, name),
+    onSuccess: (_, variables) => { toast.success(variables.name === "generate-journal" ? "Draft journal created. Open Journal to review and post." : "Supplier adjustment voided"); refreshFinance(); },
     onError: (error: any) => toast.error(error.response?.data?.detail || "Adjustment action failed"),
   });
 
@@ -79,21 +59,18 @@ export default function SupplierAdjustmentsPage() {
   };
 
   return <div className="space-y-6">
-    <PageHeader title="Supplier Credit / Debit Notes" description="Record supplier credits or hotel-issued debit notes against posted supplier invoices without editing historical invoices." actions={admin ? <Badge variant="outline">Admin Recovery Enabled</Badge> : undefined} />
-    {admin && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">For a posted adjustment, use its related Journal to perform administrator recovery. Safe unpost removes the adjustment from AP, restores the supplier-invoice balance, removes GL rows, and returns the note to DRAFT. Closed fiscal periods remain locked.</div>}
+    <PageHeader title="Supplier Credit / Debit Notes" description="Create the adjustment here; accounting is reviewed and posted only from Journal." actions={admin ? <Badge variant="outline">Admin Recovery Enabled</Badge> : undefined} />
+    {admin && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">For a posted adjustment, use its related Journal for administrator recovery. Safe unpost restores the supplier-invoice/AP balance and returns the note to DRAFT.</div>}
 
     <Card className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">New Supplier Adjustment</h2>
-        <p className="text-sm text-slate-500">Both note types reduce the outstanding payable. Credit Note records a supplier-issued credit; Debit Note records a hotel-issued claim to the supplier.</p>
-      </div>
+      <div><h2 className="text-lg font-semibold">New Supplier Adjustment</h2><p className="text-sm text-slate-500">Save the note first, then create its draft journal. Posting remains centralized in Journal.</p></div>
       <div className="grid gap-3 md:grid-cols-3">
         <label className="text-sm">Document Type<select className={input} value={form.adjustment_type} onChange={(event) => setForm({ ...form, adjustment_type: event.target.value })}><option value="CREDIT_NOTE">Supplier Credit Note</option><option value="DEBIT_NOTE">Supplier Debit Note</option></select></label>
         <label className="text-sm md:col-span-2">Supplier Invoice<select className={input} value={form.supplier_invoice_id || ""} onChange={(event) => setForm({ ...form, supplier_invoice_id: Number(event.target.value) })}><option value="">Select posted invoice</option>{invoices.data?.items?.filter((invoice: any) => Number(invoice.balance_amount ?? invoice.total_amount) > 0).map((invoice: any) => <option key={invoice.id} value={invoice.id}>{invoice.internal_invoice_number} — {invoice.supplier_name} — Outstanding {money(invoice.balance_amount ?? invoice.total_amount)}</option>)}</select></label>
         <label className="text-sm">Adjustment Date<input type="date" className={input} value={form.adjustment_date} onChange={(event) => setForm({ ...form, adjustment_date: event.target.value })} /></label>
         <label className="text-sm">Amount<CurrencyInput value={Number(form.amount)} onValueChange={(value) => setForm({ ...form, amount: value })} /></label>
         <label className="text-sm">Adjustment Account<select className={input} value={form.adjustment_account_id || ""} onChange={(event) => setForm({ ...form, adjustment_account_id: Number(event.target.value) })}><option value="">Select posting account</option>{accounts.data?.map((account: any) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>
-        <label className="text-sm md:col-span-2">Reason<input className={input} value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="Shortage, price correction, damaged goods, rebate..." /></label>
+        <label className="text-sm md:col-span-2">Reason<input className={input} value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></label>
         <label className="text-sm">Invoice Outstanding<div className="h-10 rounded-md border bg-slate-50 px-3 py-2 font-medium tabular-nums">{selectedInvoice ? money(selectedInvoice.balance_amount ?? selectedInvoice.total_amount) : "—"}</div></label>
         <label className="text-sm md:col-span-3">Notes<textarea className="mt-1 min-h-20 w-full rounded-md border border-slate-300 p-2 text-sm" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
       </div>
@@ -101,8 +78,8 @@ export default function SupplierAdjustmentsPage() {
     </Card>
 
     <Card className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Supplier Adjustments</h2><p className="text-sm text-slate-500">Posted notes reduce AP and create a balanced journal automatically.</p></div><div className="flex gap-2"><select className={input} value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="">All types</option><option value="CREDIT_NOTE">Credit Notes</option><option value="DEBIT_NOTE">Debit Notes</option></select><select className={input} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="POSTED">Posted</option><option value="VOID">Void</option></select></div></div>
-      <div className="overflow-x-auto"><table className="min-w-[1120px] w-full text-sm"><thead><tr><th className="text-left">Number</th><th>Type</th><th>Supplier</th><th>Invoice</th><th>Date</th><th className="w-40 text-right">Amount</th><th>Adjustment Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>{adjustments.data?.items?.map((row: any) => <tr key={row.id} className="border-t"><td>{row.adjustment_number}</td><td>{row.adjustment_type === "CREDIT_NOTE" ? "Credit Note" : "Debit Note"}</td><td>{row.supplier_name}</td><td><Link className="text-emerald-700" to={`/supplier-invoices/${row.supplier_invoice_id}`}>{row.invoice_number}</Link></td><td>{row.adjustment_date}</td><td className="w-40 text-right tabular-nums">{money(row.amount)}</td><td>{row.adjustment_account_code} — {row.adjustment_account_name}</td><td><Badge variant={(row.status === "POSTED" ? "success" : row.status === "VOID" ? "danger" : "warning") as any}>{row.status}</Badge></td><td className="space-x-2">{row.allowed_actions?.can_post && <Button size="xs" onClick={() => action.mutate({ id: row.id, name: "post" })}>Post</Button>}{row.allowed_actions?.can_void && <Button size="xs" variant="danger" onClick={() => { if (window.confirm(`Void ${row.adjustment_number}?`)) action.mutate({ id: row.id, name: "void" }); }}>Void</Button>}{row.journal_entry_id && <Link className="text-emerald-700" to={`/journal-entries/${row.journal_entry_id}`}>{admin && row.status === "POSTED" ? "Admin Recover" : "Journal"}</Link>}</td></tr>)}</tbody></table></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Supplier Adjustments</h2><p className="text-sm text-slate-500">Draft journals appear in Journal for review and posting.</p></div><div className="flex gap-2"><select className={input} value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="">All types</option><option value="CREDIT_NOTE">Credit Notes</option><option value="DEBIT_NOTE">Debit Notes</option></select><select className={input} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="POSTED">Posted</option><option value="VOID">Void</option></select></div></div>
+      <div className="overflow-x-auto"><table className="min-w-[1120px] w-full text-sm"><thead><tr><th className="text-left">Number</th><th>Type</th><th>Supplier</th><th>Invoice</th><th>Date</th><th className="w-40 text-right">Amount</th><th>Adjustment Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>{adjustments.data?.items?.map((row: any) => <tr key={row.id} className="border-t"><td>{row.adjustment_number}</td><td>{row.adjustment_type === "CREDIT_NOTE" ? "Credit Note" : "Debit Note"}</td><td>{row.supplier_name}</td><td><Link className="text-emerald-700" to={`/supplier-invoices/${row.supplier_invoice_id}`}>{row.invoice_number}</Link></td><td>{row.adjustment_date}</td><td className="w-40 text-right tabular-nums">{money(row.amount)}</td><td>{row.adjustment_account_code} — {row.adjustment_account_name}</td><td><Badge variant={(row.status === "POSTED" ? "success" : row.status === "VOID" ? "danger" : "warning") as any}>{row.status}</Badge></td><td className="space-x-2">{row.allowed_actions?.can_generate_journal && <Button size="xs" onClick={() => action.mutate({ id: row.id, name: "generate-journal" })}>Create Journal</Button>}{row.allowed_actions?.can_void && <Button size="xs" variant="danger" onClick={() => { if (window.confirm(`Void ${row.adjustment_number}?`)) action.mutate({ id: row.id, name: "void" }); }}>Void</Button>}{row.journal_entry_id && <Link className="text-emerald-700" to={`/journal-entries/${row.journal_entry_id}`}>{row.status === "DRAFT" ? "Review Journal" : admin ? "Admin Recover" : "Journal"}</Link>}</td></tr>)}</tbody></table></div>
     </Card>
   </div>;
 }
