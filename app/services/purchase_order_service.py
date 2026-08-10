@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.dependencies.authorization import is_superuser
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.purchase_requisition import PurchaseRequisition
@@ -19,6 +20,7 @@ from app.services.approval import (
     approve_current_step,
     get_request,
     reject_current_step,
+    reset_approval,
     start_approval,
 )
 
@@ -43,7 +45,7 @@ class PurchaseOrderService:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         from app.services.document_context import document_context
         if not document_context(db, "PURCHASE_ORDER", purchase_order.id, purchase_order.status, user)["allowed_actions"]["can_edit"]:
-            raise HTTPException(status_code=409, detail="Purchase order is locked for editing")
+            raise HTTPException(status_code=409, detail="Purchase order is locked for editing. Reopen it first if you are an administrator.")
         supplier = db.get(Supplier, data.supplier_id)
         if not supplier or not supplier.is_active:
             raise HTTPException(status_code=404, detail="Active supplier not found")
@@ -209,6 +211,44 @@ class PurchaseOrderService:
         return purchase_order
 
     @staticmethod
+    def reopen(db: Session, *, purchase_order_id: int, user):
+        if not is_superuser(user):
+            raise HTTPException(status_code=403, detail="Only an administrator can reopen a purchase order")
+        purchase_order = db.get(PurchaseOrder, purchase_order_id)
+        if not purchase_order:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        if purchase_order.status == "DRAFT":
+            raise HTTPException(status_code=409, detail="Purchase order is already draft")
+
+        active_receipts = [
+            receipt for receipt in purchase_order.goods_receipts
+            if receipt.status not in {"RETURNED", "CANCELLED", "VOID"}
+        ]
+        if active_receipts:
+            numbers = ", ".join(receipt.receipt_number for receipt in active_receipts[:5])
+            raise HTTPException(
+                status_code=409,
+                detail=f"Purchase order has active receiving document(s): {numbers}. Return/unwind them before reopening the PO.",
+            )
+
+        previous_status = purchase_order.status
+        reset_approval(db, "PURCHASE_ORDER", purchase_order.id)
+        purchase_order.status = "DRAFT"
+        for item in purchase_order.items:
+            item.received_quantity = Decimal("0")
+        PurchaseOrderService._audit(
+            db,
+            user,
+            purchase_order,
+            "REOPEN",
+            previous_status,
+            admin_override=True,
+        )
+        db.commit()
+        db.refresh(purchase_order)
+        return purchase_order
+
+    @staticmethod
     def submit(db: Session, *, purchase_order_id: int, user):
         purchase_order = db.get(PurchaseOrder, purchase_order_id)
         if not purchase_order:
@@ -303,8 +343,8 @@ class PurchaseOrderService:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         if purchase_order.status in {"RECEIVED", "CLOSED", "CANCELLED"}:
             raise HTTPException(status_code=409, detail="Purchase order cannot be cancelled")
-        if purchase_order.goods_receipts:
-            raise HTTPException(status_code=409, detail="Purchase order with receipts cannot be cancelled")
+        if any(receipt.status not in {"RETURNED", "CANCELLED", "VOID"} for receipt in purchase_order.goods_receipts):
+            raise HTTPException(status_code=409, detail="Purchase order with active receipts cannot be cancelled")
         previous_status = purchase_order.status
         purchase_order.status = "CANCELLED"
         for requisition in purchase_order.purchase_requisitions:
