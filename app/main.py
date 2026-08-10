@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+import re
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1 import api_router
 from app.core.config import settings
@@ -25,6 +28,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def journal_only_accounting_post(request: Request, call_next):
+    """Prevent legacy module endpoints from bypassing the Journal workspace.
+
+    Supplier Payment still keeps its historical /post route for API compatibility,
+    but accounting posting is now exclusively performed by /journal-entries/{id}/post.
+    """
+    if request.method == "POST" and re.fullmatch(r"/api/v1/payments/\d+/post/?", request.url.path):
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Post the related journal from the Journal page"},
+        )
+    return await call_next(request)
+
+
 app.include_router(api_router, prefix="/api/v1")
 
 
