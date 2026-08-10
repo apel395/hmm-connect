@@ -15,8 +15,9 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
     ).first()
     current = next((step for step in request.steps if step.step_order == request.current_step_order), None) if request else None
     roles = role_names(user)
+    admin = is_superuser(user)
     can_decide = bool(current and (
-        is_superuser(user) or (
+        admin or (
             current.approver_role_name.strip().upper() in roles
             and (not current.department_name or (user.department and user.department.name == current.department_name))
             and (not current.location_name or (user.location and user.location.name == current.location_name))
@@ -24,7 +25,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
     ))
     pending = status == "PENDING_APPROVAL"
     can_receive = entity_type == "PURCHASE_ORDER" and status in {"APPROVED", "PARTIALLY_RECEIVED"} and (
-        has_any_role(user, "WAREHOUSE")
+        admin or has_any_role(user, "WAREHOUSE")
     )
     events = db.query(AuditLog).filter(
         AuditLog.entity_type == entity_type,
@@ -32,7 +33,11 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
     ).order_by(AuditLog.created_at.desc()).all()
     return {
         "allowed_actions": {
-            "can_edit": status == "DRAFT" or (pending and can_decide),
+            # Administrators are the operational override role. Source documents
+            # remain repairable by ADMIN; accounting integrity is enforced by the
+            # Journal/GL posting state and source-specific dependency checks.
+            "can_edit": admin or status == "DRAFT" or (pending and can_decide),
+            "can_reopen": admin and status not in {"DRAFT", "VOID", "CANCELLED"},
             "can_submit": status == "DRAFT",
             "can_approve": pending and can_decide,
             "can_reject": pending and can_decide,
