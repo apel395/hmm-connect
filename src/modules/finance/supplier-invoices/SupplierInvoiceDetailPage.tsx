@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -24,25 +24,13 @@ export default function SupplierInvoiceDetailPage(){
  const{id}=useParams();const navigate=useNavigate();const qc=useQueryClient();
  const[editOpen,setEditOpen]=useState(false);const[form,setForm]=useState<any>(null);
  const query=useQuery({queryKey:["supplier-invoice",id],queryFn:()=>getInvoice(Number(id)),enabled:!!id});
- const refreshFinance=()=>{
-  qc.invalidateQueries({queryKey:["supplier-invoice",id]});
-  qc.invalidateQueries({queryKey:["supplier-invoices"]});
-  qc.invalidateQueries({queryKey:["invoice-receipts"]});
-  qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});
-  qc.invalidateQueries({queryKey:["accounts-payable-aging"]});
-  qc.invalidateQueries({queryKey:["finance-dashboard"]});
-  qc.invalidateQueries({queryKey:["journal-entries"]});
-  qc.invalidateQueries({queryKey:["general-ledger"]});
-  qc.invalidateQueries({queryKey:["trial-balance"]});
-  qc.invalidateQueries({queryKey:["balance-sheet"]});
-  qc.invalidateQueries({queryKey:["profit-loss"]});
- };
+ const refreshFinance=()=>{qc.invalidateQueries({queryKey:["supplier-invoice",id]});qc.invalidateQueries({queryKey:["supplier-invoices"]});qc.invalidateQueries({queryKey:["invoice-receipts"]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["accounts-payable-aging"]});qc.invalidateQueries({queryKey:["finance-dashboard"]});qc.invalidateQueries({queryKey:["journal-entries"]});qc.invalidateQueries({queryKey:["general-ledger"]});qc.invalidateQueries({queryKey:["trial-balance"]});qc.invalidateQueries({queryKey:["balance-sheet"]});qc.invalidateQueries({queryKey:["profit-loss"]});};
  const action=useMutation({mutationFn:async(name:string)=>{if(name==="verify"){await invoiceAction(Number(id),"verify");try{await invoiceAction(Number(id),"generate-journal")}catch(error:any){throw Object.assign(error,{invoiceVerified:true})}return}return invoiceAction(Number(id),name)},onSuccess:(_,name)=>{toast.success(name==="verify"?"Invoice verified and accounting journal processed":name==="reject"?"Invoice rejected":`Invoice ${name} complete`);refreshFinance()},onError:(error:any)=>{if(error?.invoiceVerified)toast.error(error?.response?.data?.detail||"Invoice was verified, but its journal could not be generated. Configure the required Posting Rule.");else toast.error(error?.response?.data?.detail||"Action failed.");refreshFinance()}});
  const save=useMutation({mutationFn:()=>updateInvoice(Number(id),{...form,total_amount:undefined,lines:form.lines.map((line:any)=>({...line,id:undefined,line_amount:undefined,account_code:undefined,account_name:undefined,product_code:undefined,product_name:undefined}))}),onSuccess:()=>{toast.success("Supplier invoice updated.");setEditOpen(false);refreshFinance()},onError:(error:any)=>toast.error(error?.response?.data?.detail||"Supplier invoice could not be updated.")});
  useEffect(()=>{if(!editOpen||!query.data)return;const x=query.data;setForm({supplier_invoice_number:x.supplier_invoice_number,supplier_id:x.supplier_id,invoice_date:x.invoice_date,received_date:x.received_date||x.invoice_date,due_date:x.due_date||null,purchase_order_id:x.purchase_order_id??null,goods_receipt_id:x.goods_receipt_id??null,business_unit_id:x.business_unit_id??null,department_id:x.department_id??null,location_id:x.location_id??null,currency:x.currency,discount_amount:Number(x.discount_amount||0),tax_amount:Number(x.tax_amount||0),withholding_tax_amount:Number(x.withholding_tax_amount||0),notes:x.notes||"",source_type:x.source_type||"LIVE",lines:x.lines.map((line:any)=>({...line,quantity:Number(line.quantity),unit_price:Number(line.unit_price),account_id:line.account_id??null}))})},[editOpen,query.data]);
  if(query.isLoading)return <Loading/>;if(!query.data)return <p>Invoice not found.</p>;
  const invoice=query.data,allowed=invoice.allowed_actions??{},match=invoice.three_way_match;const matchVariant=match?.status==="MATCHED"?"success":match?.status==="MISMATCH"?"danger":"warning";
- const editTotal=useMemo(()=>form?.lines?.reduce((sum:number,line:any)=>sum+Number(line.quantity||0)*Number(line.unit_price||0),0)-Number(form?.discount_amount||0)+Number(form?.tax_amount||0)-Number(form?.withholding_tax_amount||0),[form]);
+ const editTotal=(form?.lines?.reduce((sum:number,line:any)=>sum+Number(line.quantity||0)*Number(line.unit_price||0),0)??0)-Number(form?.discount_amount||0)+Number(form?.tax_amount||0)-Number(form?.withholding_tax_amount||0);
  const updateLine=(index:number,patch:any)=>setForm((current:any)=>({...current,lines:current.lines.map((line:any,i:number)=>i===index?{...line,...patch}:line)}));
  return <div className="space-y-6">
   <PageHeader title={<span className="flex items-center gap-3"><Button size="sm" variant="outline" onClick={()=>navigate("/supplier-invoices")}><ArrowLeft size={16}/> Back</Button>{invoice.internal_invoice_number}<Badge>{invoice.status}</Badge></span> as any} actions={<div className="flex flex-wrap gap-2"><PrintPreviewButton src={`/supplier-invoices/${invoice.id}/print`} title={`Supplier Invoice ${invoice.internal_invoice_number}`} ariaLabel="Preview supplier invoice"/><AdminReopenButton entityType="SUPPLIER_INVOICE" entityId={invoice.id} status={invoice.status} onSuccess={refreshFinance}/>{allowed.can_edit&&<Button variant="outline" onClick={()=>setEditOpen(true)}>Edit</Button>}{allowed.can_verify&&<Button loading={action.isPending} onClick={()=>action.mutate("verify")}>Verify & Create Journal</Button>}{allowed.can_reject&&<Button variant="danger" onClick={()=>{if(window.confirm("Reject this supplier invoice?"))action.mutate("reject")}}>Reject</Button>}{allowed.can_generate_journal&&<Button loading={action.isPending} onClick={()=>action.mutate("generate-journal")}>Create Missing Journal</Button>}{allowed.can_void&&<Button variant="danger" onClick={()=>action.mutate("void")}>Void</Button>}</div>}/>
