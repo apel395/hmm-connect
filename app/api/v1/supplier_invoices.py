@@ -1,5 +1,4 @@
 from datetime import date, datetime, timezone
-from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,11 +13,9 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
-from app.services.general_ledger import GeneralLedgerService
 from app.services.supplier_invoice_runtime_service import SupplierInvoiceService
 
 router = APIRouter(prefix="/supplier-invoices", tags=["Supplier Invoices"])
-ZERO = Decimal("0")
 
 
 def access(user):
@@ -37,7 +34,6 @@ def result(db, invoice, user):
     service = SupplierInvoiceService(db)
     data = service.serialize(service.attach_journal(invoice))
     match = service.match_summary(invoice)
-    # Keep the response key for frontend compatibility while the policy is now two-way.
     data["three_way_match"] = match
     data.update(document_context(db, "SUPPLIER_INVOICE", invoice.id, invoice.status, user))
     data["allowed_actions"] = {
@@ -51,55 +47,6 @@ def result(db, invoice, user):
         "can_view_history": True,
     }
     return data
-
-
-def _post_invoice_journal(db: Session, journal: JournalEntry, invoice: SupplierInvoice, user) -> JournalEntry:
-    if journal.status == "POSTED":
-        return journal
-    if journal.status != "DRAFT":
-        raise HTTPException(409, "Supplier invoice journal is not postable")
-
-    debit = sum((Decimal(line.debit or 0) for line in journal.lines), ZERO)
-    credit = sum((Decimal(line.credit or 0) for line in journal.lines), ZERO)
-    if not journal.lines or debit != credit or debit <= ZERO:
-        raise HTTPException(409, "Supplier invoice journal is not balanced")
-
-    for line in journal.lines:
-        GeneralLedgerService.post(
-            db=db,
-            account_id=line.account_id,
-            debit=line.debit,
-            credit=line.credit,
-            posting_date=journal.posting_date,
-            journal_source=journal.reference_type,
-            document_type=journal.document_type,
-            document_number=journal.document_number,
-            reference_type=journal.reference_type,
-            reference_id=journal.reference_id,
-            reference_number=journal.journal_number,
-            description=line.description,
-            user_id=user.id,
-        )
-
-    now = datetime.now(timezone.utc)
-    journal.status = "POSTED"
-    journal.posted_by_id = user.id
-    journal.posted_at = now
-    invoice.status = "POSTED"
-    invoice.posted_at = now
-    record_audit(
-        db,
-        user,
-        "JOURNAL_POSTED",
-        "JOURNAL_ENTRY",
-        f"Auto-posted {journal.journal_number} after verifying {invoice.internal_invoice_number}",
-        entity_id=journal.id,
-        reference_document=invoice.internal_invoice_number,
-    )
-    db.commit()
-    db.refresh(journal)
-    db.refresh(invoice)
-    return journal
 
 
 @router.get("")
@@ -175,23 +122,17 @@ def update(invoice_id: int, data: SupplierInvoiceInput, db: Session = Depends(ge
 
 @router.post("/{invoice_id}/verify")
 def verify(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Verify the invoice and prepare accounting, but never post the journal here."""
     access(user)
     service = SupplierInvoiceService(db)
     invoice = service.verify(get(db, invoice_id), user)
-
-    # Verification is the user's final document action. Accounting follows
-    # automatically: generate the supplier-invoice journal and post it to GL.
-    # The verify() call commits first, so a posting/configuration failure leaves
-    # the document VERIFIED/UNPOSTED rather than undoing the verification.
     try:
-        journal = service.generate_journal(invoice, user)
-        _post_invoice_journal(db, journal, invoice, user)
+        service.generate_journal(invoice, user)
     except HTTPException as exc:
         db.rollback()
         data = result(db, get(db, invoice_id), user)
         data["accounting_warning"] = exc.detail
         return data
-
     return result(db, get(db, invoice_id), user)
 
 
@@ -211,14 +152,9 @@ def reject(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curr
     previous = invoice.status
     invoice.status = "REJECTED"
     record_audit(
-        db,
-        user,
-        "SUPPLIER_INVOICE_REJECTED",
-        "SUPPLIER_INVOICE",
-        f"Rejected {invoice.internal_invoice_number}",
-        entity_id=invoice.id,
-        before_data={"status": previous},
-        after_data={"status": "REJECTED"},
+        db, user, "SUPPLIER_INVOICE_REJECTED", "SUPPLIER_INVOICE",
+        f"Rejected {invoice.internal_invoice_number}", entity_id=invoice.id,
+        before_data={"status": previous}, after_data={"status": "REJECTED"},
     )
     db.commit()
     db.refresh(invoice)
@@ -259,23 +195,8 @@ def void(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     if journal:
         journal.status = "VOID"
         journal.voided_at = now
-        record_audit(
-            db,
-            user,
-            "JOURNAL_VOIDED",
-            "JOURNAL_ENTRY",
-            f"Voided {journal.journal_number}",
-            entity_id=journal.id,
-            reference_document=invoice.internal_invoice_number,
-        )
-    record_audit(
-        db,
-        user,
-        "SUPPLIER_INVOICE_VOIDED",
-        "SUPPLIER_INVOICE",
-        f"Voided {invoice.internal_invoice_number}",
-        entity_id=invoice.id,
-    )
+        record_audit(db, user, "JOURNAL_VOIDED", "JOURNAL_ENTRY", f"Voided {journal.journal_number}", entity_id=journal.id, reference_document=invoice.internal_invoice_number)
+    record_audit(db, user, "SUPPLIER_INVOICE_VOIDED", "SUPPLIER_INVOICE", f"Voided {invoice.internal_invoice_number}", entity_id=invoice.id)
     db.commit()
     db.refresh(invoice)
     return result(db, invoice, user)
