@@ -31,3 +31,5 @@ export const getPayment = async (id: number) => (await api.get<Payment>(`/paymen
 export const eligibleInvoices = async (supplier_id: number, currency = "IDR") => (await api.get("/payments/eligible-invoices-available", { params: { supplier_id, currency } })).data;
 export const createPayment = async (payload: any) => (await api.post<Payment>("/payments", payload)).data;
 export const paymentAction = async (id: number, action: string) => (await api.post<Payment>(`/payments/${id}/${action}`)).data;
+export const adminUnpostPayment = async (id: number) => (await api.post(`/payments/${id}/unpost`)).data;
+export const adminReopenPayment = async (id: number) => (await api.post(`/payments/${id}/reopen`)).data;
