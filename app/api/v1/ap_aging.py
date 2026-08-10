@@ -115,6 +115,7 @@ def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current
         })
 
     total_outstanding = sum(totals.values(), ZERO)
+    overdue_total = sum((totals[key] for key in BUCKETS if key != "current"), ZERO)
     bucket_summary = {
         key: {
             "amount": totals[key],
@@ -179,6 +180,11 @@ def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current
         reverse=True,
     )
 
+    # The AP workspace frontend reads these response-level metric names. Keep
+    # the service's legacy `*_ap` keys for compatibility, while deriving the
+    # workspace values from the same aging totals used by buckets/details.
+    metrics["total_outstanding"] = total_outstanding
+    metrics["overdue_total"] = overdue_total
     metrics["average_overdue_days"] = float(weighted_days / weighted_amount) if weighted_amount else 0
     metrics["supplier_count"] = len({row["supplier_id"] for row in report})
     metrics["open_invoice_count"] = len(report)
