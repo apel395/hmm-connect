@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import is_superuser, require_roles
 from app.models.business_unit import BusinessUnit
 from app.models.department import Department
 from app.models.location import Location
@@ -16,6 +16,8 @@ from app.schemas.purchase_requisition import (
     PurchaseRequisitionConvertCreate,
     PurchaseRequisitionCreate,
 )
+from app.services.activity_service import AuditService
+from app.services.approval import reset_approval
 from app.services.purchase_requisition_service import PurchaseRequisitionService
 from app.services.document_context import document_context, print_metadata
 
@@ -195,6 +197,48 @@ def update_requisition(
         data=data,
         current_user=user,
     )
+
+
+@router.post("/{requisition_id}/reopen")
+def reopen_requisition(
+    requisition_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if not is_superuser(user):
+        raise HTTPException(status_code=403, detail="Only an administrator can reopen a purchase requisition")
+    requisition = db.get(PurchaseRequisition, requisition_id)
+    if not requisition:
+        raise HTTPException(status_code=404, detail="Purchase requisition not found")
+    if requisition.status == "DRAFT":
+        raise HTTPException(status_code=409, detail="Purchase requisition is already draft")
+
+    active_orders = [order for order in requisition.purchase_orders if order.status != "CANCELLED"]
+    if active_orders:
+        numbers = ", ".join(order.po_number for order in active_orders[:5])
+        raise HTTPException(
+            status_code=409,
+            detail=f"Purchase requisition has active downstream purchase order(s): {numbers}. Cancel or correct those documents first.",
+        )
+
+    previous_status = requisition.status
+    reset_approval(db, "PURCHASE_REQUISITION", requisition.id)
+    requisition.status = "DRAFT"
+    AuditService.log(
+        db=db,
+        user=user,
+        action="REOPEN",
+        entity_type="PURCHASE_REQUISITION",
+        entity_id=requisition.id,
+        summary=f"Reopened {requisition.pr_number} for correction",
+        document_type="PR",
+        document_number=requisition.pr_number,
+        document_status="DRAFT",
+        details={"previous_status": previous_status, "admin_override": True},
+    )
+    db.commit()
+    db.refresh(requisition)
+    return get_requisition(requisition.id, db, user)
 
 
 @router.post("/{requisition_id}/submit")
