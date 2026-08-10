@@ -8,15 +8,19 @@ from app.models.audit_log import AuditLog
 from app.dependencies.authorization import has_any_role, is_superuser, role_names
 
 
+REOPENABLE_WORKFLOW_DOCUMENTS = {"PURCHASE_REQUISITION", "PURCHASE_ORDER"}
+
+
 def document_context(db: Session, entity_type: str, entity_id: int, status: str, user) -> dict:
     request = db.query(ApprovalRequest).filter(
         ApprovalRequest.entity_type == entity_type,
         ApprovalRequest.entity_id == entity_id,
     ).first()
     current = next((step for step in request.steps if step.step_order == request.current_step_order), None) if request else None
+    admin = is_superuser(user)
     roles = role_names(user)
     can_decide = bool(current and (
-        is_superuser(user) or (
+        admin or (
             current.approver_role_name.strip().upper() in roles
             and (not current.department_name or (user.department and user.department.name == current.department_name))
             and (not current.location_name or (user.location and user.location.name == current.location_name))
@@ -24,18 +28,21 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
     ))
     pending = status == "PENDING_APPROVAL"
     can_receive = entity_type == "PURCHASE_ORDER" and status in {"APPROVED", "PARTIALLY_RECEIVED"} and (
-        has_any_role(user, "WAREHOUSE")
+        admin or has_any_role(user, "WAREHOUSE")
     )
+    can_reopen = admin and entity_type in REOPENABLE_WORKFLOW_DOCUMENTS and status != "DRAFT"
     events = db.query(AuditLog).filter(
         AuditLog.entity_type == entity_type,
         AuditLog.entity_id == entity_id,
     ).order_by(AuditLog.created_at.desc()).all()
     return {
+        "is_admin": admin,
         "allowed_actions": {
             "can_edit": status == "DRAFT" or (pending and can_decide),
             "can_submit": status == "DRAFT",
             "can_approve": pending and can_decide,
             "can_reject": pending and can_decide,
+            "can_reopen": can_reopen,
             "can_print": True,
             "can_view_history": True,
             "can_manage_attachments": True,
