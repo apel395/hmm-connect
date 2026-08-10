@@ -74,7 +74,7 @@ export default function PurchaseOrderDetailPage() {
 
     <Card><h2 className="mb-4 font-semibold">Approval Progress</h2><div className="grid gap-3 md:grid-cols-2">{data.approval_history?.map((step: ApprovalHistoryItem) => <div key={step.level} className="rounded border p-3"><div className="flex justify-between"><span className="font-medium">{step.level}. {step.name}</span><Badge>{step.status}</Badge></div><div className="mt-2 text-sm text-slate-600">{step.approver_name ?? step.approver_role}</div>{step.decided_at && <div className="text-xs text-slate-500">{new Date(step.decided_at).toLocaleString()}</div>}{step.comment && <p className="mt-2 text-sm">{step.comment}</p>}</div>)}</div></Card>
 
-    {editing && <PurchaseOrderForm open initialData={data} loading={update.isPending} onClose={() => setEditing(false)} onSubmit={async (payload) => { await update.mutateAsync({ id: data.id, payload }); setEditing(false); toast.success("Purchase order updated."); }}/>} 
+    {editing && <PurchaseOrderForm open initialData={data} loading={update.isPending} onClose={() => setEditing(false)} onSubmit={async (payload) => { try { await update.mutateAsync({ id: data.id, payload }); setEditing(false); toast.success("Purchase order updated."); } catch (error: any) { const detail = error?.response?.data?.detail; toast.error(typeof detail === "string" ? detail : detail?.message ?? "Purchase order could not be updated."); throw error; } }}/>} 
     <GoodsReceiptHistory purchaseOrderId={data.id}/>
     {actions.can_manage_attachments !== false && <DocumentAttachments entityType="PURCHASE_ORDER" entityId={data.id}/>} 
     {actions.can_view_history !== false && <DocumentActivity events={data.activity_history}/>} 
