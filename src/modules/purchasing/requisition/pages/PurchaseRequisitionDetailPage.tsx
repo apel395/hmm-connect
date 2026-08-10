@@ -73,7 +73,7 @@ export default function PurchaseRequisitionDetailPage() {
   const canSubmit = data.status === "DRAFT" && Boolean(data.allowed_actions?.can_submit);
   const canApprove = pendingApproval && (admin || Boolean(data.allowed_actions?.can_approve));
   const canReject = pendingApproval && (admin || Boolean(data.allowed_actions?.can_reject));
-  const canEdit = admin || (data.status === "DRAFT" && Boolean(data.allowed_actions?.can_edit));
+  const canEdit = Boolean(data.allowed_actions?.can_edit);
   const total = (data.items ?? []).reduce((sum: number, item: any) => sum + Number(item.total_price ?? item.quantity * item.estimated_price), 0);
 
   const act = async (operation: "submit" | "approve" | "reject") => {
