@@ -33,10 +33,11 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
     ).order_by(AuditLog.created_at.desc()).all()
     return {
         "allowed_actions": {
-            # Administrators are the operational override role. Source documents
-            # remain repairable by ADMIN; accounting integrity is enforced by the
-            # Journal/GL posting state and source-specific dependency checks.
-            "can_edit": admin or status == "DRAFT" or (pending and can_decide),
+            # ADMIN is the operational override role, but non-draft source
+            # documents must be explicitly reopened first. This keeps the
+            # correction path auditable and prevents downstream references from
+            # being silently rewritten by a normal Edit action.
+            "can_edit": status == "DRAFT" or (pending and can_decide),
             "can_reopen": admin and status not in {"DRAFT", "VOID", "CANCELLED"},
             "can_submit": status == "DRAFT",
             "can_approve": pending and can_decide,
