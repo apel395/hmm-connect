@@ -8,6 +8,7 @@ import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
+import { AdminReopenButton } from "@/modules/admin-overrides/AdminOverrideActions";
 import ReceiveGoodsDialog from "@/modules/purchasing/goods-receipts/components/ReceiveGoodsDialog";
 import GoodsReceiptHistory from "../components/GoodsReceiptHistory";
 import DocumentActivity from "../../components/DocumentActivity";
@@ -21,7 +22,7 @@ const money = (value: unknown) => Number(value ?? 0).toLocaleString("en-US", { m
 export default function PurchaseOrderDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { data, isLoading } = usePurchaseOrder(Number(id));
+  const { data, isLoading, refetch } = usePurchaseOrder(Number(id));
   const submit = useSubmitPurchaseOrder();
   const approve = useApprovePurchaseOrder();
   const reject = useRejectPurchaseOrder();
@@ -60,6 +61,7 @@ export default function PurchaseOrderDetailPage() {
       <div className="flex items-center gap-4"><Button variant="outline" size="sm" onClick={() => navigate("/purchase-orders")}><ArrowLeft size={17}/> Back</Button><div><div className="text-sm text-slate-500">Purchase Order</div><div className="flex items-center gap-3"><h1 className="text-2xl font-bold">{data.po_number}</h1><Badge>{data.creation_type === "FROM_PR" ? "From PR" : "Direct"}</Badge><Badge>{data.status}</Badge></div></div></div>
       <div className="flex flex-wrap items-center gap-2">
         {actions.can_print !== false && <PrintPreviewButton src={`/purchase-orders/${data.id}/print`} title={`Purchase Order ${data.po_number}`} ariaLabel="Preview purchase order" />}
+        <AdminReopenButton entityType="PURCHASE_ORDER" entityId={data.id} status={data.status} onSuccess={() => void refetch()}/>
         {canEdit && <Button variant="outline" onClick={() => setEditing(true)}>Edit</Button>}
         {actions.can_submit && <Button loading={submit.isPending} onClick={() => run("submit")}>Submit</Button>}
         {canReject && data.status === "PENDING_APPROVAL" && <Button variant="danger" loading={reject.isPending} onClick={() => run("reject")}>Reject</Button>}
