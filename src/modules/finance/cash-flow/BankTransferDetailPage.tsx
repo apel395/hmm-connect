@@ -25,7 +25,7 @@ export default function BankTransferDetailPage() {
     qc.invalidateQueries({ queryKey: ["general-ledger"] });
     qc.invalidateQueries({ queryKey: ["trial-balance"] });
   };
-  const act = useMutation({ mutationFn: () => transferAction(Number(id), "post"), onSuccess: () => { toast.success("Transfer posted"); refresh(); }, onError: (e: any) => toast.error(e.response?.data?.detail || "Posting failed") });
+  const act = useMutation({ mutationFn: () => transferAction(Number(id), "generate-journal"), onSuccess: () => { toast.success("Draft journal created. Review and post it from Journal."); refresh(); }, onError: (e: any) => toast.error(e.response?.data?.detail || "Journal generation failed") });
   const edit = useMutation({ mutationFn: (payload: any) => updateTransfer(Number(id), payload), onSuccess: () => { toast.success("Transfer updated"); refresh(); }, onError: (e: any) => toast.error(e.response?.data?.detail || "Update failed") });
   if (q.isLoading) return <Loading />;
   const x = q.data;
@@ -47,11 +47,13 @@ export default function BankTransferDetailPage() {
             const notes = window.prompt("Notes", x.notes || ""); if (notes === null) return;
             edit.mutate({ transfer_date: x.transfer_date, source_account_id: x.source_account_id, destination_account_id: x.destination_account_id, amount: Number(amount), currency: x.currency, reference_number, notes });
           }}>Edit</Button>}
-          {x.allowed_actions.can_post && <Button onClick={() => act.mutate()}>Post</Button>}
+          {x.allowed_actions.can_generate_journal && <Button onClick={() => act.mutate()}>Create Journal</Button>}
+          {x.status === "DRAFT" && x.journal_entry_id && <Button onClick={() => nav(`/journal-entries/${x.journal_entry_id}`)}>Open Journal to Post</Button>}
           {adminRecoverable && <Button variant="outline" onClick={() => nav(`/journal-entries/${x.journal_entry_id}`)}>Admin Unpost / Correct</Button>}
         </div>
       </div>
-      {adminRecoverable && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Administrator recovery is available from the related journal. Safe unpost removes the transfer GL rows and returns this transfer to DRAFT so its amount/reference can be corrected and posted again. Closed fiscal periods remain locked.</div>}
+      {x.status === "DRAFT" && x.journal_entry_id && <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">The transfer journal is DRAFT. Posting is available only from the Journal page.</div>}
+      {adminRecoverable && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Administrator recovery is available from the related journal. Safe unpost removes the transfer GL rows and returns this transfer to DRAFT. Closed fiscal periods remain locked.</div>}
       <Card>
         <div className="grid gap-4 md:grid-cols-4">
           <div><small>Date</small><div>{x.transfer_date}</div></div>
