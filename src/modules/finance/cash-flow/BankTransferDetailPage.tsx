@@ -7,26 +7,39 @@ import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Loading from "@/components/ui/Loading";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import useAuthorization from "@/hooks/useAuthorization";
 import { getTransfer, transferAction, updateTransfer } from "./api";
 
 export default function BankTransferDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
+  const { isSuperuser } = useAuthorization();
   const q = useQuery({ queryKey: ["bank-transfer", id], queryFn: () => getTransfer(Number(id)), enabled: !!id });
-  const act = useMutation({ mutationFn: () => transferAction(Number(id), "post"), onSuccess: () => { toast.success("Transfer posted"); qc.invalidateQueries({ queryKey: ["bank-transfer", id] }); }, onError: (e: any) => toast.error(e.response?.data?.detail || "Posting failed") });
-  const edit = useMutation({ mutationFn: (payload: any) => updateTransfer(Number(id), payload), onSuccess: () => { toast.success("Transfer updated"); qc.invalidateQueries({ queryKey: ["bank-transfer", id] }); }, onError: (e: any) => toast.error(e.response?.data?.detail || "Update failed") });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["bank-transfer", id] });
+    qc.invalidateQueries({ queryKey: ["bank-transfers"] });
+    qc.invalidateQueries({ queryKey: ["cash-flow"] });
+    qc.invalidateQueries({ queryKey: ["cash-accounts"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+    qc.invalidateQueries({ queryKey: ["general-ledger"] });
+    qc.invalidateQueries({ queryKey: ["trial-balance"] });
+  };
+  const act = useMutation({ mutationFn: () => transferAction(Number(id), "post"), onSuccess: () => { toast.success("Transfer posted"); refresh(); }, onError: (e: any) => toast.error(e.response?.data?.detail || "Posting failed") });
+  const edit = useMutation({ mutationFn: (payload: any) => updateTransfer(Number(id), payload), onSuccess: () => { toast.success("Transfer updated"); refresh(); }, onError: (e: any) => toast.error(e.response?.data?.detail || "Update failed") });
   if (q.isLoading) return <Loading />;
   const x = q.data;
   if (!x) return <p>Transfer not found.</p>;
+  const admin = isSuperuser();
+  const adminRecoverable = admin && x.status === "POSTED" && Boolean(x.journal_entry_id);
   return (
     <div className="space-y-6">
-      <div className="flex justify-between">
+      <div className="flex flex-wrap justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => nav("/bank-transfers")}><ArrowLeft size={16} /> Back</Button>
-          <h1 className="text-2xl font-bold">{x.transfer_number}</h1><Badge>{x.status}</Badge>
+          <h1 className="text-2xl font-bold">{x.transfer_number}</h1><Badge>{x.status}</Badge>{admin && <Badge variant="outline">Admin</Badge>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <PrintPreviewButton src={`/bank-transfers/${x.id}/print`} title={`Bank Transfer ${x.transfer_number}`} ariaLabel="Preview bank transfer" />
           {x.allowed_actions.can_edit && <Button variant="outline" onClick={() => {
             const amount = window.prompt("Transfer amount", String(x.amount)); if (amount === null) return;
@@ -35,14 +48,16 @@ export default function BankTransferDetailPage() {
             edit.mutate({ transfer_date: x.transfer_date, source_account_id: x.source_account_id, destination_account_id: x.destination_account_id, amount: Number(amount), currency: x.currency, reference_number, notes });
           }}>Edit</Button>}
           {x.allowed_actions.can_post && <Button onClick={() => act.mutate()}>Post</Button>}
+          {adminRecoverable && <Button variant="outline" onClick={() => nav(`/journal-entries/${x.journal_entry_id}`)}>Admin Unpost / Correct</Button>}
         </div>
       </div>
+      {adminRecoverable && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Administrator recovery is available from the related journal. Safe unpost removes the transfer GL rows and returns this transfer to DRAFT so its amount/reference can be corrected and posted again. Closed fiscal periods remain locked.</div>}
       <Card>
         <div className="grid gap-4 md:grid-cols-4">
           <div><small>Date</small><div>{x.transfer_date}</div></div>
           <div><small>Source</small><div>{x.source_account_code} — {x.source_account_name}</div></div>
           <div><small>Destination</small><div>{x.destination_account_code} — {x.destination_account_name}</div></div>
-          <div><small>Amount</small><div>{Number(x.amount).toLocaleString()} {x.currency}</div></div>
+          <div><small>Amount</small><div className="tabular-nums">{Number(x.amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} {x.currency}</div></div>
           <div><small>Reference</small><div>{x.reference_number || "—"}</div></div>
           <div><small>Notes</small><div>{x.notes || "—"}</div></div>
         </div>
