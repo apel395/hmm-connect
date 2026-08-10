@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.general_ledger import GeneralLedger
+from app.services.document_number import next_document_number
 from app.services.fiscal_period_service import FiscalPeriodService
 
 
@@ -11,8 +12,11 @@ class GeneralLedgerService:
 
     @staticmethod
     def generate_number(db: Session) -> str:
-        count = db.query(GeneralLedger).count() + 1
-        return f"GL-{count:08d}"
+        # Ledger rows can be deleted by a controlled journal unpost. Counting
+        # rows would then reuse an existing GL number on repost. Reuse the
+        # transactional document-sequence allocator instead so numbering stays
+        # monotonic and concurrency-safe even after deletions.
+        return next_document_number(db, "GL", digits=8)
 
     @staticmethod
     def post(
