@@ -27,6 +27,7 @@ export const purchaseOrderApi = {
   detail: (id: number) => api.get(`/purchase-orders/${id}`),
   create: (payload: PurchaseOrderCreatePayload) => api.post("/purchase-orders", payload),
   update: (id: number, payload: PurchaseOrderCreatePayload) => api.put(`/purchase-orders/${id}`, payload),
+  reopen: (id: number) => api.post(`/purchase-orders/${id}/reopen`),
   submit: (id: number) => api.post(`/purchase-orders/${id}/submit`),
   approve: (id: number, comment = "") => api.post(`/purchase-orders/${id}/approve`, { comment }),
   reject: (id: number, comment = "") => api.post(`/purchase-orders/${id}/reject`, { comment }),
