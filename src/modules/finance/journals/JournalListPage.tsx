@@ -10,7 +10,7 @@ import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTi
 import CurrencyInput from "@/components/form/CurrencyInput";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
-import { createJournal, listJournals } from "./api";
+import { createJournal, journalAction, listJournals } from "./api";
 
 type Line = { account_id: number; debit: number; credit: number; description: string };
 const blankLine = (): Line => ({ account_id: 0, debit: 0, credit: 0, description: "" });
@@ -43,6 +43,22 @@ export default function JournalListPage() {
   const totals = useMemo(() => lines.reduce((sum, line) => ({ debit: sum.debit + line.debit, credit: sum.credit + line.credit }), { debit: 0, credit: 0 }), [lines]);
   const validLines = lines.filter((line) => line.account_id > 0 && (line.debit > 0 || line.credit > 0));
 
+  const refreshFinance = () => {
+    client.invalidateQueries({ queryKey: ["journal-entries"] });
+    client.invalidateQueries({ queryKey: ["general-ledger"] });
+    client.invalidateQueries({ queryKey: ["trial-balance"] });
+    client.invalidateQueries({ queryKey: ["accounts-payable-aging"] });
+  };
+
+  const lifecycle = useMutation({
+    mutationFn: ({ id, action }: { id: number; action: "post" | "unpost" }) => journalAction(id, action),
+    onSuccess: (_, vars) => {
+      toast.success(vars.action === "post" ? "Journal posted." : "Journal returned to draft.");
+      refreshFinance();
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.detail || "Journal action failed."),
+  });
+
   const save = useMutation({
     mutationFn: () => createJournal({
       posting_date: postingDate,
@@ -71,7 +87,7 @@ export default function JournalListPage() {
       setLocationId(undefined);
       setBusinessUnitId(businessUnits.data?.length === 1 ? businessUnits.data[0].id : undefined);
       setLines([blankLine(), blankLine()]);
-      client.invalidateQueries({ queryKey: ["journal-entries"] });
+      refreshFinance();
       nav(`/journal-entries/${journal.id}`);
     },
     onError: (error: any) => toast.error(typeof error?.response?.data?.detail === "string" ? error.response.data.detail : "Journal entry could not be created."),
@@ -89,8 +105,8 @@ export default function JournalListPage() {
   };
 
   return <>
-    <PageHeader title="Journal Entries" description="Review debit and credit entries before posting." actions={<Button onClick={() => setOpen(true)}>Create Journal Entry</Button>} />
-    <Card><div className="mb-4 flex gap-3"><input className="h-10 flex-1 rounded border px-3" placeholder="Search journal, reference, or description" value={search} onChange={(e) => setSearch(e.target.value)} /><select className="h-10 rounded border px-3" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select></div><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">Journal Number</th><th>Date</th><th>Reference</th><th>Description</th><th>Total Debit</th><th>Total Credit</th><th>Status</th><th>Actions</th></tr></thead><tbody>{q.data?.items.map((x: any) => <tr key={x.id} className="border-b"><td className="p-3">{x.journal_number}</td><td>{x.journal_date}</td><td>{x.reference_number || x.reference_type}</td><td>{x.description || "—"}</td><td>{Number(x.total_debit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td>{Number(x.total_credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td>{x.status}</td><td><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button></td></tr>)}</tbody></table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
+    <PageHeader title="Journal Entries" description="Review debit and credit entries, then post or safely unpost eligible journals." actions={<Button onClick={() => setOpen(true)}>Create Journal Entry</Button>} />
+    <Card><div className="mb-4 flex gap-3"><input className="h-10 flex-1 rounded border px-3" placeholder="Search journal, reference, or description" value={search} onChange={(e) => setSearch(e.target.value)} /><select className="h-10 rounded border px-3" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select></div><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead><tr className="border-b text-left"><th className="p-3">Journal Number</th><th>Date</th><th>Reference</th><th>Description</th><th>Total Debit</th><th>Total Credit</th><th>Status</th><th>Actions</th></tr></thead><tbody>{q.data?.items.map((x: any) => <tr key={x.id} className="border-b"><td className="p-3 font-medium">{x.journal_number}</td><td>{x.journal_date}</td><td>{x.reference_number || x.reference_type}</td><td>{x.description || "—"}</td><td>{Number(x.total_debit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td>{Number(x.total_credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td>{x.status}</td><td><div className="flex gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}</div></td></tr>)}</tbody></table></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
 
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-5xl"><DialogHeader><DialogTitle>Create Journal Entry</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-4 md:grid-cols-3">
