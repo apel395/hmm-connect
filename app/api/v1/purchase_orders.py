@@ -109,6 +109,12 @@ def serialize_purchase_order(
     }
 
 
+def purchase_order_result(db: Session, purchase_order: PurchaseOrder, user):
+    result = serialize_purchase_order(purchase_order, *approval_state(db, purchase_order))
+    result.update(document_context(db, "PURCHASE_ORDER", purchase_order.id, purchase_order.status, user))
+    return result
+
+
 @router.get("")
 def list_purchase_orders(
     status: str | None = None,
@@ -142,13 +148,7 @@ def list_purchase_orders(
         .limit(page_size)
         .all()
     )
-    items = [
-        serialize_purchase_order(
-            item,
-            *approval_state(db, item),
-        )
-        for item in orders
-    ]
+    items = [serialize_purchase_order(item, *approval_state(db, item)) for item in orders]
     return {
         "items": items,
         "page": page,
@@ -176,20 +176,19 @@ def create_purchase_order(
     user=Depends(purchasing_user),
 ):
     purchase_order = PurchaseOrderService.create(db=db, data=data, user=user)
-    return serialize_purchase_order(
-        purchase_order,
-        *approval_state(db, purchase_order),
-    )
+    return purchase_order_result(db, purchase_order, user)
 
 
 @router.put("/{purchase_order_id}")
 @router.patch("/{purchase_order_id}")
-def update_purchase_order(purchase_order_id: int, data: PurchaseOrderCreate,
-                          db: Session = Depends(get_db), user=Depends(purchasing_user)):
+def update_purchase_order(
+    purchase_order_id: int,
+    data: PurchaseOrderCreate,
+    db: Session = Depends(get_db),
+    user=Depends(purchasing_user),
+):
     purchase_order = PurchaseOrderService.update(db=db, purchase_order_id=purchase_order_id, data=data, user=user)
-    result = serialize_purchase_order(purchase_order, *approval_state(db, purchase_order))
-    result.update(document_context(db, "PURCHASE_ORDER", purchase_order.id, purchase_order.status, user))
-    return result
+    return purchase_order_result(db, purchase_order, user)
 
 
 @router.get("/{purchase_order_id}")
@@ -201,12 +200,7 @@ def get_purchase_order(
     purchase_order = db.get(PurchaseOrder, purchase_order_id)
     if not purchase_order:
         raise HTTPException(status_code=404, detail="Purchase order not found")
-    result = serialize_purchase_order(
-        purchase_order,
-        *approval_state(db, purchase_order),
-    )
-    result.update(document_context(db, "PURCHASE_ORDER", purchase_order.id, purchase_order.status, user))
-    return result
+    return purchase_order_result(db, purchase_order, user)
 
 
 @router.get("/{purchase_order_id}/print")
@@ -215,19 +209,24 @@ def print_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), 
     return {**result, "document_type": "Purchase Order", **print_metadata(user)}
 
 
+@router.post("/{purchase_order_id}/reopen")
+def reopen_purchase_order(
+    purchase_order_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    purchase_order = PurchaseOrderService.reopen(db=db, purchase_order_id=purchase_order_id, user=user)
+    return purchase_order_result(db, purchase_order, user)
+
+
 @router.post("/{purchase_order_id}/submit")
 def submit_purchase_order(
     purchase_order_id: int,
     db: Session = Depends(get_db),
     user=Depends(purchasing_user),
 ):
-    purchase_order = PurchaseOrderService.submit(
-        db=db, purchase_order_id=purchase_order_id, user=user
-    )
-    return serialize_purchase_order(
-        purchase_order,
-        *approval_state(db, purchase_order),
-    )
+    purchase_order = PurchaseOrderService.submit(db=db, purchase_order_id=purchase_order_id, user=user)
+    return purchase_order_result(db, purchase_order, user)
 
 
 @router.post("/{purchase_order_id}/approve")
@@ -237,13 +236,8 @@ def approve_purchase_order(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    purchase_order = PurchaseOrderService.approve(
-        db=db, purchase_order_id=purchase_order_id, data=data, user=user
-    )
-    return serialize_purchase_order(
-        purchase_order,
-        *approval_state(db, purchase_order),
-    )
+    purchase_order = PurchaseOrderService.approve(db=db, purchase_order_id=purchase_order_id, data=data, user=user)
+    return purchase_order_result(db, purchase_order, user)
 
 
 @router.post("/{purchase_order_id}/reject")
@@ -253,13 +247,8 @@ def reject_purchase_order(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    purchase_order = PurchaseOrderService.reject(
-        db=db, purchase_order_id=purchase_order_id, data=data, user=user
-    )
-    return serialize_purchase_order(
-        purchase_order,
-        *approval_state(db, purchase_order),
-    )
+    purchase_order = PurchaseOrderService.reject(db=db, purchase_order_id=purchase_order_id, data=data, user=user)
+    return purchase_order_result(db, purchase_order, user)
 
 
 @router.post("/{purchase_order_id}/cancel")
@@ -268,10 +257,5 @@ def cancel_purchase_order(
     db: Session = Depends(get_db),
     user=Depends(purchasing_user),
 ):
-    purchase_order = PurchaseOrderService.cancel(
-        db=db, purchase_order_id=purchase_order_id, user=user
-    )
-    return serialize_purchase_order(
-        purchase_order,
-        *approval_state(db, purchase_order),
-    )
+    purchase_order = PurchaseOrderService.cancel(db=db, purchase_order_id=purchase_order_id, user=user)
+    return purchase_order_result(db, purchase_order, user)
