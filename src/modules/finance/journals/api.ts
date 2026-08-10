@@ -61,7 +61,22 @@ export type JournalCreatePayload = {
   }>;
 };
 
+export type JournalUpdatePayload = {
+  posting_date?: string;
+  description?: string | null;
+  lines?: Array<{
+    account_id: number;
+    debit: number;
+    credit: number;
+    description?: string;
+    business_unit_id?: number | null;
+    department_id?: number | null;
+    location_id?: number | null;
+  }>;
+};
+
 export const listJournals = async (params: any = {}) => (await api.get("/journal-entries", { params })).data;
 export const getJournal = async (id: number) => (await api.get<Journal>(`/journal-entries/${id}`)).data;
 export const createJournal = async (payload: JournalCreatePayload) => (await api.post<Journal>("/journal-entries", payload)).data;
+export const updateJournal = async (id: number, payload: JournalUpdatePayload) => (await api.patch<Journal>(`/journal-entries/${id}`, payload)).data;
 export const journalAction = async (id: number, action: string) => (await api.post<Journal>(`/journal-entries/${id}/${action}`)).data;
