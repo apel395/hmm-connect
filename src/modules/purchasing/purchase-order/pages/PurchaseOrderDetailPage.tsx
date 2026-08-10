@@ -36,7 +36,7 @@ export default function PurchaseOrderDetailPage() {
 
   const actions = data.allowed_actions ?? {};
   const admin = isSuperuser();
-  const canEdit = admin || Boolean(actions.can_edit);
+  const canEdit = Boolean(actions.can_edit);
   const canApprove = admin || Boolean(actions.can_approve);
   const canReject = admin || Boolean(actions.can_reject);
 
