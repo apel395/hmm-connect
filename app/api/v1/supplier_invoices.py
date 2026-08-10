@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,9 +14,11 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
+from app.services.general_ledger import GeneralLedgerService
 from app.services.supplier_invoice_runtime_service import SupplierInvoiceService
 
 router = APIRouter(prefix="/supplier-invoices", tags=["Supplier Invoices"])
+ZERO = Decimal("0")
 
 
 def access(user):
@@ -48,6 +51,55 @@ def result(db, invoice, user):
         "can_view_history": True,
     }
     return data
+
+
+def _post_invoice_journal(db: Session, journal: JournalEntry, invoice: SupplierInvoice, user) -> JournalEntry:
+    if journal.status == "POSTED":
+        return journal
+    if journal.status != "DRAFT":
+        raise HTTPException(409, "Supplier invoice journal is not postable")
+
+    debit = sum((Decimal(line.debit or 0) for line in journal.lines), ZERO)
+    credit = sum((Decimal(line.credit or 0) for line in journal.lines), ZERO)
+    if not journal.lines or debit != credit or debit <= ZERO:
+        raise HTTPException(409, "Supplier invoice journal is not balanced")
+
+    for line in journal.lines:
+        GeneralLedgerService.post(
+            db=db,
+            account_id=line.account_id,
+            debit=line.debit,
+            credit=line.credit,
+            posting_date=journal.posting_date,
+            journal_source=journal.reference_type,
+            document_type=journal.document_type,
+            document_number=journal.document_number,
+            reference_type=journal.reference_type,
+            reference_id=journal.reference_id,
+            reference_number=journal.journal_number,
+            description=line.description,
+            user_id=user.id,
+        )
+
+    now = datetime.now(timezone.utc)
+    journal.status = "POSTED"
+    journal.posted_by_id = user.id
+    journal.posted_at = now
+    invoice.status = "POSTED"
+    invoice.posted_at = now
+    record_audit(
+        db,
+        user,
+        "JOURNAL_POSTED",
+        "JOURNAL_ENTRY",
+        f"Auto-posted {journal.journal_number} after verifying {invoice.internal_invoice_number}",
+        entity_id=journal.id,
+        reference_document=invoice.internal_invoice_number,
+    )
+    db.commit()
+    db.refresh(journal)
+    db.refresh(invoice)
+    return journal
 
 
 @router.get("")
@@ -124,7 +176,23 @@ def update(invoice_id: int, data: SupplierInvoiceInput, db: Session = Depends(ge
 @router.post("/{invoice_id}/verify")
 def verify(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    return result(db, SupplierInvoiceService(db).verify(get(db, invoice_id), user), user)
+    service = SupplierInvoiceService(db)
+    invoice = service.verify(get(db, invoice_id), user)
+
+    # Verification is the user's final document action. Accounting follows
+    # automatically: generate the supplier-invoice journal and post it to GL.
+    # The verify() call commits first, so a posting/configuration failure leaves
+    # the document VERIFIED/UNPOSTED rather than undoing the verification.
+    try:
+        journal = service.generate_journal(invoice, user)
+        _post_invoice_journal(db, journal, invoice, user)
+    except HTTPException as exc:
+        db.rollback()
+        data = result(db, get(db, invoice_id), user)
+        data["accounting_warning"] = exc.detail
+        return data
+
+    return result(db, get(db, invoice_id), user)
 
 
 @router.post("/{invoice_id}/reject")
@@ -160,7 +228,15 @@ def reject(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 @router.post("/{invoice_id}/generate-journal")
 def generate(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    journal = SupplierInvoiceService(db).generate_journal(get(db, invoice_id), user)
+    invoice = get(db, invoice_id)
+    existing = db.query(JournalEntry).filter(
+        JournalEntry.reference_type == "SUPPLIER_INVOICE",
+        JournalEntry.reference_id == invoice.id,
+        JournalEntry.status != "VOID",
+    ).first()
+    if existing:
+        return {"id": existing.id, "journal_number": existing.journal_number, "status": existing.status}
+    journal = SupplierInvoiceService(db).generate_journal(invoice, user)
     return {"id": journal.id, "journal_number": journal.journal_number, "status": journal.status}
 
 
