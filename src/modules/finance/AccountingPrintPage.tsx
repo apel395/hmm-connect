@@ -16,7 +16,7 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
   const isJournal = kind === "journal-entries";
   const isPayment = kind === "payments";
   const rows: any[] = isPayment ? (data.allocations ?? []) : (data.lines ?? []);
-  const title = isPayment ? "Payment Voucher" : isJournal ? "Journal Entry" : "Supplier Invoice";
+  const title = isPayment ? "Payment Request" : isJournal ? "Journal Entry" : "Supplier Invoice";
   const documentNumber = data.payment_number || data.journal_number || data.internal_invoice_number;
   const documentDate = data.payment_date || data.journal_date || data.posting_date || data.invoice_date;
 
@@ -53,7 +53,7 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     { label: "INVOICE", align: "left" as const, render: (line: any) => line.invoice_number || line.internal_invoice_number || "—" },
     { label: "DUE DATE", align: "center" as const, render: (line: any) => line.due_date ? date(line.due_date) : "—" },
     { label: "INVOICE TOTAL", align: "right" as const, render: (line: any) => money(line.invoice_total) },
-    { label: "AMOUNT", align: "right" as const, render: (line: any) => money(line.allocated_amount) },
+    { label: "REQUESTED", align: "right" as const, render: (line: any) => money(line.allocated_amount) },
   ] : [
     { label: "DESCRIPTION", align: "left" as const, render: (line: any) => <><div>{line.product_name || line.description || "Manual line"}</div>{line.product_code && <div className="text-[10px] text-slate-500">{line.product_code}</div>}</> },
     { label: "Qty", align: "right" as const, render: (line: any) => line.quantity },
@@ -66,7 +66,7 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     { label: "TOTAL DEBIT", value: money(data.total_debit), emphasis: true },
     { label: "TOTAL CREDIT", value: money(data.total_credit), emphasis: true },
   ] : isPayment ? [
-    { label: "TOTAL", value: money(data.total_amount), emphasis: true },
+    { label: "TOTAL REQUEST", value: money(data.total_amount), emphasis: true },
   ] : [
     { label: "SUBTOTAL", value: money(data.subtotal) },
     ...(Number(data.discount_amount || 0) ? [{ label: "DISCOUNT", value: money(-Number(data.discount_amount)) }] : []),
@@ -75,7 +75,7 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     { label: "TOTAL", value: money(data.total_amount), emphasis: true },
   ];
 
-  const funding = isPayment && data.funding_lines?.length ? <section className="avoid-break mt-6"><div className="mb-2 font-semibold">FUNDING ACCOUNTS</div><table className="w-full border-collapse text-[11px]"><thead><tr><th className="border-y border-black px-2 py-1 text-left">BANK</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT NUMBER</th><th className="border-y border-black px-2 py-1 text-right">AMOUNT</th></tr></thead><tbody>{data.funding_lines.map((line: any) => <tr key={line.id}><td className="border-b px-2 py-1">{line.bank_name}</td><td className="border-b px-2 py-1">{line.account_name}</td><td className="border-b px-2 py-1">{line.account_number}</td><td className="border-b px-2 py-1 text-right">{money(line.amount)}</td></tr>)}</tbody></table></section> : undefined;
+  const funding = isPayment && data.funding_lines?.length ? <section className="avoid-break mt-6"><div className="mb-2 font-semibold">PROPOSED FUNDING ACCOUNTS</div><table className="w-full border-collapse text-[11px]"><thead><tr><th className="border-y border-black px-2 py-1 text-left">BANK</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT NUMBER</th><th className="border-y border-black px-2 py-1 text-right">AMOUNT</th></tr></thead><tbody>{data.funding_lines.map((line: any) => <tr key={line.id}><td className="border-b px-2 py-1">{line.bank_name}</td><td className="border-b px-2 py-1">{line.account_name}</td><td className="border-b px-2 py-1">{line.account_number}</td><td className="border-b px-2 py-1 text-right">{money(line.amount)}</td></tr>)}</tbody></table></section> : undefined;
 
   return <DocumentPrintTemplate
     title={title}
@@ -91,8 +91,8 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     extraAfterTable={funding}
     signatures={isPayment ? [
       { label: "Prepared By", name: data.created_by_name || "Finance" },
-      { label: "Approved By", name: data.approved_by_name },
-      { label: "Receiver / Bank Reference", name: data.reference_number },
+      { label: "Checked By", name: data.approved_by_name },
+      { label: "Approved By", name: undefined },
     ] : [
       { label: "Prepared By", name: data.created_by_name },
       { label: "Checked By", name: data.posted_by_name },
