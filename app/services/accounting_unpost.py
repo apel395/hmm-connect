@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -80,6 +81,89 @@ def _assert_invoice_has_no_posted_dependents(db: Session, invoice: SupplierInvoi
         )
 
 
+def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None:
+    """Reapply the originating document state before a previously-unposted journal commits.
+
+    The journal/GL is the accounting lock. This keeps the operational document in sync
+    when an administrator unposts, corrects, and reposts from the Journal workspace.
+    """
+    source = (journal.reference_type or "MANUAL").upper()
+    now = datetime.now(timezone.utc)
+
+    if source == "MANUAL":
+        return
+
+    if source == "SUPPLIER_INVOICE":
+        invoice = db.get(SupplierInvoice, journal.reference_id)
+        if not invoice:
+            raise HTTPException(409, "Supplier invoice linked to this journal was not found")
+        if invoice.status not in {"VERIFIED", "POSTED"}:
+            raise HTTPException(409, "Supplier invoice must be verified before its journal can be posted")
+        invoice.status = "POSTED"
+        invoice.posted_at = now
+        return
+
+    if source == "SUPPLIER_PAYMENT":
+        payment = db.get(Payment, journal.reference_id)
+        if not payment:
+            raise HTTPException(409, "Supplier payment linked to this journal was not found")
+        if payment.status != "APPROVED":
+            raise HTTPException(409, "Supplier payment must be approved before its journal can be posted")
+        for allocation in payment.allocations:
+            invoice = db.query(SupplierInvoice).filter(
+                SupplierInvoice.id == allocation.supplier_invoice_id,
+            ).with_for_update().one()
+            if invoice.status != "POSTED":
+                raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} must remain posted")
+            amount = Decimal(allocation.allocated_amount or 0)
+            current_balance = _invoice_balance(invoice)
+            if amount <= ZERO or amount > current_balance:
+                raise HTTPException(409, f"Payment allocation is no longer valid for {invoice.internal_invoice_number}")
+            invoice.paid_amount = Decimal(invoice.paid_amount or 0) + amount
+            _sync_invoice_payable(db, invoice)
+        payment.status = "POSTED"
+        payment.posted_by_id = user.id
+        payment.posted_at = now
+        return
+
+    if source == "SUPPLIER_ADJUSTMENT":
+        adjustment = db.get(SupplierAdjustment, journal.reference_id)
+        if not adjustment:
+            raise HTTPException(409, "Supplier adjustment linked to this journal was not found")
+        if adjustment.status != "DRAFT":
+            raise HTTPException(409, "Supplier adjustment must be draft before its journal can be reposted")
+        invoice = db.query(SupplierInvoice).filter(
+            SupplierInvoice.id == adjustment.supplier_invoice_id,
+        ).with_for_update().one()
+        if invoice.status != "POSTED":
+            raise HTTPException(409, "Supplier invoice must remain posted")
+        amount = Decimal(adjustment.amount or 0)
+        if amount <= ZERO or amount > _invoice_balance(invoice):
+            raise HTTPException(409, "Supplier adjustment exceeds the current invoice balance")
+        invoice.adjustment_amount = Decimal(invoice.adjustment_amount or 0) + amount
+        _sync_invoice_payable(db, invoice)
+        adjustment.status = "POSTED"
+        adjustment.posted_by_id = user.id
+        adjustment.posted_at = now
+        return
+
+    if source == "BANK_TRANSFER":
+        transfer = db.get(BankTransfer, journal.reference_id)
+        if not transfer:
+            raise HTTPException(409, "Bank transfer linked to this journal was not found")
+        if transfer.status != "DRAFT":
+            raise HTTPException(409, "Bank transfer must be draft before its journal can be reposted")
+        transfer.status = "POSTED"
+        transfer.posted_by_id = user.id
+        transfer.posted_at = now
+        return
+
+    raise HTTPException(
+        status_code=409,
+        detail=f"Journal source {source} does not yet have a safe repost handler.",
+    )
+
+
 def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
     source = (journal.reference_type or "MANUAL").upper()
 
@@ -160,8 +244,8 @@ def unpost_journal(db: Session, *, journal: JournalEntry, user) -> JournalEntry:
             detail=f"Journal source {source} does not yet have a safe unpost handler. Reverse it from its originating module.",
         )
 
-    # The accounting period remains the hard lock. Administrators can reopen the
-    # fiscal period first, then unpost/rework the source document.
+    # Fiscal period remains the hard accounting lock. Admin can reopen the period,
+    # then unpost/rework the document. We never silently bypass a closed period.
     FiscalPeriodService.validate_posting_date(db=db, posting_date=journal.posting_date)
 
     gl_rows = db.query(GeneralLedger).filter(
