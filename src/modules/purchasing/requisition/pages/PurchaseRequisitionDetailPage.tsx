@@ -7,6 +7,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
+import { AdminReopenButton } from "@/modules/admin-overrides/AdminOverrideActions";
 import DocumentActivity from "../../components/DocumentActivity";
 import WorkflowHeader from "../components/WorkflowHeader";
 import WorkflowActionBar from "../components/WorkflowActionBar";
@@ -72,7 +73,7 @@ export default function PurchaseRequisitionDetailPage() {
   const canSubmit = data.status === "DRAFT" && Boolean(data.allowed_actions?.can_submit);
   const canApprove = pendingApproval && (admin || Boolean(data.allowed_actions?.can_approve));
   const canReject = pendingApproval && (admin || Boolean(data.allowed_actions?.can_reject));
-  const canEdit = data.status === "DRAFT" && (admin || Boolean(data.allowed_actions?.can_edit));
+  const canEdit = admin || (data.status === "DRAFT" && Boolean(data.allowed_actions?.can_edit));
   const total = (data.items ?? []).reduce((sum: number, item: any) => sum + Number(item.total_price ?? item.quantity * item.estimated_price), 0);
 
   const act = async (operation: "submit" | "approve" | "reject") => {
@@ -92,7 +93,7 @@ export default function PurchaseRequisitionDetailPage() {
   };
 
   return <div className="space-y-6">
-    <PageHeader title={data.pr_number} description="Purchase Requisition" actions={<Badge variant={badgeVariant(data.status)}>{data.status}</Badge>}/>
+    <PageHeader title={data.pr_number} description="Purchase Requisition" actions={<div className="flex items-center gap-2"><AdminReopenButton entityType="PURCHASE_REQUISITION" entityId={data.id} status={data.status} onSuccess={() => { void prQuery.refetch(); void approvalQuery.refetch(); }}/><Badge variant={badgeVariant(data.status)}>{data.status}</Badge></div>}/>
     <WorkflowHeader document={data} approval={approval}/>
     <WorkflowActionBar
       document={data}
@@ -143,9 +144,14 @@ export default function PurchaseRequisitionDetailPage() {
     </div>
 
     {editing && <PurchaseRequisitionForm initialData={data} onClose={() => setEditing(false)} onSubmit={async (payload) => {
-      await update.mutateAsync({ id: data.id, data: payload });
-      setEditing(false);
-      toast.success("Purchase requisition updated.");
+      try {
+        await update.mutateAsync({ id: data.id, data: payload });
+        setEditing(false);
+        toast.success("Purchase requisition updated.");
+      } catch (error) {
+        toast.error(errorMessage(error));
+        throw error;
+      }
     }}/>} 
     {data.allowed_actions?.can_manage_attachments !== false && <DocumentAttachments entityType="PURCHASE_REQUISITION" entityId={data.id}/>} 
     {data.allowed_actions?.can_view_history !== false && <DocumentActivity events={data.activity_history}/>} 
