@@ -19,6 +19,7 @@ import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/Suppl
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
 import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
 import APAgingPrintPage from "@/modules/finance/accounts-payable/APAgingPrintPage";
+import PaymentRequestPrintPage from "@/modules/finance/accounts-payable/PaymentRequestPrintPage";
 import APInvoicesPage from "@/modules/finance/accounts-payable/APInvoicesPage";
 import APPaymentsPage from "@/modules/finance/accounts-payable/APPaymentsPage";
 import APAdjustmentsPage from "@/modules/finance/accounts-payable/APAdjustmentsPage";
@@ -106,6 +107,7 @@ const router = createBrowserRouter([
       { path: "accounts-payable", element: <AccountsPayablePage /> },
       { path: "accounts-payable/aging", element: <AccountsPayablePage /> },
       { path: "accounts-payable/aging/print", element: <APAgingPrintPage /> },
+      { path: "accounts-payable/payment-request/print", element: <PaymentRequestPrintPage /> },
       { path: "accounts-payable/invoices", element: <APInvoicesPage /> },
       { path: "accounts-payable/payments", element: <APPaymentsPage /> },
       { path: "accounts-payable/adjustments", element: <APAdjustmentsPage /> },
@@ -115,7 +117,6 @@ const router = createBrowserRouter([
       { path: "supplier-adjustments", element: <SupplierAdjustmentsPage /> },
       { path: "payments", element: <PaymentListPage /> },
       { path: "payments/:id", element: <PaymentDetailPage /> },
-      { path: "payments/:id/print", element: <AccountingPrintPage kind="payments" /> },
 
       { path: "cash-bank", element: <CashBankWorkspacePage section="overview" /> },
       { path: "cash-bank/accounts", element: <CashBankWorkspacePage section="accounts" /> },
