@@ -28,5 +28,5 @@ export const listSupplierAdjustments = async (params: any = {}) =>
 export const createSupplierAdjustment = async (payload: any) =>
   (await api.post<SupplierAdjustment>("/supplier-adjustments", payload)).data;
 
-export const supplierAdjustmentAction = async (id: number, action: "post" | "void") =>
+export const supplierAdjustmentAction = async (id: number, action: "generate-journal" | "void") =>
   (await api.post<SupplierAdjustment>(`/supplier-adjustments/${id}/${action}`)).data;
