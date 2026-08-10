@@ -12,6 +12,7 @@ from app.models.journal_entry import JournalEntry
 from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier_invoice import SupplierInvoice
 from app.services.ap_metrics import ZERO, ap_metrics
+from app.services.document_context import print_metadata
 
 router = APIRouter(prefix="/ap-aging", tags=["Accounts Payable"])
 BUCKETS = ("current", "1_30", "31_60", "61_90", "over_90")
@@ -27,6 +28,18 @@ def _bucket(days_overdue: int) -> str:
     if days_overdue <= 90:
         return "61_90"
     return "over_90"
+
+
+def _print_bucket(days_overdue: int) -> str:
+    if days_overdue <= 30:
+        return "0_30"
+    if days_overdue <= 60:
+        return "31_60"
+    if days_overdue <= 90:
+        return "61_90"
+    if days_overdue <= 120:
+        return "91_120"
+    return "over_120"
 
 
 def _posted_payment_facts(db: Session) -> dict[int, dict]:
@@ -50,11 +63,7 @@ def _posted_payment_facts(db: Session) -> dict[int, dict]:
     }
 
 
-@router.get("")
-def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    if not has_any_role(current_user, "FINANCE", "AUDITOR"):
-        raise HTTPException(status_code=403, detail="Finance access required")
-
+def _aging_data(db: Session):
     today = date.today()
     metrics, invoices = ap_metrics(db, as_of_date=today)
     posted_payment_facts = _posted_payment_facts(db)
@@ -127,11 +136,6 @@ def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current
     }
     top_suppliers = sorted(supplier_totals.values(), key=lambda row: row["outstanding"], reverse=True)[:10]
 
-    # Paid History is accounting history, not an open-AP status query. An invoice
-    # belongs here only when its liability journal is actually POSTED and at
-    # least one POSTED supplier payment exists. This keeps history aligned with
-    # the journal-authoritative accounting model and prevents document status
-    # drift from hiding settled invoices.
     paid_invoices = (
         db.query(SupplierInvoice)
         .join(
@@ -180,9 +184,6 @@ def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current
         reverse=True,
     )
 
-    # The AP workspace frontend reads these response-level metric names. Keep
-    # the service's legacy `*_ap` keys for compatibility, while deriving the
-    # workspace values from the same aging totals used by buckets/details.
     metrics["total_outstanding"] = total_outstanding
     metrics["overdue_total"] = overdue_total
     metrics["average_overdue_days"] = float(weighted_days / weighted_amount) if weighted_amount else 0
@@ -196,4 +197,59 @@ def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current
         "top_suppliers": top_suppliers,
         "details": report,
         "paid": paid_rows,
+    }, invoices
+
+
+@router.get("")
+def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if not has_any_role(current_user, "FINANCE", "AUDITOR"):
+        raise HTTPException(status_code=403, detail="Finance access required")
+    data, _ = _aging_data(db)
+    return data
+
+
+@router.get("/print")
+def print_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if not has_any_role(current_user, "FINANCE", "AUDITOR"):
+        raise HTTPException(status_code=403, detail="Finance access required")
+
+    today = date.today()
+    data, invoices = _aging_data(db)
+    supplier_rows: dict[int, dict] = {}
+    bucket_keys = ("0_30", "31_60", "61_90", "91_120", "over_120")
+
+    for invoice in invoices:
+        supplier_id = invoice.supplier_id
+        row = supplier_rows.setdefault(supplier_id, {
+            "supplier_id": supplier_id,
+            "supplier_code": getattr(invoice.supplier, "code", None) if invoice.supplier else None,
+            "supplier_name": invoice.supplier.name if invoice.supplier else None,
+            "purchase": ZERO,
+            "payment": ZERO,
+            "outstanding": ZERO,
+            **{key: ZERO for key in bucket_keys},
+        })
+        total = Decimal(invoice.total_amount or 0)
+        paid = Decimal(invoice.paid_amount or 0)
+        outstanding = Decimal(invoice.balance_amount or 0)
+        days = max((today - invoice.due_date).days, 0) if invoice.due_date else 0
+        row["purchase"] += total
+        row["payment"] += paid
+        row["outstanding"] += outstanding
+        row[_print_bucket(days)] += outstanding
+
+    rows = sorted(supplier_rows.values(), key=lambda item: (item["supplier_name"] or "").upper())
+    totals = {
+        "purchase": sum((row["purchase"] for row in rows), ZERO),
+        "payment": sum((row["payment"] for row in rows), ZERO),
+        "outstanding": sum((row["outstanding"] for row in rows), ZERO),
+        **{key: sum((row[key] for row in rows), ZERO) for key in bucket_keys},
+    }
+    return {
+        "document_type": "Account Payable Aging",
+        "as_of_date": today,
+        "rows": rows,
+        "totals": totals,
+        "metrics": data["metrics"],
+        **print_metadata(current_user),
     }
