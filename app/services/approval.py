@@ -20,6 +20,18 @@ def get_request(db: Session, entity_type: str, entity_id: int):
     )
 
 
+def reset_approval(db: Session, entity_type: str, entity_id: int) -> None:
+    """Remove the completed/pending approval instance before an admin reopens a document.
+
+    Workflow configuration is preserved. The next submit creates a fresh approval request,
+    while the document audit log remains the permanent history of the reopen event.
+    """
+    request = get_request(db, entity_type, entity_id)
+    if request:
+        db.delete(request)
+        db.flush()
+
+
 def _normalized_role_name(value: str) -> str:
     return "_".join(
         part

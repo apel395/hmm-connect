@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    accounting, accounting_posting_rules, amortizations, ap_aging, ap_reconciliation, approvals, ar_aging,
+    accounting, accounting_posting_rules, admin_lifecycle, amortizations, ap_aging, ap_reconciliation, approvals, ar_aging,
     audit_trail, auth, balance_sheet, bank_accounts, bank_reconciliations, bank_transfers,
     cash_flow, chart_of_accounts, customer_payments, dashboard,
     document_attachments, document_drilldown, document_events, fiscal_periods,
@@ -62,5 +62,6 @@ for router in (
     bank_transfers.router,
     organization_dimensions.router,
     system_capabilities.router,
+    admin_lifecycle.router,
 ):
     api_router.include_router(router)
