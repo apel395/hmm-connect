@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, event
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, event
 from sqlalchemy.orm import Mapped, Session as OrmSession, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -59,6 +59,9 @@ class SupplierInvoiceLine(Base):
     uom: Mapped[str | None] = mapped_column(String(20))
     unit_price: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
     line_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
+    is_taxable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5,2), default=0, nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
     account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"))
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
     notes: Mapped[str | None] = mapped_column(Text)
