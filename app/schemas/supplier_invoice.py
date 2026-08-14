@@ -38,6 +38,8 @@ class SupplierInvoiceInput(BaseModel):
     invoice_date: date
     received_date: date | None = None
     due_date: date | None = None
+    tax_invoice_number: str | None = Field(default=None, max_length=100)
+    tax_invoice_date: date | None = None
     purchase_order_id: int | None = None
     goods_receipt_id: int | None = None
     department_id: int | None = None
