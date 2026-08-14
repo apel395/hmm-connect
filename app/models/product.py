@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text, event
 from sqlalchemy.orm import Mapped, Session as OrmSession, mapped_column, relationship
 
@@ -61,7 +62,6 @@ def _copy_tax(target, source, base_amount):
 
 @event.listens_for(OrmSession, "before_flush")
 def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
-    """Keep item-master tax treatment authoritative while preserving document snapshots."""
     from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
     from app.models.purchase_order import PurchaseOrder
     from app.models.purchase_order_item import PurchaseOrderItem
@@ -79,9 +79,7 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
                 row.total_price = Decimal(row.quantity or 0) * Decimal(row.estimated_price or 0)
 
         elif isinstance(row, PurchaseOrderItem):
-            source = None
-            if row.purchase_requisition_item_id:
-                source = session.get(PurchaseRequisitionItem, row.purchase_requisition_item_id)
+            source = session.get(PurchaseRequisitionItem, row.purchase_requisition_item_id) if row.purchase_requisition_item_id else None
             if source is None:
                 source = row.product or session.get(Product, row.product_id)
             if source:
@@ -89,19 +87,15 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
                 row.total_price = Decimal(row.quantity or 0) * Decimal(row.unit_price or 0)
 
         elif isinstance(row, GoodsReceiptItem):
-            source = None
-            if row.purchase_order_item_id:
-                source = session.get(PurchaseOrderItem, row.purchase_order_item_id)
+            source = session.get(PurchaseOrderItem, row.purchase_order_item_id) if row.purchase_order_item_id else None
             if source is None:
                 source = row.product or session.get(Product, row.product_id)
             if source:
                 _copy_tax(row, source, Decimal(row.quantity or 0) * Decimal(row.unit_cost or 0))
 
         elif isinstance(row, SupplierInvoiceLine):
-            source = None
-            if row.goods_receipt_item_id:
-                source = session.get(GoodsReceiptItem, row.goods_receipt_item_id)
-            elif row.purchase_order_item_id:
+            source = session.get(GoodsReceiptItem, row.goods_receipt_item_id) if row.goods_receipt_item_id else None
+            if source is None and row.purchase_order_item_id:
                 source = session.get(PurchaseOrderItem, row.purchase_order_item_id)
             if source is None and row.product_id:
                 source = session.get(Product, row.product_id)
@@ -138,18 +132,16 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
             header.tax_amount = sum((Decimal(i.tax_amount or 0) for i in header.lines), ZERO)
             header.total_amount = header.subtotal - Decimal(header.discount_amount or 0) + header.tax_amount - Decimal(header.withholding_tax_amount or 0)
 
-    # Unknown tax treatment must be reviewed before operational approval/posting.
     for header in headers:
         status = str(getattr(header, "status", "") or "").upper()
-        locked_statuses = {"PENDING_APPROVAL", "APPROVED", "POSTED", "VERIFIED", "RECEIVED", "PARTIALLY_RECEIVED"}
-        if status not in locked_statuses:
+        if status not in {"PENDING_APPROVAL", "APPROVED", "POSTED", "VERIFIED", "RECEIVED", "PARTIALLY_RECEIVED"}:
             continue
-        products = []
         if isinstance(header, PurchaseRequisition): products = [i.product for i in header.items]
         elif isinstance(header, PurchaseOrder): products = [i.product for i in header.items]
         elif isinstance(header, GoodsReceipt): products = [i.product for i in header.items]
         elif isinstance(header, SupplierInvoice): products = [i.product for i in header.lines if i.product]
+        else: products = []
         unresolved = [p for p in products if p and p.tax_category == "REVIEW_REQUIRED"]
         if unresolved:
             names = ", ".join(p.name for p in unresolved[:5])
-            raise ValueError(f"Tax review required before document can continue: {names}")
+            raise HTTPException(status_code=409, detail=f"Finance tax review required before document can continue: {names}")
