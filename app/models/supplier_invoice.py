@@ -16,6 +16,8 @@ class SupplierInvoice(Base, TimestampMixin):
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     received_date: Mapped[date | None] = mapped_column(Date)
     due_date: Mapped[date | None] = mapped_column(Date, index=True)
+    tax_invoice_number: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    tax_invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     purchase_order_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id", ondelete="SET NULL"), index=True)
     goods_receipt_id: Mapped[int | None] = mapped_column(ForeignKey("goods_receipts.id", ondelete="SET NULL"), index=True)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
@@ -70,7 +72,6 @@ class SupplierInvoiceLine(Base):
 
 @event.listens_for(OrmSession, "before_flush")
 def _sync_supplier_invoice_balance(session, _flush_context, _instances):
-    """Keep AP balance fields authoritative across payments, notes, edits, and imports."""
     candidates = set(session.new).union(session.dirty)
     for invoice in candidates:
         if not isinstance(invoice, SupplierInvoice):
