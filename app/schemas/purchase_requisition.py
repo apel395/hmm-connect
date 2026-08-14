@@ -2,13 +2,21 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PurchaseRequisitionItemCreate(BaseModel):
     product_id: int
     quantity: Decimal = Field(gt=0)
     estimated_price: Decimal = Field(ge=0)
+    is_taxable: bool = False
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_tax(self):
+        if not self.is_taxable:
+            self.tax_rate = Decimal("0")
+        return self
 
 
 class PurchaseRequisitionCreate(BaseModel):
