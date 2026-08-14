@@ -15,14 +15,19 @@ class SupplierInvoiceLineInput(BaseModel):
     unit_price: Decimal = Field(ge=0)
     is_taxable: bool = False
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
     account_id: int | None = None
     department_id: int | None = None
     notes: str | None = None
 
     @model_validator(mode="after")
-    def validate_tax(self):
+    def calculate_tax(self):
         if not self.is_taxable:
             self.tax_rate = Decimal("0")
+            self.tax_amount = Decimal("0")
+            return self
+        line_subtotal = Decimal(self.quantity) * Decimal(self.unit_price)
+        self.tax_amount = line_subtotal * Decimal(self.tax_rate) / Decimal("100")
         return self
 
 
@@ -47,7 +52,13 @@ class SupplierInvoiceInput(BaseModel):
     lines: list[SupplierInvoiceLineInput]
 
     @model_validator(mode="after")
-    def validate_lines(self):
+    def calculate_totals(self):
         if not self.lines:
             raise ValueError("Invoice must contain at least one line")
+        self.tax_amount = sum((Decimal(line.tax_amount) for line in self.lines), Decimal("0"))
+        subtotal = sum((Decimal(line.quantity) * Decimal(line.unit_price) for line in self.lines), Decimal("0"))
+        calculated_total = subtotal - Decimal(self.discount_amount) + self.tax_amount - Decimal(self.withholding_tax_amount)
+        if self.total_amount is not None and Decimal(self.total_amount) != calculated_total:
+            raise ValueError("Invoice total does not match line totals, item PPN, and adjustments")
+        self.total_amount = calculated_total
         return self
