@@ -1,0 +1,13 @@
+"""budget management
+Revision ID: 20260807_budget_management
+Revises: 20260806_bank_reconciliation
+"""
+from alembic import op
+import sqlalchemy as sa
+revision="20260807_budget_management";down_revision="20260806_bank_reconciliation";branch_labels=None;depends_on=None
+def upgrade():
+ op.create_table("budgets",sa.Column("id",sa.Integer(),primary_key=True),sa.Column("budget_number",sa.String(50),nullable=False),sa.Column("name",sa.String(150),nullable=False),sa.Column("fiscal_year",sa.Integer(),nullable=False),sa.Column("date_from",sa.Date(),nullable=False),sa.Column("date_to",sa.Date(),nullable=False),sa.Column("status",sa.String(20),nullable=False,server_default="DRAFT"),sa.Column("currency",sa.String(3),nullable=False,server_default="IDR"),sa.Column("description",sa.Text()),sa.Column("created_by_id",sa.Integer(),sa.ForeignKey("users.id")),sa.Column("approved_by_id",sa.Integer(),sa.ForeignKey("users.id")),sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.func.now()),sa.Column("updated_at",sa.DateTime(timezone=True),server_default=sa.func.now()),sa.Column("approved_at",sa.DateTime(timezone=True)),sa.Column("locked_at",sa.DateTime(timezone=True)))
+ for n,c,u in (("uq_budgets_number",["budget_number"],True),("ix_budgets_year",["fiscal_year"],False),("ix_budgets_status",["status"],False),("ix_budgets_dates",["date_from","date_to"],False)):op.create_index(n,"budgets",c,unique=u)
+ op.create_table("budget_lines",sa.Column("id",sa.Integer(),primary_key=True),sa.Column("budget_id",sa.Integer(),sa.ForeignKey("budgets.id",ondelete="CASCADE"),nullable=False),sa.Column("account_id",sa.Integer(),sa.ForeignKey("chart_of_accounts.id"),nullable=False),sa.Column("department_id",sa.Integer(),sa.ForeignKey("departments.id")),sa.Column("location_id",sa.Integer(),sa.ForeignKey("locations.id")),sa.Column("business_unit",sa.String(50)),sa.Column("month",sa.Integer(),nullable=False),sa.Column("budget_amount",sa.Numeric(18,2),nullable=False),sa.Column("notes",sa.Text()),sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.func.now()),sa.Column("updated_at",sa.DateTime(timezone=True),server_default=sa.func.now()),sa.UniqueConstraint("budget_id","account_id","department_id","location_id","month","business_unit",name="uq_budget_line_dimensions"))
+ for n,c in (("ix_budget_lines_budget",["budget_id"]),("ix_budget_lines_account",["account_id"]),("ix_budget_lines_department",["department_id"]),("ix_budget_lines_location",["location_id"]),("ix_budget_lines_business_unit",["business_unit"])):op.create_index(n,"budget_lines",c)
+def downgrade():op.drop_table("budget_lines");op.drop_table("budgets")

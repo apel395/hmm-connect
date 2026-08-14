@@ -1,0 +1,66 @@
+from datetime import date
+from decimal import Decimal
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class SupplierInvoiceLineInput(BaseModel):
+    product_id: int | None = None
+    purchase_order_item_id: int | None = None
+    goods_receipt_item_id: int | None = None
+    description: str = Field(min_length=1)
+    quantity: Decimal = Field(ge=0)
+    uom: str | None = None
+    unit_price: Decimal = Field(ge=0)
+    is_taxable: bool = False
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    account_id: int | None = None
+    department_id: int | None = None
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def calculate_tax(self):
+        if not self.is_taxable:
+            self.tax_rate = Decimal("0")
+            self.tax_amount = Decimal("0")
+            return self
+        line_subtotal = Decimal(self.quantity) * Decimal(self.unit_price)
+        self.tax_amount = line_subtotal * Decimal(self.tax_rate) / Decimal("100")
+        return self
+
+
+class SupplierInvoiceInput(BaseModel):
+    business_unit_id: int | None = None
+    supplier_invoice_number: str = Field(min_length=1, max_length=100)
+    supplier_id: int
+    invoice_date: date
+    received_date: date | None = None
+    due_date: date | None = None
+    tax_invoice_number: str | None = Field(default=None, max_length=100)
+    tax_invoice_date: date | None = None
+    purchase_order_id: int | None = None
+    goods_receipt_id: int | None = None
+    department_id: int | None = None
+    location_id: int | None = None
+    currency: str = Field(default="IDR", min_length=3, max_length=3)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    withholding_tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    total_amount: Decimal | None = Field(default=None, ge=0)
+    notes: str | None = None
+    source_type: Literal["LIVE", "HISTORICAL_IMPORT"] = "LIVE"
+    lines: list[SupplierInvoiceLineInput]
+
+    @model_validator(mode="after")
+    def calculate_totals(self):
+        if not self.lines:
+            raise ValueError("Invoice must contain at least one line")
+        self.tax_amount = sum((Decimal(line.tax_amount) for line in self.lines), Decimal("0"))
+        subtotal = sum((Decimal(line.quantity) * Decimal(line.unit_price) for line in self.lines), Decimal("0"))
+        calculated_total = subtotal - Decimal(self.discount_amount) + self.tax_amount - Decimal(self.withholding_tax_amount)
+        if self.total_amount is not None and Decimal(self.total_amount) != calculated_total:
+            raise ValueError("Invoice total does not match line totals, item PPN, and adjustments")
+        self.total_amount = calculated_total
+        return self
