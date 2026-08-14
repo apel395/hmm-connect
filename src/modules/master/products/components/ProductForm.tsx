@@ -2,9 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import type { Product } from "../types";
+import type { Product, TaxCategory } from "../types";
 
 const UOMS = ["Kg", "Gram", "Liter", "Ml", "Bottle", "Pcs", "Pack", "Box", "Can", "Roll", "Meter", "Set"];
+const TAX_CATEGORIES: { value: TaxCategory; label: string; help: string }[] = [
+  { value: "REVIEW_REQUIRED", label: "Review Required", help: "Belum diklasifikasikan. Finance harus menetapkan perlakuan PPN sebelum dokumen dilanjutkan." },
+  { value: "STANDARD", label: "Standard PPN", help: "Item kena PPN dengan tarif default pada Item Master." },
+  { value: "EXEMPT", label: "PPN Dibebaskan", help: "Item mendapat fasilitas pembebasan PPN." },
+  { value: "NON_VAT", label: "Non PPN", help: "Item bukan objek PPN untuk penggunaan transaksi ini." },
+  { value: "SPECIAL", label: "Perlakuan Khusus", help: "Gunakan untuk item dengan perlakuan pajak khusus dan isi alasan/referensi." },
+];
 const DEFAULT_CONVERSION: Record<string, { usage: string; conversion: number }> = {
   Kg:{usage:"Gram",conversion:1000}, Gram:{usage:"Gram",conversion:1}, Liter:{usage:"Ml",conversion:1000},
   Ml:{usage:"Ml",conversion:1}, Bottle:{usage:"Ml",conversion:600}, Box:{usage:"Pcs",conversion:1},
@@ -24,6 +31,11 @@ interface Props {
 const blank = () => ({
   name:"", group_code:"", group_name:"", subgroup_code:"", subgroup_name:"",
   uom:"", usage_uom:"", conversion:1,
+  tax_category:"REVIEW_REQUIRED" as TaxCategory,
+  is_taxable:false,
+  tax_rate:0,
+  tax_reason:"",
+  tax_reference:"",
 });
 
 export default function ProductForm({ open, product, products = [], loading, onClose, onSubmit }: Props) {
@@ -55,14 +67,30 @@ export default function ProductForm({ open, product, products = [], loading, onC
       name:product.name, group_code:product.group_code, group_name:product.group_name,
       subgroup_code:product.subgroup_code, subgroup_name:product.subgroup_name,
       uom:product.uom, usage_uom:product.usage_uom, conversion:Number(product.conversion),
+      tax_category:product.tax_category ?? "REVIEW_REQUIRED",
+      is_taxable:Boolean(product.is_taxable),
+      tax_rate:Number(product.tax_rate ?? 0),
+      tax_reason:product.tax_reason ?? "",
+      tax_reference:product.tax_reference ?? "",
     } : blank());
   }, [open, product]);
 
   const update = (key:string, value:unknown) => setForm((current) => ({...current, [key]:value}));
-  const valid = form.name.trim() && form.group_code && form.subgroup_code && form.uom && form.usage_uom;
+  const selectedTax = TAX_CATEGORIES.find((item) => item.value === form.tax_category);
+  const valid = form.name.trim() && form.group_code && form.subgroup_code && form.uom && form.usage_uom && (!form.is_taxable || Number(form.tax_rate) > 0);
+
+  const changeTaxCategory = (value: TaxCategory) => {
+    const taxable = value === "STANDARD" || value === "SPECIAL";
+    setForm((current) => ({
+      ...current,
+      tax_category:value,
+      is_taxable:taxable ? current.is_taxable : false,
+      tax_rate:taxable ? current.tax_rate : 0,
+    }));
+  };
 
   return <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-    <DialogContent className="max-w-2xl">
+    <DialogContent className="max-w-3xl">
       <DialogHeader><DialogTitle>{product ? "Edit Product" : "New Product"}</DialogTitle></DialogHeader>
       <DialogBody><div className="grid grid-cols-2 gap-4">
         <label className="col-span-2 text-sm font-medium">Product Name
@@ -96,8 +124,38 @@ export default function ProductForm({ open, product, products = [], loading, onC
         <label className="text-sm font-medium">Conversion
           <Input className="mt-1" type="number" min="0.0001" step="0.0001" value={form.conversion} onChange={(event) => update("conversion", Number(event.target.value))}/>
         </label>
+
+        <div className="col-span-2 mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-3">
+            <div className="font-semibold text-slate-900">PPN / Tax Profile</div>
+            <div className="text-xs text-slate-500">Default pajak dari Item Master akan di-snapshot ke PR, PO, Receiving, dan Supplier Invoice.</div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="text-sm font-medium">Tax Treatment
+              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.tax_category} onChange={(event) => changeTaxCategory(event.target.value as TaxCategory)}>
+                {TAX_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-slate-500">{selectedTax?.help}</span>
+            </label>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 pt-1 text-sm font-medium">
+                <input type="checkbox" checked={form.is_taxable} disabled={!(["STANDARD", "SPECIAL"] as TaxCategory[]).includes(form.tax_category)} onChange={(event) => setForm((current) => ({...current, is_taxable:event.target.checked, tax_rate:event.target.checked ? current.tax_rate : 0}))}/>
+                Item kena PPN
+              </label>
+              <label className="block text-sm font-medium">Default PPN Rate (%)
+                <Input className="mt-1" type="number" min="0" max="100" step="0.01" disabled={!form.is_taxable} value={form.tax_rate} onChange={(event) => update("tax_rate", Number(event.target.value))}/>
+              </label>
+            </div>
+            <label className="text-sm font-medium">Tax Reason / Notes
+              <Input className="mt-1" placeholder="Contoh: kebutuhan pokok / standard taxable" value={form.tax_reason} onChange={(event) => update("tax_reason", event.target.value)} />
+            </label>
+            <label className="text-sm font-medium">Tax Reference
+              <Input className="mt-1" placeholder="Referensi aturan / memo Finance" value={form.tax_reference} onChange={(event) => update("tax_reference", event.target.value)} />
+            </label>
+          </div>
+        </div>
       </div></DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!valid} loading={loading} onClick={() => onSubmit({...form, conversion:Number(form.conversion)})}>Save</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!valid} loading={loading} onClick={() => onSubmit({...form, conversion:Number(form.conversion), tax_rate:Number(form.tax_rate), tax_reason:form.tax_reason || null, tax_reference:form.tax_reference || null})}>Save</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }
