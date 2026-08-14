@@ -11,14 +11,13 @@ down_revision = "20260814_item_level_ppn"
 branch_labels = None
 depends_on = None
 
-
 ROLES = (
     ("STORE", "Location store approval for PR and receiving"),
     ("CHEF", "Location chef approval for PR and receiving"),
     ("PM/CAMP BOSS", "Location PM or Camp Boss approval for PR and receiving"),
     ("HO PURCHASING", "Head Office purchasing approval"),
-    ("HO APPROVER 1", "Head Office purchasing approver level 1; assign to the designated current approver"),
-    ("HO APPROVER 2", "Head Office purchasing approver level 2; assign to the designated current approver"),
+    ("FINANCE", "Finance approval after Head Office purchasing"),
+    ("GENERAL MANAGER", "General Manager final approval"),
 )
 
 
@@ -39,6 +38,4 @@ def upgrade():
 
 
 def downgrade():
-    # Roles can already be assigned to users by the time a downgrade is requested.
-    # Keep them to avoid destructive user-role changes.
     pass
