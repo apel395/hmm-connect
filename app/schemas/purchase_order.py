@@ -12,6 +12,14 @@ class PurchaseOrderItemCreate(BaseModel):
     quantity: Decimal = Field(gt=0)
     unit_price: Decimal = Field(ge=0)
     purchase_requisition_item_id: int | None = None
+    is_taxable: bool = False
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_tax(self):
+        if not self.is_taxable:
+            self.tax_rate = Decimal("0")
+        return self
 
 
 class PurchaseOrderCreate(BaseModel):
