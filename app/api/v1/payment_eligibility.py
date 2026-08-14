@@ -10,6 +10,7 @@ from app.dependencies.authorization import has_any_role
 from app.models.journal_entry import JournalEntry
 from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier_invoice import SupplierInvoice
+from app.services.payable_balance import invoice_balance
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 ZERO = Decimal("0")
@@ -55,7 +56,6 @@ def eligible_invoices_available(
         .filter(
             SupplierInvoice.supplier_id == supplier_id,
             SupplierInvoice.currency == currency.upper(),
-            SupplierInvoice.balance_amount > 0,
         )
         .distinct()
         .order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id.asc())
@@ -64,10 +64,12 @@ def eligible_invoices_available(
 
     result = []
     for invoice in invoices:
-        balance = Decimal(invoice.balance_amount or 0)
+        balance = invoice_balance(invoice)
+        if balance <= ZERO:
+            continue
         reserved = reserved_by_invoice.get(invoice.id, ZERO)
         available = max(ZERO, balance - reserved)
-        if available <= 0:
+        if available <= ZERO:
             continue
         result.append({
             "id": invoice.id,
