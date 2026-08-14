@@ -19,6 +19,9 @@ from app.services.activity_service import ActivityService
 from app.services.document_number import next_document_number
 
 
+ZERO = Decimal("0")
+
+
 class GoodsReceiptService:
     @staticmethod
     def _number(db: Session) -> str:
@@ -31,11 +34,10 @@ class GoodsReceiptService:
 
     @staticmethod
     def can_correct_cost(user) -> bool:
-        # Superusers are automatically accepted by has_any_role(). The explicit
-        # manager role names keep ordinary receiving users from changing value.
         return has_any_role(
             user,
             "GENERAL MANAGER",
+            "FINANCE",
             "FINANCE MANAGER",
             "PURCHASING MANAGER",
             "PROCUREMENT MANAGER",
@@ -48,6 +50,25 @@ class GoodsReceiptService:
                 raise HTTPException(status_code=400, detail="Warehouse is required for warehouse receiving")
             if not db.get(Warehouse, data.warehouse_id):
                 raise HTTPException(status_code=404, detail="Warehouse not found")
+
+    @staticmethod
+    def _movement(receipt: GoodsReceipt, receipt_item: GoodsReceiptItem, movement_type: str, reference_type: str):
+        return StockMovement(
+            product_id=receipt_item.product_id,
+            warehouse_id=receipt.warehouse_id,
+            goods_receipt_id=receipt.id,
+            goods_receipt_item_id=receipt_item.id,
+            purchase_order_id=receipt.purchase_order_id,
+            purchase_order_item_id=receipt_item.purchase_order_item_id,
+            business_unit_id=receipt.business_unit_id,
+            location_id=receipt.location_id,
+            department_id=receipt.department_id,
+            movement_type=movement_type,
+            quantity=receipt_item.quantity,
+            unit_cost=receipt_item.unit_cost,
+            reference_type=reference_type,
+            reference_id=receipt.id,
+        )
 
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
@@ -76,16 +97,21 @@ class GoodsReceiptService:
 
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
         receipt = GoodsReceipt(
-            receipt_number=cls._number(db), status="DRAFT",
+            receipt_number=cls._number(db),
+            status="DRAFT",
             purchase_order_id=purchase_order.id if purchase_order else None,
             supplier_id=supplier_id,
             received_by_id=user.id,
             received_at=data.received_at or datetime.now(timezone.utc),
-            source_type=data.source_type, external_reference=data.external_reference,
-            receipt_type=data.receipt_type, destination_type=data.destination_type,
+            source_type=data.source_type,
+            external_reference=data.external_reference,
+            receipt_type=data.receipt_type,
+            destination_type=data.destination_type,
             warehouse_id=data.warehouse_id if data.destination_type == "WAREHOUSE" else None,
-            notes=data.notes, business_unit_id=business_unit_id,
-            location_id=location_id, department_id=department_id,
+            notes=data.notes,
+            business_unit_id=business_unit_id,
+            location_id=location_id,
+            department_id=department_id,
         )
 
         seen = set()
@@ -99,14 +125,14 @@ class GoodsReceiptService:
                 if not item or item.purchase_order_id != purchase_order.id:
                     raise HTTPException(status_code=400, detail="Receipt item does not belong to the purchase order")
                 remaining = Decimal(item.quantity) - Decimal(item.received_quantity or 0)
-                if remaining <= 0 or incoming.quantity > remaining:
+                if remaining <= 0 or Decimal(incoming.quantity) > remaining:
                     raise HTTPException(status_code=409, detail=f"Quantity exceeds remaining amount for PO item {item.id}")
 
                 po_cost = Decimal(item.unit_price or 0)
                 unit_cost = Decimal(incoming.unit_cost) if incoming.unit_cost is not None else po_cost
                 if incoming.unit_cost is not None and unit_cost != po_cost:
                     if not cls.can_correct_cost(user):
-                        raise HTTPException(status_code=403, detail="Only an administrator or authorized manager can override PO cost during receiving")
+                        raise HTTPException(status_code=403, detail="Only an authorized manager can override PO cost during receiving")
                     if not (data.cost_correction_reason or "").strip():
                         raise HTTPException(status_code=400, detail="Correction reason is required when receiving cost differs from the PO")
                     cost_overrides.append({
@@ -116,14 +142,13 @@ class GoodsReceiptService:
                         "receiving_unit_cost": str(unit_cost),
                     })
                 if unit_cost <= 0:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Receiving unit cost must be greater than zero for PO item {item.id}. Correct the PO or enter an authorized receiving cost correction.",
-                    )
+                    raise HTTPException(status_code=409, detail=f"Receiving unit cost must be greater than zero for PO item {item.id}")
 
                 receipt.items.append(GoodsReceiptItem(
-                    purchase_order_item_id=item.id, product_id=item.product_id,
-                    quantity=incoming.quantity, unit_cost=unit_cost,
+                    purchase_order_item_id=item.id,
+                    product_id=item.product_id,
+                    quantity=incoming.quantity,
+                    unit_cost=unit_cost,
                 ))
             else:
                 if incoming.product_id in seen:
@@ -136,79 +161,129 @@ class GoodsReceiptService:
                 if unit_cost <= 0:
                     raise HTTPException(status_code=409, detail=f"Receiving unit cost must be greater than zero for product {product.id}")
                 receipt.items.append(GoodsReceiptItem(
-                    purchase_order_item_id=None, product_id=product.id,
-                    quantity=incoming.quantity, unit_cost=unit_cost,
+                    purchase_order_item_id=None,
+                    product_id=product.id,
+                    quantity=incoming.quantity,
+                    unit_cost=unit_cost,
                 ))
 
-        db.add(receipt); db.flush()
+        db.add(receipt)
+        db.flush()
         ActivityService.log(
-            db=db, user=user, action="CREATE", entity_type="GOODS_RECEIPT", entity_id=receipt.id,
-            summary=f"Created {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number,
-            document_status="DRAFT", reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT",
-            details={
-                "source": "PO" if purchase_order else "DIRECT",
-                "cost_overrides": cost_overrides,
-                "cost_correction_reason": data.cost_correction_reason if cost_overrides else None,
-            },
+            db=db,
+            user=user,
+            action="CREATE",
+            entity_type="GOODS_RECEIPT",
+            entity_id=receipt.id,
+            summary=f"Created {receipt.receipt_number}",
+            document_type="GR",
+            document_number=receipt.receipt_number,
+            document_status="DRAFT",
+            reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT",
+            details={"source": "PO" if purchase_order else "DIRECT", "cost_overrides": cost_overrides},
         )
-        db.commit(); db.refresh(receipt); return receipt
+        db.commit()
+        db.refresh(receipt)
+        return receipt
 
     @classmethod
     def post(cls, db: Session, *, receipt_id: int, user):
         cls._check_access(user, "WAREHOUSE", "PURCHASING")
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
-        if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
-        if receipt.status != "DRAFT": raise HTTPException(status_code=409, detail="Only draft receipts can be posted")
-        purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
+        if not receipt:
+            raise HTTPException(status_code=404, detail="Goods receipt not found")
+        if receipt.status != "DRAFT":
+            raise HTTPException(status_code=409, detail="Only draft receipts can be posted")
+
+        purchase_order = (
+            db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first()
+            if receipt.purchase_order_id else None
+        )
         if receipt.purchase_order_id and (not purchase_order or purchase_order.status not in {"APPROVED", "PARTIALLY_RECEIVED"}):
             raise HTTPException(status_code=409, detail="Purchase order is no longer receivable")
 
         for receipt_item in receipt.items:
             quantity = Decimal(receipt_item.quantity)
-            product_id = receipt_item.product_id
+            if quantity <= 0:
+                raise HTTPException(status_code=409, detail=f"Receipt item {receipt_item.id} must have positive quantity")
             if Decimal(receipt_item.unit_cost or 0) <= 0:
                 raise HTTPException(status_code=409, detail=f"Receipt item {receipt_item.id} has zero unit cost and cannot be posted")
+
             if purchase_order:
-                item = db.query(PurchaseOrderItem).filter(PurchaseOrderItem.id == receipt_item.purchase_order_item_id).with_for_update().first()
-                remaining = Decimal(item.quantity) - Decimal(item.received_quantity or 0)
-                if quantity <= 0 or quantity > remaining: raise HTTPException(status_code=409, detail=f"Quantity exceeds remaining amount for PO item {item.id}")
-                item.received_quantity = Decimal(item.received_quantity or 0) + quantity
-                product_id = item.product_id
+                po_item = db.query(PurchaseOrderItem).filter(
+                    PurchaseOrderItem.id == receipt_item.purchase_order_item_id,
+                    PurchaseOrderItem.purchase_order_id == purchase_order.id,
+                ).with_for_update().first()
+                if not po_item:
+                    raise HTTPException(status_code=409, detail=f"PO item for receipt line {receipt_item.id} no longer exists")
+                remaining = Decimal(po_item.quantity) - Decimal(po_item.received_quantity or 0)
+                if quantity > remaining:
+                    raise HTTPException(status_code=409, detail=f"Quantity exceeds remaining amount for PO item {po_item.id}")
+                po_item.received_quantity = Decimal(po_item.received_quantity or 0) + quantity
+                receipt_item.product_id = po_item.product_id
+
             if receipt.destination_type == "WAREHOUSE":
-                inventory = db.query(Inventory).filter(Inventory.product_id == product_id, Inventory.warehouse_id == receipt.warehouse_id).with_for_update().first()
+                inventory = db.query(Inventory).filter(
+                    Inventory.product_id == receipt_item.product_id,
+                    Inventory.warehouse_id == receipt.warehouse_id,
+                ).with_for_update().first()
                 if not inventory:
-                    inventory = Inventory(product_id=product_id, warehouse_id=receipt.warehouse_id, quantity=Decimal("0"), average_cost=Decimal("0")); db.add(inventory); db.flush()
-                old_quantity=Decimal(inventory.quantity or 0); new_quantity=old_quantity+quantity
-                inventory.average_cost=((old_quantity*Decimal(inventory.average_cost or 0))+(quantity*Decimal(receipt_item.unit_cost)))/new_quantity
-                inventory.quantity=new_quantity
-                db.add(StockMovement(product_id=product_id,warehouse_id=receipt.warehouse_id,goods_receipt_id=receipt.id,movement_type="IN",quantity=quantity,unit_cost=receipt_item.unit_cost,reference_type="GOODS_RECEIPT",reference_id=receipt.id))
+                    inventory = Inventory(
+                        product_id=receipt_item.product_id,
+                        warehouse_id=receipt.warehouse_id,
+                        quantity=ZERO,
+                        average_cost=ZERO,
+                    )
+                    db.add(inventory)
+                    db.flush()
+
+                old_qty = Decimal(inventory.quantity or 0)
+                old_avg = Decimal(inventory.average_cost or 0)
+                new_qty = old_qty + quantity
+                inventory.average_cost = ((old_qty * old_avg) + (quantity * Decimal(receipt_item.unit_cost))) / new_qty
+                inventory.quantity = new_qty
+                db.add(cls._movement(receipt, receipt_item, "IN", "GOODS_RECEIPT"))
 
         if purchase_order:
-            purchase_order.status="RECEIVED" if all(Decimal(item.received_quantity or 0)>=Decimal(item.quantity) for item in purchase_order.items) else "PARTIALLY_RECEIVED"
-        receipt.status="POSTED"
-        ActivityService.log(db=db,user=user,action="POST",entity_type="GOODS_RECEIPT",entity_id=receipt.id,summary=f"Posted {receipt.receipt_number}",document_type="GR",document_number=receipt.receipt_number,document_status="POSTED",reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT",details={"purchase_order_id":purchase_order.id if purchase_order else None,"warehouse_id":receipt.warehouse_id,"destination_type":receipt.destination_type,"item_count":len(receipt.items)})
-        db.commit(); db.refresh(receipt); return receipt
+            purchase_order.status = (
+                "RECEIVED"
+                if all(Decimal(item.received_quantity or 0) >= Decimal(item.quantity) for item in purchase_order.items)
+                else "PARTIALLY_RECEIVED"
+            )
+
+        receipt.status = "POSTED"
+        ActivityService.log(
+            db=db,
+            user=user,
+            action="POST",
+            entity_type="GOODS_RECEIPT",
+            entity_id=receipt.id,
+            summary=f"Posted {receipt.receipt_number}",
+            document_type="GR",
+            document_number=receipt.receipt_number,
+            document_status="POSTED",
+            reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT",
+            details={"purchase_order_id": receipt.purchase_order_id, "warehouse_id": receipt.warehouse_id, "destination_type": receipt.destination_type},
+        )
+        db.commit()
+        db.refresh(receipt)
+        return receipt
 
     @classmethod
     def correct_costs(cls, db: Session, *, receipt_id: int, data: GoodsReceiptCostCorrection, user):
         if not cls.can_correct_cost(user):
-            raise HTTPException(status_code=403, detail="Only an administrator or authorized manager can correct receiving costs")
-
+            raise HTTPException(status_code=403, detail="Only an authorized manager can correct receiving costs")
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt:
             raise HTTPException(status_code=404, detail="Goods receipt not found")
         if receipt.status not in {"DRAFT", "POSTED"}:
             raise HTTPException(status_code=409, detail="Only draft or posted receipts can have their costs corrected")
-
         downstream_invoice = db.query(SupplierInvoice).filter(
             SupplierInvoice.goods_receipt_id == receipt.id,
             SupplierInvoice.status != "VOID",
         ).first()
         if downstream_invoice:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Receiving cost cannot be corrected after supplier invoice {downstream_invoice.internal_invoice_number} has been created",
-            )
+            raise HTTPException(status_code=409, detail=f"Receiving cost cannot be corrected after supplier invoice {downstream_invoice.internal_invoice_number} has been created")
 
         by_id = {item.id: item for item in receipt.items}
         changes = []
@@ -220,18 +295,14 @@ class GoodsReceiptService:
             new_cost = Decimal(correction.unit_cost)
             if new_cost == old_cost:
                 continue
-
             if receipt.status == "POSTED" and receipt.destination_type == "WAREHOUSE":
                 movement = db.query(StockMovement).filter(
-                    StockMovement.goods_receipt_id == receipt.id,
-                    StockMovement.product_id == item.product_id,
-                    StockMovement.warehouse_id == receipt.warehouse_id,
+                    StockMovement.goods_receipt_item_id == item.id,
                     StockMovement.movement_type == "IN",
                     StockMovement.reference_type == "GOODS_RECEIPT",
                 ).order_by(StockMovement.id.asc()).first()
                 if not movement:
                     raise HTTPException(status_code=409, detail=f"Original inventory movement for receipt item {item.id} was not found")
-
                 later_outbound = db.query(StockMovement).filter(
                     StockMovement.product_id == item.product_id,
                     StockMovement.warehouse_id == receipt.warehouse_id,
@@ -239,65 +310,112 @@ class GoodsReceiptService:
                     StockMovement.movement_type == "OUT",
                 ).first()
                 if later_outbound:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Cost for {item.product.name if item.product else item.product_id} cannot be corrected after stock has moved out. Use an inventory/finance adjustment instead.",
-                    )
-
+                    raise HTTPException(status_code=409, detail=f"Cost for product {item.product_id} cannot be corrected after stock has moved out")
                 inventory = db.query(Inventory).filter(
                     Inventory.product_id == item.product_id,
                     Inventory.warehouse_id == receipt.warehouse_id,
                 ).with_for_update().first()
                 if not inventory or Decimal(inventory.quantity or 0) <= 0:
                     raise HTTPException(status_code=409, detail=f"Current inventory for product {item.product_id} cannot be revalued")
-
-                quantity = Decimal(item.quantity)
-                current_quantity = Decimal(inventory.quantity)
-                value_delta = (new_cost - old_cost) * quantity
-                inventory.average_cost = Decimal(inventory.average_cost or 0) + (value_delta / current_quantity)
+                qty = Decimal(item.quantity)
+                current_qty = Decimal(inventory.quantity)
+                inventory.average_cost = Decimal(inventory.average_cost or 0) + (((new_cost - old_cost) * qty) / current_qty)
                 movement.unit_cost = new_cost
-
             item.unit_cost = new_cost
-            changes.append({
-                "item_id": item.id,
-                "product_id": item.product_id,
-                "product_name": item.product.name if item.product else None,
-                "quantity": str(item.quantity),
-                "old_unit_cost": str(old_cost),
-                "new_unit_cost": str(new_cost),
-            })
+            changes.append({"item_id": item.id, "product_id": item.product_id, "old_unit_cost": str(old_cost), "new_unit_cost": str(new_cost)})
 
         if not changes:
             raise HTTPException(status_code=400, detail="No receiving costs changed")
-
         ActivityService.log(
-            db=db, user=user, action="COST_CORRECTION", entity_type="GOODS_RECEIPT", entity_id=receipt.id,
-            summary=f"Corrected receiving cost for {receipt.receipt_number}", document_type="GR",
-            document_number=receipt.receipt_number, document_status=receipt.status,
+            db=db,
+            user=user,
+            action="COST_CORRECTION",
+            entity_type="GOODS_RECEIPT",
+            entity_id=receipt.id,
+            summary=f"Corrected receiving cost for {receipt.receipt_number}",
+            document_type="GR",
+            document_number=receipt.receipt_number,
+            document_status=receipt.status,
             reference_document=receipt.purchase_order.po_number if receipt.purchase_order else "DIRECT_RECEIPT",
             details={"reason": data.reason.strip(), "changes": changes},
         )
-        db.commit(); db.refresh(receipt); return receipt
+        db.commit()
+        db.refresh(receipt)
+        return receipt
 
     @classmethod
     def return_receipt(cls, db: Session, *, receipt_id: int, user):
         cls._check_access(user, "WAREHOUSE", "PURCHASING")
-        receipt=db.query(GoodsReceipt).filter(GoodsReceipt.id==receipt_id).with_for_update().first()
-        if not receipt: raise HTTPException(404,"Goods receipt not found")
-        if receipt.status!="POSTED": raise HTTPException(409,"Only posted receipts can be returned")
-        purchase_order=db.query(PurchaseOrder).filter(PurchaseOrder.id==receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
+        receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
+        if not receipt:
+            raise HTTPException(status_code=404, detail="Goods receipt not found")
+        if receipt.status != "POSTED":
+            raise HTTPException(status_code=409, detail="Only posted receipts can be returned")
+
+        downstream_invoice = db.query(SupplierInvoice).filter(
+            SupplierInvoice.goods_receipt_id == receipt.id,
+            SupplierInvoice.status.notin_({"VOID", "REJECTED"}),
+        ).first()
+        if downstream_invoice:
+            raise HTTPException(status_code=409, detail=f"Receipt cannot be returned after supplier invoice {downstream_invoice.internal_invoice_number} has been created")
+
+        purchase_order = (
+            db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first()
+            if receipt.purchase_order_id else None
+        )
         for receipt_item in receipt.items:
-            quantity=Decimal(receipt_item.quantity); product_id=receipt_item.product_id
-            if receipt.destination_type=="WAREHOUSE":
-                inventory=db.query(Inventory).filter(Inventory.product_id==product_id,Inventory.warehouse_id==receipt.warehouse_id).with_for_update().first()
-                if not inventory or Decimal(inventory.quantity or 0)<quantity: raise HTTPException(409,detail=f"Insufficient current stock to return product {product_id}")
-                inventory.quantity=Decimal(inventory.quantity)-quantity
-                db.add(StockMovement(product_id=product_id,warehouse_id=receipt.warehouse_id,goods_receipt_id=receipt.id,movement_type="OUT",quantity=quantity,unit_cost=receipt_item.unit_cost,reference_type="GOODS_RECEIPT_RETURN",reference_id=receipt.id))
+            quantity = Decimal(receipt_item.quantity)
+            if receipt.destination_type == "WAREHOUSE":
+                inventory = db.query(Inventory).filter(
+                    Inventory.product_id == receipt_item.product_id,
+                    Inventory.warehouse_id == receipt.warehouse_id,
+                ).with_for_update().first()
+                if not inventory or Decimal(inventory.quantity or 0) < quantity:
+                    raise HTTPException(status_code=409, detail=f"Insufficient current stock to return product {receipt_item.product_id}")
+
+                current_qty = Decimal(inventory.quantity or 0)
+                current_avg = Decimal(inventory.average_cost or 0)
+                current_value = current_qty * current_avg
+                return_value = quantity * Decimal(receipt_item.unit_cost or 0)
+                new_qty = current_qty - quantity
+                remaining_value = current_value - return_value
+                if new_qty == 0:
+                    inventory.quantity = ZERO
+                    inventory.average_cost = ZERO
+                else:
+                    if remaining_value < ZERO:
+                        raise HTTPException(status_code=409, detail=f"Return would make inventory value negative for product {receipt_item.product_id}")
+                    inventory.quantity = new_qty
+                    inventory.average_cost = remaining_value / new_qty
+                db.add(cls._movement(receipt, receipt_item, "OUT", "GOODS_RECEIPT_RETURN"))
+
             if purchase_order and receipt_item.purchase_order_item_id:
-                po_item=db.query(PurchaseOrderItem).filter(PurchaseOrderItem.id==receipt_item.purchase_order_item_id).with_for_update().first()
-                po_item.received_quantity=max(Decimal("0"),Decimal(po_item.received_quantity or 0)-quantity)
+                po_item = db.query(PurchaseOrderItem).filter(PurchaseOrderItem.id == receipt_item.purchase_order_item_id).with_for_update().first()
+                if not po_item:
+                    raise HTTPException(status_code=409, detail=f"PO item for receipt line {receipt_item.id} no longer exists")
+                po_item.received_quantity = max(ZERO, Decimal(po_item.received_quantity or 0) - quantity)
+
         if purchase_order:
-            purchase_order.status="RECEIVED" if all(Decimal(item.received_quantity or 0)>=Decimal(item.quantity) for item in purchase_order.items) else "PARTIALLY_RECEIVED" if any(Decimal(item.received_quantity or 0)>0 for item in purchase_order.items) else "APPROVED"
-        receipt.status="RETURNED"
-        ActivityService.log(db=db,user=user,action="RETURN",entity_type="GOODS_RECEIPT",entity_id=receipt.id,summary=f"Returned {receipt.receipt_number}",document_type="GR",document_number=receipt.receipt_number,document_status="RETURNED",reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT")
-        db.commit();db.refresh(receipt);return receipt
+            purchase_order.status = (
+                "RECEIVED"
+                if all(Decimal(item.received_quantity or 0) >= Decimal(item.quantity) for item in purchase_order.items)
+                else "PARTIALLY_RECEIVED"
+                if any(Decimal(item.received_quantity or 0) > 0 for item in purchase_order.items)
+                else "APPROVED"
+            )
+        receipt.status = "RETURNED"
+        ActivityService.log(
+            db=db,
+            user=user,
+            action="RETURN",
+            entity_type="GOODS_RECEIPT",
+            entity_id=receipt.id,
+            summary=f"Returned {receipt.receipt_number}",
+            document_type="GR",
+            document_number=receipt.receipt_number,
+            document_status="RETURNED",
+            reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT",
+        )
+        db.commit()
+        db.refresh(receipt)
+        return receipt
