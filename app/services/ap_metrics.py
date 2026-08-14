@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.journal_entry import JournalEntry
 from app.models.supplier_invoice import SupplierInvoice
+from app.services.payable_balance import invoice_balance
 
 ZERO = Decimal("0")
-# Compatibility for paid-history consumers; open AP itself is journal-derived below.
 OPEN_AP_STATUSES = ("POSTED",)
 
 
@@ -27,7 +27,6 @@ def open_invoice_query(
             & (JournalEntry.status == "POSTED"),
         )
         .options(joinedload(SupplierInvoice.supplier))
-        .filter(SupplierInvoice.balance_amount > 0)
         .distinct()
     )
     if business_unit_id:
@@ -47,12 +46,13 @@ def ap_metrics(
     location_id: int | None = None,
     department_id: int | None = None,
 ):
-    invoices = open_invoice_query(
+    candidates = open_invoice_query(
         db,
         business_unit_id=business_unit_id,
         location_id=location_id,
         department_id=department_id,
     ).all()
+    invoices = [invoice for invoice in candidates if invoice_balance(invoice) > ZERO]
 
     result = {
         "total_outstanding_ap": ZERO,
@@ -69,11 +69,11 @@ def ap_metrics(
 
     urgent = []
     for invoice in invoices:
-        amount = Decimal(invoice.balance_amount or 0)
+        amount = invoice_balance(invoice)
         result["total_outstanding_ap"] += amount
-        if invoice.payment_status == "UNPAID":
+        if Decimal(invoice.paid_amount or 0) <= ZERO and Decimal(invoice.adjustment_amount or 0) <= ZERO:
             result["unpaid_invoice_count"] += 1
-        elif invoice.payment_status == "PARTIALLY_PAID":
+        else:
             result["partially_paid_invoice_count"] += 1
 
         if invoice.due_date:
@@ -96,7 +96,7 @@ def ap_metrics(
                     "due_date": invoice.due_date,
                     "outstanding_balance": amount,
                     "days_overdue": max((as_of_date - invoice.due_date).days, 0),
-                    "status": invoice.payment_status,
+                    "status": "UNPAID" if Decimal(invoice.paid_amount or 0) <= ZERO else "PARTIALLY_PAID",
                 })
 
     urgent.sort(key=lambda row: (row["due_date"], -row["outstanding_balance"]))
