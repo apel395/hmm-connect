@@ -33,14 +33,6 @@ def _normalized_role_name(value: str) -> str:
     return "_".join(part for part in "".join(character if character.isalnum() else " " for character in value.upper()).split() if part)
 
 
-def _administrator_role(db: Session) -> Role | None:
-    roles = db.query(Role).order_by(Role.id).all()
-    preferred = {"SYSTEM_ADMINISTRATOR", "ERP_ADMINISTRATOR", "SUPER_ADMIN", "ADMINISTRATOR", "SYSTEM_ADMIN", "ERP_ADMIN", "ADMIN"}
-    for role in roles:
-        if _normalized_role_name(role.name) in preferred: return role
-    return next((role for role in roles if "ADMIN" in _normalized_role_name(role.name)), None)
-
-
 def _role_by_name(db: Session, name: str) -> Role | None:
     normalized = _normalized_role_name(name)
     return next((role for role in db.query(Role).order_by(Role.id).all() if _normalized_role_name(role.name) == normalized), None)
@@ -70,17 +62,24 @@ def _ensure_default_workflow(db: Session, *, workflow_code: str) -> ApprovalWork
         workflow = ApprovalWorkflow(code=workflow_code, name=_workflow_name(workflow_code), entity_type=entity_type, is_active=True)
         db.add(workflow); db.flush()
     if not workflow.steps or _is_legacy_generated_default(workflow):
-        configured_roles, missing_roles = [], []
+        configured_roles = []
+        missing_roles = []
         for order, step_name, role_name, _ in PURCHASING_ROLE_CHAIN:
             role = _role_by_name(db, role_name)
-            (configured_roles if role else missing_roles).append((order, step_name, role) if role else role_name)
+            if role:
+                configured_roles.append((order, step_name, role))
+            else:
+                missing_roles.append(role_name)
         if missing_roles:
-            administrator_role = _administrator_role(db)
-            if not administrator_role:
-                raise HTTPException(status_code=400, detail="Purchasing approval roles are not configured: " + ", ".join(missing_roles))
-            configured_roles = [(1, "Temporary Administrator Approval", administrator_role)]
+            raise HTTPException(
+                status_code=409,
+                detail="Purchasing approval workflow is incomplete. Configure these roles before submitting: " + ", ".join(missing_roles),
+            )
         workflow.steps.clear()
-        workflow.steps.extend(ApprovalWorkflowStep(step_order=order, name=step_name, approver_role_id=role.id) for order, step_name, role in configured_roles)
+        workflow.steps.extend(
+            ApprovalWorkflowStep(step_order=order, name=step_name, approver_role_id=role.id)
+            for order, step_name, role in configured_roles
+        )
         db.flush()
     return workflow
 
@@ -108,6 +107,9 @@ def start_approval(db: Session, *, entity_type: str, entity_id: int, workflow_co
     workflow = _ensure_default_workflow(db, workflow_code=workflow_code)
     if not workflow or not workflow.steps: raise HTTPException(status_code=400, detail=f"Active approval workflow {workflow_code!r} is not configured")
     entity_location = _entity_location(db, entity_type, entity_id)
+    local_steps = [step for step in workflow.steps if _is_local_purchasing_role(step.approver_role.name)]
+    if local_steps and entity_location is None:
+        raise HTTPException(status_code=409, detail="Location is required before starting the purchasing approval workflow")
     first_order = min(step.step_order for step in workflow.steps)
     request = ApprovalRequest(workflow_id=workflow.id, entity_type=entity_type, entity_id=entity_id, status="PENDING", current_step_order=first_order, created_by_id=user.id)
     for step in workflow.steps:
