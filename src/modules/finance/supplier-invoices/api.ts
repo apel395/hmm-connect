@@ -40,7 +40,9 @@ export type ThreeWayMatchLine = {
   price_difference?: number | null;
   is_taxable?: boolean;
   tax_rate?: number;
-  source_tax_rate?: number | null;
+  tax_amount?: number;
+  reference_taxable?: boolean | null;
+  reference_tax_rate?: number | null;
   uom?: string | null;
   reference_uom?: string | null;
   status: "MATCHED" | "MISMATCH";
@@ -111,7 +113,6 @@ export type InvoicePayload = {
   location_id?: number | null;
   currency: string;
   discount_amount: number;
-  tax_amount?: number;
   withholding_tax_amount: number;
   tax_invoice_number?: string | null;
   tax_invoice_date?: string | null;
