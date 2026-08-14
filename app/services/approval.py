@@ -3,10 +3,20 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.dependencies.authorization import is_superuser, role_names
 from app.models.approval_request import ApprovalRequest, ApprovalRequestStep
 from app.models.approval_workflow import ApprovalWorkflow, ApprovalWorkflowStep
 from app.models.role import Role
-from app.dependencies.authorization import is_superuser, role_names
+
+
+PURCHASING_ROLE_CHAIN = (
+    (1, "Store Approval", "STORE", True),
+    (2, "Chef Approval", "CHEF", True),
+    (3, "PM / Camp Boss Approval", "PM/CAMP BOSS", True),
+    (4, "Head Office Purchasing Approval", "HO PURCHASING", False),
+    (5, "Head Office Approval 1", "HO APPROVER 1", False),
+    (6, "Head Office Approval 2", "HO APPROVER 2", False),
+)
 
 
 def get_request(db: Session, entity_type: str, entity_id: int):
@@ -21,11 +31,6 @@ def get_request(db: Session, entity_type: str, entity_id: int):
 
 
 def reset_approval(db: Session, entity_type: str, entity_id: int) -> None:
-    """Remove the completed/pending approval instance before an admin reopens a document.
-
-    Workflow configuration is preserved. The next submit creates a fresh approval request,
-    while the document audit log remains the permanent history of the reopen event.
-    """
     request = get_request(db, entity_type, entity_id)
     if request:
         db.delete(request)
@@ -58,10 +63,35 @@ def _administrator_role(db: Session) -> Role | None:
     return None
 
 
-def _is_generated_default(workflow: ApprovalWorkflow) -> bool:
-    expected_names = {"PURCHASE REQUISITION APPROVAL", "PURCHASE ORDER APPROVAL"}
-    if workflow.name.strip().upper() not in expected_names:
+def _role_by_name(db: Session, name: str) -> Role | None:
+    normalized = _normalized_role_name(name)
+    return next(
+        (role for role in db.query(Role).order_by(Role.id).all() if _normalized_role_name(role.name) == normalized),
+        None,
+    )
+
+
+def _workflow_entity_type(workflow_code: str) -> str | None:
+    return {
+        "PR_APPROVAL": "PURCHASE_REQUISITION",
+        "PO_APPROVAL": "PURCHASE_ORDER",
+        "RR_APPROVAL": "GOODS_RECEIPT",
+    }.get(workflow_code)
+
+
+def _workflow_name(workflow_code: str) -> str:
+    return {
+        "PR_APPROVAL": "Purchase Requisition Approval",
+        "PO_APPROVAL": "Purchase Order Approval",
+        "RR_APPROVAL": "Receiving Report Approval",
+    }[workflow_code]
+
+
+def _is_legacy_generated_default(workflow: ApprovalWorkflow) -> bool:
+    if workflow.code not in {"PR_APPROVAL", "PO_APPROVAL", "RR_APPROVAL"}:
         return False
+    if not workflow.steps:
+        return True
     return all(
         "ADMIN" in _normalized_role_name(step.approver_role.name)
         or "ADMINISTRATOR" in _normalized_role_name(step.approver_role.name)
@@ -70,42 +100,87 @@ def _is_generated_default(workflow: ApprovalWorkflow) -> bool:
 
 
 def _ensure_default_workflow(db: Session, *, workflow_code: str) -> ApprovalWorkflow | None:
-    entity_by_code = {
-        "PR_APPROVAL": "PURCHASE_REQUISITION",
-        "PO_APPROVAL": "PURCHASE_ORDER",
-    }
-    entity_type = entity_by_code.get(workflow_code)
+    entity_type = _workflow_entity_type(workflow_code)
     if not entity_type:
         return None
 
     workflow = db.query(ApprovalWorkflow).filter(ApprovalWorkflow.code == workflow_code).first()
-    if workflow and workflow.is_active and workflow.steps:
-        return workflow
     if workflow and not workflow.is_active:
-        return None
-
-    administrator_role = _administrator_role(db)
-    if not administrator_role:
         return None
 
     if not workflow:
         workflow = ApprovalWorkflow(
             code=workflow_code,
-            name=("Purchase Requisition Approval" if workflow_code == "PR_APPROVAL" else "Purchase Order Approval"),
+            name=_workflow_name(workflow_code),
             entity_type=entity_type,
             is_active=True,
         )
         db.add(workflow)
         db.flush()
 
-    if not workflow.steps or _is_generated_default(workflow):
+    # Administrators may replace these defaults from the workflow configuration UI.
+    # Only bootstrap/legacy generated workflows are rewritten automatically.
+    if not workflow.steps or _is_legacy_generated_default(workflow):
+        configured_roles = []
+        missing_roles = []
+        for order, step_name, role_name, _local_scope in PURCHASING_ROLE_CHAIN:
+            role = _role_by_name(db, role_name)
+            if role:
+                configured_roles.append((order, step_name, role))
+            else:
+                missing_roles.append(role_name)
+
+        if missing_roles:
+            administrator_role = _administrator_role(db)
+            if not administrator_role:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Purchasing approval roles are not configured: "
+                        + ", ".join(missing_roles)
+                    ),
+                )
+            # Backward-compatible bootstrap for databases that have not yet run the role seed migration.
+            configured_roles = [
+                (1, "Temporary Administrator Approval", administrator_role),
+            ]
+
         workflow.steps.clear()
-        workflow.steps.extend([
-            ApprovalWorkflowStep(step_order=1, name="Approval Level 1", approver_role_id=administrator_role.id),
-            ApprovalWorkflowStep(step_order=2, name="Approval Level 2", approver_role_id=administrator_role.id),
-        ])
+        workflow.steps.extend(
+            ApprovalWorkflowStep(
+                step_order=order,
+                name=step_name,
+                approver_role_id=role.id,
+            )
+            for order, step_name, role in configured_roles
+        )
         db.flush()
+
     return workflow
+
+
+def _entity_location(db: Session, entity_type: str, entity_id: int):
+    if entity_type == "PURCHASE_REQUISITION":
+        from app.models.purchase_requisition import PurchaseRequisition
+        entity = db.get(PurchaseRequisition, entity_id)
+    elif entity_type == "PURCHASE_ORDER":
+        from app.models.purchase_order import PurchaseOrder
+        entity = db.get(PurchaseOrder, entity_id)
+    elif entity_type == "GOODS_RECEIPT":
+        from app.models.goods_receipt import GoodsReceipt
+        entity = db.get(GoodsReceipt, entity_id)
+    else:
+        entity = None
+    return getattr(entity, "location", None) if entity else None
+
+
+def _is_local_purchasing_role(role_name: str) -> bool:
+    normalized = _normalized_role_name(role_name)
+    return normalized in {
+        _normalized_role_name("STORE"),
+        _normalized_role_name("CHEF"),
+        _normalized_role_name("PM/CAMP BOSS"),
+    }
 
 
 def start_approval(db: Session, *, entity_type: str, entity_id: int, workflow_code: str, user) -> ApprovalRequest:
@@ -116,6 +191,7 @@ def start_approval(db: Session, *, entity_type: str, entity_id: int, workflow_co
     if not workflow or not workflow.steps:
         raise HTTPException(status_code=400, detail=f"Active approval workflow {workflow_code!r} is not configured")
 
+    entity_location = _entity_location(db, entity_type, entity_id)
     first_order = min(step.step_order for step in workflow.steps)
     request = ApprovalRequest(
         workflow_id=workflow.id,
@@ -126,12 +202,15 @@ def start_approval(db: Session, *, entity_type: str, entity_id: int, workflow_co
         created_by_id=user.id,
     )
     for step in workflow.steps:
+        location_name = step.location.name if step.location else None
+        if not location_name and entity_location and _is_local_purchasing_role(step.approver_role.name):
+            location_name = entity_location.name
         request.steps.append(ApprovalRequestStep(
             step_order=step.step_order,
             name=step.name,
             approver_role_name=step.approver_role.name,
             department_name=step.department.name if step.department else None,
-            location_name=step.location.name if step.location else None,
+            location_name=location_name,
             status="PENDING" if step.step_order == first_order else "WAITING",
         ))
     db.add(request)
