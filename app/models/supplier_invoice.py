@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, event
 from sqlalchemy.orm import Mapped, Session as OrmSession, mapped_column, relationship
 
@@ -76,6 +77,7 @@ def _sync_supplier_invoice_balance(session, _flush_context, _instances):
     for invoice in candidates:
         if not isinstance(invoice, SupplierInvoice):
             continue
+
         total = Decimal(invoice.total_amount or 0)
         paid = Decimal(invoice.paid_amount or 0)
         adjustments = Decimal(invoice.adjustment_amount or 0)
@@ -87,3 +89,16 @@ def _sync_supplier_invoice_balance(session, _flush_context, _instances):
             invoice.payment_status = "PARTIALLY_PAID"
         else:
             invoice.payment_status = "UNPAID"
+
+        if str(invoice.status or "").upper() == "VERIFIED" and Decimal(invoice.tax_amount or 0) > 0:
+            supplier = invoice.supplier
+            if supplier and not supplier.is_pkp:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Supplier invoice contains PPN but supplier is not marked as PKP",
+                )
+            if not invoice.tax_invoice_number or not invoice.tax_invoice_date:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Tax invoice number and tax invoice date are required before verifying an invoice with PPN",
+                )
