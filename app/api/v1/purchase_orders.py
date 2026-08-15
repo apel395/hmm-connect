@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
@@ -11,6 +12,7 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.department import Department
 from app.models.location import Location
 from app.models.product import Product
+from app.models.supplier import Supplier
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.purchase_order import PurchaseOrderCreate
 from app.services.purchase_order_service import PurchaseOrderService
@@ -26,6 +28,13 @@ HISTORY_STATUSES = {"RECEIVED", "CLOSED", "REJECTED", "CANCELLED", "EXPIRED"}
 
 def approval_state(db: Session, purchase_order: PurchaseOrder):
     request = db.query(ApprovalRequest).filter(ApprovalRequest.entity_type == "PURCHASE_ORDER", ApprovalRequest.entity_id == purchase_order.id).first()
+    if not request:
+        return None, None
+    current_step = next((step for step in request.steps if step.step_order == request.current_step_order), None)
+    return request.status, current_step.approver_role_name if current_step else None
+
+
+def approval_state_from_request(request: ApprovalRequest | None):
     if not request:
         return None, None
     current_step = next((step for step in request.steps if step.step_order == request.current_step_order), None)
@@ -60,6 +69,37 @@ def _apply_tax(db: Session, purchase_order: PurchaseOrder, data: PurchaseOrderCr
     db.commit()
     db.refresh(purchase_order)
     return purchase_order
+
+
+def _source_requisitions(purchase_order: PurchaseOrder):
+    return purchase_order.source_purchase_requisitions
+
+
+def serialize_purchase_order_summary(purchase_order: PurchaseOrder, approval_status=None, current_approver_role=None):
+    requisitions = _source_requisitions(purchase_order)
+    return {
+        "id": purchase_order.id,
+        "po_number": purchase_order.po_number,
+        "supplier_id": purchase_order.supplier_id,
+        "supplier_name": purchase_order.supplier.name if purchase_order.supplier else None,
+        "business_unit_id": purchase_order.business_unit_id,
+        "business_unit_name": purchase_order.business_unit.name if purchase_order.business_unit else None,
+        "department_id": purchase_order.department_id,
+        "department_name": purchase_order.department.name if purchase_order.department else None,
+        "location_id": purchase_order.location_id,
+        "location_name": purchase_order.location.name if purchase_order.location else None,
+        "purchase_requisition_ids": [item.id for item in requisitions],
+        "source_pr_id": requisitions[0].id if requisitions else None,
+        "source_pr_number": requisitions[0].pr_number if requisitions else None,
+        "creation_type": "FROM_PR" if requisitions else "DIRECT",
+        "status": purchase_order.status,
+        "approval_status": approval_status,
+        "current_approver_role": current_approver_role,
+        "order_date": purchase_order.order_date,
+        "expected_date": purchase_order.expected_date,
+        "expiry_date": purchase_order.expiry_date,
+        "total_amount": purchase_order.total_amount,
+    }
 
 
 def serialize_purchase_order(purchase_order: PurchaseOrder, approval_status=None, current_approver_role=None):
@@ -122,18 +162,70 @@ def purchase_order_result(db: Session, purchase_order: PurchaseOrder, user):
 
 
 @router.get("")
-def list_purchase_orders(status: str | None = None, scope: str = Query(default="all", pattern="^(active|history|all)$"), page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
-    query = db.query(PurchaseOrder)
+def list_purchase_orders(
+    status: str | None = None,
+    scope: str = Query(default="all", pattern="^(active|history|all)$"),
+    search: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    base_query = db.query(PurchaseOrder).outerjoin(Supplier, Supplier.id == PurchaseOrder.supplier_id)
+    if scope == "active":
+        base_query = base_query.filter(PurchaseOrder.status.in_(ACTIVE_STATUSES))
+    elif scope == "history":
+        base_query = base_query.filter(PurchaseOrder.status.in_(HISTORY_STATUSES))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        base_query = base_query.filter(or_(
+            PurchaseOrder.po_number.ilike(term),
+            PurchaseOrder.external_reference.ilike(term),
+            Supplier.name.ilike(term),
+        ))
+
+    status_rows = base_query.with_entities(PurchaseOrder.status, func.count(PurchaseOrder.id)).group_by(PurchaseOrder.status).all()
+    summary = {key: 0 for key in ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED", "RECEIVED", "REJECTED"]}
+    summary.update({key: int(value) for key, value in status_rows})
+
+    query = base_query
     if status:
         query = query.filter(PurchaseOrder.status == status.upper())
-    elif scope == "active":
-        query = query.filter(PurchaseOrder.status.in_(ACTIVE_STATUSES))
-    elif scope == "history":
-        query = query.filter(PurchaseOrder.status.in_(HISTORY_STATUSES))
     total_items = query.count()
     total_pages = (total_items + page_size - 1) // page_size
-    orders = query.options(selectinload(PurchaseOrder.supplier), selectinload(PurchaseOrder.business_unit), selectinload(PurchaseOrder.department), selectinload(PurchaseOrder.location), selectinload(PurchaseOrder.purchase_requisitions), selectinload(PurchaseOrder.purchase_requisition), selectinload(PurchaseOrder.items)).order_by(PurchaseOrder.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
-    return {"items": [serialize_purchase_order(item, *approval_state(db, item)) for item in orders], "page": page, "page_size": page_size, "total_items": total_items, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
+    orders = (
+        query.options(
+            selectinload(PurchaseOrder.supplier),
+            selectinload(PurchaseOrder.business_unit),
+            selectinload(PurchaseOrder.department),
+            selectinload(PurchaseOrder.location),
+            selectinload(PurchaseOrder.purchase_requisitions),
+            selectinload(PurchaseOrder.purchase_requisition),
+        )
+        .order_by(PurchaseOrder.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    order_ids = [item.id for item in orders]
+    approvals = (
+        db.query(ApprovalRequest)
+        .options(selectinload(ApprovalRequest.steps))
+        .filter(ApprovalRequest.entity_type == "PURCHASE_ORDER", ApprovalRequest.entity_id.in_(order_ids))
+        .all()
+        if order_ids else []
+    )
+    approval_map = {item.entity_id: item for item in approvals}
+    return {
+        "items": [serialize_purchase_order_summary(item, *approval_state_from_request(approval_map.get(item.id))) for item in orders],
+        "page": page,
+        "page_size": page_size,
+        "total_items": total_items,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+        "summary": summary,
+    }
 
 
 @router.get("/form-options")
