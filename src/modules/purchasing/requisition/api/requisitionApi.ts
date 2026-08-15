@@ -1,7 +1,15 @@
 import api from "@/api/client";
 
+export type RequisitionListParams = {
+  scope?: "active" | "history" | "all";
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: string;
+};
+
 export const requisitionApi = {
-  list: (scope = "active") => api.get("/purchase-requisitions", { params: { scope } }),
+  list: (params: RequisitionListParams = {}) => api.get("/purchase-requisitions", { params }),
   detail: (id: number) => api.get(`/purchase-requisitions/${id}`),
   create: (payload: any) => api.post("/purchase-requisitions", payload),
   update: (id: number, payload: any) => api.put(`/purchase-requisitions/${id}`, payload),
