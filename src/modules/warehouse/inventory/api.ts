@@ -1,17 +1,13 @@
 import api from "@/api/client";
 
-export const inventoryApi={
+export type InventoryListParams = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  warehouse_id?: number;
+};
 
-list:()=>
-
-api.get("/inventory"),
-
-detail:(id:number)=>
-
-api.get(`/inventory/${id}`),
-
-movement:(id:number)=>
-
-api.get(`/inventory/${id}/movements`),
-
+export const inventoryApi = {
+  list: (params: InventoryListParams = {}) => api.get("/inventory", { params }),
+  detail: (id: number) => api.get(`/inventory/${id}`),
 };
