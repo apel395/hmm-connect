@@ -43,7 +43,6 @@ export default function ApprovalSummary({ approval }: Props) {
           {(step.comment || step.decision_comment) && <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm text-slate-700">{step.comment || step.decision_comment}</div>}
         </div>
       })}
-      <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">Administrator/superuser may execute approval stages during testing. Ordinary users remain restricted by role and location.</div>
     </div>
   </Card>;
 }
