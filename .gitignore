@@ -8,7 +8,9 @@ __pycache__/
 venv/
 env/
 
+.env
 .env.*
+!.env.production.example
 .pytest_cache/
 .mypy_cache/
 .coverage
