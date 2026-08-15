@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from math import ceil
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -11,29 +13,63 @@ from app.schemas.product import ProductCreate, ProductUpdate
 router = APIRouter(prefix="/products", tags=["Products"])
 
 
+def _apply_filters(query, *, active_only: bool, search: str | None):
+    if active_only:
+        query = query.filter(Product.is_active.is_(True))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
+    return query
+
+
 @router.get("")
 def list_products(
-    response: Response,
     active_only: bool = True,
     search: str | None = Query(default=None, max_length=100),
-    page: int | None = Query(default=None, ge=1),
-    page_size: int = Query(default=25, ge=1, le=250),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = db.query(Product)
-    if active_only:
-        query = query.filter(Product.is_active.is_(True))
-    if search:
-        term = f"%{search.strip()}%"
-        query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
-
+    query = _apply_filters(db.query(Product), active_only=active_only, search=search)
     total = query.count()
-    response.headers["X-Total-Count"] = str(total)
-    query = query.order_by(Product.code)
-    if page is not None:
-        query = query.offset((page - 1) * page_size).limit(page_size)
-    return query.all()
+    rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
+    total_pages = ceil(total / page_size) if total else 0
+    return {
+        "items": rows,
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+    }
+
+
+@router.get("/lookup")
+def lookup_products(
+    search: str = Query(default="", max_length=100),
+    limit: int = Query(default=30, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    query = _apply_filters(db.query(Product), active_only=True, search=search)
+    rows = query.order_by(Product.name, Product.code).limit(limit).all()
+    return [
+        {
+            "id": row.id,
+            "code": row.code,
+            "name": row.name,
+            "description": row.description,
+            "uom": row.uom,
+            "usage_uom": row.usage_uom,
+            "conversion_factor": row.conversion_factor,
+            "tax_category": row.tax_category,
+            "is_taxable": row.is_taxable,
+            "tax_rate": row.tax_rate,
+        }
+        for row in rows
+    ]
 
 
 @router.post("", status_code=201)
