@@ -191,7 +191,7 @@ def test_historical_inputs_retain_business_dates_and_references():
         received_at=receipt_time,
         source_type="HISTORICAL_IMPORT",
         external_reference="LEGACY-GR-7",
-        items=[],
+        items=[{"purchase_order_item_id": 1, "quantity": 1}],
     )
     assert (pr.request_date, pr.external_reference) == (
         date(2020, 1, 2),

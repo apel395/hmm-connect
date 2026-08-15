@@ -12,7 +12,7 @@ import argparse
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect
+from sqlalchemy import Column, MetaData, String, Table, inspect
 
 from app.core.database import engine
 from app.models import Base
@@ -68,6 +68,11 @@ def main() -> None:
         )
 
     print("Stamping database at the current Alembic head...")
+    Table(
+        "alembic_version",
+        MetaData(),
+        Column("version_num", String(255), primary_key=True),
+    ).create(bind=engine, checkfirst=True)
     command.stamp(Config("alembic.ini"), "head")
 
     final_tables = set(inspect(engine).get_table_names(schema="public"))

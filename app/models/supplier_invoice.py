@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, event
+from fastapi import HTTPException
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, event
 from sqlalchemy.orm import Mapped, Session as OrmSession, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -16,6 +17,8 @@ class SupplierInvoice(Base, TimestampMixin):
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     received_date: Mapped[date | None] = mapped_column(Date)
     due_date: Mapped[date | None] = mapped_column(Date, index=True)
+    tax_invoice_number: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    tax_invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     purchase_order_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id", ondelete="SET NULL"), index=True)
     goods_receipt_id: Mapped[int | None] = mapped_column(ForeignKey("goods_receipts.id", ondelete="SET NULL"), index=True)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
@@ -59,6 +62,9 @@ class SupplierInvoiceLine(Base):
     uom: Mapped[str | None] = mapped_column(String(20))
     unit_price: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
     line_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), nullable=False)
+    is_taxable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5,2), default=0, nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Numeric(18,2), default=0, nullable=False)
     account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"))
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
     notes: Mapped[str | None] = mapped_column(Text)
@@ -67,11 +73,11 @@ class SupplierInvoiceLine(Base):
 
 @event.listens_for(OrmSession, "before_flush")
 def _sync_supplier_invoice_balance(session, _flush_context, _instances):
-    """Keep AP balance fields authoritative across payments, notes, edits, and imports."""
     candidates = set(session.new).union(session.dirty)
     for invoice in candidates:
         if not isinstance(invoice, SupplierInvoice):
             continue
+
         total = Decimal(invoice.total_amount or 0)
         paid = Decimal(invoice.paid_amount or 0)
         adjustments = Decimal(invoice.adjustment_amount or 0)
@@ -83,3 +89,16 @@ def _sync_supplier_invoice_balance(session, _flush_context, _instances):
             invoice.payment_status = "PARTIALLY_PAID"
         else:
             invoice.payment_status = "UNPAID"
+
+        if str(invoice.status or "").upper() == "VERIFIED" and Decimal(invoice.tax_amount or 0) > 0:
+            supplier = invoice.supplier
+            if supplier and not supplier.is_pkp:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Supplier invoice contains PPN but supplier is not marked as PKP",
+                )
+            if not invoice.tax_invoice_number or not invoice.tax_invoice_date:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Tax invoice number and tax invoice date are required before verifying an invoice with PPN",
+                )

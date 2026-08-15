@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -22,6 +22,9 @@ class GoodsReceipt(Base):
     business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True, index=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -50,6 +53,9 @@ class GoodsReceiptItem(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    is_taxable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, nullable=False)
+    tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
 
     goods_receipt = relationship("GoodsReceipt", back_populates="items")
     purchase_order_item = relationship("PurchaseOrderItem", back_populates="goods_receipt_items")

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric
+from sqlalchemy import Boolean, ForeignKey, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -38,6 +38,24 @@ class PurchaseRequisitionItem(Base):
 
     total_price: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),
+        nullable=False,
+    )
+
+    is_taxable: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    tax_rate: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        default=0,
+        nullable=False,
+    )
+
+    tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2),
+        default=0,
         nullable=False,
     )
 

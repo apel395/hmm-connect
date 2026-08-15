@@ -7,6 +7,7 @@ from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.approval_request import ApprovalRequest, ApprovalRequestStep
 from app.models.approval_workflow import ApprovalWorkflow, ApprovalWorkflowStep
 from app.models.audit_log import AuditLog
+from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
 from app.models.customer import Customer
 from app.models.customer_payment import CustomerPayment

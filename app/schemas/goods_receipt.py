@@ -10,6 +10,14 @@ class GoodsReceiptItemCreate(BaseModel):
     product_id: int | None = None
     quantity: Decimal = Field(gt=0)
     unit_cost: Decimal | None = Field(default=None, gt=0)
+    is_taxable: bool = False
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_tax(self):
+        if not self.is_taxable:
+            self.tax_rate = Decimal("0")
+        return self
 
 
 class GoodsReceiptCreate(BaseModel):

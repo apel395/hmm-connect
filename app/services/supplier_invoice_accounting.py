@@ -2,9 +2,11 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.models.account_payable import AccountPayable
 from app.models.journal_entry import JournalEntry
 from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier_invoice import SupplierInvoice
+from app.services.payable_balance import invoice_balance
 
 ZERO = Decimal("0")
 
@@ -33,8 +35,6 @@ def posting_status(db: Session, invoice_id: int) -> str:
 
 
 def document_status(invoice: SupplierInvoice) -> str:
-    # Legacy SupplierInvoice.status used POSTED as both a document and accounting state.
-    # The normalized API keeps verification separate; posting_status owns accounting state.
     return "VERIFIED" if invoice.status == "POSTED" else invoice.status
 
 
@@ -64,10 +64,23 @@ def posted_payment_total(db: Session, invoice_id: int) -> Decimal:
     return sum((Decimal(amount or 0) for (amount,) in rows), ZERO)
 
 
+def payable_mirror(db: Session, invoice: SupplierInvoice) -> AccountPayable | None:
+    return (
+        db.query(AccountPayable)
+        .filter(
+            AccountPayable.supplier_id == invoice.supplier_id,
+            AccountPayable.invoice_number == invoice.internal_invoice_number,
+        )
+        .first()
+    )
+
+
 def accounting_state(db: Session, invoice: SupplierInvoice) -> dict:
     posting = posting_status(db, invoice.id)
     document = document_status(invoice)
     posted_payments = posted_payment_total(db, invoice.id)
+    authoritative_balance = invoice_balance(invoice)
+    payable = payable_mirror(db, invoice)
     exceptions: list[str] = []
 
     if posted_payments > ZERO and posting != "POSTED":
@@ -76,13 +89,33 @@ def accounting_state(db: Session, invoice: SupplierInvoice) -> dict:
         exceptions.append("DOCUMENT_POSTED_WITHOUT_POSTED_JOURNAL")
     if posting == "POSTED" and document in {"DRAFT", "REJECTED", "VOID"}:
         exceptions.append("POSTED_JOURNAL_WITH_INVALID_DOCUMENT_STATE")
+    if Decimal(invoice.balance_amount or 0) != authoritative_balance:
+        exceptions.append("INVOICE_BALANCE_DRIFT")
+    if Decimal(invoice.paid_amount or 0) != posted_payments:
+        exceptions.append("INVOICE_PAID_AMOUNT_DIFFERS_FROM_POSTED_PAYMENTS")
+
+    if document in {"VERIFIED"} or posting == "POSTED":
+        if payable is None:
+            exceptions.append("ACCOUNT_PAYABLE_MIRROR_MISSING")
+        else:
+            if Decimal(payable.amount or 0) != Decimal(invoice.total_amount or 0):
+                exceptions.append("AP_TOTAL_MISMATCH")
+            if Decimal(payable.paid_amount or 0) != Decimal(invoice.paid_amount or 0):
+                exceptions.append("AP_PAID_MISMATCH")
+            if Decimal(payable.outstanding_amount or 0) != authoritative_balance:
+                exceptions.append("AP_OUTSTANDING_MISMATCH")
+            if payable.payment_status != invoice.payment_status:
+                exceptions.append("AP_PAYMENT_STATUS_MISMATCH")
 
     return {
         "document_status": document,
         "posting_status": posting,
         "payment_status": invoice.payment_status,
-        "balance_amount": Decimal(invoice.balance_amount or 0),
+        "balance_amount": authoritative_balance,
+        "stored_balance_amount": Decimal(invoice.balance_amount or 0),
         "posted_payment_amount": posted_payments,
+        "ap_mirror_id": payable.id if payable else None,
+        "ap_outstanding_amount": Decimal(payable.outstanding_amount or 0) if payable else None,
         "accounting_exception": bool(exceptions),
         "accounting_exception_codes": exceptions,
     }
