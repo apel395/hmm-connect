@@ -19,6 +19,7 @@ export function usePurchasingDocuments(filters: PurchasingDocumentFilters) {
   return useQuery({
     queryKey: purchasingDocumentKeys.list(filters),
     queryFn: async () => (await purchasingDocumentApi.list(filters)).data,
+    placeholderData: (previous) => previous,
   });
 }
 
