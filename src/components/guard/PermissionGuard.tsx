@@ -1,19 +1,13 @@
 import { Navigate } from "react-router-dom";
+import useAuthStore from "@/store/auth";
+import { isSuperuser } from "@/lib/access";
 
-export default function PermissionGuard({
+export default function PermissionGuard({ allow, children }: any) {
+  const user = useAuthStore((state) => state.user);
 
-allow,
+  if (!isSuperuser(user) && !allow) {
+    return <Navigate to="/403" replace />;
+  }
 
-children,
-
-}:any){
-
-if(!allow){
-
-return<Navigate to="/403" replace/>;
-
-}
-
-return children;
-
+  return children;
 }
