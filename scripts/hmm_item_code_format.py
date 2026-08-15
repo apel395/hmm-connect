@@ -42,6 +42,7 @@ ITEM_CLASSES = {
     "4-5": ItemClass("4", "ASSET", "4-5", "VEHICLE"),
 }
 
+# Order matters: specific classes precede general grocery/consumable terms.
 KEYWORDS = {
     "2-6": ("VODKA",),
     "2-4": ("WINE", "MERLOT", "CABERNET", "CHARDONNAY"),
@@ -50,14 +51,13 @@ KEYWORDS = {
     "2-1": ("MINERAL WATER", "AQUA", "LE MINERALE", "AIR MINERAL"),
     "2-2": ("COCA COLA", "FANTA", "SPRITE", "SODA", "SOFT DRINK", "TONIC WATER"),
     "1-4": ("UDANG", "SHRIMP", "CUMI", "SQUID", "KEPITING", "CRAB", "KERANG", "LOBSTER", "SEAFOOD"),
-    "1-3": ("IKAN", "FISH", "DORI", "TUNA", "SALMON", "KAKAP", "GURAME", "NILA", "PATIN", "LELE", "BANDENG"),
+    "1-3": ("IKAN", "FISH", "DORI", "TUNA", "SALMON", "KAKAP", "GURAME", "NILA", "PATIN", "LELE", "BANDENG", "TERI", "EBI"),
     "1-2": ("AYAM", "CHICKEN", "BEBEK", "DUCK"),
     "1-1": ("DAGING", "BEEF", "SAPI", "TENDERLOIN", "SIRLOIN", "KAMBING", "LAMB", "MUTTON"),
-    "1-5": ("BAYAM", "KANGKUNG", "SAWI", "PAKCOY", "WORTEL", "KUBIS", "KOL ", "BUNCIS", "KACANG PANJANG", "TAUGE", "TOGE", "TIMUN", "MENTIMUN", "TERONG", "LABU", "OYONG", "GAMBAS", "PARE", "BROKOLI", "SELADA", "LETTUCE", "PAPRIKA", "TOMAT", "KAILAN", "CAISIM", "PETSAI"),
+    "1-5": ("BAYAM", "KANGKUNG", "SAWI", "PAKCOY", "WORTEL", "KUBIS", "KOL ", "BUNCIS", "KACANG PANJANG", "TAUGE", "TOGE", "TIMUN", "MENTIMUN", "TERONG", "LABU", "OYONG", "GAMBAS", "PARE", "BROKOLI", "SELADA", "LETTUCE", "PAPRIKA", "TOMAT", "KAILAN", "CAISIM", "PETSAI", "LOBAK", "REbung", "JAGUNG MUDA"),
     "1-6": ("APEL", "APPLE", "JERUK", "ORANGE", "PISANG", "BANANA", "SEMANGKA", "WATERMELON", "MELON", "PEPAYA", "PAPAYA", "NANAS", "PINEAPPLE", "MANGGA", "MANGO", "ANGGUR", "GRAPE", "STRAWBERRY", "ALPUKAT", "AVOCADO"),
-    "1-7": ("BAWANG", "GARLIC", "ONION", "JAHE", "GINGER", "KUNYIT", "TURMERIC", "LENGKUAS", "SEREH", "SERAI", "DAUN SALAM", "DAUN JERUK", "KEMANGI", "SELEDRI", "CELERY", "MERICA", "PEPPER", "KETUMBAR", "CORIANDER"),
-    "1-9": ("SNACK", "KUE", "CAKE", "ROTI", "BREAD", "PASTRY", "LEMper", "PEYEK", "BISKUIT", "BISCUIT", "COOKIE", "DONAT", "DONUT"),
-    "1-8": ("BERAS", "RICE", "TEPUNG", "FLOUR", "GULA", "SUGAR", "GARAM", "SALT", "MINYAK", "OIL", "KECAP", "SAUCE", "SAUS", "SUSU", "MILK", "TELUR", "EGG", "MIE", "NOODLE", "MENTEGA", "BUTTER", "MARGARIN", "KEJU", "CHEESE", "KOPI", "COFFEE", "TEH", "TEA"),
+    "1-7": ("BAWANG", "GARLIC", "ONION", "JAHE", "GINGER", "KUNYIT", "TURMERIC", "LENGKUAS", "SEREH", "SERAI", "DAUN SALAM", "DAUN JERUK", "KEMANGI", "SELEDRI", "CELERY", "MERICA", "PEPPER", "KETUMBAR", "CORIANDER", "KAYU MANIS", "CINNAMON", "CENGKEH", "CLOVE", "PALA", "NUTMEG", "KAPULAGA", "CARDAMOM"),
+    "1-9": ("SNACK", "KUE", "CAKE", "ROTI", "BREAD", "PASTRY", "LEMPER", "PEYEK", "BISKUIT", "BISCUIT", "COOKIE", "DONAT", "DONUT"),
     "3-2": ("DETERGENT", "DETERJEN", "CLEANER", "PEMBERSIH", "DISINFECT", "SABUN CUCI", "BLEACH", "KARBOL", "PEWANGI", "CHEMICAL"),
     "3-1": ("TISSUE", "TISU", "TOILETRIES", "SHAMPOO", "TOOTHBRUSH", "PASTA GIGI", "SLIPPER", "AMENITIES", "NAPKIN"),
     "3-3": ("PRINT", "PRINTING", "TONER", "CARTRIDGE", "INK", "TINTA"),
@@ -69,6 +69,7 @@ KEYWORDS = {
     "4-2": ("MEJA", "TABLE", "KURSI", "CHAIR", "LEMARI", "CABINET", "SOFA", "BED ", "MATTRESS", "FURNITURE"),
     "4-3": ("MACHINE", "MESIN", "PUMP", "POMPA", "GENSET", "COMPRESSOR", "CHILLER", "FREEZER", "OVEN"),
     "4-1": ("BUILDING", "BANGUNAN", "RENOVASI", "RENOVATION", "PINTU", "DOOR", "JENDELA", "WINDOW", "ATAP", "ROOF", "KERAMIK", "TILE", "SEMEN", "CEMENT"),
+    "1-8": ("BERAS", "RICE", "TEPUNG", "FLOUR", "GULA", "SUGAR", "GARAM", "SALT", "MINYAK", "OIL", "KECAP", "SAUCE", "SAUS", "SUSU", "MILK", "TELUR", "EGG", "MIE", "NOODLE", "MENTEGA", "BUTTER", "MARGARIN", "KEJU", "CHEESE", "KOPI", "COFFEE", "TEH", "TEA", "SANTAN", "COCONUT MILK", "KACANG", "COKLAT", "CHOCOLATE"),
 }
 
 
@@ -88,12 +89,19 @@ def class_from_product(product) -> ItemClass | None:
     return None
 
 
-def infer_class(name: object) -> ItemClass | None:
+def infer_class(name: object) -> ItemClass:
+    """Return an XLS taxonomy class for every historical Purchasing item.
+
+    Historical PIM rows were inserted without their original taxonomy. We recover
+    the obvious subgroup from the item name. The remaining generic consumables
+    fall back to FOOD/GRESORIS (1-8), which is the XLS catch-all consumable class.
+    This deliberately eliminates the non-XLS PURCHASING/IMPORTED placeholder.
+    """
     value = f" {normalize(name)} "
     for subgroup_code, terms in KEYWORDS.items():
         if any(term.strip().upper() in value for term in terms):
             return ITEM_CLASSES[subgroup_code]
-    return None
+    return ITEM_CLASSES["1-8"]
 
 
 def allocate_code(item_class: ItemClass, occupied: set[str]) -> str:
