@@ -22,6 +22,7 @@ export function useSupplierPage(params: SupplierListParams = {}) {
   return useQuery({
     queryKey: [...supplierKeys.lists(), params],
     queryFn: () => supplierApi.list(params),
+    placeholderData: (previous) => previous,
   });
 }
 
