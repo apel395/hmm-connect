@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
+import Pagination from "@/components/datatable/Pagination";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -12,45 +13,35 @@ import Label from "@/components/ui/Label";
 import Loading from "@/components/ui/Loading";
 import { roleApi, type ManagedRole } from "./roleApi";
 
+const PAGE_SIZE = 20;
+
 export default function RolePage() {
   const qc = useQueryClient();
   const roles = useQuery({ queryKey: ["managed-roles"], queryFn: roleApi.list });
   const permissions = useQuery({ queryKey: ["managed-permissions"], queryFn: roleApi.permissions });
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<ManagedRole | null | "new">(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [permissionCodes, setPermissionCodes] = useState<string[]>([]);
 
-  const save = useMutation({
-    mutationFn: async () => {
-      const payload = { name: name.trim(), description: description.trim() || null, permission_codes: permissionCodes };
-      return editing === "new" ? roleApi.create(payload) : roleApi.update((editing as ManagedRole).id, payload);
-    },
-    onSuccess: () => { toast.success("Role saved."); setEditing(null); qc.invalidateQueries({ queryKey: ["managed-roles"] }); },
-    onError: (error: any) => toast.error(error?.response?.data?.detail || "Role could not be saved."),
-  });
-  const remove = useMutation({
-    mutationFn: roleApi.remove,
-    onSuccess: () => { toast.success("Role deleted."); qc.invalidateQueries({ queryKey: ["managed-roles"] }); },
-    onError: (error: any) => toast.error(error?.response?.data?.detail || "Role could not be deleted."),
-  });
+  const save = useMutation({ mutationFn: async () => { const payload = { name: name.trim(), description: description.trim() || null, permission_codes: permissionCodes }; return editing === "new" ? roleApi.create(payload) : roleApi.update((editing as ManagedRole).id, payload); }, onSuccess: () => { toast.success("Role saved."); setEditing(null); qc.invalidateQueries({ queryKey: ["managed-roles"] }); }, onError: (error: any) => toast.error(error?.response?.data?.detail || "Role could not be saved.") });
+  const remove = useMutation({ mutationFn: roleApi.remove, onSuccess: () => { toast.success("Role deleted."); qc.invalidateQueries({ queryKey: ["managed-roles"] }); }, onError: (error: any) => toast.error(error?.response?.data?.detail || "Role could not be deleted.") });
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return (roles.data ?? []).filter((role) => [role.name, role.description, ...role.permissions.map((item) => item.code)].filter(Boolean).join(" ").toLowerCase().includes(term));
-  }, [roles.data, search]);
+  const filtered = useMemo(() => { const term = search.trim().toLowerCase(); return (roles.data ?? []).filter((role) => [role.name, role.description, ...role.permissions.map((item) => item.code)].filter(Boolean).join(" ").toLowerCase().includes(term)); }, [roles.data, search]);
+  const pages = Math.max(Math.ceil(filtered.length / PAGE_SIZE), 1);
+  const visibleRoles = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
-  function openRole(role?: ManagedRole) {
-    if (role) { setEditing(role); setName(role.name); setDescription(role.description || ""); setPermissionCodes(role.permissions.map((item) => item.code)); }
-    else { setEditing("new"); setName(""); setDescription(""); setPermissionCodes([]); }
-  }
+  function openRole(role?: ManagedRole) { if (role) { setEditing(role); setName(role.name); setDescription(role.description || ""); setPermissionCodes(role.permissions.map((item) => item.code)); } else { setEditing("new"); setName(""); setDescription(""); setPermissionCodes([]); } }
 
   return <div className="space-y-6">
     <PageHeader title="Roles" description="Manage the eight core HMM-Connect roles and any additional custom roles." actions={<Button onClick={() => openRole()}><Plus size={16}/> Create Role</Button>}/>
     <Card>
       <div className="mb-5 relative max-w-md"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400"/><Input value={search} onChange={(event)=>setSearch(event.target.value)} className="pl-9" placeholder="Search roles or permissions..."/></div>
-      {roles.isLoading ? <div className="py-12"><Loading/></div> : roles.isError ? <p className="py-10 text-center text-sm text-red-600">Roles could not be loaded.</p> : filtered.length===0 ? <div className="py-12 text-center"><KeyRound className="mx-auto mb-2 h-8 w-8 text-slate-400"/><p className="text-sm text-slate-500">No roles found.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead className="border-b text-xs uppercase text-slate-500"><tr><th className="pb-3">Role</th><th className="pb-3">Description</th><th className="pb-3">Users</th><th className="pb-3">Permissions</th><th className="pb-3 text-right">Actions</th></tr></thead><tbody className="divide-y">{filtered.map((role)=><tr key={role.id}><td className="py-4 font-semibold">{role.name}</td><td className="py-4 text-slate-600">{role.description || "—"}</td><td className="py-4">{role.user_count}</td><td className="py-4"><div className="flex max-w-xl flex-wrap gap-1">{role.permissions.map((p)=><Badge key={p.code} variant="outline">{p.code}</Badge>)}</div></td><td className="py-4"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={()=>openRole(role)}><Pencil size={14}/> Edit</Button><Button size="sm" variant="danger" disabled={role.name==="SYSTEM_ADMINISTRATOR" || role.user_count>0} onClick={()=>{if(window.confirm(`Delete role ${role.name}?`)) remove.mutate(role.id)}}><Trash2 size={14}/> Delete</Button></div></td></tr>)}</tbody></table></div>}
+      {roles.isLoading ? <div className="py-12"><Loading/></div> : roles.isError ? <p className="py-10 text-center text-sm text-red-600">Roles could not be loaded.</p> : filtered.length===0 ? <div className="py-12 text-center"><KeyRound className="mx-auto mb-2 h-8 w-8 text-slate-400"/><p className="text-sm text-slate-500">No roles found.</p></div> : <><div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead className="border-b text-xs uppercase text-slate-500"><tr><th className="pb-3">Role</th><th className="pb-3">Description</th><th className="pb-3">Users</th><th className="pb-3">Permissions</th><th className="pb-3 text-right">Actions</th></tr></thead><tbody className="divide-y">{visibleRoles.map((role)=><tr key={role.id}><td className="py-4 font-semibold">{role.name}</td><td className="py-4 text-slate-600">{role.description || "—"}</td><td className="py-4">{role.user_count}</td><td className="py-4"><div className="flex max-w-xl flex-wrap gap-1">{role.permissions.map((p)=><Badge key={p.code} variant="outline">{p.code}</Badge>)}</div></td><td className="py-4"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={()=>openRole(role)}><Pencil size={14}/> Edit</Button><Button size="sm" variant="danger" disabled={role.name==="SYSTEM_ADMINISTRATOR" || role.user_count>0} onClick={()=>{if(window.confirm(`Delete role ${role.name}?`)) remove.mutate(role.id)}}><Trash2 size={14}/> Delete</Button></div></td></tr>)}</tbody></table></div><Pagination page={page} pages={pages} total={filtered.length} pageSize={PAGE_SIZE} noun="roles" onChange={setPage}/></>}
     </Card>
     <Dialog open={editing!==null} onOpenChange={(open)=>!open&&setEditing(null)}><DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>{editing==="new"?"Create Role":"Edit Role"}</DialogTitle></DialogHeader><DialogBody className="space-y-5"><div><Label required>Role Name</Label><Input value={name} onChange={(e)=>setName(e.target.value)} placeholder="e.g. PURCHASING"/></div><div><Label>Description</Label><Input value={description} onChange={(e)=>setDescription(e.target.value)}/></div><div><Label>Permissions</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{(permissions.data ?? []).map((permission)=><label key={permission.code} className="flex items-start gap-2 rounded border p-3 text-sm"><input type="checkbox" className="mt-1" checked={permissionCodes.includes(permission.code)} onChange={(event)=>setPermissionCodes((current)=>event.target.checked?[...current,permission.code]:current.filter((code)=>code!==permission.code))}/><span><span className="font-medium">{permission.code}</span>{permission.description&&<span className="block text-xs text-slate-500">{permission.description}</span>}</span></label>)}</div></div></DialogBody><DialogFooter><Button variant="outline" onClick={()=>setEditing(null)}>Cancel</Button><Button loading={save.isPending} disabled={!name.trim()} onClick={()=>save.mutate()}>Save Role</Button></DialogFooter></DialogContent></Dialog>
   </div>;
