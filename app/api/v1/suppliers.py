@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -11,8 +12,28 @@ router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 
 
 @router.get("")
-def list_suppliers(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(Supplier).order_by(Supplier.code).all()
+def list_suppliers(
+    response: Response,
+    search: str | None = Query(default=None, max_length=100),
+    is_active: bool | None = None,
+    page: int | None = Query(default=None, ge=1),
+    page_size: int = Query(default=25, ge=1, le=250),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    query = db.query(Supplier)
+    if is_active is not None:
+        query = query.filter(Supplier.is_active.is_(is_active))
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(Supplier.code.ilike(term), Supplier.name.ilike(term)))
+
+    total = query.count()
+    response.headers["X-Total-Count"] = str(total)
+    query = query.order_by(Supplier.code)
+    if page is not None:
+        query = query.offset((page - 1) * page_size).limit(page_size)
+    return query.all()
 
 
 @router.post("", status_code=201)
