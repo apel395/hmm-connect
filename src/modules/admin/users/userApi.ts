@@ -9,15 +9,19 @@ import type {
   UserRole,
 } from "./types";
 
-type UserListResponse = AdminUser[] | { items?: AdminUser[] } | { data?: AdminUser[] };
+export type UserListPage = {
+  items: AdminUser[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+};
 
 export const userApi = {
-  async list(): Promise<AdminUser[]> {
-    const response = await api.get<UserListResponse>("/users");
-    if (Array.isArray(response.data)) return response.data;
-    if ("items" in response.data && Array.isArray(response.data.items)) return response.data.items;
-    if ("data" in response.data && Array.isArray(response.data.data)) return response.data.data;
-    return [];
+  async list(params: { page?: number; page_size?: number; search?: string; is_active?: boolean } = {}): Promise<UserListPage> {
+    return (await api.get<UserListPage>("/users", { params })).data;
   },
   async create(data: UserCreatePayload): Promise<EditableUser> {
     return (await api.post<EditableUser>("/users", data)).data;
