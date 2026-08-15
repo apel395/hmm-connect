@@ -13,6 +13,10 @@ export function useProducts(params: ProductListParams = {}) {
       const res = await productApi.list(params);
       return res.data;
     },
+    // Keep the last successful page metadata while the next page is loading.
+    // Without this, ProductPage temporarily sees total_pages=1 and clamps the
+    // requested page back to page 1 before the new response arrives.
+    placeholderData: (previous) => previous,
   });
 }
 
