@@ -292,6 +292,8 @@ class PurchaseOrderService:
             user=user,
             comment=data.comment if data else None,
         )
+        db.flush()
+        db.refresh(request)
         if request.status == "APPROVED":
             purchase_order.status = "APPROVED"
         PurchaseOrderService._audit(
