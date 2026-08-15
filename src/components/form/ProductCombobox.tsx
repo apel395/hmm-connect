@@ -126,14 +126,14 @@ export default function ProductCombobox({
   }, [open, updatePosition]);
 
   useEffect(() => {
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       const insideInput = rootRef.current?.contains(target);
       const insideDropdown = dropdownRef.current?.contains(target);
       if (!insideInput && !insideDropdown) setOpen(false);
     };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
   }, []);
 
   const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
@@ -173,7 +173,7 @@ export default function ProductCombobox({
         <div
           ref={dropdownRef}
           role="listbox"
-          className="fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl"
+          className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl"
           style={{ left: position.left, top: position.top, width: position.width }}
         >
           {loading && visibleOptions.length === 0 ? (
@@ -190,9 +190,14 @@ export default function ProductCombobox({
                 type="button"
                 role="option"
                 aria-selected={index === activeIndex}
-                className={`block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
+                className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
                 onMouseEnter={() => setActiveIndex(index)}
-                onMouseDown={(event) => {
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  selectProduct(product);
+                }}
+                onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
                   selectProduct(product);
