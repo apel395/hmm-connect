@@ -3,7 +3,7 @@ import goodsReceiptApi, { type GoodsReceiptListParams } from "../api/goodsReceip
 import type { GoodsReceipt, GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload } from "../types";
 
 export function useAllGoodsReceipts(params: GoodsReceiptListParams = {}) {
-  return useQuery({ queryKey: ["goods-receipts", params], queryFn: async () => (await goodsReceiptApi.list(params)).data });
+  return useQuery({ queryKey: ["goods-receipts", params], queryFn: async () => (await goodsReceiptApi.list(params)).data, placeholderData: (previous) => previous });
 }
 export function useGoodsReceipt(id:number){return useQuery({queryKey:["goods-receipt",id],queryFn:async()=>(await goodsReceiptApi.detail(id)).data as GoodsReceipt,enabled:Boolean(id)})}
 export function useReceivablePurchaseOrders(enabled=true){return useQuery({queryKey:["receivable-purchase-orders"],queryFn:async()=>(await goodsReceiptApi.receivablePurchaseOrders()).data,enabled})}
