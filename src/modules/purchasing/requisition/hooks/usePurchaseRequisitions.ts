@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { requisitionApi } from "../api/requisitionApi";
+import { requisitionApi, type RequisitionListParams } from "../api/requisitionApi";
 
 function refresh(qc: ReturnType<typeof useQueryClient>, id?: number) {
   qc.invalidateQueries({ queryKey: ["purchase-requisitions"] });
@@ -10,8 +10,11 @@ function refresh(qc: ReturnType<typeof useQueryClient>, id?: number) {
   }
 }
 
-export function usePurchaseRequisitions(scope = "active") {
-  return useQuery({ queryKey: ["purchase-requisitions", scope], queryFn: async () => (await requisitionApi.list(scope)).data });
+export function usePurchaseRequisitions(params: RequisitionListParams = { scope: "active" }) {
+  return useQuery({
+    queryKey: ["purchase-requisitions", params],
+    queryFn: async () => (await requisitionApi.list(params)).data,
+  });
 }
 
 export function usePurchaseRequisition(id: number) {
