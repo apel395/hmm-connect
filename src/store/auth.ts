@@ -48,6 +48,8 @@ interface AuthState {
   hasPermission: (permission: string) => boolean;
 }
 
+const WORKSPACE_OWNER_KEY = "hmm-last-user-identity";
+
 const userIdentity = (user: User | null | undefined) => {
   if (!user) return null;
   if (user.id != null) return `id:${user.id}`;
@@ -55,13 +57,14 @@ const userIdentity = (user: User | null | undefined) => {
   return null;
 };
 
-const storedUser = (): User | null => {
-  try {
-    const raw = localStorage.getItem("user");
-    return raw ? JSON.parse(raw) as User : null;
-  } catch {
-    return null;
+const adoptWorkspaceOwner = (user: User) => {
+  const nextIdentity = userIdentity(user);
+  if (!nextIdentity) return;
+  const previousIdentity = localStorage.getItem(WORKSPACE_OWNER_KEY);
+  if (previousIdentity && previousIdentity !== nextIdentity) {
+    useWorkspaceTabs.getState().resetTabs();
   }
+  localStorage.setItem(WORKSPACE_OWNER_KEY, nextIdentity);
 };
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -89,11 +92,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ loading: true });
     try {
-      const previous = storedUser();
       const { data: user } = await api.get<User>("/auth/me");
-      if (userIdentity(previous) && userIdentity(previous) !== userIdentity(user)) {
-        useWorkspaceTabs.getState().resetTabs();
-      }
+      adoptWorkspaceOwner(user);
       localStorage.setItem("user", JSON.stringify(user));
       set({ accessToken, refreshToken, user, authenticated: true, loading: false });
     } catch {
@@ -113,7 +113,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (payload) => {
     set({ loading: true });
     try {
-      const previous = storedUser();
       const { data } = await api.post<LoginResponse>(
         "/auth/login",
         new URLSearchParams({ username: payload.username, password: payload.password }),
@@ -125,9 +124,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       else localStorage.removeItem("refresh_token");
 
       const me = await api.get<User>("/auth/me");
-      if (userIdentity(previous) && userIdentity(previous) !== userIdentity(me.data)) {
-        useWorkspaceTabs.getState().resetTabs();
-      }
+      adoptWorkspaceOwner(me.data);
       localStorage.setItem("user", JSON.stringify(me.data));
 
       set({
@@ -149,8 +146,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
-    // Keep the last user identity until the next successful login so we can
-    // distinguish same-account re-login from a different account.
+    localStorage.removeItem("user");
     set({ accessToken: null, refreshToken: null, user: null, authenticated: false, loading: false });
     window.location.replace("/login");
   },
