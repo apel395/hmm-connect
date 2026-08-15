@@ -112,6 +112,39 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
     }
 
 
+def serialize_receipt_summary(receipt: GoodsReceipt, approval: ApprovalRequest | None = None):
+    purchase_order = receipt.purchase_order
+    supplier = purchase_order.supplier if purchase_order else receipt.supplier
+    return {
+        "id": receipt.id,
+        "receipt_number": receipt.receipt_number,
+        "status": receipt.status,
+        "approval_status": approval.status if approval else None,
+        "approval_current_step": approval.current_step_order if approval else None,
+        "purchase_order_id": receipt.purchase_order_id,
+        "purchase_order_number": purchase_order.po_number if purchase_order else None,
+        "source_mode": "PO" if purchase_order else "DIRECT",
+        "supplier_id": purchase_order.supplier_id if purchase_order else receipt.supplier_id,
+        "supplier_name": supplier.name if supplier else None,
+        "received_by_id": receipt.received_by_id,
+        "received_by_name": receipt.received_by.full_name if receipt.received_by else None,
+        "received_at": receipt.received_at,
+        "external_reference": receipt.external_reference,
+        "destination_type": receipt.destination_type,
+        "warehouse_id": receipt.warehouse_id,
+        "warehouse_name": receipt.warehouse.name if receipt.warehouse else None,
+        "business_unit_id": receipt.business_unit_id,
+        "business_unit_name": receipt.business_unit.name if receipt.business_unit else None,
+        "location_id": receipt.location_id,
+        "location_name": receipt.location.name if receipt.location else None,
+        "department_id": receipt.department_id,
+        "department_name": receipt.department.name if receipt.department else None,
+        "subtotal": receipt.subtotal,
+        "tax_amount": receipt.tax_amount,
+        "total_amount": receipt.total_amount,
+    }
+
+
 def remaining_items(purchase_order: PurchaseOrder):
     return [
         {
@@ -177,9 +210,8 @@ def list_receipts(
     _=Depends(get_current_user),
 ):
     query = db.query(GoodsReceipt).options(
-        selectinload(GoodsReceipt.purchase_order),
+        selectinload(GoodsReceipt.purchase_order).selectinload(PurchaseOrder.supplier),
         selectinload(GoodsReceipt.supplier),
-        selectinload(GoodsReceipt.items),
         selectinload(GoodsReceipt.received_by),
         selectinload(GoodsReceipt.warehouse),
         selectinload(GoodsReceipt.business_unit),
@@ -213,6 +245,17 @@ def list_receipts(
 
     total = query.count()
     rows = query.order_by(GoodsReceipt.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    row_ids = [receipt.id for receipt in rows]
+    approvals = (
+        db.query(ApprovalRequest)
+        .filter(
+            ApprovalRequest.entity_type == "GOODS_RECEIPT",
+            ApprovalRequest.entity_id.in_(row_ids),
+        )
+        .all()
+        if row_ids else []
+    )
+    approval_map = {approval.entity_id: approval for approval in approvals}
     total_pages = ceil(total / page_size) if total else 0
     waiting = db.query(GoodsReceipt).join(
         ApprovalRequest,
@@ -224,7 +267,7 @@ def list_receipts(
     ).filter(GoodsReceipt.status == "DRAFT", ApprovalRequest.status == "APPROVED").count()
     posted = db.query(GoodsReceipt).filter(GoodsReceipt.status == "POSTED").count()
     return {
-        "items": [serialize_receipt(item, db) for item in rows],
+        "items": [serialize_receipt_summary(item, approval_map.get(item.id)) for item in rows],
         "page": page,
         "page_size": page_size,
         "total_items": total,
