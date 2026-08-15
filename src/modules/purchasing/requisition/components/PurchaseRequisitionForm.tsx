@@ -7,6 +7,7 @@ import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { productApi } from "@/modules/master/products/api/productApi";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
+import { isBeforeDate, isBeforeToday, todayLocal } from "@/utils/dateConstraints";
 
 import PurchaseRequisitionItems, { PurchaseRequisitionItemRow, Product } from "./PurchaseRequisitionItems";
 
@@ -49,6 +50,9 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
         quantity: Number(item.quantity),
         estimated_price: Number(item.estimated_price),
       })));
+    } else {
+      setRequestDate(todayLocal());
+      setExpiryDate("");
     }
   }, [initialData]);
 
@@ -75,6 +79,8 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
     if (!businessUnitId) return alert("Business Unit is required.");
     if (!departmentId) return alert("Department is required.");
     if (!locationId) return alert("Location is required.");
+    if (!editing && (!requestDate || isBeforeToday(requestDate))) return alert("Request Date cannot be before today.");
+    if (!editing && expiryDate && isBeforeDate(expiryDate, requestDate || todayLocal())) return alert("Valid Until cannot be before Request Date.");
     if (!validItems.length) return alert("Please add valid products.");
     try {
       setSaving(true);
@@ -92,6 +98,7 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
   }
 
   const fieldClass = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
+  const createMinimum = editing ? undefined : todayLocal();
   return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden p-0">
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
       <div className="shrink-0 border-b border-slate-200 px-6 py-5"><h2 className="text-xl font-semibold">{editing ? "Edit Purchase Requisition" : "Create Purchase Requisition"}</h2><p className="mt-1 text-sm text-slate-500">{editing ? "Update all requisition details except the PR number." : "Create a purchasing request before approval and purchase order creation."}</p></div>
@@ -100,8 +107,8 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
           <label className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" value={businessUnitId} options={businessUnits.data ?? []} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} /></label>
           <label className="text-sm font-medium">Department<SearchableSelect className="mt-1" value={departmentId} options={activeDepartments} disabled={!businessUnitId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} /></label>
           <label className="text-sm font-medium">Location<SearchableSelect className="mt-1" value={locationId} options={activeLocations} disabled={!businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => setLocationId(id || undefined)} /></label>
-          <label className="text-sm font-medium">Request Date<input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/></label>
-          <label className="text-sm font-medium">Valid Until<input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/></label>
+          <label className="text-sm font-medium">Request Date<input type="date" min={createMinimum} value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/></label>
+          <label className="text-sm font-medium">Valid Until<input type="date" min={editing ? undefined : (requestDate || todayLocal())} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/></label>
         </div>
         <div><label className="mb-2 block text-sm font-medium">Purpose / Notes</label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}/></div>
         <PurchaseRequisitionItems items={items} products={products} loadingProducts={loadingProducts} onChange={setItems}/>
