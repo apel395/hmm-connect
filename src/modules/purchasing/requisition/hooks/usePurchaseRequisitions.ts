@@ -15,6 +15,7 @@ export function usePurchaseRequisitions(params: RequisitionListParams = { scope:
   return useQuery({
     queryKey: ["purchase-requisitions", params],
     queryFn: async () => (await requisitionApi.list(params)).data,
+    placeholderData: (previous) => previous,
   });
 }
 
