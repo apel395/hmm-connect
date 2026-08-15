@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
+import Pagination from "@/components/datatable/Pagination";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -14,38 +15,28 @@ import {
   useCreateSupplier,
   useDeleteSupplier,
   useSupplier,
-  useSuppliers,
+  useSupplierPage,
   useUpdateSupplier,
 } from "../hooks/useSuppliers";
 
 type StatusFilter = "all" | "active" | "inactive";
-interface ValidationDetail {
-  loc?: Array<string | number>;
-  msg?: string;
-}
+interface ValidationDetail { loc?: Array<string | number>; msg?: string; }
+const PAGE_SIZE = 25;
 
 function errorMessage(error: unknown): string {
   if (!axios.isAxiosError(error)) return "An unexpected error occurred. Please try again.";
-
   const status = error.response?.status;
-  const payload = error.response?.data as
-    | { detail?: string | ValidationDetail[]; message?: string }
-    | undefined;
+  const payload = error.response?.data as { detail?: string | ValidationDetail[]; message?: string } | undefined;
   const detail = payload?.detail;
-
   if (Array.isArray(detail)) {
-    const message = detail
-      .map((item) => {
-        const field = item.loc?.filter((part) => part !== "body").join(".");
-        return [field, item.msg].filter(Boolean).join(": ");
-      })
-      .filter(Boolean)
-      .join("; ");
+    const message = detail.map((item) => {
+      const field = item.loc?.filter((part) => part !== "body").join(".");
+      return [field, item.msg].filter(Boolean).join(": ");
+    }).filter(Boolean).join("; ");
     if (message) return message;
   }
   if (typeof detail === "string") return detail;
   if (payload?.message) return payload.message;
-
   if (status === 400) return "The supplier information is invalid.";
   if (status === 404) return "Supplier not found.";
   if (status === 409) return "A supplier with this code or name already exists.";
@@ -67,64 +58,39 @@ function supplierPayload(supplier: Supplier, isActive = supplier.is_active): Sup
     nitku: supplier.nitku ?? "",
     tax_registration_name: supplier.tax_registration_name ?? "",
     is_active: isActive,
-    rows: supplier.rows?.map((row) => ({
-      id: row.id,
-      pic_name: row.pic_name,
-      phone: row.phone,
-      unit: row.unit,
-      item: row.item,
-    })) ?? [],
+    rows: supplier.rows?.map((row) => ({ id: row.id, pic_name: row.pic_name, phone: row.phone, unit: row.unit, item: row.item })) ?? [],
   };
 }
 
 export default function SupplierPage() {
-  const suppliersQuery = useSuppliers();
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [page, setPage] = useState(1);
+  const suppliersQuery = useSupplierPage({
+    page,
+    page_size: PAGE_SIZE,
+    search: search.trim() || undefined,
+    is_active: status === "all" ? undefined : status === "active",
+  });
   const createMutation = useCreateSupplier();
   const updateMutation = useUpdateSupplier();
   const deleteMutation = useDeleteSupplier();
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [viewId, setViewId] = useState<number>();
   const [formError, setFormError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<number | null>(null);
   const detailQuery = useSupplier(viewId);
+  const result = suppliersQuery.data;
+  const rows = result?.items ?? [];
+  const pages = Math.max(result?.total_pages ?? 0, 1);
+  const total = result?.total_items ?? 0;
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return (suppliersQuery.data ?? []).filter((supplier) => {
-      const matchesStatus =
-        status === "all" ||
-        (status === "active" ? supplier.is_active : !supplier.is_active);
-      const searchable = [
-        supplier.code,
-        supplier.name,
-        supplier.address,
-        supplier.bank_name,
-        supplier.bank_account_number,
-        ...(supplier.rows ?? []).flatMap((row) => [
-          row.pic_name,
-          row.phone ?? "",
-        ]),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return matchesStatus && (!term || searchable.includes(term));
-    });
-  }, [search, status, suppliersQuery.data]);
+  useEffect(() => setPage(1), [search, status]);
+  useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
-  function openCreate() {
-    setEditing(null);
-    setFormError(null);
-    setFormOpen(true);
-  }
-
-  function openEdit(supplier: Supplier) {
-    setEditing(supplier);
-    setFormError(null);
-    setFormOpen(true);
-  }
+  function openCreate() { setEditing(null); setFormError(null); setFormOpen(true); }
+  function openEdit(supplier: Supplier) { setEditing(supplier); setFormError(null); setFormOpen(true); }
 
   async function save(payload: SupplierPayload) {
     if (createMutation.isPending || updateMutation.isPending) return;
@@ -137,33 +103,19 @@ export default function SupplierPage() {
         await createMutation.mutateAsync(payload);
         toast.success("Supplier created successfully.");
       }
-      setFormOpen(false);
-      setEditing(null);
-    } catch (error) {
-      setFormError(errorMessage(error));
-    }
+      setFormOpen(false); setEditing(null);
+    } catch (error) { setFormError(errorMessage(error)); }
   }
 
   async function toggleStatus(supplier: Supplier) {
     const nextActive = !supplier.is_active;
-    if (
-      !window.confirm(
-        `${nextActive ? "Activate" : "Deactivate"} supplier "${supplier.name}"?`
-      )
-    ) return;
-
+    if (!window.confirm(`${nextActive ? "Activate" : "Deactivate"} supplier "${supplier.name}"?`)) return;
     setActionId(supplier.id);
     try {
-      await updateMutation.mutateAsync({
-        id: supplier.id,
-        payload: supplierPayload(supplier, nextActive),
-      });
+      await updateMutation.mutateAsync({ id: supplier.id, payload: supplierPayload(supplier, nextActive) });
       toast.success(`Supplier ${nextActive ? "activated" : "deactivated"}.`);
-    } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setActionId(null);
-    }
+    } catch (error) { toast.error(errorMessage(error)); }
+    finally { setActionId(null); }
   }
 
   async function remove(supplier: Supplier) {
@@ -173,92 +125,24 @@ export default function SupplierPage() {
       await deleteMutation.mutateAsync(supplier.id);
       toast.success("Supplier deleted successfully.");
       if (viewId === supplier.id) setViewId(undefined);
-    } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setActionId(null);
-    }
+    } catch (error) { toast.error(errorMessage(error)); }
+    finally { setActionId(null); }
   }
 
-  return (
-    <>
-      <div className="space-y-6">
-        <PageHeader
-          title="Suppliers"
-          description="Manage supplier profiles, contacts, banking details, and availability."
-          actions={<Button onClick={openCreate}>Add Supplier</Button>}
-        />
-
-        <Card>
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row">
-            <Input
-              type="search"
-              aria-label="Search suppliers"
-              placeholder="Search code, name, contact, phone, or bank..."
-              value={search}
-              className="sm:max-w-md"
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <select
-              aria-label="Filter suppliers by status"
-              value={status}
-              onChange={(event) => setStatus(event.target.value as StatusFilter)}
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-
-          {suppliersQuery.isLoading ? (
-            <div className="py-12"><Loading /></div>
-          ) : suppliersQuery.isError ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
-              <p className="text-sm text-red-700">{errorMessage(suppliersQuery.error)}</p>
-              <Button
-                className="mt-4"
-                size="sm"
-                variant="outline"
-                onClick={() => suppliersQuery.refetch()}
-              >
-                Try Again
-              </Button>
-            </div>
-          ) : (
-            <SupplierTable
-              rows={filtered}
-              busyId={actionId}
-              onView={(supplier) => setViewId(supplier.id)}
-              onEdit={openEdit}
-              onToggle={toggleStatus}
-              onDelete={remove}
-            />
-          )}
-        </Card>
-      </div>
-
-      <SupplierForm
-        open={formOpen}
-        supplier={editing}
-        loading={createMutation.isPending || (updateMutation.isPending && actionId === null)}
-        error={formError}
-        onClose={() => {
-          if (createMutation.isPending || updateMutation.isPending) return;
-          setFormOpen(false);
-          setEditing(null);
-          setFormError(null);
-        }}
-        onSubmit={save}
-      />
-
-      <SupplierDetail
-        open={viewId !== undefined}
-        supplier={detailQuery.data}
-        loading={detailQuery.isLoading}
-        error={detailQuery.isError ? errorMessage(detailQuery.error) : null}
-        onClose={() => setViewId(undefined)}
-      />
-    </>
-  );
+  return <>
+    <div className="space-y-6">
+      <PageHeader title="Suppliers" description="Manage supplier profiles, contacts, banking details, and availability." actions={<Button onClick={openCreate}>Add Supplier</Button>}/>
+      <Card>
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+          <Input type="search" aria-label="Search suppliers" placeholder="Search supplier code or name..." value={search} className="sm:max-w-md" onChange={(event) => setSearch(event.target.value)}/>
+          <select aria-label="Filter suppliers by status" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option>
+          </select>
+        </div>
+        {suppliersQuery.isLoading ? <div className="py-12"><Loading/></div> : suppliersQuery.isError ? <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center"><p className="text-sm text-red-700">{errorMessage(suppliersQuery.error)}</p><Button className="mt-4" size="sm" variant="outline" onClick={() => suppliersQuery.refetch()}>Try Again</Button></div> : <><SupplierTable rows={rows} busyId={actionId} onView={(supplier) => setViewId(supplier.id)} onEdit={openEdit} onToggle={toggleStatus} onDelete={remove}/><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="suppliers" onChange={setPage}/></>}
+      </Card>
+    </div>
+    <SupplierForm open={formOpen} supplier={editing} loading={createMutation.isPending || (updateMutation.isPending && actionId === null)} error={formError} onClose={() => { if (createMutation.isPending || updateMutation.isPending) return; setFormOpen(false); setEditing(null); setFormError(null); }} onSubmit={save}/>
+    <SupplierDetail open={viewId !== undefined} supplier={detailQuery.data} loading={detailQuery.isLoading} error={detailQuery.isError ? errorMessage(detailQuery.error) : null} onClose={() => setViewId(undefined)}/>
+  </>;
 }
