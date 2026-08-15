@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import api from "@/api/client";
 import Loading from "@/components/ui/Loading";
-import DocumentPrintTemplate from "@/components/print/DocumentPrintTemplate";
+import DocumentPrintTemplate, { type PrintSignature } from "@/components/print/DocumentPrintTemplate";
 
 interface PrintItem { id:number;product_code?:string;product_name:string;uom?:string;quantity:number;unit_price?:number;estimated_price?:number;unit_cost?:number;total_price?:number;line_total?:number }
 interface ApprovalRecord {level:number;name:string;status:string;approver_name?:string|null;decided_at?:string|null;comment?:string|null}
@@ -18,6 +18,25 @@ const money=(value:unknown)=>Number(value??0).toLocaleString("en-US",{minimumFra
 const displayDate=(value?:string)=>value?new Date(value).toLocaleDateString():"—";
 const indonesianLongDate=(value?:string)=>value?new Date(`${value.slice(0,10)}T00:00:00`).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"—";
 const addCalendarDays=(value:string,days:number)=>{const date=new Date(`${value.slice(0,10)}T00:00:00`);date.setDate(date.getDate()+days);return date.toISOString().slice(0,10)};
+
+const BATAM_SIGNATURES = [
+  { matches:["STORE"], label:"Store", name:"Baihaqi Ahmad", imageSrc:"/signatures/batam/baihaqi-ahmad.svg" },
+  { matches:["CHEF","HEAD CHEF"], label:"Head Chef", name:"Edi Susanto", imageSrc:"/signatures/batam/edi-susanto.svg" },
+  { matches:["PM","CAMP BOSS","AREA MANAGER"], label:"Area Manager", name:"Doni Idriadhi", imageSrc:"/signatures/batam/doni-idriadhi.svg" },
+];
+
+function approvalSignatures(data:PrintDocument):PrintSignature[]{
+  const history=data.approval_history??[];
+  const isBatam=(data.location_name??"").toUpperCase().includes("BATAM");
+  if(isBatam){
+    const signed=BATAM_SIGNATURES.flatMap(signature=>{
+      const record=history.find(row=>row.status==="APPROVED"&&signature.matches.some(match=>(row.name??"").toUpperCase().includes(match)));
+      return record?[{label:signature.label,name:record.approver_name||signature.name,imageSrc:signature.imageSrc}]:[];
+    });
+    if(signed.length)return signed;
+  }
+  return history.filter(record=>record.status==="APPROVED").slice(0,3).map(record=>({label:record.name||`Approval Level ${record.level}`,name:record.approver_name??record.status}));
+}
 
 export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"purchase-orders"|"goods-receipts"}){
   const{id}=useParams();
@@ -49,7 +68,7 @@ export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"
     {label:"Price",align:"right" as const,render:(item:PrintItem)=>money(isReceipt?item.unit_cost:item.unit_price??item.estimated_price??0)},
     {label:"AMOUNT",align:"right" as const,render:(item:PrintItem)=>money(isReceipt?(item.line_total??Number(item.quantity)*Number(item.unit_cost??0)):(item.total_price??Number(item.quantity)*Number(item.unit_price??item.estimated_price??0)))},
   ];
-  const signatures=(data.approval_history??[]).slice(0,3).map(record=>({label:record.name||`Approval Level ${record.level}`,name:record.approver_name??record.status}));
+  const signatures=approvalSignatures(data);
   const poTerms=isPo?<section className="avoid-break mt-7 text-[11px] leading-5"><div className="mb-1 font-bold">Syarat & Ketentuan</div><ol className="list-decimal space-y-0.5 pl-5"><li>Barang harus dikirim paling lambat {indonesianLongDate(deliveryDeadline)} ke lokasi yang tertera pada PO ini.</li><li>Pembayaran dilakukan melalui transfer bank setelah 60 hari sejak barang diterima dan diverifikasi.</li><li>Faktur asli dan dokumen pendukung harus dilampirkan bersama pengiriman barang.</li><li>Apabila terjadi keterlambatan pengiriman ataupun selisih, pihak pemasok wajib memberikan pemberitahuan tertulis.</li></ol></section>:undefined;
   return <DocumentPrintTemplate
     title={isReceipt?"Receiving Report":data.document_type}
