@@ -10,4 +10,10 @@ export interface InventoryMovement {
 
 export interface InventoryMovementFilters {
   product_id?:number; warehouse_id?:number; purchase_order_id?:number; goods_receipt_id?:number; location_id?:number; department_id?:number;
+  page?:number; page_size?:number; search?:string;
+}
+
+export interface InventoryMovementPage {
+  items: InventoryMovement[];
+  page:number; page_size:number; total_items:number; total_pages:number; has_next:boolean; has_previous:boolean;
 }
