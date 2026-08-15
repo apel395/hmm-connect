@@ -1,21 +1,18 @@
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import CurrencyInput from "@/components/form/CurrencyInput";
-import ProductCombobox from "@/components/form/ProductCombobox";
+import ProductCombobox, { type ProductComboboxOption } from "@/components/form/ProductCombobox";
 import QuantityInput from "@/components/form/QuantityInput";
 
-export interface Product {
-  id:number; code?:string; product_code?:string; product_name?:string; name?:string;
-  uom?:string; usage_uom?:string;
+export interface Product extends ProductComboboxOption {
   tax_category?:"STANDARD"|"EXEMPT"|"NON_VAT"|"SPECIAL"|"REVIEW_REQUIRED";
-  is_taxable?:boolean; tax_rate?:number|string;
 }
 export interface PurchaseRequisitionItemRow { product_id:number; quantity:number; estimated_price:number }
-interface Props { items:PurchaseRequisitionItemRow[]; products:Product[]; loadingProducts?:boolean; onChange:(rows:PurchaseRequisitionItemRow[])=>void }
+interface Props { items:PurchaseRequisitionItemRow[]; products:Product[]; loadingProducts?:boolean; onChange:(rows:PurchaseRequisitionItemRow[])=>void; onProductLoaded?:(product:Product)=>void }
 
 const money = (value:number) => value.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 
-export default function PurchaseRequisitionItems({items, products, loadingProducts, onChange}:Props) {
+export default function PurchaseRequisitionItems({items, products, loadingProducts, onChange, onProductLoaded}:Props) {
   const updateRow = (index:number, field:keyof PurchaseRequisitionItemRow, value:number) => onChange(items.map((row,i) => i === index ? {...row,[field]:value} : row));
   const addRow = () => onChange([...items,{product_id:0,quantity:1,estimated_price:0}]);
   const removeRow = (index:number) => items.length > 1 && onChange(items.filter((_,i) => i !== index));
@@ -40,7 +37,7 @@ export default function PurchaseRequisitionItems({items, products, loadingProduc
         const tax = subtotal * rate / 100;
         const reviewRequired = product?.tax_category === "REVIEW_REQUIRED";
         return <tr key={index} className={reviewRequired ? "border-t bg-amber-50/60" : "border-t"}>
-          <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)}/></td>
+          <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} remote disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)} onSelect={(selected)=>onProductLoaded?.(selected as Product)}/></td>
           <td className="p-3 text-sm text-slate-700">{product?.uom ?? product?.usage_uom ?? "—"}</td>
           <td className="p-2"><QuantityInput value={row.quantity} min={0.01} onValueChange={(value) => updateRow(index,"quantity",value)}/></td>
           <td className="p-2"><CurrencyInput value={row.estimated_price} onValueChange={(value) => updateRow(index,"estimated_price",value)}/></td>
