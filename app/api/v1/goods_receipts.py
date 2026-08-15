@@ -1,13 +1,21 @@
 from decimal import Decimal
+from math import ceil
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_any_role
+from app.models.approval_request import ApprovalRequest
+from app.models.department import Department
 from app.models.goods_receipt import GoodsReceipt
+from app.models.location import Location
 from app.models.purchase_order import PurchaseOrder
+from app.models.supplier import Supplier
+from app.models.user import User
+from app.models.warehouse import Warehouse
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate
 from app.services.approval import (
@@ -157,7 +165,17 @@ def inherit_purchase_order_dimensions(order: PurchaseOrder, data: GoodsReceiptCr
 
 
 @router.get("")
-def list_receipts(purchase_order_id: int | None = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_receipts(
+    purchase_order_id: int | None = None,
+    destination_type: str | None = None,
+    status: str | None = None,
+    approval_status: str | None = None,
+    search: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
     query = db.query(GoodsReceipt).options(
         selectinload(GoodsReceipt.purchase_order),
         selectinload(GoodsReceipt.supplier),
@@ -170,7 +188,51 @@ def list_receipts(purchase_order_id: int | None = None, db: Session = Depends(ge
     )
     if purchase_order_id:
         query = query.filter(GoodsReceipt.purchase_order_id == purchase_order_id)
-    return [serialize_receipt(item, db) for item in query.order_by(GoodsReceipt.id.desc()).all()]
+    if destination_type:
+        query = query.filter(GoodsReceipt.destination_type == destination_type.upper())
+    if status:
+        query = query.filter(GoodsReceipt.status == status.upper())
+    if approval_status:
+        query = query.join(
+            ApprovalRequest,
+            (ApprovalRequest.entity_type == "GOODS_RECEIPT") & (ApprovalRequest.entity_id == GoodsReceipt.id),
+        ).filter(ApprovalRequest.status == approval_status.upper())
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(
+            GoodsReceipt.receipt_number.ilike(term),
+            GoodsReceipt.external_reference.ilike(term),
+            GoodsReceipt.purchase_order.has(PurchaseOrder.po_number.ilike(term)),
+            GoodsReceipt.supplier.has(Supplier.name.ilike(term)),
+            GoodsReceipt.purchase_order.has(PurchaseOrder.supplier.has(Supplier.name.ilike(term))),
+            GoodsReceipt.received_by.has(User.full_name.ilike(term)),
+            GoodsReceipt.warehouse.has(Warehouse.name.ilike(term)),
+            GoodsReceipt.location.has(Location.name.ilike(term)),
+            GoodsReceipt.department.has(Department.name.ilike(term)),
+        ))
+
+    total = query.count()
+    rows = query.order_by(GoodsReceipt.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    total_pages = ceil(total / page_size) if total else 0
+    waiting = db.query(GoodsReceipt).join(
+        ApprovalRequest,
+        (ApprovalRequest.entity_type == "GOODS_RECEIPT") & (ApprovalRequest.entity_id == GoodsReceipt.id),
+    ).filter(ApprovalRequest.status == "PENDING").count()
+    ready = db.query(GoodsReceipt).join(
+        ApprovalRequest,
+        (ApprovalRequest.entity_type == "GOODS_RECEIPT") & (ApprovalRequest.entity_id == GoodsReceipt.id),
+    ).filter(GoodsReceipt.status == "DRAFT", ApprovalRequest.status == "APPROVED").count()
+    posted = db.query(GoodsReceipt).filter(GoodsReceipt.status == "POSTED").count()
+    return {
+        "items": [serialize_receipt(item, db) for item in rows],
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+        "summary": {"waiting_approval": waiting, "approved_to_post": ready, "posted": posted},
+    }
 
 
 @router.get("/receivable-purchase-orders")
