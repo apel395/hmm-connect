@@ -1,7 +1,9 @@
+from datetime import date
 from decimal import Decimal
+from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -13,6 +15,7 @@ from app.models.location import Location
 from app.models.purchase_requisition import PurchaseRequisition
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
+from app.models.user import User
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.purchase_requisition import PurchaseRequisitionConvertCreate, PurchaseRequisitionCreate
 from app.services.activity_service import AuditService
@@ -24,6 +27,9 @@ from app.services.document_context import document_context, print_metadata
 router = APIRouter(prefix="/purchase-requisitions", tags=["Purchase Requisitions"])
 requester_user = require_roles("REQUESTER")
 purchasing_user = require_roles("PURCHASING")
+
+ACTIVE_STATUSES = {"DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_CONVERTED"}
+HISTORY_STATUSES = {"CONVERTED", "REJECTED", "CANCELLED", "EXPIRED"}
 
 
 def _organization_context(db: Session, requisition: PurchaseRequisition) -> dict:
@@ -37,6 +43,31 @@ def _organization_context(db: Session, requisition: PurchaseRequisition) -> dict
         "department_name": department.name if department else None,
         "location_id": requisition.location_id,
         "location_name": location.name if location else None,
+    }
+
+
+def _apply_scope(query, scope: str):
+    if scope == "active":
+        return query.filter(PurchaseRequisition.status.in_(ACTIVE_STATUSES))
+    if scope == "history":
+        return query.filter(PurchaseRequisition.status.in_(HISTORY_STATUSES))
+    return query
+
+
+def _list_row(db: Session, requisition: PurchaseRequisition, requester_name: str | None = None) -> dict:
+    return {
+        "id": requisition.id,
+        "pr_number": requisition.pr_number,
+        "status": requisition.status,
+        "request_date": requisition.request_date,
+        "expiry_date": requisition.expiry_date,
+        "requester_name": requester_name,
+        "subtotal": requisition.subtotal,
+        "tax_amount": requisition.tax_amount,
+        "total_amount": requisition.total_amount,
+        "source_type": requisition.source_type,
+        "external_reference": requisition.external_reference,
+        **_organization_context(db, requisition),
     }
 
 
@@ -63,13 +94,50 @@ def _apply_tax(db: Session, requisition: PurchaseRequisition, data: PurchaseRequ
 
 
 @router.get("")
-def list_requisitions(scope: str = Query(default="active", pattern="^(active|history|all)$"), db: Session = Depends(get_db), _=Depends(get_current_user)):
-    query = db.query(PurchaseRequisition)
-    if scope == "active":
-        query = query.filter(PurchaseRequisition.status.in_({"DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_CONVERTED"}))
-    elif scope == "history":
-        query = query.filter(PurchaseRequisition.status.in_({"CONVERTED", "REJECTED", "CANCELLED", "EXPIRED"}))
-    return query.order_by(PurchaseRequisition.id.desc()).all()
+def list_requisitions(
+    scope: str = Query(default="active", pattern="^(active|history|all)$"),
+    status: str | None = Query(default=None, max_length=30),
+    search: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    scoped = _apply_scope(db.query(PurchaseRequisition), scope)
+    status_counts = dict(
+        scoped.with_entities(PurchaseRequisition.status, func.count(PurchaseRequisition.id))
+        .group_by(PurchaseRequisition.status)
+        .all()
+    )
+    this_month_prefix = date.today().strftime("%Y-%m")
+    this_month = scoped.filter(func.to_char(PurchaseRequisition.request_date, "YYYY-MM") == this_month_prefix).count()
+
+    query = (
+        _apply_scope(db.query(PurchaseRequisition, User.full_name), scope)
+        .outerjoin(User, User.id == PurchaseRequisition.requested_by_id)
+    )
+    if status and status.upper() != "ALL":
+        query = query.filter(PurchaseRequisition.status == status.upper())
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(PurchaseRequisition.pr_number.ilike(term), User.full_name.ilike(term)))
+
+    total = query.count()
+    rows = query.order_by(PurchaseRequisition.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    total_pages = ceil(total / page_size) if total else 0
+    return {
+        "items": [_list_row(db, requisition, requester_name) for requisition, requester_name in rows],
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+        "summary": {
+            "status_counts": status_counts,
+            "this_month": this_month,
+        },
+    }
 
 
 @router.get("/eligible-for-po")
@@ -120,11 +188,13 @@ def get_requisition(requisition_id: int, db: Session = Depends(get_db), user=Dep
     requisition = db.get(PurchaseRequisition, requisition_id)
     if not requisition:
         raise HTTPException(status_code=404, detail="Purchase requisition not found")
+    requester = db.get(User, requisition.requested_by_id) if requisition.requested_by_id else None
     result = {
         "id": requisition.id,
         "pr_number": requisition.pr_number,
         "status": requisition.status,
         "request_date": requisition.request_date,
+        "requester_name": requester.full_name if requester else None,
         "source_type": requisition.source_type,
         "external_reference": requisition.external_reference,
         "expiry_date": requisition.expiry_date,
