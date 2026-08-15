@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogContent } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Textarea from "@/components/ui/Textarea";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import { productApi } from "@/modules/master/products/api/productApi";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 
@@ -90,17 +91,17 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
     } finally { setSaving(false); }
   }
 
-  const selectClass = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
+  const fieldClass = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
   return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden p-0">
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
       <div className="shrink-0 border-b border-slate-200 px-6 py-5"><h2 className="text-xl font-semibold">{editing ? "Edit Purchase Requisition" : "Create Purchase Requisition"}</h2><p className="mt-1 text-sm text-slate-500">{editing ? "Update all requisition details except the PR number." : "Create a purchasing request before approval and purchase order creation."}</p></div>
       <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6">
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          <label className="text-sm font-medium">Business Unit<select required className={selectClass} value={businessUnitId ?? ""} onChange={(e) => changeBusinessUnit(e.target.value ? Number(e.target.value) : undefined)}><option value="">Select business unit</option>{(businessUnits.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} - {item.name}</option>)}</select></label>
-          <label className="text-sm font-medium">Department<select required disabled={!businessUnitId || departments.isLoading} className={selectClass} value={departmentId ?? ""} onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : undefined)}><option value="">Select department</option>{activeDepartments.map((item) => <option key={item.id} value={item.id}>{item.code} - {item.name}</option>)}</select></label>
-          <label className="text-sm font-medium">Location<select required disabled={!businessUnitId || locations.isLoading} className={selectClass} value={locationId ?? ""} onChange={(e) => setLocationId(e.target.value ? Number(e.target.value) : undefined)}><option value="">Select location</option>{activeLocations.map((item) => <option key={item.id} value={item.id}>{item.code} - {item.name}</option>)}</select></label>
-          <label className="text-sm font-medium">Request Date<input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={selectClass}/></label>
-          <label className="text-sm font-medium">Valid Until<input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={selectClass}/></label>
+          <label className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" value={businessUnitId} options={businessUnits.data ?? []} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} /></label>
+          <label className="text-sm font-medium">Department<SearchableSelect className="mt-1" value={departmentId} options={activeDepartments} disabled={!businessUnitId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} /></label>
+          <label className="text-sm font-medium">Location<SearchableSelect className="mt-1" value={locationId} options={activeLocations} disabled={!businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => setLocationId(id || undefined)} /></label>
+          <label className="text-sm font-medium">Request Date<input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/></label>
+          <label className="text-sm font-medium">Valid Until<input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/></label>
         </div>
         <div><label className="mb-2 block text-sm font-medium">Purpose / Notes</label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}/></div>
         <PurchaseRequisitionItems items={items} products={products} loadingProducts={loadingProducts} onChange={setItems}/>
