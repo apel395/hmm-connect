@@ -1,8 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from fastapi import HTTPException
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, event, func, text
+from sqlalchemy.orm import Mapped, Session as OrmSession, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -60,3 +61,59 @@ class GoodsReceiptItem(Base):
     goods_receipt = relationship("GoodsReceipt", back_populates="items")
     purchase_order_item = relationship("PurchaseOrderItem", back_populates="goods_receipt_items")
     product = relationship("Product")
+
+
+@event.listens_for(OrmSession, "before_flush")
+def _prevent_duplicate_po_receiving_drafts(session, _flush_context, _instances):
+    """Allow at most one active DRAFT receiving report per PO.
+
+    PostgreSQL advisory transaction locks serialize concurrent double-click/API
+    requests for the same PO. The second request waits for the first transaction
+    and then receives a clean 409 instead of inserting a duplicate draft.
+    """
+    candidates = [
+        row for row in session.new
+        if isinstance(row, GoodsReceipt)
+        and row.purchase_order_id is not None
+        and str(row.status or "DRAFT").upper() == "DRAFT"
+    ]
+    if not candidates:
+        return
+
+    seen_po_ids: set[int] = set()
+    for receipt in candidates:
+        po_id = int(receipt.purchase_order_id)
+        if po_id in seen_po_ids:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Only one receiving draft can be created for purchase order {po_id} at a time",
+            )
+        seen_po_ids.add(po_id)
+
+        bind = session.get_bind()
+        if bind.dialect.name == "postgresql":
+            # Namespace 484d4d (HMM) keeps this application lock distinct from
+            # unrelated advisory locks while remaining deterministic per PO.
+            session.execute(
+                text("SELECT pg_advisory_xact_lock(:namespace, :po_id)"),
+                {"namespace": 4742477, "po_id": po_id},
+            )
+
+        existing = (
+            session.query(GoodsReceipt)
+            .filter(
+                GoodsReceipt.purchase_order_id == po_id,
+                GoodsReceipt.status == "DRAFT",
+            )
+            .order_by(GoodsReceipt.id.desc())
+            .first()
+        )
+        if existing:
+            po_number = existing.purchase_order.po_number if existing.purchase_order else f"PO #{po_id}"
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Receiving draft {existing.receipt_number} already exists for {po_number}. "
+                    "Open the existing draft instead of creating another one."
+                ),
+            )
