@@ -6,12 +6,15 @@ Master seed intentionally matches products using the same normalized name key
 used by the application import logic. After normalization, spelling/punctuation/
 spacing variants collapse to 1,311 unique Item Master candidates.
 
-Business rule:
+Business rules:
 - Fresh vegetables / vegetable items are always seeded as EXEMPT (Non-PPN).
+- New historical Purchasing items use the legacy HMM item-code structure instead
+  of PIM hashes. The reserved imported subgroup is 9-1, producing codes such as
+  9-100001, 9-100002, ... without colliding with existing product codes.
 
-This runner patches the validation guard and tax classification, then delegates
-database work, dry-run/apply behavior, deterministic product codes, and
-idempotency to seed_purchasing_item_master.py.
+This runner patches validation, tax classification, and code allocation, then
+delegates database work and dry-run/apply behavior to
+seed_purchasing_item_master.py.
 """
 
 from __future__ import annotations
@@ -25,9 +28,9 @@ import scripts.seed_purchasing_item_master as seed
 
 EXPECTED_RAW_LABELS = 1425
 EXPECTED_NORMALIZED_ITEMS = 1311
+LEGACY_IMPORTED_PREFIX = "9-1"
+LEGACY_IMPORTED_CODE_RE = re.compile(r"^9-1(\d{5})$")
 
-# HMM business rule: vegetables are Non-PPN. Keep this explicit and conservative
-# so unrelated prepared/processed products are not accidentally classified exempt.
 VEGETABLE_TERMS = {
     "bayam", "kangkung", "sawi", "pakcoy", "pak choi", "bok choy",
     "wortel", "kol", "kubis", "buncis", "kacang panjang", "tauge", "toge",
@@ -101,7 +104,24 @@ def load_rows_normalized() -> list[dict]:
     return result
 
 
+def make_legacy_code(_name: str, occupied: set[str]) -> str:
+    """Allocate the next available 9-1xxxxx code using the legacy HMM pattern."""
+    maximum = 0
+    for raw in occupied:
+        match = LEGACY_IMPORTED_CODE_RE.fullmatch(str(raw or "").upper())
+        if match:
+            maximum = max(maximum, int(match.group(1)))
+
+    for sequence in range(maximum + 1, 100000):
+        candidate = f"{LEGACY_IMPORTED_PREFIX}{sequence:05d}"
+        if candidate.upper() not in occupied:
+            occupied.add(candidate.upper())
+            return candidate
+    raise RuntimeError("Imported Purchasing item code range 9-100001..9-199999 is exhausted")
+
+
 seed.load_rows = load_rows_normalized
+seed.make_code = make_legacy_code
 
 
 if __name__ == "__main__":
