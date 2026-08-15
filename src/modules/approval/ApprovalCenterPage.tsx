@@ -45,23 +45,40 @@ export default function ApprovalCenterPage() {
     },
     onSuccess: async () => {
       const completedDecision = decision;
+      if (!completedDecision) return;
       setDecision(null);
       setComment("");
-      if (completedDecision && view === "pending") {
+      if (view === "pending") {
         qc.setQueryData<any>(["approval-inbox", view, page], (current: any) => current ? {
           ...current,
           items: (current.items ?? []).filter((row: ApprovalRequestRow) => row.id !== completedDecision.row.id),
           total_items: Math.max(0, Number(current.total_items ?? 0) - 1),
         } : current);
       }
+      const entityQueries: Promise<unknown>[] = [];
+      const entityId = completedDecision.row.entity_id;
+      if (completedDecision.row.entity_type === "PURCHASE_REQUISITION") {
+        entityQueries.push(
+          qc.refetchQueries({ queryKey: ["purchase-requisition", entityId], exact: true, type: "active" }),
+          qc.invalidateQueries({ queryKey: ["purchase-requisitions"] }),
+        );
+      } else if (completedDecision.row.entity_type === "PURCHASE_ORDER") {
+        entityQueries.push(
+          qc.refetchQueries({ queryKey: ["purchase-order", entityId], exact: true, type: "active" }),
+          qc.invalidateQueries({ queryKey: ["purchase-orders"] }),
+        );
+      } else if (completedDecision.row.entity_type === "GOODS_RECEIPT") {
+        entityQueries.push(
+          qc.refetchQueries({ queryKey: ["goods-receipt", entityId], exact: true, type: "active" }),
+          qc.invalidateQueries({ queryKey: ["goods-receipts"] }),
+        );
+      }
       await Promise.all([
         qc.refetchQueries({ queryKey: ["approval-inbox"], type: "active" }),
-        qc.refetchQueries({ queryKey: ["approval", completedDecision?.row.entity_type, completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.refetchQueries({ queryKey: ["purchase-requisition", completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.refetchQueries({ queryKey: ["purchase-order", completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.refetchQueries({ queryKey: ["goods-receipt", completedDecision?.row.entity_id], exact: true, type: "active" }),
+        qc.refetchQueries({ queryKey: ["approval", completedDecision.row.entity_type, entityId], exact: true, type: "active" }),
+        ...entityQueries,
       ]);
-      toast.success(completedDecision?.action === "APPROVE" ? "Approval recorded." : "Document rejected.");
+      toast.success(completedDecision.action === "APPROVE" ? "Approval recorded." : "Document rejected.");
     },
     onError: (error: any) => toast.error(error?.response?.data?.detail || error?.message || "Approval action failed."),
   });
