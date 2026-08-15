@@ -1,13 +1,15 @@
 from datetime import datetime
+from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import is_superuser
-from app.models.approval_request import ApprovalRequest
+from app.dependencies.authorization import is_superuser, role_names
+from app.models.approval_request import ApprovalRequest, ApprovalRequestStep
 from app.models.approval_workflow import ApprovalWorkflow, ApprovalWorkflowStep
 from app.models.department import Department
 from app.models.location import Location
@@ -98,6 +100,25 @@ def _serialize_request(request: ApprovalRequest, user=None) -> dict:
     }
 
 
+def _serialize_request_summary(request: ApprovalRequest, user=None) -> dict:
+    pending = current_steps(request)
+    return {
+        "id": request.id,
+        "entity_type": request.entity_type,
+        "entity_id": request.entity_id,
+        "workflow_code": request.workflow.code,
+        "workflow_name": request.workflow.name,
+        "status": request.status,
+        "current_step_order": request.current_step_order,
+        "current_stage": [step.name for step in pending],
+        "created_by_id": request.created_by_id,
+        "created_by_name": request.created_by.full_name if request.created_by else None,
+        "created_at": request.created_at,
+        "completed_at": request.completed_at,
+        "can_decide": bool(user and any(can_user_decide_step(step, user) for step in pending)),
+    }
+
+
 def _validate_steps(db: Session, steps: list[WorkflowStepInput]) -> None:
     if not steps:
         raise HTTPException(status_code=400, detail="Approval workflow must contain at least one step")
@@ -110,25 +131,87 @@ def _validate_steps(db: Session, steps: list[WorkflowStepInput]) -> None:
             raise HTTPException(status_code=400, detail=f"Location {step.location_id} does not exist")
 
 
+def _decidable_step_predicate(user):
+    if is_superuser(user):
+        return and_(
+            ApprovalRequestStep.status == "PENDING",
+            ApprovalRequestStep.step_order == ApprovalRequest.current_step_order,
+        )
+
+    names = role_names(user)
+    if not names:
+        return and_(ApprovalRequestStep.id == -1)
+
+    department_name = user.department.name if user.department else None
+    location_name = user.location.name if user.location else None
+    department_match = ApprovalRequestStep.department_name.is_(None)
+    location_match = ApprovalRequestStep.location_name.is_(None)
+    if department_name:
+        department_match = or_(department_match, ApprovalRequestStep.department_name == department_name)
+    if location_name:
+        location_match = or_(location_match, ApprovalRequestStep.location_name == location_name)
+
+    return and_(
+        ApprovalRequestStep.status == "PENDING",
+        ApprovalRequestStep.step_order == ApprovalRequest.current_step_order,
+        ApprovalRequestStep.approver_role_name.in_(names),
+        department_match,
+        location_match,
+    )
+
+
 @router.get("/inbox")
 def approval_inbox(
     view: str = Query(default="pending", pattern="^(pending|submitted|completed|rejected|all)$"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    query = db.query(ApprovalRequest).order_by(ApprovalRequest.id.desc())
-    requests = query.all()
+    query = db.query(ApprovalRequest)
+    decidable = ApprovalRequest.steps.any(_decidable_step_predicate(user))
+    participated = or_(
+        ApprovalRequest.created_by_id == user.id,
+        ApprovalRequest.steps.any(ApprovalRequestStep.approved_by_id == user.id),
+    )
+
     if view == "pending":
-        requests = [request for request in requests if request.status == "PENDING" and any(can_user_decide_step(step, user) for step in current_steps(request))]
+        query = query.filter(ApprovalRequest.status == "PENDING", decidable)
     elif view == "submitted":
-        requests = [request for request in requests if request.created_by_id == user.id and request.status == "PENDING"]
+        query = query.filter(ApprovalRequest.created_by_id == user.id, ApprovalRequest.status == "PENDING")
     elif view == "completed":
-        requests = [request for request in requests if request.status == "APPROVED" and (is_superuser(user) or request.created_by_id == user.id or any(step.approved_by_id == user.id for step in request.steps))]
+        query = query.filter(ApprovalRequest.status == "APPROVED")
+        if not is_superuser(user):
+            query = query.filter(participated)
     elif view == "rejected":
-        requests = [request for request in requests if request.status == "REJECTED" and (is_superuser(user) or request.created_by_id == user.id or any(step.approved_by_id == user.id for step in request.steps))]
+        query = query.filter(ApprovalRequest.status == "REJECTED")
+        if not is_superuser(user):
+            query = query.filter(participated)
     elif not is_superuser(user):
-        requests = [request for request in requests if request.created_by_id == user.id or any(can_user_decide_step(step, user) or step.approved_by_id == user.id for step in request.steps)]
-    return [_serialize_request(request, user) for request in requests]
+        query = query.filter(or_(participated, decidable))
+
+    total = query.count()
+    total_pages = ceil(total / page_size) if total else 0
+    rows = (
+        query.options(
+            selectinload(ApprovalRequest.workflow),
+            selectinload(ApprovalRequest.created_by),
+            selectinload(ApprovalRequest.steps).selectinload(ApprovalRequestStep.approved_by),
+        )
+        .order_by(ApprovalRequest.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return {
+        "items": [_serialize_request_summary(request, user) for request in rows],
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+    }
 
 
 @router.get("/workflows")
