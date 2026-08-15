@@ -1,12 +1,22 @@
 import api from "@/api/client";
 import type { GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload } from "../types";
 
+export type GoodsReceiptListParams = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  destination_type?: string;
+  status?: string;
+  approval_status?: string;
+  purchase_order_id?: number;
+};
+
 export const goodsReceiptApi = {
-  list: () => api.get("/goods-receipts"),
+  list: (params: GoodsReceiptListParams = {}) => api.get("/goods-receipts", { params }),
   detail: (id: number) => api.get(`/goods-receipts/${id}`),
   receivablePurchaseOrders: () => api.get("/goods-receipts/receivable-purchase-orders"),
   remainingItems: (purchaseOrderId: number) => api.get(`/goods-receipts/receivable-purchase-orders/${purchaseOrderId}/items`),
-  listByPurchaseOrder: (purchaseOrderId: number) => api.get("/goods-receipts", { params: { purchase_order_id: purchaseOrderId } }),
+  listByPurchaseOrder: (purchaseOrderId: number) => api.get("/goods-receipts", { params: { purchase_order_id: purchaseOrderId, page: 1, page_size: 100 } }),
   receive: (purchaseOrderId: number, payload: GoodsReceiptCreatePayload) => api.post("/goods-receipts", { ...payload, purchase_order_id: purchaseOrderId }),
   createDirect: (payload: GoodsReceiptCreatePayload) => api.post("/goods-receipts", { ...payload, purchase_order_id: null }),
   submit: (id: number) => api.post(`/goods-receipts/${id}/submit`),
