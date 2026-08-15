@@ -553,6 +553,9 @@ class PurchaseRequisitionService:
                 f"Created from "
                 f"{purchase_requisition.pr_number}"
             ),
+            business_unit_id=purchase_requisition.business_unit_id,
+            location_id=purchase_requisition.location_id,
+            department_id=purchase_requisition.department_id,
             purchase_requisitions=[
                 purchase_requisition
             ],

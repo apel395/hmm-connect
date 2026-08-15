@@ -33,7 +33,7 @@ export default function PurchaseOrderListPage() {
   const [open, setOpen] = useState(false);
   const query = usePurchaseOrders(scope, page, 20, status === "ALL" ? undefined : status);
   const result = query.data as PurchaseOrderPageData | undefined;
-  const source = result?.items ?? [];
+  const source = useMemo(() => result?.items ?? [], [result?.items]);
   const create = useCreatePurchaseOrder();
 
   useEffect(() => setPage(1), [scope, status]);

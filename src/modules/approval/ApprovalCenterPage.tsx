@@ -25,7 +25,7 @@ export default function ApprovalCenterPage() {
   const [decision, setDecision] = useState<{ row: ApprovalRequestRow; action: "APPROVE" | "REJECT" } | null>(null);
   const [comment, setComment] = useState("");
   const inbox = useQuery({ queryKey: ["approval-inbox", view], queryFn: () => approvalApi.inbox(view) });
-  const rows = inbox.data ?? [];
+  const rows = useMemo(() => inbox.data ?? [], [inbox.data]);
   const pendingCount = useMemo(() => view === "pending" ? rows.length : 0, [rows, view]);
 
   const act = useMutation({

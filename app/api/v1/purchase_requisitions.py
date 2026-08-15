@@ -45,13 +45,11 @@ def _apply_tax(db: Session, requisition: PurchaseRequisition, data: PurchaseRequ
         raise HTTPException(status_code=500, detail="Purchase requisition item mapping changed while calculating PPN")
     subtotal = Decimal("0")
     tax_total = Decimal("0")
-    for item, incoming in zip(requisition.items, data.items):
-        line_subtotal = Decimal(incoming.quantity) * Decimal(incoming.estimated_price)
-        taxable = bool(incoming.is_taxable)
-        rate = Decimal(incoming.tax_rate if taxable else 0)
+    for item in requisition.items:
+        line_subtotal = Decimal(item.quantity) * Decimal(item.estimated_price)
+        taxable = bool(item.is_taxable)
+        rate = Decimal(item.tax_rate if taxable else 0)
         tax = (line_subtotal * rate / Decimal("100")) if taxable else Decimal("0")
-        item.is_taxable = taxable
-        item.tax_rate = rate
         item.tax_amount = tax
         item.total_price = line_subtotal
         subtotal += line_subtotal

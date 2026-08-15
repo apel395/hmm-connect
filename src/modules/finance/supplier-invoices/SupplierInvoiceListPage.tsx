@@ -79,6 +79,8 @@ export default function SupplierInvoiceListPage() {
     if (!receiptId) return;
     setOpen(true);
     loadReceipt(receiptId).finally(() => setSearchParams({}, { replace: true }));
+  // The query-string handoff is intentionally consumed only once on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const calculation = useMemo(() => {

@@ -22,6 +22,15 @@ ROLES = (
 
 
 def upgrade():
+    # Alembic creates this column as VARCHAR(32), while this and later descriptive
+    # revision identifiers are longer than 32 characters.
+    op.alter_column(
+        "alembic_version",
+        "version_num",
+        existing_type=sa.String(length=32),
+        type_=sa.String(length=255),
+        existing_nullable=False,
+    )
     connection = op.get_bind()
     roles = sa.table(
         "roles",

@@ -15,13 +15,13 @@ from typing import Any
 
 VERSIONS_DIR = Path(__file__).resolve().parents[1] / "alembic" / "versions"
 REVISION_RE = re.compile(r"^Revision ID:\s*(\S+)", re.MULTILINE)
-REVISES_RE = re.compile(r"^Revises:\s*(\S+)", re.MULTILINE)
+REVISES_RE = re.compile(r"^Revises:\s*(.+?)\s*$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
 class Revision:
     revision: str
-    down_revision: str | None
+    down_revisions: tuple[str, ...]
     path: Path
     documented_revision: str | None
     documented_parent: str | None
@@ -68,15 +68,25 @@ def load_revision(path: Path) -> Revision:
 
     if not isinstance(revision, str) or not revision.strip():
         raise ValueError("revision must be a non-empty string")
-    if down_revision is not None and not isinstance(down_revision, str):
-        raise ValueError("merge/multiple-parent revisions are not supported in this repository")
+    if down_revision is None:
+        down_revisions: tuple[str, ...] = ()
+    elif isinstance(down_revision, str):
+        down_revisions = (down_revision,)
+    elif (
+        isinstance(down_revision, (tuple, list))
+        and down_revision
+        and all(isinstance(parent, str) and parent.strip() for parent in down_revision)
+    ):
+        down_revisions = tuple(down_revision)
+    else:
+        raise ValueError("down_revision must be a revision string or non-empty sequence")
 
     docstring = ast.get_docstring(tree) or ""
     documented_revision = REVISION_RE.search(docstring)
     documented_parent = REVISES_RE.search(docstring)
     return Revision(
         revision=revision,
-        down_revision=down_revision,
+        down_revisions=down_revisions,
         path=path,
         documented_revision=documented_revision.group(1) if documented_revision else None,
         documented_parent=documented_parent.group(1) if documented_parent else None,
@@ -109,7 +119,7 @@ def main() -> None:
                 f"does not match revision {item.revision}"
             )
         if item.documented_parent:
-            expected = item.down_revision or "None"
+            expected = ", ".join(item.down_revisions) or "None"
             if item.documented_parent != expected:
                 errors.append(
                     f"{path.name}: docstring Revises {item.documented_parent} "
@@ -118,26 +128,23 @@ def main() -> None:
 
     children: dict[str, list[str]] = {key: [] for key in revisions}
     for item in revisions.values():
-        if item.down_revision is None:
+        if not item.down_revisions:
             continue
-        if item.down_revision not in revisions:
-            errors.append(
-                f"{item.path.name}: missing parent revision {item.down_revision}"
-            )
-            continue
-        children[item.down_revision].append(item.revision)
+        for parent in item.down_revisions:
+            if parent not in revisions:
+                errors.append(
+                    f"{item.path.name}: missing parent revision {parent}"
+                )
+                continue
+            children[parent].append(item.revision)
 
-    roots = sorted(item.revision for item in revisions.values() if item.down_revision is None)
+    roots = sorted(item.revision for item in revisions.values() if not item.down_revisions)
     heads = sorted(key for key, value in children.items() if not value)
 
     if len(roots) != 1:
         errors.append(f"expected exactly one migration root, found {roots}")
     if len(heads) != 1:
         errors.append(f"expected exactly one migration head, found {heads}")
-
-    for parent, values in children.items():
-        if len(values) > 1:
-            errors.append(f"branch detected at {parent}: children={sorted(values)}")
 
     if errors:
         print("Migration chain validation failed:")

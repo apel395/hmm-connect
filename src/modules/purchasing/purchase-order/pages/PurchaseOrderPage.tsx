@@ -116,7 +116,7 @@ export default function PurchaseOrderPage() {
 
 
 
-  async function submitForApproval(
+  async function _submitForApproval(
     row: PurchaseOrder
   ) {
 
@@ -153,7 +153,7 @@ export default function PurchaseOrderPage() {
 
 
 
-  async function approvePO(
+  async function _approvePO(
     row: PurchaseOrder
   ) {
 
@@ -190,7 +190,7 @@ export default function PurchaseOrderPage() {
 
 
 
-  async function rejectPO(
+  async function _rejectPO(
     row: PurchaseOrder
   ) {
 
@@ -233,7 +233,7 @@ export default function PurchaseOrderPage() {
 
 
 
-  function openReceive(
+  function _openReceive(
     row: PurchaseOrder
   ) {
 
