@@ -8,10 +8,11 @@ const invalidatePO = (queryClient: ReturnType<typeof useQueryClient>, id?: numbe
   queryClient.invalidateQueries({ queryKey: ["approval"] });
 };
 
-export function usePurchaseOrders(scope: "active" | "history" | "all" = "all", page = 1, pageSize = 20, status?: string) {
+export function usePurchaseOrders(scope: "active" | "history" | "all" = "all", page = 1, pageSize = 20, status?: string, search?: string) {
   return useQuery({
-    queryKey: ["purchase-orders", scope, page, pageSize, status],
-    queryFn: async () => (await purchaseOrderApi.list({ scope, page, page_size: pageSize, status })).data,
+    queryKey: ["purchase-orders", scope, page, pageSize, status, search],
+    queryFn: async () => (await purchaseOrderApi.list({ scope, page, page_size: pageSize, status, search: search?.trim() || undefined })).data,
+    placeholderData: (previous) => previous,
   });
 }
 
