@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import Pagination from "@/components/datatable/Pagination";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -14,15 +12,7 @@ interface Props {
   onDelete?: (supplier: Supplier) => void;
 }
 
-const PAGE_SIZE = 25;
-
 export default function SupplierTable({ rows, busyId, onView, onEdit, onToggle }: Props) {
-  const [page, setPage] = useState(1);
-  const pages = Math.max(Math.ceil(rows.length / PAGE_SIZE), 1);
-  const visibleRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  useEffect(() => { setPage(1); }, [rows]);
-
   return (
     <>
       <div className="overflow-x-auto">
@@ -31,7 +21,7 @@ export default function SupplierTable({ rows, busyId, onView, onEdit, onToggle }
           <TBody>
             {rows.length === 0 ? (
               <TR><TD colSpan={8} className="py-12 text-center text-slate-500">No suppliers match your search and status filter.</TD></TR>
-            ) : visibleRows.map((supplier) => {
+            ) : rows.map((supplier) => {
               const contact = supplier.rows?.[0];
               return (
                 <TR key={supplier.id}>
@@ -51,7 +41,6 @@ export default function SupplierTable({ rows, busyId, onView, onEdit, onToggle }
           </TBody>
         </Table>
       </div>
-      {rows.length > 0 && <Pagination page={page} pages={pages} total={rows.length} pageSize={PAGE_SIZE} noun="suppliers" onChange={setPage}/>} 
     </>
   );
 }

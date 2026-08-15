@@ -48,7 +48,7 @@ export default function ProductCombobox({
 
   useEffect(() => {
     setQuery(selected ? labelFor(selected) : "");
-  }, [selected?.id, selected?.code, selected?.product_code, selected?.name, selected?.product_name]);
+  }, [selected]);
 
   useEffect(() => {
     if (!remote || disabled) return;
@@ -64,7 +64,7 @@ export default function ProductCombobox({
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [remote, disabled, query, selected?.id]);
+  }, [remote, disabled, query, selected]);
 
   const labels = useMemo(
     () => new Map(options.map((product) => [labelFor(product).toLowerCase(), product])),

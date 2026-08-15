@@ -23,6 +23,7 @@ export default function PurchaseRequisitionListPage() {
   const [scope, setScope] = useState<"active"|"history">("active");
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [status, setStatus] = useState("ALL");
   const [advanced, setAdvanced] = useState(false);
   const [page, setPage] = useState(1);
@@ -30,7 +31,7 @@ export default function PurchaseRequisitionListPage() {
     scope,
     page,
     page_size: PAGE_SIZE,
-    search: keyword.trim() || undefined,
+    search: debouncedKeyword || undefined,
     status: status === "ALL" ? undefined : status,
   });
   const create = useCreatePurchaseRequisition();
@@ -41,7 +42,11 @@ export default function PurchaseRequisitionListPage() {
   const summary = data.summary ?? {};
   const counts = summary.status_counts ?? {};
 
-  useEffect(() => setPage(1), [scope, keyword, status]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedKeyword(keyword.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [keyword]);
+  useEffect(() => setPage(1), [scope, debouncedKeyword, status]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
   const statusSelect = <select className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">All statuses</option><option value="DRAFT">Draft</option><option value="PENDING_APPROVAL">Waiting Approval</option><option value="APPROVED">Approved</option><option value="CONVERTED">Converted</option><option value="REJECTED">Rejected</option><option value="CANCELLED">Cancelled</option></select>;

@@ -17,7 +17,8 @@ export default function ProductPage() {
   const [selected, setSelected] = useState<Product | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const query = useProducts({ page, page_size: PAGE_SIZE, search: search || undefined });
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const query = useProducts({ page, page_size: PAGE_SIZE, search: debouncedSearch || undefined });
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
   const data = query.data ?? {};
@@ -26,8 +27,11 @@ export default function ProductPage() {
   const total = data.total_items ?? 0;
 
   useEffect(() => {
-    setPage(1);
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => setPage(1), [debouncedSearch]);
 
   useEffect(() => {
     if (page > pages) setPage(pages);

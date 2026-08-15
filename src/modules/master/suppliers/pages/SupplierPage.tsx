@@ -64,12 +64,13 @@ function supplierPayload(supplier: Supplier, isActive = supplier.is_active): Sup
 
 export default function SupplierPage() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
   const suppliersQuery = useSupplierPage({
     page,
     page_size: PAGE_SIZE,
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     is_active: status === "all" ? undefined : status === "active",
   });
   const createMutation = useCreateSupplier();
@@ -86,7 +87,11 @@ export default function SupplierPage() {
   const pages = Math.max(result?.total_pages ?? 0, 1);
   const total = result?.total_items ?? 0;
 
-  useEffect(() => setPage(1), [search, status]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  useEffect(() => setPage(1), [debouncedSearch, status]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
   function openCreate() { setEditing(null); setFormError(null); setFormOpen(true); }
