@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { productApi } from "@/modules/master/products/api/productApi";
 
 export interface ProductComboboxOption {
   id: number;
@@ -6,14 +7,22 @@ export interface ProductComboboxOption {
   product_code?: string;
   name?: string;
   product_name?: string;
+  description?: string | null;
+  uom?: string;
+  usage_uom?: string;
+  tax_category?: string;
+  is_taxable?: boolean;
+  tax_rate?: number | string;
 }
 
 interface Props {
   value?: number;
-  products: ProductComboboxOption[];
+  products?: ProductComboboxOption[];
   disabled?: boolean;
   placeholder?: string;
+  remote?: boolean;
   onChange: (productId: number) => void;
+  onSelect?: (product: ProductComboboxOption) => void;
 }
 
 function labelFor(product: ProductComboboxOption): string {
@@ -24,30 +33,50 @@ function labelFor(product: ProductComboboxOption): string {
 
 export default function ProductCombobox({
   value,
-  products,
+  products = [],
   disabled,
   placeholder = "Type product code or name...",
+  remote = false,
   onChange,
+  onSelect,
 }: Props) {
   const listId = useId();
-  const selected = products.find((product) => product.id === value);
+  const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
+  const options = remote ? remoteProducts : products;
+  const selected = [...products, ...remoteProducts].find((product) => product.id === value);
   const [query, setQuery] = useState(selected ? labelFor(selected) : "");
 
   useEffect(() => {
     setQuery(selected ? labelFor(selected) : "");
   }, [selected?.id, selected?.code, selected?.product_code, selected?.name, selected?.product_name]);
 
+  useEffect(() => {
+    if (!remote || disabled) return;
+    const raw = query.trim();
+    const selectedLabel = selected ? labelFor(selected) : "";
+    if (selected && raw === selectedLabel) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await productApi.lookup(raw, 30);
+        setRemoteProducts(Array.isArray(response.data) ? response.data : []);
+      } catch {
+        setRemoteProducts([]);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [remote, disabled, query, selected?.id]);
+
   const labels = useMemo(
-    () => new Map(products.map((product) => [labelFor(product).toLowerCase(), product.id])),
-    [products],
+    () => new Map(options.map((product) => [labelFor(product).toLowerCase(), product])),
+    [options],
   );
 
   const commit = (raw: string) => {
-    const nextId = labels.get(raw.trim().toLowerCase());
-    if (nextId) {
-      onChange(nextId);
-      const product = products.find((item) => item.id === nextId);
-      setQuery(product ? labelFor(product) : raw);
+    const product = labels.get(raw.trim().toLowerCase());
+    if (product) {
+      onChange(product.id);
+      onSelect?.(product);
+      setQuery(labelFor(product));
       return;
     }
     if (!raw.trim()) onChange(0);
@@ -71,15 +100,13 @@ export default function ProductCombobox({
         }}
         onBlur={(event) => {
           const raw = event.currentTarget.value;
-          const id = labels.get(raw.trim().toLowerCase());
-          if (!id && selected) setQuery(labelFor(selected));
-          if (!id && !selected && !raw.trim()) setQuery("");
+          const product = labels.get(raw.trim().toLowerCase());
+          if (!product && selected) setQuery(labelFor(selected));
+          if (!product && !selected && !raw.trim()) setQuery("");
         }}
       />
       <datalist id={listId}>
-        {products.map((product) => (
-          <option key={product.id} value={labelFor(product)} />
-        ))}
+        {options.map((product) => <option key={product.id} value={labelFor(product)} />)}
       </datalist>
     </div>
   );
