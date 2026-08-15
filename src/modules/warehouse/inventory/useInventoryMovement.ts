@@ -1,31 +1,7 @@
-import{
+import { useQuery } from "@tanstack/react-query";
+import { inventoryMovementApi } from "./movementApi";
+import type { InventoryMovement, InventoryMovementFilters } from "./movement";
 
-useQuery,
-
-}from"@tanstack/react-query";
-
-import{
-
-inventoryMovementApi,
-
-}from"./movementApi";
-
-export function useInventoryMovements(){
-
-return useQuery({
-
-queryKey:["inventory-movements"],
-
-queryFn:async()=>{
-
-const res=
-
-await inventoryMovementApi.list();
-
-return res.data;
-
-},
-
-});
-
+export function useInventoryMovements(filters:InventoryMovementFilters={}){
+  return useQuery({queryKey:["inventory-movements",filters],queryFn:async()=>((await inventoryMovementApi.list(filters)).data as InventoryMovement[])});
 }

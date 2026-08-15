@@ -76,6 +76,7 @@ import InternalServerErrorPage from "@/pages/errors/InternalServerErrorPage";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
 
+// eslint-disable-next-line react-refresh/only-export-components
 function RoleLanding() {
   const roles = useAuthStore((state) => state.user?.roles ?? []);
   return <Navigate to={canAccess({ roles }, ["FINANCE"]) ? "/finance-dashboard" : "/dashboard"} replace />;

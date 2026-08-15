@@ -21,7 +21,7 @@ export default function PurchaseRequisitionListPage() {
   const [open, setOpen] = useState(false), [keyword, setKeyword] = useState(""), [status, setStatus] = useState("ALL"), [advanced, setAdvanced] = useState(false);
   const query:any = usePurchaseRequisitions(scope);
   const create = useCreatePurchaseRequisition();
-  const source:any[] = Array.isArray(query.data) ? query.data : query.data?.items ?? query.data?.data ?? [];
+  const source:any[] = useMemo(() => Array.isArray(query.data) ? query.data : query.data?.items ?? query.data?.data ?? [], [query.data]);
   const rows = useMemo(() => source.filter((row) => (status === "ALL" || row.status === status) && (!keyword.trim() || [row.pr_number,row.requester_name].filter(Boolean).join(" ").toLowerCase().includes(keyword.toLowerCase()))), [source, keyword, status]);
   const count = (value:string) => source.filter((row) => row.status === value).length;
   const thisMonth = source.filter((row) => row.request_date?.slice(0,7) === new Date().toISOString().slice(0,7)).length;

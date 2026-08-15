@@ -62,6 +62,10 @@ function supplierPayload(supplier: Supplier, isActive = supplier.is_active): Sup
     bank_name: supplier.bank_name ?? "",
     bank_account_number: supplier.bank_account_number ?? "",
     bank_account_name: supplier.bank_account_name ?? "",
+    is_pkp: supplier.is_pkp,
+    npwp: supplier.npwp ?? "",
+    nitku: supplier.nitku ?? "",
+    tax_registration_name: supplier.tax_registration_name ?? "",
     is_active: isActive,
     rows: supplier.rows?.map((row) => ({
       id: row.id,

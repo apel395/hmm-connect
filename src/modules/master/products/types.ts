@@ -1,37 +1,38 @@
+export type TaxCategory = "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL" | "REVIEW_REQUIRED";
+
 export interface Product {
   id: number;
-
   code: string;
   name: string;
-
   group_code: string;
   group_name: string;
-
   subgroup_code: string;
   subgroup_name: string;
-
   uom: string;
   usage_uom: string;
-
   conversion: string | number;
-
+  tax_category: TaxCategory;
+  is_taxable: boolean;
+  tax_rate: string | number;
+  tax_reason?: string | null;
+  tax_reference?: string | null;
   is_active: boolean;
 }
 
 export interface ProductCreateRequest {
   name: string;
-
   group_code: string;
   group_name: string;
-
   subgroup_code: string;
   subgroup_name: string;
-
   uom: string;
   usage_uom: string;
-
   conversion: number;
+  tax_category: TaxCategory;
+  is_taxable: boolean;
+  tax_rate: number;
+  tax_reason?: string | null;
+  tax_reference?: string | null;
 }
 
-export type ProductUpdateRequest =
-  ProductCreateRequest;
+export type ProductUpdateRequest = ProductCreateRequest;

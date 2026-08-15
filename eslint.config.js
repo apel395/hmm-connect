@@ -8,6 +8,7 @@ export default tseslint.config(
     ignores: [
       "dist",
       "node_modules",
+      ".venv*",
       "vite.config.js",
       "vite.config.d.ts",
     ],

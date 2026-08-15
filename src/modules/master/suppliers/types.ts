@@ -14,6 +14,10 @@ export interface Supplier {
   bank_name: string;
   bank_account_number: string;
   bank_account_name: string;
+  is_pkp: boolean;
+  npwp?: string | null;
+  nitku?: string | null;
+  tax_registration_name?: string | null;
   is_active: boolean;
   rows?: SupplierPIC[];
   created_at?: string | null;
@@ -35,6 +39,10 @@ export interface SupplierPayload {
   bank_name: string;
   bank_account_number: string;
   bank_account_name: string;
+  is_pkp: boolean;
+  npwp: string | null;
+  nitku: string | null;
+  tax_registration_name: string | null;
   is_active: boolean;
   rows: SupplierPICPayload[];
 }

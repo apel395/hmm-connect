@@ -117,7 +117,7 @@ export default function PurchasingDocumentsPage() {
     setFormOpen(true);
   }
 
-  function openEdit(document: PurchasingDocument) {
+  function _openEdit(document: PurchasingDocument) {
     setEditing(document);
     setFormError("");
     setProgress(0);

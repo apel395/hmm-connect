@@ -12,6 +12,10 @@ export type InvoiceLine = {
   uom?: string | null;
   unit_price: number;
   line_amount?: number;
+  is_taxable?: boolean;
+  tax_rate?: number;
+  tax_amount?: number;
+  line_total?: number;
   account_id?: number | null;
   account_code?: string | null;
   account_name?: string | null;
@@ -34,6 +38,11 @@ export type ThreeWayMatchLine = {
   receipt_unit_cost?: number | null;
   invoice_unit_price: number;
   price_difference?: number | null;
+  is_taxable?: boolean;
+  tax_rate?: number;
+  tax_amount?: number;
+  reference_taxable?: boolean | null;
+  reference_tax_rate?: number | null;
   uom?: string | null;
   reference_uom?: string | null;
   status: "MATCHED" | "MISMATCH";
@@ -78,6 +87,9 @@ export type SupplierInvoice = {
   paid_amount?: number;
   balance_amount?: number;
   payment_status?: string;
+  tax_invoice_number?: string | null;
+  tax_invoice_date?: string | null;
+  supplier_is_pkp?: boolean;
   status: string;
   notes?: string | null;
   source_type: string;
@@ -101,8 +113,9 @@ export type InvoicePayload = {
   location_id?: number | null;
   currency: string;
   discount_amount: number;
-  tax_amount: number;
   withholding_tax_amount: number;
+  tax_invoice_number?: string | null;
+  tax_invoice_date?: string | null;
   notes?: string | null;
   source_type: string;
   lines: InvoiceLine[];
