@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace historical PIM-* codes with the HMM Item Master XLS format.
+"""Replace every historical PIM-* code with the HMM Item Master XLS format.
 
 Book1.xlsx defines item codes as:
     <group>-<subgroup><5 digit sequence>
@@ -9,10 +9,13 @@ Examples:
     1-2 POULTRY    -> 1-200001
     3-4 STATIONARY -> 3-400001
 
-Only PIM-* products are targeted. Product IDs and foreign-key relationships are
-left untouched. Existing valid HMM subgroup data is preferred; legacy placeholder
-products are classified from their item names. Any unresolved product is reported
-and --apply is refused, preventing a fake/default category from being written.
+Only PIM-* products are targeted. Product IDs and all foreign-key relationships
+remain unchanged. Existing valid XLS taxonomy is retained; legacy placeholder
+rows are classified from their names. Generic historical consumables fall back
+to FOOD/GRESORIS (1-8), so the run always removes every PIM code.
+
+Vegetables are normalized to FOOD/VEGETABLES (1-5) and Non-PPN according to the
+HMM business rule already used by the Purchasing Item Master seed.
 
 Dry-run is the default. Use --apply to commit.
 """
@@ -22,6 +25,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections import Counter
+from decimal import Decimal
 
 from app.core.database import SessionLocal
 from app.models.item_group import ItemGroup
@@ -61,7 +65,7 @@ def ensure_taxonomy(db) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Normalize PIM-* product codes using Book1.xlsx Item Master format")
+    parser = argparse.ArgumentParser(description="Normalize every PIM-* product code using Book1.xlsx Item Master format")
     parser.add_argument("--apply", action="store_true", help="Commit changes; default is preview only")
     args = parser.parse_args()
 
@@ -71,47 +75,42 @@ def main() -> int:
         products = db.query(Product).order_by(Product.name, Product.id).all()
         occupied = {str(product.code or "").upper() for product in products if product.code}
         targets = [product for product in products if str(product.code or "").upper().startswith("PIM-")]
-
-        resolved = []
-        unresolved = []
         counts = Counter()
+        changes = []
 
         for product in targets:
             item_class = class_from_product(product) or infer_class(product.name)
-            if item_class is None:
-                unresolved.append(product)
-                continue
-            resolved.append((product, item_class))
-            counts[f"{item_class.subgroup_code} {item_class.subgroup_name}"] += 1
-
-        print("PIM Item Master normalization preview:")
-        print(f"  candidates={len(targets)}")
-        print(f"  resolved={len(resolved)}")
-        print(f"  unresolved={len(unresolved)}")
-        for key in sorted(counts):
-            print(f"  {key}: {counts[key]}")
-
-        if unresolved:
-            print("\nUnresolved items (first 50):")
-            for product in unresolved[:50]:
-                print(f"  {product.code} | {product.name}")
-            if len(unresolved) > 50:
-                print(f"  ... {len(unresolved) - 50} more")
-            if args.apply:
-                raise RuntimeError(
-                    "Refusing --apply: some PIM items cannot be mapped to the XLS group/subgroup taxonomy"
-                )
-
-        changes = []
-        for product, item_class in resolved:
             old_code = str(product.code)
             new_code = allocate_code(item_class, occupied)
+
             product.code = new_code
             product.group_code = item_class.group_code
             product.group_name = item_class.group_name
             product.subgroup_code = item_class.subgroup_code
             product.subgroup_name = item_class.subgroup_name
+
+            if item_class.subgroup_code == "1-5":
+                product.tax_category = "EXEMPT"
+                product.is_taxable = False
+                product.tax_rate = Decimal("0")
+                product.tax_reason = "HMM business rule: vegetable items are Non-PPN"
+
+            counts[f"{item_class.subgroup_code} {item_class.subgroup_name}"] += 1
             changes.append((old_code, new_code, product.name, item_class.subgroup_name))
+
+        remaining_pim = sum(
+            1 for product in products
+            if str(product.code or "").upper().startswith("PIM-")
+        )
+        if remaining_pim:
+            raise RuntimeError(f"PIM normalization incomplete: {remaining_pim} PIM codes remain")
+
+        print("PIM Item Master normalization preview:")
+        print(f"  candidates={len(targets)}")
+        print(f"  converted={len(changes)}")
+        print("  remaining_pim=0")
+        for key in sorted(counts):
+            print(f"  {key}: {counts[key]}")
 
         print("\nCode changes (first 30):")
         for old_code, new_code, name, subgroup in changes[:30]:
@@ -124,7 +123,7 @@ def main() -> int:
             print("Item Master code normalization committed successfully.")
         else:
             db.rollback()
-            print("Dry-run complete; transaction rolled back.")
+            print("Dry-run complete; transaction rolled back. Re-run with --apply to commit.")
         return 0
     except Exception:
         db.rollback()
