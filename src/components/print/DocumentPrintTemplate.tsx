@@ -17,6 +17,12 @@ export interface PrintTotal {
   emphasis?: boolean;
 }
 
+export interface PrintSignature {
+  label: string;
+  name?: ReactNode;
+  imageSrc?: string;
+}
+
 interface Props<Row> {
   title: string;
   documentNumber?: ReactNode;
@@ -29,7 +35,7 @@ interface Props<Row> {
   totals?: PrintTotal[];
   notes?: ReactNode;
   extraAfterTable?: ReactNode;
-  signatures?: Array<{ label: string; name?: ReactNode }>;
+  signatures?: PrintSignature[];
   footer?: ReactNode;
 }
 
@@ -85,7 +91,7 @@ export default function DocumentPrintTemplate<Row>({
     <section className="avoid-break mt-7"><div className="font-semibold">NOTES:</div><div className="mt-1 min-h-14 border-b border-black py-2">{notes || "—"}</div></section>
 
     {!!signatures?.length && <section className={`avoid-break mt-12 grid gap-10 text-center ${signatures.length >= 3 ? "grid-cols-3" : signatures.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
-      {signatures.map((signature, index) => <div key={`${signature.label}-${index}`}><div className="h-14"/><div className="border-t border-black pt-2 font-semibold">{signature.label}</div><div className="mt-1 text-[11px]">{signature.name ?? ""}</div></div>)}
+      {signatures.map((signature, index) => <div key={`${signature.label}-${index}`}><div className="flex h-14 items-end justify-center">{signature.imageSrc && <img src={signature.imageSrc} alt="" className="max-h-14 max-w-full object-contain" />}</div><div className="border-t border-black pt-2 font-semibold">{signature.label}</div><div className="mt-1 text-[11px]">{signature.name ?? ""}</div></div>)}
     </section>}
 
     {footer && <footer className="mt-8 border-t pt-2 text-[10px] text-slate-600">{footer}</footer>}
