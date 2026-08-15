@@ -2,7 +2,7 @@ from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -52,15 +52,7 @@ def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse):
     }
 
 
-@router.get("")
-def list_inventory(
-    warehouse_id: int | None = None,
-    search: str | None = Query(default=None, max_length=100),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=25, ge=1, le=100),
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
+def _inventory_base(db: Session, warehouse_id: int | None = None):
     query = (
         db.query(Inventory, Product, Warehouse)
         .join(Product, Product.id == Inventory.product_id)
@@ -68,12 +60,51 @@ def list_inventory(
     )
     if warehouse_id:
         query = query.filter(Inventory.warehouse_id == warehouse_id)
+    return query
+
+
+@router.get("")
+def list_inventory(
+    warehouse_id: int | None = None,
+    health: str | None = Query(default=None, pattern="^(HEALTHY|REORDER|BELOW_MINIMUM)$"),
+    search: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    quantity = func.coalesce(Inventory.quantity, 0)
+    minimum = func.coalesce(Product.minimum_stock, 0)
+    reorder = func.coalesce(Product.reorder_level, 0)
+
+    summary_query = _inventory_base(db, warehouse_id)
+    summary_rows = summary_query.with_entities(
+        func.count(Inventory.id),
+        func.coalesce(func.sum(quantity * func.coalesce(Inventory.average_cost, 0)), 0),
+        func.coalesce(func.sum(func.cast(quantity <= reorder, db.bind.dialect.type_descriptor(__import__('sqlalchemy').Integer))), 0),
+        func.coalesce(func.sum(func.cast(quantity < minimum, db.bind.dialect.type_descriptor(__import__('sqlalchemy').Integer))), 0),
+    ).one()
+
+    query = _inventory_base(db, warehouse_id)
+    if health == "BELOW_MINIMUM":
+        query = query.filter(quantity < minimum)
+    elif health == "REORDER":
+        query = query.filter(quantity <= reorder, quantity >= minimum)
+    elif health == "HEALTHY":
+        query = query.filter(quantity > reorder, quantity >= minimum)
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term), Warehouse.name.ilike(term)))
     total = query.count()
-    rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
-    return _paged([inventory_row(*row) for row in rows], page=page, page_size=page_size, total=total)
+    rows = query.order_by(Product.code, Warehouse.code).offset((page - 1) * page_size).limit(page_size).all()
+    result = _paged([inventory_row(*row) for row in rows], page=page, page_size=page_size, total=total)
+    result["summary"] = {
+        "stock_lines": int(summary_rows[0] or 0),
+        "stock_value": summary_rows[1] or 0,
+        "needs_reorder": int(summary_rows[2] or 0),
+        "below_minimum": int(summary_rows[3] or 0),
+    }
+    return result
 
 
 @router.get("/movements")
