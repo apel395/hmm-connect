@@ -31,6 +31,21 @@ function labelFor(product: ProductComboboxOption): string {
   return code ? `${code} - ${name}` : name;
 }
 
+async function loadRemoteProducts(search: string): Promise<ProductComboboxOption[]> {
+  try {
+    const lookup = await productApi.lookup(search, 30);
+    if (Array.isArray(lookup.data) && lookup.data.length > 0) return lookup.data;
+  } catch {
+    // Fall through to the canonical paginated endpoint. This also keeps the
+    // create forms usable while an older API deployment is still warming up.
+  }
+
+  const list = await productApi.list({ page: 1, page_size: 30, search, active_only: true });
+  const payload = list.data;
+  if (Array.isArray(payload)) return payload;
+  return Array.isArray(payload?.items) ? payload.items : [];
+}
+
 export default function ProductCombobox({
   value,
   products = [],
@@ -41,9 +56,11 @@ export default function ProductCombobox({
   onSelect,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const requestIdRef = useRef(0);
   const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const options = remote ? remoteProducts : products;
   const selected = [...products, ...remoteProducts].find((product) => product.id === value);
   const [query, setQuery] = useState(selected ? labelFor(selected) : "");
@@ -58,15 +75,20 @@ export default function ProductCombobox({
     const selectedLabel = selected ? labelFor(selected) : "";
     if (selected && raw === selectedLabel && remoteProducts.length > 0) return;
 
+    const requestId = ++requestIdRef.current;
     const timer = window.setTimeout(async () => {
       setLoading(true);
+      setLoadError(false);
       try {
-        const response = await productApi.lookup(selected && raw === selectedLabel ? "" : raw, 30);
-        setRemoteProducts(Array.isArray(response.data) ? response.data : []);
+        const rows = await loadRemoteProducts(selected && raw === selectedLabel ? "" : raw);
+        if (requestId === requestIdRef.current) setRemoteProducts(rows);
       } catch {
-        setRemoteProducts([]);
+        if (requestId === requestIdRef.current) {
+          setRemoteProducts([]);
+          setLoadError(true);
+        }
       } finally {
-        setLoading(false);
+        if (requestId === requestIdRef.current) setLoading(false);
       }
     }, raw ? 250 : 0);
 
@@ -119,8 +141,10 @@ export default function ProductCombobox({
         <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
           {loading && visibleOptions.length === 0 ? (
             <div className="px-3 py-3 text-sm text-slate-500">Loading items...</div>
+          ) : loadError ? (
+            <div className="px-3 py-3 text-sm text-red-600">Unable to load items. Please try again.</div>
           ) : visibleOptions.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-500">No items found.</div>
+            <div className="px-3 py-3 text-sm text-slate-500">No matching items.</div>
           ) : (
             visibleOptions.map((product) => (
               <button
