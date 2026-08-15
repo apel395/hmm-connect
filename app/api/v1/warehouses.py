@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -14,14 +15,33 @@ router = APIRouter(prefix="/warehouses", tags=["Warehouses"])
 
 @router.get("")
 def list_warehouses(
+    response: Response,
     active_only: bool = True,
+    search: str | None = Query(default=None, max_length=100),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int = Query(default=25, ge=1, le=250),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
     query = db.query(Warehouse)
     if active_only:
         query = query.filter(Warehouse.is_active.is_(True))
-    return query.order_by(Warehouse.code).all()
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Warehouse.code.ilike(term),
+                Warehouse.name.ilike(term),
+                Warehouse.address.ilike(term),
+            )
+        )
+
+    total = query.count()
+    response.headers["X-Total-Count"] = str(total)
+    query = query.order_by(Warehouse.code)
+    if page is not None:
+        query = query.offset((page - 1) * page_size).limit(page_size)
+    return query.all()
 
 
 @router.post("", status_code=201)
