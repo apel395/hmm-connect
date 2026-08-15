@@ -2,7 +2,7 @@ from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -77,12 +77,11 @@ def list_inventory(
     minimum = func.coalesce(Product.minimum_stock, 0)
     reorder = func.coalesce(Product.reorder_level, 0)
 
-    summary_query = _inventory_base(db, warehouse_id)
-    summary_rows = summary_query.with_entities(
+    summary_rows = _inventory_base(db, warehouse_id).with_entities(
         func.count(Inventory.id),
         func.coalesce(func.sum(quantity * func.coalesce(Inventory.average_cost, 0)), 0),
-        func.coalesce(func.sum(func.cast(quantity <= reorder, db.bind.dialect.type_descriptor(__import__('sqlalchemy').Integer))), 0),
-        func.coalesce(func.sum(func.cast(quantity < minimum, db.bind.dialect.type_descriptor(__import__('sqlalchemy').Integer))), 0),
+        func.coalesce(func.sum(case((quantity <= reorder, 1), else_=0)), 0),
+        func.coalesce(func.sum(case((quantity < minimum, 1), else_=0)), 0),
     ).one()
 
     query = _inventory_base(db, warehouse_id)
