@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 export interface ProductComboboxOption {
   id: number;
@@ -32,6 +32,10 @@ export default function ProductCombobox({
   const listId = useId();
   const selected = products.find((product) => product.id === value);
   const [query, setQuery] = useState(selected ? labelFor(selected) : "");
+
+  useEffect(() => {
+    setQuery(selected ? labelFor(selected) : "");
+  }, [selected?.id, selected?.code, selected?.product_code, selected?.name, selected?.product_name]);
 
   const labels = useMemo(
     () => new Map(products.map((product) => [labelFor(product).toLowerCase(), product.id])),
