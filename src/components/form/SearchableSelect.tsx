@@ -2,7 +2,9 @@ import { useEffect, useId, useMemo, useState } from "react";
 
 export interface SearchableSelectOption {
   id: number;
-  label: string;
+  label?: string;
+  code?: string;
+  name?: string;
   keywords?: string[];
 }
 
@@ -17,6 +19,14 @@ interface Props {
   onChange: (value: number | undefined) => void;
 }
 
+function optionLabel(option: SearchableSelectOption): string {
+  if (option.label?.trim()) return option.label.trim();
+  const code = option.code?.trim() ?? "";
+  const name = option.name?.trim() ?? "";
+  if (code && name) return `${code} - ${name}`;
+  return name || code || String(option.id);
+}
+
 export default function SearchableSelect({
   label,
   value,
@@ -29,18 +39,22 @@ export default function SearchableSelect({
 }: Props) {
   const listId = useId();
   const selected = options.find((option) => option.id === value);
-  const [query, setQuery] = useState(selected?.label ?? "");
+  const selectedLabel = selected ? optionLabel(selected) : "";
+  const [query, setQuery] = useState(selectedLabel);
 
   useEffect(() => {
-    setQuery(selected?.label ?? "");
-  }, [selected?.id, selected?.label]);
+    setQuery(selectedLabel);
+  }, [selected?.id, selectedLabel]);
 
   const optionMap = useMemo(() => {
     const map = new Map<string, number>();
     for (const option of options) {
-      map.set(option.label.trim().toLowerCase(), option.id);
-      for (const keyword of option.keywords ?? []) {
-        const normalized = keyword.trim().toLowerCase();
+      const labelValue = optionLabel(option).trim().toLowerCase();
+      if (labelValue) map.set(labelValue, option.id);
+
+      const aliases = [option.code, option.name, ...(option.keywords ?? [])];
+      for (const keyword of aliases) {
+        const normalized = keyword?.trim().toLowerCase();
         if (normalized) map.set(normalized, option.id);
       }
     }
@@ -57,7 +71,7 @@ export default function SearchableSelect({
     if (!nextId) return;
     onChange(nextId);
     const next = options.find((option) => option.id === nextId);
-    if (next) setQuery(next.label);
+    if (next) setQuery(optionLabel(next));
   };
 
   return (
@@ -87,12 +101,12 @@ export default function SearchableSelect({
               onChange(undefined);
               return;
             }
-            if (!exactId) setQuery(selected?.label ?? "");
+            if (!exactId) setQuery(selectedLabel);
           }}
         />
         <datalist id={listId}>
           {options.map((option) => (
-            <option key={option.id} value={option.label} />
+            <option key={option.id} value={optionLabel(option)} />
           ))}
         </datalist>
       </div>
