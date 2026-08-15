@@ -2,10 +2,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { purchaseOrderApi, type PurchaseOrderCreatePayload } from "../api/purchaseOrderApi";
 
 async function invalidatePO(queryClient: ReturnType<typeof useQueryClient>, id?: number, detail?: unknown) {
-  if (id && detail) queryClient.setQueryData(["purchase-order", id], detail);
+  if (id && detail) {
+    queryClient.setQueryData(["purchase-order", id], detail);
+    // The mutation response is produced after the backend commit and is the
+    // authoritative state for the currently mounted detail page. Mark it stale
+    // for the next mount, but do not immediately overwrite it with a GET that
+    // may still be served from an older edge/cache snapshot.
+    await queryClient.invalidateQueries({
+      queryKey: ["purchase-order", id],
+      exact: true,
+      refetchType: "none",
+    });
+  }
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["purchase-orders"] }),
-    id ? queryClient.refetchQueries({ queryKey: ["purchase-order", id], exact: true, type: "active" }) : Promise.resolve(),
     queryClient.invalidateQueries({ queryKey: ["approval"] }),
     queryClient.invalidateQueries({ queryKey: ["approval-inbox"] }),
   ]);
