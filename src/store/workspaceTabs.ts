@@ -14,6 +14,7 @@ interface WorkspaceTabsState {
   ensureTab: (tab: WorkspaceTab) => void;
   closeTab: (id: string) => { nextPath: string | null };
   reopenLastClosed: () => string | null;
+  resetTabs: () => void;
 }
 
 const dashboardTab: WorkspaceTab = {
@@ -70,6 +71,7 @@ export const useWorkspaceTabs = create<WorkspaceTabsState>()(
         });
         return target.path;
       },
+      resetTabs: () => set({ tabs: [dashboardTab], closedTabs: [] }),
     }),
     {
       name: "hmm-workspace-tabs",
