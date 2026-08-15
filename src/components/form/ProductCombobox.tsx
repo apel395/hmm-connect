@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { productApi } from "@/modules/master/products/api/productApi";
 
 export interface ProductComboboxOption {
@@ -40,8 +40,10 @@ export default function ProductCombobox({
   onChange,
   onSelect,
 }: Props) {
-  const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
   const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const options = remote ? remoteProducts : products;
   const selected = [...products, ...remoteProducts].find((product) => product.id === value);
   const [query, setQuery] = useState(selected ? labelFor(selected) : "");
@@ -54,60 +56,91 @@ export default function ProductCombobox({
     if (!remote || disabled) return;
     const raw = query.trim();
     const selectedLabel = selected ? labelFor(selected) : "";
-    if (selected && raw === selectedLabel) return;
+    if (selected && raw === selectedLabel && remoteProducts.length > 0) return;
+
     const timer = window.setTimeout(async () => {
+      setLoading(true);
       try {
-        const response = await productApi.lookup(raw, 30);
+        const response = await productApi.lookup(selected && raw === selectedLabel ? "" : raw, 30);
         setRemoteProducts(Array.isArray(response.data) ? response.data : []);
       } catch {
         setRemoteProducts([]);
+      } finally {
+        setLoading(false);
       }
-    }, 250);
+    }, raw ? 250 : 0);
+
     return () => window.clearTimeout(timer);
-  }, [remote, disabled, query, selected]);
+  }, [remote, disabled, query, selected, remoteProducts.length]);
 
-  const labels = useMemo(
-    () => new Map(options.map((product) => [labelFor(product).toLowerCase(), product])),
-    [options],
-  );
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
 
-  const commit = (raw: string) => {
-    const product = labels.get(raw.trim().toLowerCase());
-    if (product) {
-      onChange(product.id);
-      onSelect?.(product);
-      setQuery(labelFor(product));
-      return;
-    }
-    if (!raw.trim()) onChange(0);
+  const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
+
+  const selectProduct = (product: ProductComboboxOption) => {
+    onChange(product.id);
+    onSelect?.(product);
+    setQuery(labelFor(product));
+    setOpen(false);
   };
 
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <input
         type="text"
-        list={listId}
         value={query}
         disabled={disabled}
         placeholder={placeholder}
         autoComplete="off"
         className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0F6758] focus:ring-2 focus:ring-[#0F6758]/20 disabled:bg-slate-100"
-        onFocus={(event) => event.currentTarget.select()}
+        onFocus={() => setOpen(true)}
         onChange={(event) => {
           const next = event.target.value;
           setQuery(next);
-          commit(next);
+          setOpen(true);
+          if (!next.trim() && value) onChange(0);
         }}
-        onBlur={(event) => {
-          const raw = event.currentTarget.value;
-          const product = labels.get(raw.trim().toLowerCase());
-          if (!product && selected) setQuery(labelFor(selected));
-          if (!product && !selected && !raw.trim()) setQuery("");
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setOpen(false);
+          if (event.key === "Enter" && open && visibleOptions.length === 1) {
+            event.preventDefault();
+            selectProduct(visibleOptions[0]);
+          }
         }}
       />
-      <datalist id={listId}>
-        {options.map((product) => <option key={product.id} value={labelFor(product)} />)}
-      </datalist>
+
+      {open && !disabled && (
+        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+          {loading && visibleOptions.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">Loading items...</div>
+          ) : visibleOptions.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">No items found.</div>
+          ) : (
+            visibleOptions.map((product) => (
+              <button
+                key={product.id}
+                type="button"
+                className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectProduct(product)}
+              >
+                <div className="text-sm font-medium text-slate-800">{labelFor(product)}</div>
+                {(product.uom || product.usage_uom) && (
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}
+                  </div>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
