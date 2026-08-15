@@ -19,12 +19,22 @@ PURCHASING_ROLE_CHAIN = (
 )
 
 
-def get_request(db: Session, entity_type: str, entity_id: int):
-    return db.query(ApprovalRequest).filter(ApprovalRequest.entity_type == entity_type, ApprovalRequest.entity_id == entity_id).first()
+def get_request(db: Session, entity_type: str, entity_id: int, *, for_update: bool = False):
+    query = (
+        db.query(ApprovalRequest)
+        .filter(
+            ApprovalRequest.entity_type == entity_type,
+            ApprovalRequest.entity_id == entity_id,
+        )
+        .order_by(ApprovalRequest.id.desc())
+    )
+    if for_update:
+        query = query.with_for_update()
+    return query.first()
 
 
 def reset_approval(db: Session, entity_type: str, entity_id: int) -> None:
-    request = get_request(db, entity_type, entity_id)
+    request = get_request(db, entity_type, entity_id, for_update=True)
     if request:
         db.delete(request)
         db.flush()
@@ -139,22 +149,14 @@ def _ensure_default_workflow(
                 missing_roles.append(role_name)
 
         if missing_roles:
-            # Keep the administrator/superuser bypass available while the ERP is
-            # still being tested. This temporary workflow is regenerated into the
-            # real business chain automatically as soon as all business roles exist.
             if user is not None and is_superuser(user):
                 administrator_role = _administrator_role(db)
                 if not administrator_role:
                     raise HTTPException(
                         status_code=409,
-                        detail=(
-                            "Administrator testing bypass is unavailable because no "
-                            "administrator role exists"
-                        ),
+                        detail="Approval fallback is unavailable because no administrator role exists",
                     )
-                configured_roles = [
-                    (1, "Administrator Testing Approval", administrator_role)
-                ]
+                configured_roles = [(1, "Administrator Approval", administrator_role)]
             else:
                 raise HTTPException(
                     status_code=409,
@@ -196,6 +198,32 @@ def _entity_location(db: Session, entity_type: str, entity_id: int):
     return getattr(entity, "location", None) if entity else None
 
 
+def _sync_document_status(db: Session, request: ApprovalRequest) -> None:
+    """Keep document lifecycle authoritative with the approval request.
+
+    PR and PO have document-level PENDING_APPROVAL/APPROVED/REJECTED states.
+    Receiving intentionally remains DRAFT after approval until it is posted to
+    inventory, so only its ApprovalRequest status is finalized here.
+    """
+    if request.entity_type == "PURCHASE_REQUISITION":
+        from app.models.purchase_requisition import PurchaseRequisition
+
+        document = db.get(PurchaseRequisition, request.entity_id)
+    elif request.entity_type == "PURCHASE_ORDER":
+        from app.models.purchase_order import PurchaseOrder
+
+        document = db.get(PurchaseOrder, request.entity_id)
+    else:
+        document = None
+
+    if document is None:
+        return
+    if request.status == "APPROVED":
+        document.status = "APPROVED"
+    elif request.status == "REJECTED":
+        document.status = "REJECTED"
+
+
 def _is_local_purchasing_role(role_name: str) -> bool:
     return _normalized_role_name(role_name) in {
         _normalized_role_name("STORE"),
@@ -232,8 +260,6 @@ def start_approval(
         for step in workflow.steps
         if _is_local_purchasing_role(step.approver_role.name)
     ]
-    # Superuser testing remains possible even while organization master data is
-    # incomplete. Ordinary business users still require a valid site/location.
     if local_steps and entity_location is None and not is_superuser(user):
         raise HTTPException(
             status_code=409,
@@ -275,7 +301,7 @@ def start_approval(
 
 
 def current_steps(request: ApprovalRequest) -> list[ApprovalRequestStep]:
-    if request.current_step_order is None:
+    if request.current_step_order is None or request.status != "PENDING":
         return []
     return [
         step
@@ -287,7 +313,8 @@ def current_steps(request: ApprovalRequest) -> list[ApprovalRequestStep]:
 def can_user_decide_step(step: ApprovalRequestStep, user) -> bool:
     if is_superuser(user):
         return True
-    if step.approver_role_name.strip().upper() not in role_names(user):
+    normalized_user_roles = {_normalized_role_name(name) for name in role_names(user)}
+    if _normalized_role_name(step.approver_role_name) not in normalized_user_roles:
         return False
     if step.department_name and (
         not user.department or user.department.name != step.department_name
@@ -304,10 +331,11 @@ def _select_current_step(
     request: ApprovalRequest,
     user,
 ) -> ApprovalRequestStep:
-    for step in current_steps(request):
+    pending = current_steps(request)
+    for step in pending:
         if can_user_decide_step(step, user):
             return step
-    if not current_steps(request):
+    if not pending:
         raise HTTPException(status_code=409, detail="No pending approval step")
     raise HTTPException(status_code=403, detail="User cannot approve the current stage")
 
@@ -321,6 +349,7 @@ def _advance_stage(db: Session, request: ApprovalRequest) -> None:
         request.status = "APPROVED"
         request.current_step_order = None
         request.completed_at = datetime.now(timezone.utc)
+        _sync_document_status(db, request)
         db.flush()
         return
     next_order = min(step.step_order for step in waiting)
@@ -331,18 +360,33 @@ def _advance_stage(db: Session, request: ApprovalRequest) -> None:
     db.flush()
 
 
+def _lock_request(db: Session, request: ApprovalRequest) -> ApprovalRequest:
+    locked = (
+        db.query(ApprovalRequest)
+        .filter(ApprovalRequest.id == request.id)
+        .with_for_update()
+        .one()
+    )
+    if locked.status != "PENDING" or locked.current_step_order is None:
+        raise HTTPException(status_code=409, detail="Approval is already completed")
+    return locked
+
+
 def approve_current_step(db: Session, *, request, user, comment=None) -> None:
+    request = _lock_request(db, request)
     step = _select_current_step(request, user)
     step.status = "APPROVED"
     step.approved_by_id = user.id
     step.decided_at = datetime.now(timezone.utc)
     step.decision_comment = comment
+    db.flush()
     _advance_stage(db, request)
 
 
 def reject_current_step(db: Session, *, request, user, comment=None) -> None:
     if not comment or not str(comment).strip():
         raise HTTPException(status_code=400, detail="Rejection reason is required")
+    request = _lock_request(db, request)
     step = _select_current_step(request, user)
     step.status = "REJECTED"
     step.approved_by_id = user.id
@@ -351,4 +395,5 @@ def reject_current_step(db: Session, *, request, user, comment=None) -> None:
     request.status = "REJECTED"
     request.current_step_order = None
     request.completed_at = datetime.now(timezone.utc)
+    _sync_document_status(db, request)
     db.flush()
