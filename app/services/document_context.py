@@ -6,9 +6,26 @@ from app.models.approval_request import ApprovalRequest
 from app.models.document_attachment import DocumentAttachment
 from app.models.audit_log import AuditLog
 from app.dependencies.authorization import has_any_role, is_superuser, role_names
+from app.services.print_signatures import add_private_print_signatures
 
 
 REOPENABLE_WORKFLOW_DOCUMENTS = {"PURCHASE_REQUISITION", "PURCHASE_ORDER"}
+
+
+def _entity_location_name(db: Session, entity_type: str, entity_id: int) -> str | None:
+    if entity_type == "PURCHASE_REQUISITION":
+        from app.models.purchase_requisition import PurchaseRequisition
+        entity = db.get(PurchaseRequisition, entity_id)
+    elif entity_type == "PURCHASE_ORDER":
+        from app.models.purchase_order import PurchaseOrder
+        entity = db.get(PurchaseOrder, entity_id)
+    elif entity_type == "GOODS_RECEIPT":
+        from app.models.goods_receipt import GoodsReceipt
+        entity = db.get(GoodsReceipt, entity_id)
+    else:
+        entity = None
+    location = getattr(entity, "location", None) if entity else None
+    return location.name if location else None
 
 
 def document_context(db: Session, entity_type: str, entity_id: int, status: str, user) -> dict:
@@ -35,8 +52,9 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         AuditLog.entity_type == entity_type,
         AuditLog.entity_id == entity_id,
     ).order_by(AuditLog.created_at.desc()).all()
-    return {
+    result = {
         "is_admin": admin,
+        "location_name": _entity_location_name(db, entity_type, entity_id),
         "allowed_actions": {
             "can_edit": status == "DRAFT" or (pending and can_decide),
             "can_submit": status == "DRAFT",
@@ -52,6 +70,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
             "level": step.step_order,
             "name": step.name,
             "approver_role": step.approver_role_name,
+            "location_name": step.location_name,
             "status": step.status,
             "approver_name": step.approved_by.full_name if step.approved_by else None,
             "decided_at": step.decided_at,
@@ -69,6 +88,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
             "occurred_at": event.created_at,
         } for event in events],
     }
+    return add_private_print_signatures(result)
 
 
 def print_metadata(user) -> dict:
