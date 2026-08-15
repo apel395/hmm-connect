@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { productApi } from "@/modules/master/products/api/productApi";
 
 export interface ProductComboboxOption {
@@ -24,6 +25,12 @@ interface Props {
   onChange: (productId: number) => void;
   onSelect?: (product: ProductComboboxOption) => void;
 }
+
+type DropdownPosition = {
+  left: number;
+  top: number;
+  width: number;
+};
 
 function labelFor(product: ProductComboboxOption): string {
   const code = product.code ?? product.product_code ?? "";
@@ -56,14 +63,28 @@ export default function ProductCombobox({
   onSelect,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
   const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [position, setPosition] = useState<DropdownPosition | null>(null);
   const options = remote ? remoteProducts : products;
   const selected = [...products, ...remoteProducts].find((product) => product.id === value);
   const [query, setQuery] = useState(selected ? labelFor(selected) : "");
+
+  const updatePosition = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const rect = input.getBoundingClientRect();
+    setPosition({
+      left: rect.left,
+      top: rect.bottom + 4,
+      width: rect.width,
+    });
+  }, []);
 
   useEffect(() => {
     setQuery(selected ? labelFor(selected) : "");
@@ -96,8 +117,23 @@ export default function ProductCombobox({
   }, [remote, disabled, query, selected, remoteProducts.length]);
 
   useEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const onReposition = () => updatePosition();
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [open, updatePosition]);
+
+  useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      const insideInput = rootRef.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideInput && !insideDropdown) setOpen(false);
     };
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
@@ -112,33 +148,13 @@ export default function ProductCombobox({
     setOpen(false);
   };
 
-  return (
-    <div ref={rootRef} className="relative">
-      <input
-        type="text"
-        value={query}
-        disabled={disabled}
-        placeholder={placeholder}
-        autoComplete="off"
-        className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0F6758] focus:ring-2 focus:ring-[#0F6758]/20 disabled:bg-slate-100"
-        onFocus={() => setOpen(true)}
-        onChange={(event) => {
-          const next = event.target.value;
-          setQuery(next);
-          setOpen(true);
-          if (!next.trim() && value) onChange(0);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") setOpen(false);
-          if (event.key === "Enter" && open && visibleOptions.length === 1) {
-            event.preventDefault();
-            selectProduct(visibleOptions[0]);
-          }
-        }}
-      />
-
-      {open && !disabled && (
-        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+  const dropdown = open && !disabled && position && typeof document !== "undefined"
+    ? createPortal(
+        <div
+          ref={dropdownRef}
+          className="fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl"
+          style={{ left: position.left, top: position.top, width: position.width }}
+        >
           {loading && visibleOptions.length === 0 ? (
             <div className="px-3 py-3 text-sm text-slate-500">Loading items...</div>
           ) : loadError ? (
@@ -163,8 +179,41 @@ export default function ProductCombobox({
               </button>
             ))
           )}
-        </div>
-      )}
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        disabled={disabled}
+        placeholder={placeholder}
+        autoComplete="off"
+        className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0F6758] focus:ring-2 focus:ring-[#0F6758]/20 disabled:bg-slate-100"
+        onFocus={() => {
+          updatePosition();
+          setOpen(true);
+        }}
+        onChange={(event) => {
+          const next = event.target.value;
+          setQuery(next);
+          updatePosition();
+          setOpen(true);
+          if (!next.trim() && value) onChange(0);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setOpen(false);
+          if (event.key === "Enter" && open && visibleOptions.length === 1) {
+            event.preventDefault();
+            selectProduct(visibleOptions[0]);
+          }
+        }}
+      />
+      {dropdown}
     </div>
   );
 }
