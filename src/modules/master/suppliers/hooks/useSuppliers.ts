@@ -1,17 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supplierApi } from "../api/supplierApi";
+import { supplierApi, type SupplierListParams } from "../api/supplierApi";
 import type { SupplierPayload } from "../types";
 
 export const supplierKeys = {
   all: ["suppliers"] as const,
   lists: () => [...supplierKeys.all, "list"] as const,
+  lookup: (search: string) => [...supplierKeys.all, "lookup", search] as const,
   detail: (id: number) => [...supplierKeys.all, "detail", id] as const,
 };
 
-export function useSuppliers() {
+// Backward-compatible form lookup. Master list pages should use useSupplierPage.
+export function useSuppliers(search = "") {
   return useQuery({
-    queryKey: supplierKeys.lists(),
-    queryFn: supplierApi.list,
+    queryKey: supplierKeys.lookup(search),
+    queryFn: () => supplierApi.lookup(search, 100),
+    staleTime: 60_000,
+  });
+}
+
+export function useSupplierPage(params: SupplierListParams = {}) {
+  return useQuery({
+    queryKey: [...supplierKeys.lists(), params],
+    queryFn: () => supplierApi.list(params),
   });
 }
 
@@ -30,25 +40,15 @@ function useInvalidateSuppliers() {
 
 export function useCreateSupplier() {
   const invalidate = useInvalidateSuppliers();
-  return useMutation({
-    mutationFn: (payload: SupplierPayload) => supplierApi.create(payload),
-    onSuccess: invalidate,
-  });
+  return useMutation({ mutationFn: (payload: SupplierPayload) => supplierApi.create(payload), onSuccess: invalidate });
 }
 
 export function useUpdateSupplier() {
   const invalidate = useInvalidateSuppliers();
-  return useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: SupplierPayload }) =>
-      supplierApi.update(id, payload),
-    onSuccess: invalidate,
-  });
+  return useMutation({ mutationFn: ({ id, payload }: { id: number; payload: SupplierPayload }) => supplierApi.update(id, payload), onSuccess: invalidate });
 }
 
 export function useDeleteSupplier() {
   const invalidate = useInvalidateSuppliers();
-  return useMutation({
-    mutationFn: supplierApi.remove,
-    onSuccess: invalidate,
-  });
+  return useMutation({ mutationFn: supplierApi.remove, onSuccess: invalidate });
 }
