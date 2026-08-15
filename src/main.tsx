@@ -9,6 +9,7 @@ import "./styles/index.css";
 import router from "@/router/routes";
 import queryClient from "@/lib/query";
 import { ThemeProvider } from "@/theme/ThemeProvider";
+import CreateFormDateGuard from "@/components/form/CreateFormDateGuard";
 
 import useAuthStore from "@/store/auth";
 
@@ -23,6 +24,7 @@ ReactDOM.createRoot(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
+        <CreateFormDateGuard />
         <RouterProvider router={router} />
 
         <Toaster
