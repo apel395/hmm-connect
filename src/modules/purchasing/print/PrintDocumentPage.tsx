@@ -5,7 +5,7 @@ import Loading from "@/components/ui/Loading";
 import DocumentPrintTemplate, { type PrintSignature } from "@/components/print/DocumentPrintTemplate";
 
 interface PrintItem { id:number;product_code?:string;product_name:string;uom?:string;quantity:number;unit_price?:number;estimated_price?:number;unit_cost?:number;total_price?:number;line_total?:number }
-interface ApprovalRecord {level:number;name:string;status:string;approver_name?:string|null;decided_at?:string|null;comment?:string|null}
+interface ApprovalRecord {level:number;name:string;status:string;approver_name?:string|null;decided_at?:string|null;comment?:string|null;signature_name?:string|null;signature_label?:string|null;signature_image?:string|null}
 interface PrintDocument {
   document_type:string;brand_name?:string;hotel_name?:string;pr_number?:string;po_number?:string;receipt_number?:string;
   request_date?:string;order_date?:string;received_at?:string;expected_date?:string;expiry_date?:string;
@@ -19,23 +19,18 @@ const displayDate=(value?:string)=>value?new Date(value).toLocaleDateString():"â
 const indonesianLongDate=(value?:string)=>value?new Date(`${value.slice(0,10)}T00:00:00`).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"â€”";
 const addCalendarDays=(value:string,days:number)=>{const date=new Date(`${value.slice(0,10)}T00:00:00`);date.setDate(date.getDate()+days);return date.toISOString().slice(0,10)};
 
-const BATAM_SIGNATURES = [
-  { matches:["STORE"], label:"Store", name:"Baihaqi Ahmad", imageSrc:"/signatures/batam/baihaqi-ahmad.svg" },
-  { matches:["CHEF","HEAD CHEF"], label:"Head Chef", name:"Edi Susanto", imageSrc:"/signatures/batam/edi-susanto.svg" },
-  { matches:["PM","CAMP BOSS","AREA MANAGER"], label:"Area Manager", name:"Doni Idriadhi", imageSrc:"/signatures/batam/doni-idriadhi.svg" },
-];
-
 function approvalSignatures(data:PrintDocument):PrintSignature[]{
   const history=data.approval_history??[];
-  const isBatam=(data.location_name??"").toUpperCase().includes("BATAM");
-  if(isBatam){
-    const signed=BATAM_SIGNATURES.flatMap(signature=>{
-      const record=history.find(row=>row.status==="APPROVED"&&signature.matches.some(match=>(row.name??"").toUpperCase().includes(match)));
-      return record?[{label:signature.label,name:record.approver_name||signature.name,imageSrc:signature.imageSrc}]:[];
-    });
-    if(signed.length)return signed;
+  const approved=history.filter(record=>record.status==="APPROVED");
+  const authenticated=approved.filter(record=>Boolean(record.signature_image));
+  if(authenticated.length){
+    return authenticated.map(record=>({
+      label:record.signature_label||record.name||`Approval Level ${record.level}`,
+      name:record.signature_name||record.approver_name||record.status,
+      imageSrc:record.signature_image||undefined,
+    }));
   }
-  return history.filter(record=>record.status==="APPROVED").slice(0,3).map(record=>({label:record.name||`Approval Level ${record.level}`,name:record.approver_name??record.status}));
+  return approved.slice(0,3).map(record=>({label:record.name||`Approval Level ${record.level}`,name:record.approver_name??record.status}));
 }
 
 export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"purchase-orders"|"goods-receipts"}){
