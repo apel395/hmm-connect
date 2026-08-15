@@ -28,6 +28,8 @@ export interface ApprovalData {
 
   status: string;
 
+  can_decide: boolean;
+
   current_approver_role?: string;
 
   workflow?: {
@@ -53,6 +55,9 @@ function normalizeApproval(
     status:
       data?.status ??
       "PENDING",
+
+    can_decide:
+      Boolean(data?.can_decide),
 
     current_approver_role:
 
