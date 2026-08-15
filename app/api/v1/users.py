@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -17,7 +17,6 @@ from app.schemas.user import (
     LocationSummary,
     UserCreate,
     UserDetailResponse,
-    UserResponse,
     UserRolesUpdate,
     UserUpdate,
 )
@@ -80,9 +79,42 @@ def _validate_roles(db: Session, role_ids: list[int]) -> list[Role]:
     return roles
 
 
-@router.get("", response_model=list[UserResponse])
-def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    return editable_user_query(db).order_by(User.username).all()
+@router.get("")
+def list_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    search: str | None = None,
+    is_active: bool | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    query = editable_user_query(db)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.outerjoin(User.department).outerjoin(User.location).outerjoin(User.roles).filter(
+            or_(
+                User.username.ilike(term),
+                User.full_name.ilike(term),
+                User.email.ilike(term),
+                Department.name.ilike(term),
+                Location.name.ilike(term),
+                Role.name.ilike(term),
+            )
+        ).distinct()
+    if is_active is not None:
+        query = query.filter(User.is_active.is_(is_active))
+    total = query.order_by(None).count()
+    rows = query.order_by(User.username).offset((page - 1) * page_size).limit(page_size).all()
+    total_pages = (total + page_size - 1) // page_size if total else 0
+    return {
+        "items": [user_detail(user) for user in rows],
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+    }
 
 
 @router.post("", response_model=UserDetailResponse, status_code=201)
@@ -156,9 +188,9 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), c
     if "email" in changes and db.query(User.id).filter(User.email == changes["email"], User.id != user_id).first():
         raise HTTPException(status_code=409, detail="Email is already in use")
     if changes.get("department_id") is not None and not db.get(Department, changes["department_id"]):
-        raise HTTPException(status_code=422, detail="Department does not exist")
+        raise HTTPException(422, detail="Department does not exist")
     if changes.get("location_id") is not None and not db.get(Location, changes["location_id"]):
-        raise HTTPException(status_code=422, detail="Location does not exist")
+        raise HTTPException(422, detail="Location does not exist")
     business_unit_id = changes.get("default_business_unit_id", user.default_business_unit_id)
     default_location_id = changes.get("default_location_id", user.default_location_id)
     default_department_id = changes.get("default_department_id", user.default_department_id)
