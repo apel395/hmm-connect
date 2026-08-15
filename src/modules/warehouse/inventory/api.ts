@@ -5,6 +5,7 @@ export type InventoryListParams = {
   page_size?: number;
   search?: string;
   warehouse_id?: number;
+  health?: "HEALTHY" | "REORDER" | "BELOW_MINIMUM";
 };
 
 export const inventoryApi = {
