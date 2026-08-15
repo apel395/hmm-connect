@@ -26,7 +26,17 @@ export type ApprovalRequestRow = {
   created_at: string;
   completed_at?: string | null;
   can_decide: boolean;
-  steps: ApprovalStep[];
+  steps?: ApprovalStep[];
+};
+
+export type ApprovalInboxPage = {
+  items: ApprovalRequestRow[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
 };
 
 export type ApprovalWorkflowStep = {
@@ -54,7 +64,8 @@ export type ApprovalWorkflow = {
 export type WorkflowPayload = Omit<ApprovalWorkflow, "id" | "steps"> & { steps: ApprovalWorkflowStep[] };
 
 export const approvalApi = {
-  inbox: async (view: string) => (await api.get<ApprovalRequestRow[]>("/approvals/inbox", { params: { view } })).data,
+  inbox: async (view: string, page = 1, pageSize = 20) =>
+    (await api.get<ApprovalInboxPage>("/approvals/inbox", { params: { view, page, page_size: pageSize } })).data,
   workflows: async () => (await api.get<ApprovalWorkflow[]>("/approvals/workflows")).data,
   createWorkflow: async (payload: WorkflowPayload) => (await api.post<ApprovalWorkflow>("/approvals/workflows", payload)).data,
   updateWorkflow: async (id: number, payload: WorkflowPayload) => (await api.put<ApprovalWorkflow>(`/approvals/workflows/${id}`, payload)).data,
