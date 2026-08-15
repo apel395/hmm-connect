@@ -34,7 +34,6 @@ export default function PurchaseRequisitionDetailPage(){
  return <div className="space-y-6">
   <PageHeader title={data.pr_number} description="Purchase Requisition" actions={<Badge variant={badgeVariant(data.status)}>{data.status}</Badge>}/>
   <WorkflowHeader document={data} approval={approval}/>
-  {admin&&<div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Administrator testing access is enabled. Approval still follows Store → Chef → PM/Camp Boss → HO Purchasing → Finance → General Manager for normal users.</div>}
   {canReopen&&<div className="flex justify-end"><Button variant="outline" loading={reopen.isPending} onClick={reopenForCorrection}>Reopen for Correction</Button></div>}
   <WorkflowActionBar document={data} approval={approval} canSubmit={canSubmit} canApprove={canApprove} canReject={canReject} canEdit={canEdit} canPrint={data.allowed_actions?.can_print!==false} submitting={submit.isPending} approving={approve.isPending} rejecting={reject.isPending} onBack={()=>navigate("/purchase-requisitions")} onSubmit={()=>act("submit")} onEdit={()=>setEditing(true)} onApprove={()=>act("approve")} onReject={()=>act("reject")}/>
   {approvalQuery.isError&&<div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Approval details are not available yet. The purchase requisition itself is still accessible.</div>}
