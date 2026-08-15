@@ -5,7 +5,6 @@ import Dialog, { DialogContent } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/form/SearchableSelect";
-import { productApi } from "@/modules/master/products/api/productApi";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { isBeforeDate, isBeforeToday, todayLocal } from "@/utils/dateConstraints";
 
@@ -26,7 +25,6 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
   const [expiryDate, setExpiryDate] = useState("");
   const [requestDate, setRequestDate] = useState("");
   const [saving, setSaving] = useState(false);
-  const [loadingProducts, setLoadingProducts] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<PurchaseRequisitionItemRow[]>([{ product_id: 0, quantity: 1, estimated_price: 0 }]);
 
@@ -37,7 +35,6 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
   const activeLocations = useMemo(() => locations.data ?? [], [locations.data]);
 
   useEffect(() => {
-    loadProducts();
     if (initialData) {
       setBusinessUnitId(initialData.business_unit_id ?? undefined);
       setDepartmentId(initialData.department_id ?? undefined);
@@ -45,26 +42,31 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
       setNotes(initialData.notes ?? "");
       setExpiryDate(initialData.expiry_date ?? "");
       setRequestDate(initialData.request_date ?? "");
+      setProducts((initialData.items ?? []).map((item: any) => ({
+        id: Number(item.product_id),
+        code: item.product_code,
+        name: item.product_name,
+        uom: item.uom,
+        tax_category: item.tax_category,
+        is_taxable: item.is_taxable,
+        tax_rate: item.tax_rate,
+      })));
       setItems((initialData.items ?? []).map((item: any) => ({
         product_id: Number(item.product_id),
         quantity: Number(item.quantity),
         estimated_price: Number(item.estimated_price),
       })));
     } else {
+      setProducts([]);
       setRequestDate(todayLocal());
       setExpiryDate("");
     }
   }, [initialData]);
 
-  async function loadProducts() {
-    try {
-      const res = await productApi.list();
-      const data = res.data as any;
-      if (Array.isArray(data)) setProducts(data);
-      else if (Array.isArray(data?.items)) setProducts(data.items);
-      else if (Array.isArray(data?.data)) setProducts(data.data);
-      else setProducts([]);
-    } finally { setLoadingProducts(false); }
+  function rememberProduct(product: Product) {
+    setProducts((current) => current.some((item) => item.id === product.id)
+      ? current.map((item) => item.id === product.id ? { ...item, ...product } : item)
+      : [...current, product]);
   }
 
   function changeBusinessUnit(id?: number) {
@@ -111,7 +113,7 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
           <label className="text-sm font-medium">Valid Until<input type="date" min={editing ? undefined : (requestDate || todayLocal())} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/></label>
         </div>
         <div><label className="mb-2 block text-sm font-medium">Purpose / Notes</label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}/></div>
-        <PurchaseRequisitionItems items={items} products={products} loadingProducts={loadingProducts} onChange={setItems}/>
+        <PurchaseRequisitionItems items={items} products={products} onChange={setItems} onProductLoaded={rememberProduct}/>
       </div>
       <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 px-6 py-4"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" loading={saving}>{editing ? "Save Changes" : "Create Purchase Requisition"}</Button></div>
     </form>
