@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { requisitionApi, type RequisitionListParams } from "../api/requisitionApi";
 
-function refresh(qc: ReturnType<typeof useQueryClient>, id?: number) {
-  qc.invalidateQueries({ queryKey: ["purchase-requisitions"] });
-  qc.invalidateQueries({ queryKey: ["purchase-requisition"] });
-  if (id) {
-    qc.invalidateQueries({ queryKey: ["purchase-requisition", id] });
-    qc.invalidateQueries({ queryKey: ["approval", "PURCHASE_REQUISITION", id] });
-  }
+async function refresh(qc: ReturnType<typeof useQueryClient>, id?: number, detail?: unknown) {
+  if (id && detail) qc.setQueryData(["purchase-requisition", id], detail);
+  await Promise.all([
+    qc.invalidateQueries({ queryKey: ["purchase-requisitions"] }),
+    id ? qc.refetchQueries({ queryKey: ["purchase-requisition", id], exact: true, type: "active" }) : Promise.resolve(),
+    id ? qc.refetchQueries({ queryKey: ["approval", "PURCHASE_REQUISITION", id], exact: true, type: "active" }) : Promise.resolve(),
+    qc.invalidateQueries({ queryKey: ["approval-inbox"] }),
+  ]);
 }
 
 export function usePurchaseRequisitions(params: RequisitionListParams = { scope: "active" }) {
@@ -32,32 +33,32 @@ export function useCreatePurchaseRequisition() {
 
 export function useUpdatePurchaseRequisition() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: ({ id, data }: { id: number; data: any }) => requisitionApi.update(id, data), onSuccess: (_, variables) => refresh(qc, variables.id) });
+  return useMutation({ mutationFn: ({ id, data }: { id: number; data: any }) => requisitionApi.update(id, data), onSuccess: (response, variables) => refresh(qc, variables.id, response.data) });
 }
 
 export function useReopenPurchaseRequisition() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: number) => requisitionApi.reopen(id), onSuccess: (_, id) => refresh(qc, id) });
+  return useMutation({ mutationFn: (id: number) => requisitionApi.reopen(id), onSuccess: (response, id) => refresh(qc, id, response.data) });
 }
 
 export function useSubmitPurchaseRequisition() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: number) => requisitionApi.submit(id), onSuccess: (_, id) => refresh(qc, id) });
+  return useMutation({ mutationFn: (id: number) => requisitionApi.submit(id), onSuccess: (response, id) => refresh(qc, id, response.data) });
 }
 
 export function useApprovePurchaseRequisition() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: ({ id, comment }: { id: number; comment?: string }) => requisitionApi.approve(id, comment), onSuccess: (_, variables) => refresh(qc, variables.id) });
+  return useMutation({ mutationFn: ({ id, comment }: { id: number; comment?: string }) => requisitionApi.approve(id, comment), onSuccess: (response, variables) => refresh(qc, variables.id, response.data) });
 }
 
 export function useRejectPurchaseRequisition() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: ({ id, comment }: { id: number; comment?: string }) => requisitionApi.reject(id, comment), onSuccess: (_, variables) => refresh(qc, variables.id) });
+  return useMutation({ mutationFn: ({ id, comment }: { id: number; comment?: string }) => requisitionApi.reject(id, comment), onSuccess: (response, variables) => refresh(qc, variables.id, response.data) });
 }
 
 export function useCancelPurchaseRequisition() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: number) => requisitionApi.cancel(id), onSuccess: (_, id) => refresh(qc, id) });
+  return useMutation({ mutationFn: (id: number) => requisitionApi.cancel(id), onSuccess: (response, id) => refresh(qc, id, response.data) });
 }
 
 export function useConvertPurchaseRequisition() {
