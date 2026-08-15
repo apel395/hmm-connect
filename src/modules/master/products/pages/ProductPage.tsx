@@ -23,8 +23,8 @@ export default function ProductPage() {
   const updateMutation = useUpdateProduct();
   const data = query.data ?? {};
   const rows: Product[] = data.items ?? [];
-  const pages = Math.max(data.total_pages ?? 0, 1);
-  const total = data.total_items ?? 0;
+  const pages = Math.max(Number(data.total_pages ?? 0), 1);
+  const total = Number(data.total_items ?? 0);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -34,8 +34,11 @@ export default function ProductPage() {
   useEffect(() => setPage(1), [debouncedSearch]);
 
   useEffect(() => {
-    if (page > pages) setPage(pages);
-  }, [page, pages]);
+    // Only clamp against a settled server response. During a page transition
+    // React Query may temporarily expose placeholder metadata from the prior
+    // request; clamping while fetching caused Next to jump back to page 1.
+    if (!query.isFetching && data.total_pages != null && page > pages) setPage(pages);
+  }, [data.total_pages, page, pages, query.isFetching]);
 
   const handleCreate = () => { setSelected(null); setFormOpen(true); };
   const handleEdit = (product: Product) => { setSelected(product); setFormOpen(true); };
