@@ -1,22 +1,32 @@
 import api from "@/api/client";
 import type { Supplier, SupplierPayload } from "../types";
 
-type SupplierListResponse =
-  | Supplier[]
-  | { items: Supplier[] }
-  | { data: Supplier[] };
+export type SupplierListParams = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  is_active?: boolean;
+};
 
-function normalizeList(response: SupplierListResponse): Supplier[] {
-  if (Array.isArray(response)) return response;
-  if ("items" in response && Array.isArray(response.items)) return response.items;
-  if ("data" in response && Array.isArray(response.data)) return response.data;
-  return [];
-}
+export type SupplierPageResponse = {
+  items: Supplier[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+};
 
 export const supplierApi = {
-  async list(): Promise<Supplier[]> {
-    const response = await api.get<SupplierListResponse>("/suppliers");
-    return normalizeList(response.data);
+  async list(params: SupplierListParams = {}): Promise<SupplierPageResponse> {
+    const response = await api.get<SupplierPageResponse>("/suppliers", { params });
+    return response.data;
+  },
+
+  async lookup(search = "", limit = 100): Promise<Supplier[]> {
+    const response = await api.get<Supplier[]>("/suppliers/lookup", { params: { search, limit } });
+    return response.data;
   },
 
   async detail(id: number): Promise<Supplier> {
@@ -24,12 +34,8 @@ export const supplierApi = {
     return response.data;
   },
 
-  create: (payload: SupplierPayload) =>
-    api.post<Supplier>("/suppliers", payload),
-
-  update: (id: number, payload: SupplierPayload) =>
-    api.put<Supplier>(`/suppliers/${id}`, payload),
-
+  create: (payload: SupplierPayload) => api.post<Supplier>("/suppliers", payload),
+  update: (id: number, payload: SupplierPayload) => api.put<Supplier>(`/suppliers/${id}`, payload),
   remove: (id: number) => api.delete(`/suppliers/${id}`),
 };
 
