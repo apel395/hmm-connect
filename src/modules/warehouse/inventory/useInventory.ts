@@ -5,5 +5,6 @@ export function useInventory(params: InventoryListParams = {}) {
   return useQuery({
     queryKey: ["inventory", params],
     queryFn: async () => (await inventoryApi.list(params)).data,
+    placeholderData: (previous) => previous,
   });
 }
