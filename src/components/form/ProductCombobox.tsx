@@ -43,8 +43,7 @@ async function loadRemoteProducts(search: string): Promise<ProductComboboxOption
     const lookup = await productApi.lookup(search, 30);
     if (Array.isArray(lookup.data) && lookup.data.length > 0) return lookup.data;
   } catch {
-    // Fall through to the canonical paginated endpoint. This also keeps the
-    // create forms usable while an older API deployment is still warming up.
+    // Fall through to canonical pagination endpoint.
   }
 
   const list = await productApi.list({ page: 1, page_size: 30, search, active_only: true });
@@ -65,12 +64,14 @@ export default function ProductCombobox({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const requestIdRef = useRef(0);
   const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const options = remote ? remoteProducts : products;
   const selected = [...products, ...remoteProducts].find((product) => product.id === value);
   const [query, setQuery] = useState(selected ? labelFor(selected) : "");
@@ -79,11 +80,7 @@ export default function ProductCombobox({
     const input = inputRef.current;
     if (!input) return;
     const rect = input.getBoundingClientRect();
-    setPosition({
-      left: rect.left,
-      top: rect.bottom + 4,
-      width: rect.width,
-    });
+    setPosition({ left: rect.left, top: rect.bottom + 4, width: rect.width });
   }, []);
 
   useEffect(() => {
@@ -141,17 +138,41 @@ export default function ProductCombobox({
 
   const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
 
-  const selectProduct = (product: ProductComboboxOption) => {
+  useEffect(() => {
+    if (!open || visibleOptions.length === 0) {
+      setActiveIndex(-1);
+      return;
+    }
+    setActiveIndex((current) => current >= 0 && current < visibleOptions.length ? current : 0);
+  }, [open, visibleOptions]);
+
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  const selectProduct = useCallback((product: ProductComboboxOption) => {
     onChange(product.id);
     onSelect?.(product);
     setQuery(labelFor(product));
     setOpen(false);
+    setActiveIndex(-1);
+  }, [onChange, onSelect]);
+
+  const moveActive = (direction: 1 | -1) => {
+    if (visibleOptions.length === 0) return;
+    setOpen(true);
+    setActiveIndex((current) => {
+      if (current < 0) return direction === 1 ? 0 : visibleOptions.length - 1;
+      return (current + direction + visibleOptions.length) % visibleOptions.length;
+    });
   };
 
   const dropdown = open && !disabled && position && typeof document !== "undefined"
     ? createPortal(
         <div
           ref={dropdownRef}
+          role="listbox"
           className="fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl"
           style={{ left: position.left, top: position.top, width: position.width }}
         >
@@ -162,13 +183,20 @@ export default function ProductCombobox({
           ) : visibleOptions.length === 0 ? (
             <div className="px-3 py-3 text-sm text-slate-500">No matching items.</div>
           ) : (
-            visibleOptions.map((product) => (
+            visibleOptions.map((product, index) => (
               <button
                 key={product.id}
+                ref={(element) => { optionRefs.current[index] = element; }}
                 type="button"
-                className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => selectProduct(product)}
+                role="option"
+                aria-selected={index === activeIndex}
+                className={`block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
+                onMouseEnter={() => setActiveIndex(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  selectProduct(product);
+                }}
               >
                 <div className="text-sm font-medium text-slate-800">{labelFor(product)}</div>
                 {(product.uom || product.usage_uom) && (
@@ -193,6 +221,8 @@ export default function ProductCombobox({
         disabled={disabled}
         placeholder={placeholder}
         autoComplete="off"
+        aria-expanded={open}
+        aria-autocomplete="list"
         className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0F6758] focus:ring-2 focus:ring-[#0F6758]/20 disabled:bg-slate-100"
         onFocus={() => {
           updatePosition();
@@ -203,13 +233,39 @@ export default function ProductCombobox({
           setQuery(next);
           updatePosition();
           setOpen(true);
+          setActiveIndex(0);
           if (!next.trim() && value) onChange(0);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") setOpen(false);
-          if (event.key === "Enter" && open && visibleOptions.length === 1) {
+          if (event.key === "ArrowDown") {
             event.preventDefault();
-            selectProduct(visibleOptions[0]);
+            moveActive(1);
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveActive(-1);
+            return;
+          }
+          if (event.key === "Home" && open && visibleOptions.length > 0) {
+            event.preventDefault();
+            setActiveIndex(0);
+            return;
+          }
+          if (event.key === "End" && open && visibleOptions.length > 0) {
+            event.preventDefault();
+            setActiveIndex(visibleOptions.length - 1);
+            return;
+          }
+          if (event.key === "Enter" && open && activeIndex >= 0 && visibleOptions[activeIndex]) {
+            event.preventDefault();
+            selectProduct(visibleOptions[activeIndex]);
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setOpen(false);
+            setActiveIndex(-1);
           }
         }}
       />
