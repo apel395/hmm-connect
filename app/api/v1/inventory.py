@@ -1,6 +1,8 @@
 from decimal import Decimal
+from math import ceil
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -12,6 +14,19 @@ from app.models.warehouse import Warehouse
 
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
+
+
+def _paged(rows, *, page: int, page_size: int, total: int):
+    total_pages = ceil(total / page_size) if total else 0
+    return {
+        "items": rows,
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+    }
 
 
 def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse):
@@ -40,6 +55,9 @@ def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse):
 @router.get("")
 def list_inventory(
     warehouse_id: int | None = None,
+    search: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -50,7 +68,12 @@ def list_inventory(
     )
     if warehouse_id:
         query = query.filter(Inventory.warehouse_id == warehouse_id)
-    return [inventory_row(inventory, product, warehouse) for inventory, product, warehouse in query.order_by(Product.code).all()]
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term), Warehouse.name.ilike(term)))
+    total = query.count()
+    rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
+    return _paged([inventory_row(*row) for row in rows], page=page, page_size=page_size, total=total)
 
 
 @router.get("/movements")
@@ -61,6 +84,9 @@ def list_movements(
     goods_receipt_id: int | None = None,
     location_id: int | None = None,
     department_id: int | None = None,
+    search: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -81,9 +107,13 @@ def list_movements(
         query = query.filter(StockMovement.location_id == location_id)
     if department_id:
         query = query.filter(StockMovement.department_id == department_id)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term), Warehouse.name.ilike(term)))
 
-    rows = query.order_by(StockMovement.id.desc()).limit(500).all()
-    return [
+    total = query.count()
+    rows = query.order_by(StockMovement.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    items = [
         {
             "id": movement.id,
             "movement_number": f"SM-{movement.id:08d}",
@@ -121,6 +151,7 @@ def list_movements(
         }
         for movement, product, warehouse in rows
     ]
+    return _paged(items, page=page, page_size=page_size, total=total)
 
 
 @router.get("/{inventory_id}")
