@@ -3,17 +3,18 @@ import { userApi } from "./userApi";
 
 export const userKeys = {
   all: ["users"] as const,
-  list: () => [...userKeys.all, "list"] as const,
+  list: (params?: object) => [...userKeys.all, "list", params ?? {}] as const,
   detail: (userId: number) => [...userKeys.all, "detail", userId] as const,
   roles: () => [...userKeys.all, "roles"] as const,
   departments: () => [...userKeys.all, "departments"] as const,
   locations: () => [...userKeys.all, "locations"] as const,
 };
 
-export function useUsers() {
+export function useUsers(params: { page?: number; page_size?: number; search?: string } = {}) {
   return useQuery({
-    queryKey: userKeys.list(),
-    queryFn: userApi.list,
+    queryKey: userKeys.list(params),
+    queryFn: () => userApi.list(params),
+    placeholderData: (previousData) => previousData,
   });
 }
 
