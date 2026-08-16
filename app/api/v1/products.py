@@ -13,9 +13,11 @@ from app.schemas.product import ProductCreate, ProductUpdate
 router = APIRouter(prefix="/products", tags=["Products"])
 
 
-def _apply_filters(query, *, active_only: bool, search: str | None):
+def _apply_filters(query, *, active_only: bool, search: str | None, market_only: bool = False):
     if active_only:
         query = query.filter(Product.is_active.is_(True))
+    if market_only:
+        query = query.filter(Product.group_code.in_(("1", "2")))
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
@@ -25,13 +27,14 @@ def _apply_filters(query, *, active_only: bool, search: str | None):
 @router.get("")
 def list_products(
     active_only: bool = True,
+    market_only: bool = False,
     search: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = _apply_filters(db.query(Product), active_only=active_only, search=search)
+    query = _apply_filters(db.query(Product), active_only=active_only, search=search, market_only=market_only)
     total = query.count()
     rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
     total_pages = ceil(total / page_size) if total else 0
@@ -49,11 +52,12 @@ def list_products(
 @router.get("/lookup")
 def lookup_products(
     search: str = Query(default="", max_length=100),
+    market_only: bool = False,
     limit: int = Query(default=30, ge=1, le=100),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = _apply_filters(db.query(Product), active_only=True, search=search)
+    query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only)
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
     return [
         {
