@@ -63,6 +63,7 @@ def _copy_tax(target, source, base_amount):
 @event.listens_for(OrmSession, "before_flush")
 def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
     from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
+    from app.models.market_list import MarketList, MarketListItem
     from app.models.purchase_order import PurchaseOrder
     from app.models.purchase_order_item import PurchaseOrderItem
     from app.models.purchase_requisition import PurchaseRequisition
@@ -78,8 +79,16 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
                 _copy_tax(row, product, Decimal(row.quantity or 0) * Decimal(row.estimated_price or 0))
                 row.total_price = Decimal(row.quantity or 0) * Decimal(row.estimated_price or 0)
 
+        elif isinstance(row, MarketListItem):
+            product = row.product or session.get(Product, row.product_id)
+            if product:
+                _copy_tax(row, product, Decimal(row.quantity or 0) * Decimal(row.estimated_price or 0))
+                row.total_price = Decimal(row.quantity or 0) * Decimal(row.estimated_price or 0)
+
         elif isinstance(row, PurchaseOrderItem):
             source = session.get(PurchaseRequisitionItem, row.purchase_requisition_item_id) if row.purchase_requisition_item_id else None
+            if source is None and row.market_list_item_id:
+                source = session.get(MarketListItem, row.market_list_item_id)
             if source is None:
                 source = row.product or session.get(Product, row.product_id)
             if source:
@@ -107,6 +116,8 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
     for row in candidates:
         if isinstance(row, PurchaseRequisition): headers.add(row)
         elif isinstance(row, PurchaseRequisitionItem) and row.purchase_requisition: headers.add(row.purchase_requisition)
+        elif isinstance(row, MarketList): headers.add(row)
+        elif isinstance(row, MarketListItem) and row.market_list: headers.add(row.market_list)
         elif isinstance(row, PurchaseOrder): headers.add(row)
         elif isinstance(row, PurchaseOrderItem) and row.purchase_order: headers.add(row.purchase_order)
         elif isinstance(row, GoodsReceipt): headers.add(row)
@@ -116,6 +127,10 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
 
     for header in headers:
         if isinstance(header, PurchaseRequisition):
+            header.subtotal = sum((Decimal(i.quantity or 0) * Decimal(i.estimated_price or 0) for i in header.items), ZERO)
+            header.tax_amount = sum((Decimal(i.tax_amount or 0) for i in header.items), ZERO)
+            header.total_amount = header.subtotal + header.tax_amount
+        elif isinstance(header, MarketList):
             header.subtotal = sum((Decimal(i.quantity or 0) * Decimal(i.estimated_price or 0) for i in header.items), ZERO)
             header.tax_amount = sum((Decimal(i.tax_amount or 0) for i in header.items), ZERO)
             header.total_amount = header.subtotal + header.tax_amount
@@ -137,6 +152,7 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
         if status not in {"PENDING_APPROVAL", "APPROVED", "POSTED", "VERIFIED", "RECEIVED", "PARTIALLY_RECEIVED"}:
             continue
         if isinstance(header, PurchaseRequisition): products = [i.product for i in header.items]
+        elif isinstance(header, MarketList): products = [i.product for i in header.items]
         elif isinstance(header, PurchaseOrder): products = [i.product for i in header.items]
         elif isinstance(header, GoodsReceipt): products = [i.product for i in header.items]
         elif isinstance(header, SupplierInvoice): products = [i.product for i in header.lines if i.product]
