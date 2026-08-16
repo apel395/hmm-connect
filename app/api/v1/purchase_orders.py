@@ -47,7 +47,7 @@ def _apply_tax(db: Session, purchase_order: PurchaseOrder, data: PurchaseOrderCr
     subtotal = Decimal("0")
     tax_total = Decimal("0")
     for item, incoming in zip(purchase_order.items, data.items):
-        source = item.purchase_requisition_item
+        source = item.purchase_requisition_item or item.market_list_item
         explicit_tax = "is_taxable" in incoming.model_fields_set or "tax_rate" in incoming.model_fields_set
         if source is not None and not explicit_tax:
             taxable = bool(source.is_taxable)
@@ -75,6 +75,14 @@ def _source_requisitions(purchase_order: PurchaseOrder):
     return purchase_order.source_purchase_requisitions
 
 
+def _source_type(purchase_order: PurchaseOrder, requisitions) -> str:
+    if requisitions:
+        return "FROM_PR"
+    if purchase_order.market_list_id:
+        return "FROM_MARKET_LIST"
+    return "DIRECT"
+
+
 def serialize_purchase_order_summary(purchase_order: PurchaseOrder, approval_status=None, current_approver_role=None):
     requisitions = _source_requisitions(purchase_order)
     return {
@@ -91,7 +99,9 @@ def serialize_purchase_order_summary(purchase_order: PurchaseOrder, approval_sta
         "purchase_requisition_ids": [item.id for item in requisitions],
         "source_pr_id": requisitions[0].id if requisitions else None,
         "source_pr_number": requisitions[0].pr_number if requisitions else None,
-        "creation_type": "FROM_PR" if requisitions else "DIRECT",
+        "market_list_id": purchase_order.market_list_id,
+        "source_market_list_number": purchase_order.market_list.ml_number if purchase_order.market_list else None,
+        "creation_type": _source_type(purchase_order, requisitions),
         "status": purchase_order.status,
         "approval_status": approval_status,
         "current_approver_role": current_approver_role,
@@ -103,6 +113,7 @@ def serialize_purchase_order_summary(purchase_order: PurchaseOrder, approval_sta
 
 
 def serialize_purchase_order(purchase_order: PurchaseOrder, approval_status=None, current_approver_role=None):
+    requisitions = purchase_order.source_purchase_requisitions
     return {
         "id": purchase_order.id,
         "po_number": purchase_order.po_number,
@@ -115,10 +126,13 @@ def serialize_purchase_order(purchase_order: PurchaseOrder, approval_status=None
         "location_id": purchase_order.location_id,
         "location_name": purchase_order.location.name if purchase_order.location else None,
         "purchase_requisition_ids": purchase_order.purchase_requisition_ids,
-        "source_purchase_requisitions": [{"id": item.id, "pr_number": item.pr_number} for item in purchase_order.source_purchase_requisitions],
-        "source_pr_id": purchase_order.source_purchase_requisitions[0].id if purchase_order.source_purchase_requisitions else None,
-        "source_pr_number": purchase_order.source_purchase_requisitions[0].pr_number if purchase_order.source_purchase_requisitions else None,
-        "creation_type": "FROM_PR" if purchase_order.purchase_requisition_ids else "DIRECT",
+        "source_purchase_requisitions": [{"id": item.id, "pr_number": item.pr_number} for item in requisitions],
+        "source_pr_id": requisitions[0].id if requisitions else None,
+        "source_pr_number": requisitions[0].pr_number if requisitions else None,
+        "market_list_id": purchase_order.market_list_id,
+        "source_market_list": {"id": purchase_order.market_list.id, "ml_number": purchase_order.market_list.ml_number} if purchase_order.market_list else None,
+        "source_market_list_number": purchase_order.market_list.ml_number if purchase_order.market_list else None,
+        "creation_type": _source_type(purchase_order, requisitions),
         "status": purchase_order.status,
         "approval_status": approval_status,
         "current_approver_role": current_approver_role,
@@ -137,6 +151,7 @@ def serialize_purchase_order(purchase_order: PurchaseOrder, approval_status=None
         "items": [{
             "id": item.id,
             "purchase_requisition_item_id": item.purchase_requisition_item_id,
+            "market_list_item_id": item.market_list_item_id,
             "product_id": item.product_id,
             "product_code": item.product.code if item.product else None,
             "product_name": item.product.name if item.product else None,
@@ -178,11 +193,7 @@ def list_purchase_orders(
         base_query = base_query.filter(PurchaseOrder.status.in_(HISTORY_STATUSES))
     if search and search.strip():
         term = f"%{search.strip()}%"
-        base_query = base_query.filter(or_(
-            PurchaseOrder.po_number.ilike(term),
-            PurchaseOrder.external_reference.ilike(term),
-            Supplier.name.ilike(term),
-        ))
+        base_query = base_query.filter(or_(PurchaseOrder.po_number.ilike(term), PurchaseOrder.external_reference.ilike(term), Supplier.name.ilike(term)))
 
     status_rows = base_query.with_entities(PurchaseOrder.status, func.count(PurchaseOrder.id)).group_by(PurchaseOrder.status).all()
     summary = {key: 0 for key in ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED", "RECEIVED", "REJECTED"]}
@@ -201,6 +212,7 @@ def list_purchase_orders(
             selectinload(PurchaseOrder.location),
             selectinload(PurchaseOrder.purchase_requisitions),
             selectinload(PurchaseOrder.purchase_requisition),
+            selectinload(PurchaseOrder.market_list),
         )
         .order_by(PurchaseOrder.id.desc())
         .offset((page - 1) * page_size)
@@ -209,10 +221,7 @@ def list_purchase_orders(
     )
     order_ids = [item.id for item in orders]
     approvals = (
-        db.query(ApprovalRequest)
-        .options(selectinload(ApprovalRequest.steps))
-        .filter(ApprovalRequest.entity_type == "PURCHASE_ORDER", ApprovalRequest.entity_id.in_(order_ids))
-        .all()
+        db.query(ApprovalRequest).options(selectinload(ApprovalRequest.steps)).filter(ApprovalRequest.entity_type == "PURCHASE_ORDER", ApprovalRequest.entity_id.in_(order_ids)).all()
         if order_ids else []
     )
     approval_map = {item.entity_id: item for item in approvals}
