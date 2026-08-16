@@ -10,6 +10,8 @@ interface Props {
   canReject: boolean;
   canEdit: boolean;
   canPrint: boolean;
+  printSrc?: string;
+  printTitle?: string;
   submitting?: boolean;
   approving?: boolean;
   rejecting?: boolean;
@@ -28,6 +30,8 @@ export default function WorkflowActionBar({
   canReject,
   canEdit,
   canPrint,
+  printSrc,
+  printTitle,
   submitting = false,
   approving = false,
   rejecting = false,
@@ -38,12 +42,15 @@ export default function WorkflowActionBar({
   onReject,
 }: Props) {
   const currentRole = approval?.current_approver_role;
+  const defaultNumber = document.pr_number ?? document.ml_number ?? "";
+  const resolvedPrintSrc = printSrc ?? `/purchase-requisitions/${document.id}/print`;
+  const resolvedPrintTitle = printTitle ?? `Purchase Requisition ${defaultNumber}`;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap gap-3">
         <Button variant="outline" onClick={onBack}><ArrowLeft size={17}/> Back</Button>
-        {canPrint && <PrintPreviewButton src={`/purchase-requisitions/${document.id}/print`} title={`Purchase Requisition ${document.pr_number ?? ""}`} ariaLabel="Preview purchase requisition" />}
+        {canPrint && <PrintPreviewButton src={resolvedPrintSrc} title={resolvedPrintTitle} ariaLabel={`Preview ${resolvedPrintTitle}`} />}
         {canEdit && <Button variant="outline" onClick={onEdit}>Edit</Button>}
         {canSubmit && <Button loading={submitting} onClick={onSubmit}>Submit</Button>}
         {canReject && <Button variant="danger" loading={rejecting} onClick={onReject}>Reject</Button>}
