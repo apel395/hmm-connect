@@ -28,6 +28,7 @@ from app.models.journal_line import JournalLine
 from app.models.journal_vouche import JournalVoucher
 from app.models.journal_voucher_line import JournalVoucherLine
 from app.models.location import Location
+from app.models.market_list import MarketList, MarketListItem
 from app.models.notification import Notification
 from app.models.payment import Payment, PaymentAllocation
 from app.models.bank_transfer import BankTransfer
