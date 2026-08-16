@@ -85,6 +85,7 @@ def _detail(db: Session, market_list: MarketList, user) -> dict:
             "quantity": item.quantity,
             "estimated_price": item.estimated_price,
             "total_price": item.total_price,
+            "tax_category": item.product.tax_category,
             "is_taxable": item.is_taxable,
             "tax_rate": item.tax_rate,
             "tax_amount": item.tax_amount,
@@ -145,13 +146,15 @@ def print_market_list(market_list_id: int, db: Session = Depends(get_db), user=D
 
 @router.post("", status_code=201)
 def create_market_list(data: MarketListCreate, db: Session = Depends(get_db), user=Depends(requester_user)):
-    return MarketListService.create(db=db, data=data, current_user=user)
+    market_list = MarketListService.create(db=db, data=data, current_user=user)
+    return _detail(db, market_list, user)
 
 
 @router.put("/{market_list_id}")
 @router.patch("/{market_list_id}")
 def update_market_list(market_list_id: int, data: MarketListCreate, db: Session = Depends(get_db), user=Depends(requester_user)):
-    return MarketListService.update(db=db, market_list_id=market_list_id, data=data, current_user=user)
+    market_list = MarketListService.update(db=db, market_list_id=market_list_id, data=data, current_user=user)
+    return _detail(db, market_list, user)
 
 
 @router.post("/{market_list_id}/reopen")
@@ -182,17 +185,20 @@ def reopen_market_list(market_list_id: int, db: Session = Depends(get_db), user=
 
 @router.post("/{market_list_id}/submit")
 def submit_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(requester_user)):
-    return MarketListService.submit(db=db, market_list_id=market_list_id, current_user=user)
+    market_list = MarketListService.submit(db=db, market_list_id=market_list_id, current_user=user)
+    return _detail(db, market_list, user)
 
 
 @router.post("/{market_list_id}/approve")
 def approve_market_list(market_list_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return MarketListService.approve(db=db, market_list_id=market_list_id, data=data, current_user=user)
+    market_list = MarketListService.approve(db=db, market_list_id=market_list_id, data=data, current_user=user)
+    return _detail(db, market_list, user)
 
 
 @router.post("/{market_list_id}/reject")
 def reject_market_list(market_list_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return MarketListService.reject(db=db, market_list_id=market_list_id, data=data, current_user=user)
+    market_list = MarketListService.reject(db=db, market_list_id=market_list_id, data=data, current_user=user)
+    return _detail(db, market_list, user)
 
 
 @router.post("/{market_list_id}/convert-to-po")
