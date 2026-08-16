@@ -21,6 +21,7 @@ const groups: Group[] = [
   ] },
   { title: "Purchasing", icon: ShoppingCart, roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Purchase Requisition", url: "/purchase-requisitions", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "Market List", url: "/market-lists", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Purchase Order", url: "/purchase-orders", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Receiving", url: "/receiving", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
   ] },
