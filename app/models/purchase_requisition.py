@@ -30,6 +30,10 @@ class PurchaseRequisition(Base, TimestampMixin):
     imported_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    business_unit = relationship("BusinessUnit")
+    department = relationship("Department")
+    location = relationship("Location")
+
     items = relationship(
         "PurchaseRequisitionItem",
         back_populates="purchase_requisition",

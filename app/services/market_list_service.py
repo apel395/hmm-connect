@@ -184,14 +184,14 @@ class MarketListService:
 
     @staticmethod
     def convert_to_purchase_order(db: Session, *, market_list_id: int, data: MarketListConvertCreate, current_user: User) -> PurchaseOrder:
-        market_list = db.get(MarketList, market_list_id)
+        market_list = db.query(MarketList).filter(MarketList.id == market_list_id).with_for_update().first()
         if not market_list:
             raise HTTPException(status_code=404, detail="Market List not found")
         if market_list.status != "APPROVED":
             raise HTTPException(status_code=409, detail="Only approved Market Lists can be converted to Purchase Orders")
         supplier = db.get(Supplier, data.supplier_id)
-        if not supplier:
-            raise HTTPException(status_code=404, detail="Supplier not found")
+        if not supplier or not supplier.is_active:
+            raise HTTPException(status_code=404, detail="Active supplier not found")
         order = PurchaseOrder(
             po_number=next_document_number(db, "PO"), supplier_id=supplier.id, market_list_id=market_list.id,
             status="DRAFT", order_date=date.today(), notes=f"Created from {market_list.ml_number}",
