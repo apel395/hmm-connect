@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.document_attachment import DocumentAttachment
 from app.models.goods_receipt import GoodsReceipt
+from app.models.market_list import MarketList
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_requisition import PurchaseRequisition
 from app.models.supplier_invoice import SupplierInvoice
@@ -33,6 +34,7 @@ from app.services.file_storage import (
 router = APIRouter(prefix="/document-attachments", tags=["Document Attachments"])
 ENTITY_MODELS = {
     "PURCHASE_REQUISITION": PurchaseRequisition,
+    "MARKET_LIST": MarketList,
     "PURCHASE_ORDER": PurchaseOrder,
     "GOODS_RECEIPT": GoodsReceipt,
     "PURCHASING_DOCUMENT": PurchasingDocument,
@@ -106,15 +108,9 @@ def upload_attachment(
     extension = Path(original_name).suffix.lower()[:16]
     stored_name = f"{uuid4()}{extension}"
     now = datetime.now(timezone.utc)
-    storage_path = (
-        f"{entity_type.lower()}/{now.year:04d}/{now.month:02d}/{stored_name}"
-    )
+    storage_path = f"{entity_type.lower()}/{now.year:04d}/{now.month:02d}/{stored_name}"
     try:
-        file_size, checksum = storage.save(
-            file.file,
-            storage_path,
-            max_bytes=settings.MAX_DOCUMENT_SIZE_MB * 1024 * 1024,
-        )
+        file_size, checksum = storage.save(file.file, storage_path, max_bytes=settings.MAX_DOCUMENT_SIZE_MB * 1024 * 1024)
     except EmptyFileError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileTooLargeError as exc:
@@ -123,62 +119,39 @@ def upload_attachment(
         raise HTTPException(status_code=500, detail="Document storage failed") from exc
 
     attachment = DocumentAttachment(
-        entity_type=entity_type,
-        entity_id=entity_id,
-        attachment_type=attachment_type,
-        document_number=document_number,
-        document_date=document_date,
-        original_file_name=original_name,
-        stored_file_name=stored_name,
-        storage_provider=storage.provider_name,
-        storage_path=storage_path,
-        mime_type=mime_type,
-        file_size=file_size,
-        checksum_sha256=checksum,
-        description=description,
-        source_type=source_type,
-        uploaded_by_id=user.id,
+        entity_type=entity_type, entity_id=entity_id, attachment_type=attachment_type,
+        document_number=document_number, document_date=document_date, original_file_name=original_name,
+        stored_file_name=stored_name, storage_provider=storage.provider_name, storage_path=storage_path,
+        mime_type=mime_type, file_size=file_size, checksum_sha256=checksum, description=description,
+        source_type=source_type, uploaded_by_id=user.id,
     )
     try:
         db.add(attachment)
         db.flush()
-        ActivityService.log(
-            db=db,
-            user=user,
-            action="ATTACH",
-            entity_type=entity_type,
-            entity_id=entity_id,
-            summary=f"Uploaded supporting document {original_name}",
-            details={"attachment_id": attachment.id, "attachment_type": attachment_type},
-        )
+        ActivityService.log(db=db, user=user, action="ATTACH", entity_type=entity_type, entity_id=entity_id, summary=f"Attached {original_name}")
         db.commit()
         db.refresh(attachment)
+        return attachment
     except Exception:
         db.rollback()
-        storage.delete(storage_path)
+        try: storage.delete(storage_path)
+        except FileStorageError: pass
         raise
-    return attachment
 
 
 @router.get("", response_model=list[DocumentAttachmentResponse])
 def list_attachments(
-    entity_type: str = Query(),
+    entity_type: str,
     entity_id: int = Query(gt=0),
+    active_only: bool = True,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
     entity_type = normalized_entity_type(entity_type)
     require_entity(db, entity_type, entity_id)
-    return (
-        db.query(DocumentAttachment)
-        .filter(
-            DocumentAttachment.entity_type == entity_type,
-            DocumentAttachment.entity_id == entity_id,
-            DocumentAttachment.is_active.is_(True),
-        )
-        .order_by(DocumentAttachment.uploaded_at.desc(), DocumentAttachment.id.desc())
-        .all()
-    )
+    query = db.query(DocumentAttachment).filter(DocumentAttachment.entity_type == entity_type, DocumentAttachment.entity_id == entity_id)
+    if active_only: query = query.filter(DocumentAttachment.is_active.is_(True))
+    return query.order_by(DocumentAttachment.created_at.desc(), DocumentAttachment.id.desc()).all()
 
 
 @router.get("/{attachment_id}/download")
@@ -189,49 +162,25 @@ def download_attachment(
     storage: FileStorageService = Depends(get_document_storage),
 ):
     attachment = db.get(DocumentAttachment, attachment_id)
-    if not attachment or not attachment.is_active:
-        raise HTTPException(status_code=404, detail="Attachment not found")
-    try:
-        if not storage.exists(attachment.storage_path):
-            raise HTTPException(status_code=404, detail="Attachment file not found")
-        download_url = storage.create_download_url(
-            attachment.storage_path,
-            filename=attachment.original_file_name,
-            content_type=attachment.mime_type or "application/octet-stream",
-            expires_seconds=settings.S3_PRESIGNED_URL_EXPIRES_SECONDS,
-        )
-        if download_url:
-            return RedirectResponse(download_url, status_code=307)
-        return StreamingResponse(
-            stream_file(storage.open(attachment.storage_path)),
-            media_type=attachment.mime_type or "application/octet-stream",
-            headers={"Content-Disposition": content_disposition(attachment.original_file_name)},
-        )
-    except FileStorageError as exc:
-        raise HTTPException(status_code=500, detail="Document retrieval failed") from exc
+    if not attachment or not attachment.is_active: raise HTTPException(status_code=404, detail="Attachment not found")
+    if attachment.storage_provider == "S3":
+        try: return RedirectResponse(storage.download_url(attachment.storage_path), status_code=307)
+        except FileStorageError as exc: raise HTTPException(status_code=500, detail="Document download failed") from exc
+    try: file_handle = storage.open(attachment.storage_path)
+    except FileNotFoundError as exc: raise HTTPException(status_code=404, detail="Stored file not found") from exc
+    except FileStorageError as exc: raise HTTPException(status_code=500, detail="Document download failed") from exc
+    return StreamingResponse(stream_file(file_handle), media_type=attachment.mime_type, headers={"Content-Disposition": content_disposition(attachment.original_file_name)})
 
 
 @router.delete("/{attachment_id}", response_model=DocumentAttachmentResponse)
-def delete_attachment(
+def archive_attachment(
     attachment_id: int,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
     attachment = db.get(DocumentAttachment, attachment_id)
-    if not attachment or not attachment.is_active:
-        raise HTTPException(status_code=404, detail="Attachment not found")
+    if not attachment or not attachment.is_active: raise HTTPException(status_code=404, detail="Attachment not found")
     attachment.is_active = False
-    attachment.deleted_by_id = user.id
-    attachment.deleted_at = datetime.now(timezone.utc)
-    ActivityService.log(
-        db=db,
-        user=user,
-        action="DELETE_ATTACHMENT",
-        entity_type=attachment.entity_type,
-        entity_id=attachment.entity_id,
-        summary=f"Soft-deleted supporting document {attachment.original_file_name}",
-        details={"attachment_id": attachment.id},
-    )
-    db.commit()
-    db.refresh(attachment)
+    ActivityService.log(db=db, user=user, action="DETACH", entity_type=attachment.entity_type, entity_id=attachment.entity_id, summary=f"Archived attachment {attachment.original_file_name}")
+    db.commit(); db.refresh(attachment)
     return attachment
