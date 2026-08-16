@@ -9,13 +9,16 @@ from app.dependencies.authorization import has_any_role, is_superuser, role_name
 from app.services.print_signatures import add_private_print_signatures
 
 
-REOPENABLE_WORKFLOW_DOCUMENTS = {"PURCHASE_REQUISITION", "PURCHASE_ORDER"}
+REOPENABLE_WORKFLOW_DOCUMENTS = {"PURCHASE_REQUISITION", "MARKET_LIST", "PURCHASE_ORDER"}
 
 
 def _entity_location_name(db: Session, entity_type: str, entity_id: int) -> str | None:
     if entity_type == "PURCHASE_REQUISITION":
         from app.models.purchase_requisition import PurchaseRequisition
         entity = db.get(PurchaseRequisition, entity_id)
+    elif entity_type == "MARKET_LIST":
+        from app.models.market_list import MarketList
+        entity = db.get(MarketList, entity_id)
     elif entity_type == "PURCHASE_ORDER":
         from app.models.purchase_order import PurchaseOrder
         entity = db.get(PurchaseOrder, entity_id)
@@ -32,7 +35,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
     request = db.query(ApprovalRequest).filter(
         ApprovalRequest.entity_type == entity_type,
         ApprovalRequest.entity_id == entity_id,
-    ).first()
+    ).order_by(ApprovalRequest.id.desc()).first()
     current = next((step for step in request.steps if step.step_order == request.current_step_order), None) if request else None
     admin = is_superuser(user)
     roles = role_names(user)
