@@ -4,6 +4,7 @@ const exactTitles: Record<string, string> = {
   "/approval-configuration": "Approval Configuration",
   "/finance-dashboard": "Finance Dashboard",
   "/purchase-requisitions": "Purchase Requisitions",
+  "/market-lists": "Market List",
   "/purchase-orders": "Purchase Orders",
   "/receiving": "Receiving",
   "/purchasing-documents": "Purchasing Documents",
@@ -59,6 +60,7 @@ const exactTitles: Record<string, string> = {
 
 const detailRules: Array<[RegExp, (match: RegExpMatchArray) => string]> = [
   [/^\/purchase-requisitions\/(\d+)$/, (m) => `PR #${m[1]}`],
+  [/^\/market-lists\/(\d+)$/, (m) => `Market List #${m[1]}`],
   [/^\/purchase-orders\/(\d+)$/, (m) => `PO #${m[1]}`],
   [/^\/receiving\/(\d+)$/, (m) => `Receiving #${m[1]}`],
   [/^\/supplier-invoices\/(\d+)$/, (m) => `Invoice #${m[1]}`],
