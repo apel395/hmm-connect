@@ -58,6 +58,8 @@ export default function ApprovalCenterPage() {
         qc.refetchQueries({ queryKey: ["approval-inbox"], type: "active" }),
         qc.refetchQueries({ queryKey: ["approval", completedDecision?.row.entity_type, completedDecision?.row.entity_id], exact: true, type: "active" }),
         qc.refetchQueries({ queryKey: ["purchase-requisition", completedDecision?.row.entity_id], exact: true, type: "active" }),
+        qc.refetchQueries({ queryKey: ["market-list", completedDecision?.row.entity_id], exact: true, type: "active" }),
+        qc.invalidateQueries({ queryKey: ["market-lists"] }),
         qc.refetchQueries({ queryKey: ["purchase-order", completedDecision?.row.entity_id], exact: true, type: "active" }),
         qc.refetchQueries({ queryKey: ["goods-receipt", completedDecision?.row.entity_id], exact: true, type: "active" }),
       ]);

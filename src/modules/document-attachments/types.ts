@@ -1,5 +1,6 @@
 export type AttachmentEntityType =
   | "PURCHASE_REQUISITION"
+  | "MARKET_LIST"
   | "PURCHASE_ORDER"
   | "GOODS_RECEIPT"
   | "SUPPLIER_INVOICE"
