@@ -6,6 +6,8 @@ import SignupPage from "@/modules/auth/pages/SignupPage";
 import DashboardPage from "@/modules/dashboard/DashboardPage";
 import PurchaseRequisitionListPage from "@/modules/purchasing/requisition/pages/PurchaseRequisitionListPage";
 import PurchaseRequisitionDetailPage from "@/modules/purchasing/requisition/pages/PurchaseRequisitionDetailPage";
+import MarketListPage from "@/modules/purchasing/market-list/MarketListPage";
+import MarketListDetailPage from "@/modules/purchasing/market-list/MarketListDetailPage";
 import PurchaseOrderListPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderListPage";
 import PurchaseOrderDetailPage from "@/modules/purchasing/purchase-order/pages/PurchaseOrderDetailPage";
 import ReceivingPage from "@/modules/purchasing/goods-receipts/pages/ReceivingPage";
@@ -95,12 +97,15 @@ const router = createBrowserRouter([
       { path: "approval-configuration", element: <ApprovalConfigurationPage /> },
       { path: "purchase-requisitions", element: <PurchaseRequisitionListPage /> },
       { path: "purchase-requisitions/:id", element: <PurchaseRequisitionDetailPage /> },
+      { path: "market-lists", element: <MarketListPage /> },
+      { path: "market-lists/:id", element: <MarketListDetailPage /> },
       { path: "purchase-orders", element: <PurchaseOrderListPage /> },
       { path: "purchase-orders/:id", element: <PurchaseOrderDetailPage /> },
       { path: "purchasing-documents", element: <PurchasingDocumentsPage /> },
       { path: "receiving", element: <ReceivingPage /> },
       { path: "receiving/:id", element: <ReceivingDetailPage /> },
       { path: "purchase-requisitions/:id/print", element: <PrintDocumentPage kind="purchase-requisitions" /> },
+      { path: "market-lists/:id/print", element: <PrintDocumentPage kind="market-lists" /> },
       { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
       { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },
 
