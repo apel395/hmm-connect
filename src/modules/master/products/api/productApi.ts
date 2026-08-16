@@ -10,14 +10,15 @@ export type ProductListParams = {
   page_size?: number;
   search?: string;
   active_only?: boolean;
+  market_only?: boolean;
 };
 
 export const productApi = {
   list: (params: ProductListParams = {}) =>
     api.get("/products", { params }),
 
-  lookup: (search = "", limit = 30) =>
-    api.get("/products/lookup", { params: { search, limit } }),
+  lookup: (search = "", limit = 30, marketOnly = false) =>
+    api.get("/products/lookup", { params: { search, limit, market_only: marketOnly } }),
 
   detail: (id: number) =>
     api.get(`/products/${id}`),
