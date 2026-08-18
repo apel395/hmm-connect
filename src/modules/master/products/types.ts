@@ -16,6 +16,7 @@ export interface Product {
   tax_rate: string | number;
   tax_reason?: string | null;
   tax_reference?: string | null;
+  is_market_item: boolean;
   is_active: boolean;
 }
 
@@ -33,6 +34,7 @@ export interface ProductCreateRequest {
   tax_rate: number;
   tax_reason?: string | null;
   tax_reference?: string | null;
+  is_market_item: boolean;
 }
 
 export type ProductUpdateRequest = ProductCreateRequest;
