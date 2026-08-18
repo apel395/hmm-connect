@@ -22,6 +22,7 @@ export interface Product {
 }
 
 export interface ProductCreateRequest {
+  code: string;
   name: string;
   group_code: string;
   group_name: string;
@@ -39,4 +40,4 @@ export interface ProductCreateRequest {
   is_market_item: boolean;
 }
 
-export type ProductUpdateRequest = ProductCreateRequest;
+export type ProductUpdateRequest = Omit<ProductCreateRequest, "code">;

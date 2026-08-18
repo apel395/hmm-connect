@@ -29,7 +29,7 @@ interface Props {
 }
 
 const blank = () => ({
-  name:"", group_code:"", group_name:"", subgroup_code:"", subgroup_name:"",
+  code:"", name:"", group_code:"", group_name:"", subgroup_code:"", subgroup_name:"",
   uom:"", usage_uom:"", conversion:1, minimum_stock:0,
   tax_category:"REVIEW_REQUIRED" as TaxCategory,
   is_taxable:false,
@@ -65,7 +65,7 @@ export default function ProductForm({ open, product, products = [], loading, onC
   useEffect(() => {
     if (!open) return;
     setForm(product ? {
-      name:product.name, group_code:product.group_code, group_name:product.group_name,
+      code:product.code, name:product.name, group_code:product.group_code, group_name:product.group_name,
       subgroup_code:product.subgroup_code, subgroup_name:product.subgroup_name,
       uom:product.uom, usage_uom:product.usage_uom, conversion:Number(product.conversion),
       minimum_stock:Number(product.minimum_stock ?? 0),
@@ -80,7 +80,7 @@ export default function ProductForm({ open, product, products = [], loading, onC
 
   const update = (key:string, value:unknown) => setForm((current) => ({...current, [key]:value}));
   const selectedTax = TAX_CATEGORIES.find((item) => item.value === form.tax_category);
-  const valid = form.name.trim() && form.group_code && form.subgroup_code && form.uom.trim() && form.usage_uom.trim() && Number(form.minimum_stock) >= 0 && (!form.is_taxable || Number(form.tax_rate) > 0);
+  const valid = form.code.trim() && form.name.trim() && form.group_code && form.subgroup_code && form.uom.trim() && form.usage_uom.trim() && Number(form.minimum_stock) >= 0 && (!form.is_taxable || Number(form.tax_rate) > 0);
 
   const changeTaxCategory = (value: TaxCategory) => {
     const taxable = value === "STANDARD" || value === "SPECIAL";
@@ -102,11 +102,35 @@ export default function ProductForm({ open, product, products = [], loading, onC
     }));
   };
 
+  const submit = () => {
+    const payload = {
+      ...form,
+      code:form.code.trim(),
+      name:form.name.trim(),
+      uom:form.uom.trim(),
+      usage_uom:form.usage_uom.trim(),
+      conversion:Number(form.conversion),
+      minimum_stock:Number(form.minimum_stock),
+      tax_rate:Number(form.tax_rate),
+      tax_reason:form.tax_reason || null,
+      tax_reference:form.tax_reference || null,
+    };
+    if (product) {
+      const { code: _unchangedCode, ...updatePayload } = payload;
+      onSubmit(updatePayload);
+      return;
+    }
+    onSubmit(payload);
+  };
+
   return <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
     <DialogContent className="max-w-3xl">
       <DialogHeader><DialogTitle>{product ? "Edit Product" : "New Product"}</DialogTitle></DialogHeader>
       <DialogBody><div className="grid grid-cols-2 gap-4">
-        <label className="col-span-2 text-sm font-medium">Product Name
+        <label className="text-sm font-medium">Product Code
+          <Input className="mt-1" disabled={Boolean(product)} maxLength={20} value={form.code} onChange={(event) => update("code", event.target.value)} />
+        </label>
+        <label className="text-sm font-medium">Product Name
           <Input className="mt-1" autoFocus value={form.name} onChange={(event) => update("name", event.target.value)} />
         </label>
         <label className="text-sm font-medium">Group
@@ -175,7 +199,7 @@ export default function ProductForm({ open, product, products = [], loading, onC
           </div>
         </div>
       </div></DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!valid} loading={loading} onClick={() => onSubmit({...form, uom:form.uom.trim(), usage_uom:form.usage_uom.trim(), conversion:Number(form.conversion), minimum_stock:Number(form.minimum_stock), tax_rate:Number(form.tax_rate), tax_reason:form.tax_reason || null, tax_reference:form.tax_reference || null})}>Save</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!valid} loading={loading} onClick={submit}>Save</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }

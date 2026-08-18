@@ -27,7 +27,7 @@ export const productApi = {
     api.post("/products", payload),
 
   update: (id: number, payload: ProductUpdateRequest) =>
-    api.put(`/products/${id}`, payload),
+    api.patch(`/products/${id}`, payload),
 
   remove: (id: number) =>
     api.delete(`/products/${id}`),
