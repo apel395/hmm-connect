@@ -14,6 +14,9 @@ export interface ProductComboboxOption {
   tax_category?: string;
   is_taxable?: boolean;
   tax_rate?: number | string;
+  last_purchase_price?: number | string | null;
+  last_purchase_date?: string | null;
+  last_purchase_po_number?: string | null;
 }
 
 interface Props {
@@ -37,6 +40,13 @@ function labelFor(product: ProductComboboxOption): string {
   const code = product.code ?? product.product_code ?? "";
   const name = product.name ?? product.product_name ?? "";
   return code ? `${code} - ${name}` : name;
+}
+
+function priceFor(value?: number | string | null): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return number.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 async function loadRemoteProducts(search: string, marketOnly: boolean): Promise<ProductComboboxOption[]> {
@@ -185,34 +195,42 @@ export default function ProductCombobox({
           ) : visibleOptions.length === 0 ? (
             <div className="px-3 py-3 text-sm text-slate-500">No matching items.</div>
           ) : (
-            visibleOptions.map((product, index) => (
-              <button
-                key={product.id}
-                ref={(element) => { optionRefs.current[index] = element; }}
-                type="button"
-                role="option"
-                aria-selected={index === activeIndex}
-                className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
-                onMouseEnter={() => setActiveIndex(index)}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  selectProduct(product);
-                }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  selectProduct(product);
-                }}
-              >
-                <div className="text-sm font-medium text-slate-800">{labelFor(product)}</div>
-                {(product.uom || product.usage_uom) && (
-                  <div className="mt-0.5 text-xs text-slate-500">
-                    UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}
-                  </div>
-                )}
-              </button>
-            ))
+            visibleOptions.map((product, index) => {
+              const lastPrice = priceFor(product.last_purchase_price);
+              return (
+                <button
+                  key={product.id}
+                  ref={(element) => { optionRefs.current[index] = element; }}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    selectProduct(product);
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    selectProduct(product);
+                  }}
+                >
+                  <div className="text-sm font-medium text-slate-800">{labelFor(product)}</div>
+                  {(product.uom || product.usage_uom) && (
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}
+                    </div>
+                  )}
+                  {lastPrice && (
+                    <div className="mt-0.5 text-xs font-medium text-emerald-700">
+                      Last purchase: Rp {lastPrice}{product.last_purchase_po_number ? ` · ${product.last_purchase_po_number}` : ""}
+                    </div>
+                  )}
+                </button>
+              );
+            })
           )}
         </div>,
         document.body,
