@@ -18,19 +18,16 @@ from app.services.document_number import next_document_number
 from app.services.organization_dimensions import validate_dimensions
 
 
-MARKET_GROUP_CODES = {"1", "2"}
-
-
 class MarketListService:
     @staticmethod
     def _product(db: Session, product_id: int) -> Product:
         product = db.get(Product, product_id)
         if not product or not product.is_active:
             raise HTTPException(status_code=404, detail=f"Product {product_id} not found or inactive")
-        if str(product.group_code) not in MARKET_GROUP_CODES:
+        if not product.is_market_item:
             raise HTTPException(
                 status_code=409,
-                detail=f"{product.code} - {product.name} is not classified as a market item",
+                detail=f"{product.code} - {product.name} is not marked as a market item",
             )
         return product
 
@@ -125,6 +122,12 @@ class MarketListService:
             raise HTTPException(status_code=409, detail="Market List has expired")
         if not market_list.items:
             raise HTTPException(status_code=409, detail="Market List must have items")
+        invalid_market_items = [i.product.name for i in market_list.items if not i.product.is_market_item]
+        if invalid_market_items:
+            raise HTTPException(
+                status_code=409,
+                detail="Market List contains item(s) no longer marked as market items: " + ", ".join(invalid_market_items[:5]),
+            )
         unresolved = [i.product.name for i in market_list.items if i.product.tax_category == "REVIEW_REQUIRED"]
         if unresolved:
             raise HTTPException(status_code=409, detail="Finance tax review required before document can continue: " + ", ".join(unresolved[:5]))

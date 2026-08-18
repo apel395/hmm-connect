@@ -38,6 +38,7 @@ class Product(Base, TimestampMixin):
     inventory_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
     purchase_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
     cogs_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    is_market_item: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     inventory = relationship("Inventory", back_populates="product", cascade="all, delete-orphan")

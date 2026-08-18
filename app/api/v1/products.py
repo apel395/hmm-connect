@@ -17,7 +17,7 @@ def _apply_filters(query, *, active_only: bool, search: str | None, market_only:
     if active_only:
         query = query.filter(Product.is_active.is_(True))
     if market_only:
-        query = query.filter(Product.group_code.in_(("1", "2")))
+        query = query.filter(Product.is_market_item.is_(True))
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
@@ -71,6 +71,7 @@ def lookup_products(
             "tax_category": row.tax_category,
             "is_taxable": row.is_taxable,
             "tax_rate": row.tax_rate,
+            "is_market_item": row.is_market_item,
         }
         for row in rows
     ]
