@@ -10,6 +10,7 @@ import router from "@/router/routes";
 import queryClient from "@/lib/query";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import CreateFormDateGuard from "@/components/form/CreateFormDateGuard";
+import IdleLoginGuard from "@/components/auth/IdleLoginGuard";
 
 import useAuthStore from "@/store/auth";
 
@@ -25,6 +26,7 @@ ReactDOM.createRoot(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <CreateFormDateGuard />
+        <IdleLoginGuard />
         <RouterProvider router={router} />
 
         <Toaster
