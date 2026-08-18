@@ -22,7 +22,7 @@ export function Table({
     <div className="w-full overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
       <table
         className={clsx(
-          "min-w-full text-[13px]",
+          "min-w-full text-[12.5px]",
           variant === "grid" ? "table-grid" : "table-standard",
           stickyHeader && "table-sticky-header",
           className
@@ -116,7 +116,7 @@ export function TH({
   return (
     <th
       className={clsx(
-        "h-9 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600",
+        "h-9 px-4 py-2 text-left text-[10.5px] font-semibold uppercase tracking-[0.04em] text-slate-600",
         className
       )}
       {...props}
@@ -136,7 +136,7 @@ export function TD({
   return (
     <td
       className={clsx(
-        "h-10 px-3 py-2 align-middle text-slate-700",
+        "h-10 px-4 py-2 align-middle text-slate-700",
         className
       )}
       {...props}
