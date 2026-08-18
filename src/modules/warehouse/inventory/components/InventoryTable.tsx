@@ -6,20 +6,18 @@ import type { Inventory } from "../types";
 const money=(value:unknown)=>Number(value??0).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2});
 
 export default function InventoryTable({ rows }: { rows: Inventory[] }) {
-  return <div className="overflow-x-auto"><Table>
-    <THead><TR><TH>Item</TH><TH>Warehouse</TH><TH className="text-right">On Hand</TH><TH>UOM</TH><TH className="text-right">Avg Cost</TH><TH className="text-right">Stock Value</TH><TH className="text-right">Min</TH><TH className="text-right">Reorder</TH><TH className="text-right">Max</TH><TH>Health</TH><TH>Trace</TH></TR></THead>
-    <TBody>{rows.map(row=><TR key={row.id}>
-      <TD><div className="font-medium">{row.product_name}</div><div className="text-xs text-slate-500">{row.product_code}</div></TD>
-      <TD><div>{row.warehouse_name}</div><div className="text-xs text-slate-500">{row.warehouse_code}</div></TD>
-      <TD className="text-right font-semibold tabular-nums">{Number(row.quantity).toLocaleString("id-ID")}</TD>
-      <TD>{row.uom}</TD>
-      <TD className="text-right tabular-nums">Rp {money(row.average_cost)}</TD>
-      <TD className="text-right font-medium tabular-nums">Rp {money(row.stock_value)}</TD>
-      <TD className="text-right tabular-nums">{Number(row.minimum_stock).toLocaleString("id-ID")}</TD>
-      <TD className="text-right tabular-nums">{Number(row.reorder_level).toLocaleString("id-ID")}</TD>
-      <TD className="text-right tabular-nums">{Number(row.maximum_stock).toLocaleString("id-ID")}</TD>
-      <TD>{row.below_minimum?<Badge variant="danger">Below Minimum</Badge>:row.needs_reorder?<Badge variant="warning">Reorder</Badge>:<Badge variant="success">Healthy</Badge>}</TD>
-      <TD><Link className="font-medium text-emerald-700 hover:underline" to={`/inventory/movements?product_id=${row.product_id}&warehouse_id=${row.warehouse_id}`}>Movements</Link></TD>
+  return <div className="overflow-x-auto"><Table className="min-w-[1120px] text-xs">
+    <THead><TR className="whitespace-nowrap"><TH className="px-4 py-2.5">Code</TH><TH className="px-4 py-2.5">Item</TH><TH className="px-4 py-2.5">Warehouse</TH><TH className="px-4 py-2.5 text-right">On Hand</TH><TH className="px-4 py-2.5">UOM</TH><TH className="px-4 py-2.5 text-right">Avg Cost</TH><TH className="px-4 py-2.5 text-right">Stock Value</TH><TH className="px-4 py-2.5">Health</TH><TH className="px-4 py-2.5">Trace</TH></TR></THead>
+    <TBody>{rows.map(row=><TR key={row.id} className="whitespace-nowrap">
+      <TD className="px-4 py-2.5 font-medium text-slate-600">{row.product_code}</TD>
+      <TD className="max-w-[260px] px-4 py-2.5 font-medium text-slate-900"><span className="block truncate" title={row.product_name}>{row.product_name}</span></TD>
+      <TD className="px-4 py-2.5"><span className="font-medium text-slate-800">{row.warehouse_name}</span><span className="ml-2 text-[11px] text-slate-400">{row.warehouse_code}</span></TD>
+      <TD className="px-4 py-2.5 text-right font-semibold tabular-nums">{Number(row.quantity).toLocaleString("id-ID")}</TD>
+      <TD className="px-4 py-2.5">{row.uom}</TD>
+      <TD className="px-4 py-2.5 text-right tabular-nums">Rp {money(row.average_cost)}</TD>
+      <TD className="px-4 py-2.5 text-right font-medium tabular-nums">Rp {money(row.stock_value)}</TD>
+      <TD className="px-4 py-2.5">{row.below_minimum?<Badge variant="danger">Below Minimum</Badge>:row.needs_reorder?<Badge variant="warning">Reorder</Badge>:<Badge variant="success">Healthy</Badge>}</TD>
+      <TD className="px-4 py-2.5"><Link className="font-medium text-emerald-700 hover:underline" to={`/inventory/movements?product_id=${row.product_id}&warehouse_id=${row.warehouse_id}`}>Movements</Link></TD>
     </TR>)}</TBody>
   </Table></div>;
 }
