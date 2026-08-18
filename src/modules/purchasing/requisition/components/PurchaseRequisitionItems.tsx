@@ -16,6 +16,17 @@ export default function PurchaseRequisitionItems({items, products, loadingProduc
   const updateRow = (index:number, field:keyof PurchaseRequisitionItemRow, value:number) => onChange(items.map((row,i) => i === index ? {...row,[field]:value} : row));
   const addRow = () => onChange([...items,{product_id:0,quantity:1,estimated_price:0}]);
   const removeRow = (index:number) => items.length > 1 && onChange(items.filter((_,i) => i !== index));
+  const selectProduct = (index:number, selected:Product) => {
+    onProductLoaded?.(selected);
+    const historyPrice = selected.last_purchase_price === null || selected.last_purchase_price === undefined
+      ? null
+      : Number(selected.last_purchase_price);
+    onChange(items.map((row,i) => i === index ? {
+      ...row,
+      product_id:selected.id,
+      estimated_price:historyPrice !== null && Number.isFinite(historyPrice) ? historyPrice : row.estimated_price,
+    } : row));
+  };
 
   const totals = items.reduce((acc,row) => {
     const product = products.find((item) => item.id === row.product_id);
@@ -37,10 +48,10 @@ export default function PurchaseRequisitionItems({items, products, loadingProduc
         const tax = subtotal * rate / 100;
         const reviewRequired = product?.tax_category === "REVIEW_REQUIRED";
         return <tr key={index} className={reviewRequired ? "border-t bg-amber-50/60" : "border-t"}>
-          <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} remote disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)} onSelect={(selected)=>onProductLoaded?.(selected as Product)}/></td>
+          <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} remote disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)} onSelect={(selected)=>selectProduct(index, selected as Product)}/></td>
           <td className="p-3 text-sm text-slate-700">{product?.uom ?? product?.usage_uom ?? "—"}</td>
           <td className="p-2"><QuantityInput value={row.quantity} min={0.01} onValueChange={(value) => updateRow(index,"quantity",value)}/></td>
-          <td className="p-2"><CurrencyInput value={row.estimated_price} onValueChange={(value) => updateRow(index,"estimated_price",value)}/></td>
+          <td className="p-2"><CurrencyInput value={row.estimated_price} onValueChange={(value) => updateRow(index,"estimated_price",value)}/>{product?.last_purchase_price !== null && product?.last_purchase_price !== undefined ? <div className="mt-1 text-[11px] text-slate-500">Last PO: Rp {money(Number(product.last_purchase_price))}</div> : null}</td>
           <td className="pr-3 text-right tabular-nums">{money(subtotal)}</td>
           <td className="pr-3 text-right tabular-nums">{money(tax)}</td>
           <td className="pr-3 text-right font-semibold tabular-nums">{money(subtotal + tax)}</td>
