@@ -24,6 +24,7 @@ class ProductCreate(BaseModel):
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     tax_reason: str | None = Field(default=None, max_length=255)
     tax_reference: str | None = Field(default=None, max_length=255)
+    is_market_item: bool = False
     is_active: bool = True
 
     @model_validator(mode="after")
@@ -53,4 +54,5 @@ class ProductUpdate(BaseModel):
     tax_rate: Decimal | None = Field(default=None, ge=0, le=100)
     tax_reason: str | None = Field(default=None, max_length=255)
     tax_reference: str | None = Field(default=None, max_length=255)
+    is_market_item: bool | None = None
     is_active: bool | None = None
