@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.product import Product
+from app.models.purchase_order import PurchaseOrder
+from app.models.purchase_order_item import PurchaseOrderItem
 from app.schemas.product import ProductCreate, ProductUpdate
 
 
@@ -22,6 +24,44 @@ def _apply_filters(query, *, active_only: bool, search: str | None, market_only:
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
     return query
+
+
+def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict]:
+    """Return one latest committed PO price per product in a bounded batch query."""
+    if not product_ids:
+        return {}
+
+    rows = (
+        db.query(
+            PurchaseOrderItem.product_id,
+            PurchaseOrderItem.unit_price,
+            PurchaseOrder.order_date,
+            PurchaseOrder.po_number,
+        )
+        .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
+        .filter(
+            PurchaseOrderItem.product_id.in_(product_ids),
+            PurchaseOrder.status.notin_(("DRAFT", "REJECTED", "CANCELLED", "EXPIRED")),
+        )
+        .order_by(
+            PurchaseOrderItem.product_id,
+            PurchaseOrder.order_date.desc(),
+            PurchaseOrder.id.desc(),
+            PurchaseOrderItem.id.desc(),
+        )
+        .all()
+    )
+
+    latest: dict[int, dict] = {}
+    for product_id, unit_price, order_date, po_number in rows:
+        if product_id in latest:
+            continue
+        latest[product_id] = {
+            "last_purchase_price": unit_price,
+            "last_purchase_date": order_date,
+            "last_purchase_po_number": po_number,
+        }
+    return latest
 
 
 @router.get("")
@@ -59,6 +99,7 @@ def lookup_products(
 ):
     query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only)
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
+    price_history = _last_purchase_prices(db, [row.id for row in rows])
     return [
         {
             "id": row.id,
@@ -72,6 +113,14 @@ def lookup_products(
             "is_taxable": row.is_taxable,
             "tax_rate": row.tax_rate,
             "is_market_item": row.is_market_item,
+            **price_history.get(
+                row.id,
+                {
+                    "last_purchase_price": None,
+                    "last_purchase_date": None,
+                    "last_purchase_po_number": None,
+                },
+            ),
         }
         for row in rows
     ]
