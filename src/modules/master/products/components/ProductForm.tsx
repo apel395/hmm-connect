@@ -30,7 +30,7 @@ interface Props {
 
 const blank = () => ({
   name:"", group_code:"", group_name:"", subgroup_code:"", subgroup_name:"",
-  uom:"", usage_uom:"", conversion:1,
+  uom:"", usage_uom:"", conversion:1, minimum_stock:0,
   tax_category:"REVIEW_REQUIRED" as TaxCategory,
   is_taxable:false,
   tax_rate:0,
@@ -68,6 +68,7 @@ export default function ProductForm({ open, product, products = [], loading, onC
       name:product.name, group_code:product.group_code, group_name:product.group_name,
       subgroup_code:product.subgroup_code, subgroup_name:product.subgroup_name,
       uom:product.uom, usage_uom:product.usage_uom, conversion:Number(product.conversion),
+      minimum_stock:Number(product.minimum_stock ?? 0),
       tax_category:product.tax_category ?? "REVIEW_REQUIRED",
       is_taxable:Boolean(product.is_taxable),
       tax_rate:Number(product.tax_rate ?? 0),
@@ -79,7 +80,7 @@ export default function ProductForm({ open, product, products = [], loading, onC
 
   const update = (key:string, value:unknown) => setForm((current) => ({...current, [key]:value}));
   const selectedTax = TAX_CATEGORIES.find((item) => item.value === form.tax_category);
-  const valid = form.name.trim() && form.group_code && form.subgroup_code && form.uom && form.usage_uom && (!form.is_taxable || Number(form.tax_rate) > 0);
+  const valid = form.name.trim() && form.group_code && form.subgroup_code && form.uom.trim() && form.usage_uom.trim() && Number(form.minimum_stock) >= 0 && (!form.is_taxable || Number(form.tax_rate) > 0);
 
   const changeTaxCategory = (value: TaxCategory) => {
     const taxable = value === "STANDARD" || value === "SPECIAL";
@@ -88,6 +89,16 @@ export default function ProductForm({ open, product, products = [], loading, onC
       tax_category:value,
       is_taxable:taxable ? current.is_taxable : false,
       tax_rate:taxable ? current.tax_rate : 0,
+    }));
+  };
+
+  const changePurchaseUom = (value: string) => {
+    const preset = DEFAULT_CONVERSION[value];
+    setForm((current) => ({
+      ...current,
+      uom:value,
+      usage_uom:preset?.usage ?? current.usage_uom,
+      conversion:preset?.conversion ?? current.conversion,
     }));
   };
 
@@ -115,18 +126,21 @@ export default function ProductForm({ open, product, products = [], loading, onC
           </select>
         </label>
         <label className="text-sm font-medium">Purchase UOM
-          <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.uom} onChange={(event) => {
-            const value = event.target.value; const preset = DEFAULT_CONVERSION[value];
-            setForm((current) => ({...current, uom:value, usage_uom:preset?.usage ?? "", conversion:preset?.conversion ?? 1}));
-          }}><option value="">Select Purchase UOM</option>{UOMS.map((uom) => <option key={uom}>{uom}</option>)}</select>
+          <Input className="mt-1" list="purchase-uom-options" value={form.uom} placeholder="Select or type UOM" onChange={(event) => changePurchaseUom(event.target.value)} />
+          <datalist id="purchase-uom-options">{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
         </label>
         <label className="text-sm font-medium">Usage UOM
-          <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.usage_uom} onChange={(event) => update("usage_uom", event.target.value)}><option value="">Select Usage UOM</option>{UOMS.map((uom) => <option key={uom}>{uom}</option>)}</select>
+          <Input className="mt-1" list="usage-uom-options" value={form.usage_uom} placeholder="Select or type UOM" onChange={(event) => update("usage_uom", event.target.value)} />
+          <datalist id="usage-uom-options">{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
         </label>
         <label className="text-sm font-medium">Conversion
           <Input className="mt-1" type="number" min="0.0001" step="0.0001" value={form.conversion} onChange={(event) => update("conversion", Number(event.target.value))}/>
         </label>
-        <label className="flex items-center gap-3 self-end rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+        <label className="text-sm font-medium">Minimum Stock
+          <Input className="mt-1" type="number" min="0" step="0.01" value={form.minimum_stock} onChange={(event) => update("minimum_stock", Number(event.target.value))}/>
+          <span className="mt-1 block text-xs font-normal text-slate-500">Dipakai sebagai batas notifikasi reorder. Tidak ditampilkan sebagai kolom min/max di Stock List.</span>
+        </label>
+        <label className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
           <input type="checkbox" checked={form.is_market_item} onChange={(event) => update("is_market_item", event.target.checked)} />
           <span><span className="block">Barang Pasar / Market Item</span><span className="block text-xs font-normal text-emerald-700">Hanya item bertanda ini yang muncul di Market List.</span></span>
         </label>
@@ -161,7 +175,7 @@ export default function ProductForm({ open, product, products = [], loading, onC
           </div>
         </div>
       </div></DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!valid} loading={loading} onClick={() => onSubmit({...form, conversion:Number(form.conversion), tax_rate:Number(form.tax_rate), tax_reason:form.tax_reason || null, tax_reference:form.tax_reference || null})}>Save</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!valid} loading={loading} onClick={() => onSubmit({...form, uom:form.uom.trim(), usage_uom:form.usage_uom.trim(), conversion:Number(form.conversion), minimum_stock:Number(form.minimum_stock), tax_rate:Number(form.tax_rate), tax_reason:form.tax_reason || null, tax_reference:form.tax_reference || null})}>Save</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }
