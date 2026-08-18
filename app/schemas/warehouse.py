@@ -5,3 +5,9 @@ class WarehouseCreate(BaseModel):
     code: str = Field(min_length=1, max_length=20)
     name: str = Field(min_length=1, max_length=100)
     address: str | None = None
+
+
+class WarehouseUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    address: str | None = None
+    is_active: bool | None = None
