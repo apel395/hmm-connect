@@ -36,6 +36,7 @@ const blank = () => ({
   tax_rate:0,
   tax_reason:"",
   tax_reference:"",
+  is_market_item:false,
 });
 
 export default function ProductForm({ open, product, products = [], loading, onClose, onSubmit }: Props) {
@@ -72,6 +73,7 @@ export default function ProductForm({ open, product, products = [], loading, onC
       tax_rate:Number(product.tax_rate ?? 0),
       tax_reason:product.tax_reason ?? "",
       tax_reference:product.tax_reference ?? "",
+      is_market_item:Boolean(product.is_market_item),
     } : blank());
   }, [open, product]);
 
@@ -123,6 +125,10 @@ export default function ProductForm({ open, product, products = [], loading, onC
         </label>
         <label className="text-sm font-medium">Conversion
           <Input className="mt-1" type="number" min="0.0001" step="0.0001" value={form.conversion} onChange={(event) => update("conversion", Number(event.target.value))}/>
+        </label>
+        <label className="flex items-center gap-3 self-end rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+          <input type="checkbox" checked={form.is_market_item} onChange={(event) => update("is_market_item", event.target.checked)} />
+          <span><span className="block">Barang Pasar / Market Item</span><span className="block text-xs font-normal text-emerald-700">Hanya item bertanda ini yang muncul di Market List.</span></span>
         </label>
 
         <div className="col-span-2 mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
