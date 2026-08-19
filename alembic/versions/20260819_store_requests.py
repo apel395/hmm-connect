@@ -37,8 +37,8 @@ def upgrade():
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("store_request_id", sa.Integer(), sa.ForeignKey("store_requests.id", ondelete="CASCADE"), nullable=False),
         sa.Column("product_id", sa.Integer(), sa.ForeignKey("products.id", ondelete="RESTRICT"), nullable=False),
-        sa.Column("requested_quantity", sa.Numeric(14, 4), nullable=False),
-        sa.Column("issued_quantity", sa.Numeric(14, 4), nullable=False, server_default="0"),
+        sa.Column("requested_quantity", sa.Numeric(12, 2), nullable=False),
+        sa.Column("issued_quantity", sa.Numeric(12, 2), nullable=False, server_default="0"),
         sa.Column("uom", sa.String(length=30), nullable=False),
     )
     op.create_index("ix_store_request_items_store_request_id", "store_request_items", ["store_request_id"], unique=False)
@@ -68,7 +68,7 @@ def upgrade():
         sa.Column("issue_id", sa.Integer(), sa.ForeignKey("store_issues.id", ondelete="CASCADE"), nullable=False),
         sa.Column("store_request_item_id", sa.Integer(), sa.ForeignKey("store_request_items.id", ondelete="RESTRICT"), nullable=False),
         sa.Column("product_id", sa.Integer(), sa.ForeignKey("products.id", ondelete="RESTRICT"), nullable=False),
-        sa.Column("quantity", sa.Numeric(14, 4), nullable=False),
+        sa.Column("quantity", sa.Numeric(12, 2), nullable=False),
     )
     op.create_index("ix_store_issue_items_issue_id", "store_issue_items", ["issue_id"], unique=False)
     op.create_index("ix_store_issue_items_store_request_item_id", "store_issue_items", ["store_request_item_id"], unique=False)
