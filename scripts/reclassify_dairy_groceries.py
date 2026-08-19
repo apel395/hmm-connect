@@ -21,24 +21,28 @@ from app.core.database import SessionLocal
 from app.models.item_subgroup import ItemSubgroup
 from app.models.product import Product
 
-DAIRY_TERMS = (
-    "susu",
-    "milk",
-    "keju",
-    "cheese",
-    "yoghurt",
-    "yogurt",
-    "whipping cream",
-    "whipped cream",
-    "fresh cream",
-    "dairy cream",
-    "cream cheese",
-)
+DAIRY_PATTERNS = tuple(re.compile(pattern) for pattern in (
+    r"\bsusu\b",
+    r"\bmilk\b",
+    r"\bkeju\b",
+    r"\bcheese\b",
+    r"\byogh?urt\b",
+    r"\bcream\b",
+    r"\bbutter\b",
+))
 
-CANNED_TERMS = (
-    "kaleng",
-    "canned",
-)
+# Explicit non-dairy products containing an otherwise valid dairy token.
+# Margarine stays excluded until classification policy explicitly includes it.
+DAIRY_EXCLUSIONS = tuple(re.compile(pattern) for pattern in (
+    r"\bmilk tea(?: powder)?\b",
+    r"\bcream cleaner\b",
+    r"\bcheese ?cloth\b",
+    r"\bbutter knife\b",
+    r"\bbody (?:milk|butter)\b",
+    r"\bmargarine\b",
+))
+
+CANNED_PATTERN = re.compile(r"\b(?:kaleng|canned)\b")
 
 
 def normalized(value: str | None) -> str:
@@ -58,14 +62,16 @@ def find_subgroup(db, name: str) -> ItemSubgroup:
 
 def is_dairy(product: Product) -> bool:
     name = normalized(product.name)
-    return any(term in name for term in DAIRY_TERMS)
+    return not any(pattern.search(name) for pattern in DAIRY_EXCLUSIONS) and any(
+        pattern.search(name) for pattern in DAIRY_PATTERNS
+    )
 
 
 def is_canned(product: Product) -> bool:
     name = normalized(product.name)
     uom = normalized(product.uom)
     usage_uom = normalized(product.usage_uom)
-    return any(term in name for term in CANNED_TERMS) or uom == "can" or usage_uom == "can"
+    return bool(CANNED_PATTERN.search(name)) or uom in {"can", "cans"} or usage_uom in {"can", "cans"}
 
 
 def main() -> int:
@@ -81,20 +87,33 @@ def main() -> int:
         products = db.query(Product).order_by(Product.code).all()
         dairy_candidates = []
         grocery_candidates = []
+        overlap_candidates = []
+        dairy_updates = []
+        grocery_updates = []
+        unchanged = 0
 
         for product in products:
             # Canned rule wins when a product happens to contain a dairy keyword,
             # because the business explicitly wants all canned products in GROCERIES.
             target = None
             reason = None
-            if is_canned(product):
+            dairy_match = is_dairy(product)
+            canned_match = is_canned(product)
+            if dairy_match:
+                dairy_candidates.append({"code": product.code, "name": product.name})
+            if canned_match:
+                grocery_candidates.append({"code": product.code, "name": product.name})
+            if dairy_match and canned_match:
+                overlap_candidates.append({"code": product.code, "name": product.name})
+            if canned_match:
                 target = groceries
                 reason = "canned"
-            elif is_dairy(product):
+            elif dairy_match:
                 target = dairy
                 reason = "milk-derived"
 
             if target is None or product.subgroup_code == target.code:
+                unchanged += 1
                 continue
 
             item = {
@@ -106,9 +125,9 @@ def main() -> int:
                 "reason": reason,
             }
             if target.id == groceries.id:
-                grocery_candidates.append(item)
+                grocery_updates.append(item)
             else:
-                dairy_candidates.append(item)
+                dairy_updates.append(item)
 
             if args.apply:
                 product.group_code = target.group.code
@@ -119,8 +138,11 @@ def main() -> int:
         print("Sprint 2 Item Classification")
         print(f"  dairy_candidates={len(dairy_candidates)}")
         print(f"  groceries_candidates={len(grocery_candidates)}")
+        print(f"  overlap_candidates={len(overlap_candidates)}")
+        print(f"  unchanged_rows={unchanged}")
+        print(f"  rows_to_update={len(dairy_updates) + len(grocery_updates)}")
 
-        for label, rows in (("DAIRY", dairy_candidates), ("GROCERIES", grocery_candidates)):
+        for label, rows in (("DAIRY", dairy_updates), ("GROCERIES", grocery_updates)):
             if rows:
                 print(f"\n{label} preview:")
                 for row in rows[:50]:

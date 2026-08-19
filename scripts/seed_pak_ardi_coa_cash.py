@@ -33,11 +33,14 @@ def main() -> int:
 
         print("Pak Ardi finance seed summary:")
         print(f"  source_coa={coa['source']}")
+        print(f"  duplicate_source_codes={len(coa['duplicate_source_codes'])}")
         print(f"  coa_created={coa['created']}")
         print(f"  coa_existing_untouched={coa['existing_untouched']}")
+        print(f"  coa_unresolved_parents={len(coa['unresolved_parents'])}")
         print(f"  cash_created={cash['created']}")
         print(f"  cash_existing_untouched={cash['existing_untouched']}")
         print(f"  input_vat_rules_configured={vat['configured']}")
+        print(f"  input_vat_rules_existing_untouched={vat.get('existing_untouched', 0)}")
 
         unresolved = cash.get("unresolved") or []
         if unresolved:

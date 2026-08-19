@@ -3,7 +3,9 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+from collections import Counter
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.accounting_posting_rule import AccountingPostingRule
@@ -51,7 +53,22 @@ def _parent_number(code: str, available: set[str]) -> str | None:
     return None
 
 
+def _account_type(value: str | None, financial_statement_group: str | None) -> str:
+    if value:
+        return value
+    group = (financial_statement_group or "").upper()
+    if "EXPENSE" in group:
+        return "EXPENSE"
+    if "REVENUE" in group:
+        return "REVENUE"
+    raise RuntimeError("COA source row is missing an account type that cannot be inferred safely")
+
+
 def seed_chart_of_accounts(db: Session) -> dict[str, int]:
+    source_counts = Counter(row[0] for row in DEFAULT_CHART_OF_ACCOUNTS)
+    duplicate_source_codes = sorted(code for code, count in source_counts.items() if count > 1)
+    if duplicate_source_codes:
+        raise RuntimeError(f"Duplicate COA codes in source: {', '.join(duplicate_source_codes)}")
     existing = {row.account_number: row for row in db.query(ChartOfAccount).all()}
     source_codes = {row[0] for row in DEFAULT_CHART_OF_ACCOUNTS}
     available_codes = set(existing) | source_codes
@@ -69,7 +86,7 @@ def seed_chart_of_accounts(db: Session) -> dict[str, int]:
         account = ChartOfAccount(
             account_number=code,
             account_name=name,
-            account_type=account_type or "ASSET",
+            account_type=_account_type(account_type, fs_group),
             normal_balance=normal_balance,
             cash_flow_category=cash_flow,
             account_subtype=subtype or "OTHER",
@@ -88,7 +105,17 @@ def seed_chart_of_accounts(db: Session) -> dict[str, int]:
         if parent and parent in existing:
             account.parent_account_id = existing[parent].id
 
-    return {"source": len(DEFAULT_CHART_OF_ACCOUNTS), "created": len(created), "existing_untouched": skipped}
+    unresolved_parents = [
+        code for code, account in created.items()
+        if _parent_number(code, available_codes) and account.parent_account_id is None
+    ]
+    return {
+        "source": len(DEFAULT_CHART_OF_ACCOUNTS),
+        "duplicate_source_codes": duplicate_source_codes,
+        "created": len(created),
+        "existing_untouched": skipped,
+        "unresolved_parents": unresolved_parents,
+    }
 
 
 def _business_unit(db: Session, name: str) -> BusinessUnit | None:
@@ -105,7 +132,12 @@ def seed_cash_accounts(db: Session) -> dict[str, object]:
         if not coa:
             unresolved.append(f"{code}: COA missing")
             continue
-        if db.query(BankAccount).filter(BankAccount.coa_account_id == coa.id).first():
+        if coa.account_subtype != "PETTY_CASH" or not coa.is_posting or coa.children:
+            unresolved.append(f"{code}: COA is not a PETTY_CASH leaf account")
+            continue
+        if db.query(BankAccount).filter(
+            or_(BankAccount.coa_account_id == coa.id, BankAccount.account_number == code)
+        ).first():
             existing_count += 1
             continue
 
@@ -138,8 +170,11 @@ def seed_input_vat_posting(db: Session) -> dict[str, object]:
     )
     if not account:
         return {"configured": 0, "missing": [f"COA {INPUT_VAT_ACCOUNT_NUMBER}"]}
+    if account.account_type != "ASSET" or account.normal_balance != "DEBIT" or not account.is_posting or not account.is_active:
+        return {"configured": 0, "missing": [f"COA {INPUT_VAT_ACCOUNT_NUMBER} is not an active ASSET/DEBIT posting account"]}
 
     configured = 0
+    existing_count = 0
     missing: list[str] = []
     for event_type in INPUT_VAT_EVENTS:
         rule = (
@@ -153,8 +188,10 @@ def seed_input_vat_posting(db: Session) -> dict[str, object]:
         if not rule:
             missing.append(event_type)
             continue
-        if rule.input_vat_account_id is None:
+        if rule.input_vat_account_id != account.id:
             rule.input_vat_account_id = account.id
             configured += 1
+        else:
+            existing_count += 1
 
-    return {"configured": configured, "missing": missing}
+    return {"configured": configured, "existing_untouched": existing_count, "missing": missing}
