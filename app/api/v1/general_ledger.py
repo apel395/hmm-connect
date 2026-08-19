@@ -1,12 +1,8 @@
 from datetime import date
 from decimal import Decimal
-from io import BytesIO
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
-from openpyxl import Workbook
-from openpyxl.styles import Font
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
@@ -122,67 +118,6 @@ def listing(
         "has_next": page * page_size < total,
         "has_previous": page > 1,
     }
-
-
-@router.get("/export")
-def export_xlsx(
-    search: str | None = None,
-    account_id: int | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    reference_type: str | None = None,
-    supplier_id: int | None = None,
-    department_id: int | None = None,
-    location_id: int | None = None,
-    business_unit_id: int | None = None,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-):
-    access(user)
-    q = base(db, account_id, date_from, date_to, reference_type, supplier_id, department_id, location_id, search, business_unit_id)
-    rows = _ledger_query(q).all()
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "General Ledger"
-    headers = [
-        "Posting Date", "Journal Number", "Account Code", "Account Name", "Description",
-        "Reference Type", "Reference Number", "Debit", "Credit", "Running Balance",
-        "Supplier", "Business Unit", "Department", "Location",
-    ]
-    sheet.append(headers)
-    for cell in sheet[1]:
-        cell.font = Font(bold=True)
-
-    for line, balance in rows:
-        item = _item(line, balance)
-        sheet.append([
-            item["posting_date"], item["journal_number"], item["account_code"], item["account_name"],
-            item["description"], item["reference_type"], item["reference_number"],
-            float(item["debit"] or 0), float(item["credit"] or 0), float(item["balance"] or 0),
-            item["supplier_name"], item["business_unit_name"], item["department_name"], item["location_name"],
-        ])
-
-    for column in (8, 9, 10):
-        for cell in sheet.iter_cols(min_col=column, max_col=column, min_row=2):
-            for value in cell:
-                value.number_format = '#,##0.00'
-    for column_letter, width in {
-        "A": 14, "B": 18, "C": 18, "D": 32, "E": 36, "F": 22, "G": 22,
-        "H": 16, "I": 16, "J": 18, "K": 28, "L": 24, "M": 24, "N": 24,
-    }.items():
-        sheet.column_dimensions[column_letter].width = width
-    sheet.freeze_panes = "A2"
-
-    output = BytesIO()
-    workbook.save(output)
-    output.seek(0)
-    filename = f"general-ledger-{date_from or 'all'}-{date_to or 'all'}.xlsx"
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 @router.get("/accounts/{account_id}/summary")
