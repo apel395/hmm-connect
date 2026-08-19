@@ -230,7 +230,10 @@ class StoreRequestService:
             raise HTTPException(status_code=409, detail="Store Issue has no items")
 
         source_items = {item.id: item for item in request.items}
-        for line in issue.items:
+        prepared_lines = []
+        # Lock and validate every line before changing stock. Sorting inventory
+        # locks also gives concurrent multi-line issues a deterministic order.
+        for line in sorted(issue.items, key=lambda item: (item.product_id, item.id)):
             source = source_items.get(line.store_request_item_id)
             if not source:
                 raise HTTPException(status_code=409, detail="Store Request item no longer exists")
@@ -251,6 +254,9 @@ class StoreRequestService:
                     detail=f"Insufficient stock for {source.product.name}: available {available}, requested {qty}",
                 )
             unit_cost = Decimal(inventory.average_cost or 0)
+            prepared_lines.append((source, inventory, qty, unit_cost))
+
+        for source, inventory, qty, unit_cost in prepared_lines:
             inventory.quantity = Decimal(inventory.quantity or 0) - qty
             source.issued_quantity = Decimal(source.issued_quantity or 0) + qty
             db.add(StockMovement(
