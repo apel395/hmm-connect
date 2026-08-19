@@ -27,13 +27,12 @@ export interface TrialBalanceRow {
   parent_account_id: number | null;
   parent_account_code: string | null;
   parent_account_name: string | null;
-  opening_debit: string;
-  opening_credit: string;
+  opening_balance: string;
   period_debit: string;
   period_credit: string;
-  closing_debit: string;
-  closing_credit: string;
-  is_abnormal_balance: boolean;
+  period_total: string;
+  closing_balance: string;
+  status: "NORMAL" | "ABNORMAL";
 }
 
 export interface TrialBalanceResponse {
