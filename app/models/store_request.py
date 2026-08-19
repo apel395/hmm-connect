@@ -36,8 +36,8 @@ class StoreRequestItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     store_request_id: Mapped[int] = mapped_column(ForeignKey("store_requests.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True)
-    requested_quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
-    issued_quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), default=0, nullable=False)
+    requested_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    issued_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
     uom: Mapped[str] = mapped_column(String(30), nullable=False)
 
     store_request = relationship("StoreRequest", back_populates="items")
@@ -69,7 +69,7 @@ class StoreIssueItem(Base):
     issue_id: Mapped[int] = mapped_column(ForeignKey("store_issues.id", ondelete="CASCADE"), nullable=False, index=True)
     store_request_item_id: Mapped[int] = mapped_column(ForeignKey("store_request_items.id", ondelete="RESTRICT"), nullable=False, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
     issue = relationship("StoreIssue", back_populates="items")
     store_request_item = relationship("StoreRequestItem")
