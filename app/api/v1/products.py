@@ -21,11 +21,14 @@ def _is_market_subgroup(subgroup_name: str | None) -> bool:
     return (subgroup_name or "").strip().upper() in MARKET_SUBGROUPS
 
 
-def _apply_filters(query, *, active_only: bool, search: str | None, market_only: bool = False):
+def _apply_filters(query, *, active_only: bool, search: str | None, market_only: bool = False, exclude_market: bool = False):
     if active_only:
         query = query.filter(Product.is_active.is_(True))
+    subgroup = func.upper(func.trim(Product.subgroup_name))
     if market_only:
-        query = query.filter(func.upper(Product.subgroup_name).in_(MARKET_SUBGROUPS))
+        query = query.filter(subgroup.in_(MARKET_SUBGROUPS))
+    elif exclude_market:
+        query = query.filter(~subgroup.in_(MARKET_SUBGROUPS))
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
@@ -50,8 +53,8 @@ def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict
 
 
 @router.get("")
-def list_products(active_only: bool = True, market_only: bool = False, search: str | None = Query(default=None, max_length=100), page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
-    query = _apply_filters(db.query(Product), active_only=active_only, search=search, market_only=market_only)
+def list_products(active_only: bool = True, market_only: bool = False, exclude_market: bool = False, search: str | None = Query(default=None, max_length=100), page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
+    query = _apply_filters(db.query(Product), active_only=active_only, search=search, market_only=market_only, exclude_market=exclude_market)
     total = query.count()
     rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
     total_pages = ceil(total / page_size) if total else 0
@@ -83,8 +86,8 @@ def classification_master(db: Session = Depends(get_db), _=Depends(get_current_u
 
 
 @router.get("/lookup")
-def lookup_products(search: str = Query(default="", max_length=100), market_only: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
-    query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only)
+def lookup_products(search: str = Query(default="", max_length=100), market_only: bool = False, exclude_market: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
+    query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only, exclude_market=exclude_market)
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
     price_history = _last_purchase_prices(db, [row.id for row in rows])
     return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion_factor": row.conversion_factor, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "is_market_item": _is_market_subgroup(row.subgroup_name), **price_history.get(row.id, {"last_purchase_price": None, "last_purchase_date": None, "last_purchase_po_number": None})} for row in rows]
