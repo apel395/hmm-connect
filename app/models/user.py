@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, ForeignKey, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -33,6 +35,9 @@ class User(Base, TimestampMixin):
         default=True,
     )
 
+    active_session_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    session_last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     department_id: Mapped[int | None] = mapped_column(
         ForeignKey("departments.id", ondelete="SET NULL"),
         nullable=True,
@@ -66,10 +71,6 @@ class User(Base, TimestampMixin):
         secondary=UserRole.__table__,
         back_populates="users",
     )
-
-    # ---------------------------------------------------------
-    # Journal
-    # ---------------------------------------------------------
 
     created_journals = relationship(
         "JournalEntry",
