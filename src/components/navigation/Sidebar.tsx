@@ -30,7 +30,7 @@ const groups: Group[] = [
   { title: "Inventory", icon: Boxes, roles: [...INVENTORY_ROLES, "DEPARTMENT"], children: [
     { title: "Stock", url: "/inventory", exact: true, roles: INVENTORY_ROLES },
     { title: "Stock Movement", url: "/inventory/movements", roles: INVENTORY_ROLES },
-    { title: "Store Request", url: "/store-requests", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "Store Request", url: "/store-requests", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "DEPARTMENT", "PURCHASING", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Stock Adjustment", disabled: true, roles: INVENTORY_ROLES },
   ] },
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
