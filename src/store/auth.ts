@@ -49,6 +49,7 @@ interface AuthState {
 }
 
 const WORKSPACE_OWNER_KEY = "hmm-last-user-identity";
+const LAST_ACTIVITY_KEY = "hmm-last-activity-at";
 
 const userIdentity = (user: User | null | undefined) => {
   if (!user) return null;
@@ -65,6 +66,13 @@ const adoptWorkspaceOwner = (user: User) => {
     useWorkspaceTabs.getState().resetTabs();
   }
   localStorage.setItem(WORKSPACE_OWNER_KEY, nextIdentity);
+};
+
+const clearLocalSession = () => {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
+  localStorage.removeItem("user");
+  localStorage.removeItem(LAST_ACTIVITY_KEY);
 };
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -95,11 +103,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data: user } = await api.get<User>("/auth/me");
       adoptWorkspaceOwner(user);
       localStorage.setItem("user", JSON.stringify(user));
+      if (!localStorage.getItem(LAST_ACTIVITY_KEY)) localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
       set({ accessToken, refreshToken, user, authenticated: true, loading: false });
     } catch {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      localStorage.removeItem("user");
+      clearLocalSession();
       set({ accessToken: null, refreshToken: null, user: null, authenticated: false, loading: false });
     }
   },
@@ -122,6 +129,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.setItem("access_token", data.access_token);
       if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
       else localStorage.removeItem("refresh_token");
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
 
       const me = await api.get<User>("/auth/me");
       adoptWorkspaceOwner(me.data);
@@ -135,20 +143,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         loading: false,
       });
     } catch (error) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      localStorage.removeItem("user");
+      clearLocalSession();
       set({ accessToken: null, refreshToken: null, user: null, authenticated: false, loading: false });
       throw error;
     }
   },
 
   logout: () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("user");
-    set({ accessToken: null, refreshToken: null, user: null, authenticated: false, loading: false });
-    window.location.replace("/login");
+    const finish = () => {
+      clearLocalSession();
+      set({ accessToken: null, refreshToken: null, user: null, authenticated: false, loading: false });
+      window.location.replace("/login");
+    };
+    void api.post("/auth/logout").catch(() => undefined).finally(finish);
   },
 }));
 
