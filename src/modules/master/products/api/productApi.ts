@@ -13,9 +13,19 @@ export type ProductListParams = {
   market_only?: boolean;
 };
 
+export type ProductClassificationGroup = {
+  id: number;
+  code: string;
+  name: string;
+  subgroups: Array<{ id: number; code: string; name: string }>;
+};
+
 export const productApi = {
   list: (params: ProductListParams = {}) =>
     api.get("/products", { params }),
+
+  classificationMaster: () =>
+    api.get<ProductClassificationGroup[]>("/products/classification-master"),
 
   lookup: (search = "", limit = 30, marketOnly = false) =>
     api.get("/products/lookup", { params: { search, limit, market_only: marketOnly } }),
