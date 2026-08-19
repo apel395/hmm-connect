@@ -26,6 +26,7 @@ interface Props {
   placeholder?: string;
   remote?: boolean;
   marketOnly?: boolean;
+  excludeMarket?: boolean;
   onChange: (productId: number) => void;
   onSelect?: (product: ProductComboboxOption) => void;
 }
@@ -49,15 +50,15 @@ function priceFor(value?: number | string | null): string | null {
   return number.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-async function loadRemoteProducts(search: string, marketOnly: boolean): Promise<ProductComboboxOption[]> {
+async function loadRemoteProducts(search: string, marketOnly: boolean, excludeMarket: boolean): Promise<ProductComboboxOption[]> {
   try {
-    const lookup = await productApi.lookup(search, 30, marketOnly);
+    const lookup = await productApi.lookup(search, 30, marketOnly, excludeMarket);
     if (Array.isArray(lookup.data) && lookup.data.length > 0) return lookup.data;
   } catch {
     // Fall through to canonical pagination endpoint.
   }
 
-  const list = await productApi.list({ page: 1, page_size: 30, search, active_only: true, market_only: marketOnly });
+  const list = await productApi.list({ page: 1, page_size: 30, search, active_only: true, market_only: marketOnly, exclude_market: excludeMarket });
   const payload = list.data;
   if (Array.isArray(payload)) return payload;
   return Array.isArray(payload?.items) ? payload.items : [];
@@ -70,6 +71,7 @@ export default function ProductCombobox({
   placeholder = "Type product code or name...",
   remote = false,
   marketOnly = false,
+  excludeMarket = false,
   onChange,
   onSelect,
 }: Props) {
@@ -110,7 +112,7 @@ export default function ProductCombobox({
       setLoading(true);
       setLoadError(false);
       try {
-        const rows = await loadRemoteProducts(selected && raw === selectedLabel ? "" : raw, marketOnly);
+        const rows = await loadRemoteProducts(selected && raw === selectedLabel ? "" : raw, marketOnly, excludeMarket);
         if (requestId === requestIdRef.current) setRemoteProducts(rows);
       } catch {
         if (requestId === requestIdRef.current) {
@@ -123,7 +125,7 @@ export default function ProductCombobox({
     }, raw ? 250 : 0);
 
     return () => window.clearTimeout(timer);
-  }, [remote, disabled, query, selected, remoteProducts.length, marketOnly]);
+  }, [remote, disabled, query, selected, remoteProducts.length, marketOnly, excludeMarket]);
 
   useEffect(() => {
     if (!open) return;
