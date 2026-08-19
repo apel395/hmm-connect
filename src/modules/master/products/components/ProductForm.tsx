@@ -36,7 +36,6 @@ const blank = () => ({
   tax_rate:0,
   tax_reason:"",
   tax_reference:"",
-  is_market_item:false,
 });
 
 export default function ProductForm({ open, product, products = [], loading, onClose, onSubmit }: Props) {
@@ -74,7 +73,6 @@ export default function ProductForm({ open, product, products = [], loading, onC
       tax_rate:Number(product.tax_rate ?? 0),
       tax_reason:product.tax_reason ?? "",
       tax_reference:product.tax_reference ?? "",
-      is_market_item:Boolean(product.is_market_item),
     } : blank());
   }, [open, product]);
 
@@ -148,6 +146,7 @@ export default function ProductForm({ open, product, products = [], loading, onC
           }}>
             <option value="">{form.group_code ? "Select Sub Group" : "Select Group first"}</option>{subGroups.map((item) => <option key={item.code} value={item.code}>{item.code} - {item.name}</option>)}
           </select>
+          {form.subgroup_name && <span className="mt-1 block text-xs font-normal text-slate-500">Market List eligibility is automatic: only VEGETABLES and FRUIT use Market List; all other subgroups use Purchase Requisition.</span>}
         </label>
         <label className="text-sm font-medium">Purchase UOM
           <Input className="mt-1" list="purchase-uom-options" value={form.uom} placeholder="Select or type UOM" onChange={(event) => changePurchaseUom(event.target.value)} />
@@ -163,10 +162,6 @@ export default function ProductForm({ open, product, products = [], loading, onC
         <label className="text-sm font-medium">Minimum Stock
           <Input className="mt-1" type="number" min="0" step="0.01" value={form.minimum_stock} onChange={(event) => update("minimum_stock", Number(event.target.value))}/>
           <span className="mt-1 block text-xs font-normal text-slate-500">Dipakai sebagai batas notifikasi reorder. Tidak ditampilkan sebagai kolom min/max di Stock List.</span>
-        </label>
-        <label className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
-          <input type="checkbox" checked={form.is_market_item} onChange={(event) => update("is_market_item", event.target.checked)} />
-          <span><span className="block">Barang Pasar / Market Item</span><span className="block text-xs font-normal text-emerald-700">Hanya item bertanda ini yang muncul di Market List.</span></span>
         </label>
 
         <div className="col-span-2 mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -199,7 +194,6 @@ export default function ProductForm({ open, product, products = [], loading, onC
           </div>
         </div>
       </div></DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!valid} loading={loading} onClick={submit}>Save</Button></DialogFooter>
-    </DialogContent>
+      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!valid} loading={loading} onClick={submit}>Save</Button></DialogFooter></DialogContent>
   </Dialog>;
 }
