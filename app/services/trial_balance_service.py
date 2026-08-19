@@ -18,8 +18,11 @@ class TrialBalanceService:
         "account_code": lambda row: row["account_code"],
         "account_name": lambda row: row["account_name"].lower(),
         "account_type": lambda row: (row["account_type"], row["account_code"]),
-        "closing_debit": lambda row: row["closing_debit"],
-        "closing_credit": lambda row: row["closing_credit"],
+        "opening_balance": lambda row: row["opening_balance"],
+        "period_debit": lambda row: row["period_debit"],
+        "period_credit": lambda row: row["period_credit"],
+        "period_total": lambda row: row["period_total"],
+        "closing_balance": lambda row: row["closing_balance"],
     }
 
     def __init__(self, db: Session):
@@ -65,6 +68,12 @@ class TrialBalanceService:
             for account_id, debit, credit in query.group_by(JournalLine.account_id).all()
         }
 
+    @staticmethod
+    def _normal_balance_amount(normal_balance: str, debit: Decimal, credit: Decimal) -> Decimal:
+        if normal_balance == "CREDIT":
+            return credit - debit
+        return debit - credit
+
     def report(
         self,
         *,
@@ -103,7 +112,12 @@ class TrialBalanceService:
         if parent_account_id:
             accounts_query = accounts_query.filter(ChartOfAccount.parent_account_id == parent_account_id)
 
-        opening = self._activity(before=date_from, location_id=location_id, department_id=department_id, business_unit_id=business_unit_id)
+        opening = self._activity(
+            before=date_from,
+            location_id=location_id,
+            department_id=department_id,
+            business_unit_id=business_unit_id,
+        )
         period = self._activity(
             date_from=date_from,
             date_to=date_to,
@@ -111,20 +125,35 @@ class TrialBalanceService:
             department_id=department_id,
             business_unit_id=business_unit_id,
         )
+
         rows = []
         for account in accounts_query.all():
             opening_debit_activity, opening_credit_activity = opening.get(account.id, (ZERO, ZERO))
             period_debit, period_credit = period.get(account.id, (ZERO, ZERO))
-            opening_net = opening_debit_activity - opening_credit_activity
-            closing_net = opening_net + period_debit - period_credit
-            opening_debit, opening_credit = self._side(opening_net)
-            closing_debit, closing_credit = self._side(closing_net)
+
+            raw_opening_net = opening_debit_activity - opening_credit_activity
+            raw_closing_net = raw_opening_net + period_debit - period_credit
+            opening_debit, opening_credit = self._side(raw_opening_net)
+            closing_debit, closing_credit = self._side(raw_closing_net)
+
+            opening_balance = self._normal_balance_amount(
+                account.normal_balance,
+                opening_debit_activity,
+                opening_credit_activity,
+            )
+            period_total = self._normal_balance_amount(
+                account.normal_balance,
+                period_debit,
+                period_credit,
+            )
+            closing_balance = opening_balance + period_total
+            status = "ABNORMAL" if closing_balance < ZERO else "NORMAL"
+
             if not include_zero_balance and not any(
-                (opening_debit, opening_credit, period_debit, period_credit, closing_debit, closing_credit)
+                (opening_debit_activity, opening_credit_activity, period_debit, period_credit)
             ):
                 continue
-            actual_side = "DEBIT" if closing_net > ZERO else "CREDIT" if closing_net < ZERO else None
-            abnormal = actual_side is not None and actual_side != account.normal_balance
+
             rows.append(
                 {
                     "account_id": account.id,
@@ -136,33 +165,40 @@ class TrialBalanceService:
                     "parent_account_id": account.parent_account_id,
                     "parent_account_code": account.parent.account_number if account.parent else None,
                     "parent_account_name": account.parent.account_name if account.parent else None,
-                    "opening_debit": opening_debit,
-                    "opening_credit": opening_credit,
+                    "opening_balance": opening_balance,
                     "period_debit": period_debit,
                     "period_credit": period_credit,
+                    "period_total": period_total,
+                    "closing_balance": closing_balance,
+                    "status": status,
+                    # Compatibility fields retained for existing consumers/export while UI migrates.
+                    "opening_debit": opening_debit,
+                    "opening_credit": opening_credit,
                     "closing_debit": closing_debit,
                     "closing_credit": closing_credit,
-                    "is_abnormal_balance": abnormal,
+                    "is_abnormal_balance": status == "ABNORMAL",
                 }
             )
 
         key = self.SORT_FIELDS.get(sort_by, self.SORT_FIELDS["account_code"])
         rows.sort(key=key, reverse=sort_order.lower() == "desc")
+
         summary = {
-            field: sum((row[field] for row in rows), ZERO)
-            for field in (
-                "opening_debit",
-                "opening_credit",
-                "period_debit",
-                "period_credit",
-                "closing_debit",
-                "closing_credit",
-            )
+            "opening_balance": sum((row["opening_balance"] for row in rows), ZERO),
+            "period_debit": sum((row["period_debit"] for row in rows), ZERO),
+            "period_credit": sum((row["period_credit"] for row in rows), ZERO),
+            "period_total": sum((row["period_total"] for row in rows), ZERO),
+            "closing_balance": sum((row["closing_balance"] for row in rows), ZERO),
+            "opening_debit": sum((row["opening_debit"] for row in rows), ZERO),
+            "opening_credit": sum((row["opening_credit"] for row in rows), ZERO),
+            "closing_debit": sum((row["closing_debit"] for row in rows), ZERO),
+            "closing_credit": sum((row["closing_credit"] for row in rows), ZERO),
         }
-        summary["difference"] = summary["closing_debit"] - summary["closing_credit"]
+        summary["difference"] = summary["period_debit"] - summary["period_credit"]
         summary["is_balanced"] = summary["difference"] == ZERO
         summary["account_count"] = len(rows)
         summary["abnormal_balance_count"] = sum(row["is_abnormal_balance"] for row in rows)
+
         total = len(rows)
         items = rows[(page - 1) * page_size : page * page_size] if paginate else rows
         return {
