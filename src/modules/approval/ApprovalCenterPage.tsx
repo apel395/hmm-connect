@@ -62,6 +62,8 @@ export default function ApprovalCenterPage() {
         qc.invalidateQueries({ queryKey: ["market-lists"] }),
         qc.refetchQueries({ queryKey: ["purchase-order", completedDecision?.row.entity_id], exact: true, type: "active" }),
         qc.refetchQueries({ queryKey: ["goods-receipt", completedDecision?.row.entity_id], exact: true, type: "active" }),
+        qc.refetchQueries({ queryKey: ["store-request", completedDecision?.row.entity_id], exact: true, type: "active" }),
+        qc.invalidateQueries({ queryKey: ["store-requests"] }),
       ]);
       toast.success(completedDecision?.action === "APPROVE" ? "Approval recorded." : "Document rejected.");
     },
