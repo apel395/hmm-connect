@@ -58,6 +58,8 @@ import ApprovalCenterPage from "@/modules/approval/ApprovalCenterPage";
 import ApprovalConfigurationPage from "@/modules/approval/ApprovalConfigurationPage";
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
 import InventoryMovementPage from "@/modules/warehouse/inventory/pages/InventoryMovementPage";
+import StoreRequestPage from "@/modules/warehouse/store-request/StoreRequestPage";
+import StoreRequestDetailPage from "@/modules/warehouse/store-request/StoreRequestDetailPage";
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
 import ProductPage from "@/modules/master/products/pages/ProductPage";
 import SupplierPage from "@/modules/master/suppliers/pages/SupplierPage";
@@ -172,6 +174,8 @@ const router = createBrowserRouter([
       { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "inventory", element: <InventoryPage /> },
       { path: "inventory/movements", element: <InventoryMovementPage /> },
+      { path: "store-requests", element: <StoreRequestPage /> },
+      { path: "store-requests/:id", element: <StoreRequestDetailPage /> },
       { path: "put-away", element: <PutAwayPage /> },
       { path: "products", element: <ProductPage /> },
       { path: "suppliers", element: <SupplierPage /> },
