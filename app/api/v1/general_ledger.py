@@ -1,8 +1,12 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
@@ -46,6 +50,49 @@ def base(db, account_id=None, date_from=None, date_to=None, reference_type=None,
     return q
 
 
+def _ledger_query(q):
+    debit_normal_delta = func.coalesce(JournalLine.debit, 0) - func.coalesce(JournalLine.credit, 0)
+    credit_normal_delta = func.coalesce(JournalLine.credit, 0) - func.coalesce(JournalLine.debit, 0)
+    delta = case((ChartOfAccount.normal_balance == "DEBIT", debit_normal_delta), else_=credit_normal_delta)
+    running_balance = func.sum(delta).over(
+        partition_by=JournalLine.account_id,
+        order_by=(JournalEntry.posting_date, JournalEntry.id, JournalLine.line_number, JournalLine.id),
+        rows=(None, 0),
+    ).label("running_balance")
+    return (
+        q.join(ChartOfAccount, ChartOfAccount.id == JournalLine.account_id)
+        .with_entities(JournalLine, running_balance)
+        .order_by(JournalEntry.posting_date, JournalEntry.id, JournalLine.line_number, JournalLine.id)
+    )
+
+
+def _item(line, balance):
+    account = line.account
+    return {
+        "id": line.id,
+        "posting_date": line.journal_entry.posting_date,
+        "journal_id": line.journal_entry.id,
+        "journal_number": line.journal_entry.journal_number,
+        "account_id": account.id,
+        "account_code": account.account_number,
+        "account_name": account.account_name,
+        "description": line.description,
+        "reference_type": line.journal_entry.reference_type,
+        "reference_number": line.journal_entry.document_number,
+        "debit": line.debit,
+        "credit": line.credit,
+        "balance": balance or ZERO,
+        "supplier_id": line.supplier_id,
+        "supplier_name": line.supplier.name if line.supplier else None,
+        "department_id": line.department_id,
+        "department_name": line.department.name if line.department else None,
+        "location_id": line.location_id,
+        "location_name": line.location.name if line.location else None,
+        "business_unit_id": line.business_unit_id,
+        "business_unit_name": line.business_unit.name if line.business_unit else None,
+    }
+
+
 @router.get("")
 def listing(
     page: int = Query(1, ge=1),
@@ -65,53 +112,9 @@ def listing(
     access(user)
     q = base(db, account_id, date_from, date_to, reference_type, supplier_id, department_id, location_id, search, business_unit_id)
     total = q.count()
-
-    # Running balance is computed by PostgreSQL over the filtered ledger set.
-    # LIMIT/OFFSET is applied only after the window value has been calculated,
-    # so Lambda never materializes every matching ledger line in Python.
-    debit_normal_delta = func.coalesce(JournalLine.debit, 0) - func.coalesce(JournalLine.credit, 0)
-    credit_normal_delta = func.coalesce(JournalLine.credit, 0) - func.coalesce(JournalLine.debit, 0)
-    delta = case((ChartOfAccount.normal_balance == "DEBIT", debit_normal_delta), else_=credit_normal_delta)
-    running_balance = func.sum(delta).over(
-        partition_by=JournalLine.account_id,
-        order_by=(JournalEntry.posting_date, JournalEntry.id, JournalLine.line_number, JournalLine.id),
-        rows=(None, 0),
-    ).label("running_balance")
-
-    rows = (
-        q.join(ChartOfAccount, ChartOfAccount.id == JournalLine.account_id)
-        .with_entities(JournalLine, running_balance)
-        .order_by(JournalEntry.posting_date, JournalEntry.id, JournalLine.line_number, JournalLine.id)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-    items = []
-    for line, balance in rows:
-        account = line.account
-        items.append({
-            "id": line.id,
-            "posting_date": line.journal_entry.posting_date,
-            "journal_id": line.journal_entry.id,
-            "journal_number": line.journal_entry.journal_number,
-            "account_id": account.id,
-            "account_code": account.account_number,
-            "account_name": account.account_name,
-            "description": line.description,
-            "reference_type": line.journal_entry.reference_type,
-            "reference_number": line.journal_entry.document_number,
-            "debit": line.debit,
-            "credit": line.credit,
-            "balance": balance or ZERO,
-            "supplier_id": line.supplier_id,
-            "supplier_name": line.supplier.name if line.supplier else None,
-            "department_id": line.department_id,
-            "department_name": line.department.name if line.department else None,
-            "location_id": line.location_id,
-            "location_name": line.location.name if line.location else None,
-        })
+    rows = _ledger_query(q).offset((page - 1) * page_size).limit(page_size).all()
     return {
-        "items": items,
+        "items": [_item(line, balance) for line, balance in rows],
         "page": page,
         "page_size": page_size,
         "total_items": total,
@@ -119,6 +122,67 @@ def listing(
         "has_next": page * page_size < total,
         "has_previous": page > 1,
     }
+
+
+@router.get("/export")
+def export_xlsx(
+    search: str | None = None,
+    account_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    reference_type: str | None = None,
+    supplier_id: int | None = None,
+    department_id: int | None = None,
+    location_id: int | None = None,
+    business_unit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    access(user)
+    q = base(db, account_id, date_from, date_to, reference_type, supplier_id, department_id, location_id, search, business_unit_id)
+    rows = _ledger_query(q).all()
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "General Ledger"
+    headers = [
+        "Posting Date", "Journal Number", "Account Code", "Account Name", "Description",
+        "Reference Type", "Reference Number", "Debit", "Credit", "Running Balance",
+        "Supplier", "Business Unit", "Department", "Location",
+    ]
+    sheet.append(headers)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+
+    for line, balance in rows:
+        item = _item(line, balance)
+        sheet.append([
+            item["posting_date"], item["journal_number"], item["account_code"], item["account_name"],
+            item["description"], item["reference_type"], item["reference_number"],
+            float(item["debit"] or 0), float(item["credit"] or 0), float(item["balance"] or 0),
+            item["supplier_name"], item["business_unit_name"], item["department_name"], item["location_name"],
+        ])
+
+    for column in (8, 9, 10):
+        for cell in sheet.iter_cols(min_col=column, max_col=column, min_row=2):
+            for value in cell:
+                value.number_format = '#,##0.00'
+    for column_letter, width in {
+        "A": 14, "B": 18, "C": 18, "D": 32, "E": 36, "F": 22, "G": 22,
+        "H": 16, "I": 16, "J": 18, "K": 28, "L": 24, "M": 24, "N": 24,
+    }.items():
+        sheet.column_dimensions[column_letter].width = width
+    sheet.freeze_panes = "A2"
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    filename = f"general-ledger-{date_from or 'all'}-{date_to or 'all'}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/accounts/{account_id}/summary")
