@@ -13,13 +13,11 @@ from app.services.trial_balance_service import TrialBalanceService
 
 router = APIRouter(prefix="/trial-balance", tags=["Financial Reports"])
 MONEY_FIELDS = (
-    "opening_debit",
-    "opening_credit",
+    "opening_balance",
     "period_debit",
     "period_credit",
-    "closing_debit",
-    "closing_credit",
-    "difference",
+    "period_total",
+    "closing_balance",
 )
 
 
@@ -30,9 +28,13 @@ def access(user):
 
 def serialize(report: dict) -> dict:
     for row in report["items"]:
-        for field in MONEY_FIELDS[:-1]:
+        for field in MONEY_FIELDS:
             row[field] = f"{row[field]:.2f}"
-    for field in MONEY_FIELDS:
+        # Compatibility values remain numeric internally but are normalized for legacy UI consumers.
+        for field in ("opening_debit", "opening_credit", "closing_debit", "closing_credit"):
+            if field in row:
+                row[field] = f"{row[field]:.2f}"
+    for field in (*MONEY_FIELDS, "opening_debit", "opening_credit", "closing_debit", "closing_credit", "difference"):
         if field in report["summary"]:
             report["summary"][field] = f"{report['summary'][field]:.2f}"
     return report
@@ -133,26 +135,18 @@ def export_trial_balance_csv(
         department_id, business_unit_id, sort_by, sort_order, paginate=False,
     )
     headers = [
-        "Account Code", "Account Name", "Account Type", "Normal Balance",
-        "Opening Debit", "Opening Credit", "Period Debit", "Period Credit",
-        "Closing Debit", "Closing Credit", "Abnormal Balance",
+        "No COA", "Nama COA", "Opening", "Mutasi Debit", "Mutasi Credit",
+        "Total", "Closing", "Status",
     ]
     fields = [
-        "account_code", "account_name", "account_type", "normal_balance",
-        "opening_debit", "opening_credit", "period_debit", "period_credit",
-        "closing_debit", "closing_credit", "is_abnormal_balance",
+        "account_code", "account_name", "opening_balance", "period_debit",
+        "period_credit", "period_total", "closing_balance", "status",
     ]
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(headers)
     for row in report["items"]:
         writer.writerow([row[field] for field in fields])
-    summary = report["summary"]
-    writer.writerow([
-        "TOTAL", "", "", "", summary["opening_debit"], summary["opening_credit"],
-        summary["period_debit"], summary["period_credit"], summary["closing_debit"],
-        summary["closing_credit"], "",
-    ])
     filename = f"trial-balance-{date_from}-{date_to}.csv"
     return StreamingResponse(
         iter([output.getvalue()]),
