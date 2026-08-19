@@ -2,10 +2,11 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.models.item_group import ItemGroup
 from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
@@ -27,111 +28,65 @@ def _apply_filters(query, *, active_only: bool, search: str | None, market_only:
 
 
 def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict]:
-    """Return one latest committed PO price per product in a bounded batch query."""
     if not product_ids:
         return {}
-
     rows = (
-        db.query(
-            PurchaseOrderItem.product_id,
-            PurchaseOrderItem.unit_price,
-            PurchaseOrder.order_date,
-            PurchaseOrder.po_number,
-        )
+        db.query(PurchaseOrderItem.product_id, PurchaseOrderItem.unit_price, PurchaseOrder.order_date, PurchaseOrder.po_number)
         .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
-        .filter(
-            PurchaseOrderItem.product_id.in_(product_ids),
-            PurchaseOrder.status.notin_(("DRAFT", "REJECTED", "CANCELLED", "EXPIRED")),
-        )
-        .order_by(
-            PurchaseOrderItem.product_id,
-            PurchaseOrder.order_date.desc(),
-            PurchaseOrder.id.desc(),
-            PurchaseOrderItem.id.desc(),
-        )
+        .filter(PurchaseOrderItem.product_id.in_(product_ids), PurchaseOrder.status.notin_(("DRAFT", "REJECTED", "CANCELLED", "EXPIRED")))
+        .order_by(PurchaseOrderItem.product_id, PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc(), PurchaseOrderItem.id.desc())
         .all()
     )
-
     latest: dict[int, dict] = {}
     for product_id, unit_price, order_date, po_number in rows:
-        if product_id in latest:
-            continue
-        latest[product_id] = {
-            "last_purchase_price": unit_price,
-            "last_purchase_date": order_date,
-            "last_purchase_po_number": po_number,
-        }
+        if product_id not in latest:
+            latest[product_id] = {"last_purchase_price": unit_price, "last_purchase_date": order_date, "last_purchase_po_number": po_number}
     return latest
 
 
 @router.get("")
-def list_products(
-    active_only: bool = True,
-    market_only: bool = False,
-    search: str | None = Query(default=None, max_length=100),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=25, ge=1, le=100),
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
+def list_products(active_only: bool = True, market_only: bool = False, search: str | None = Query(default=None, max_length=100), page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
     query = _apply_filters(db.query(Product), active_only=active_only, search=search, market_only=market_only)
     total = query.count()
     rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
     total_pages = ceil(total / page_size) if total else 0
-    return {
-        "items": rows,
-        "page": page,
-        "page_size": page_size,
-        "total_items": total,
-        "total_pages": total_pages,
-        "has_next": page < total_pages,
-        "has_previous": page > 1,
-    }
+    return {"items": rows, "page": page, "page_size": page_size, "total_items": total, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
 
 
-@router.get("/lookup")
-def lookup_products(
-    search: str = Query(default="", max_length=100),
-    market_only: bool = False,
-    limit: int = Query(default=30, ge=1, le=100),
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
-    query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only)
-    rows = query.order_by(Product.name, Product.code).limit(limit).all()
-    price_history = _last_purchase_prices(db, [row.id for row in rows])
+@router.get("/classification-master")
+def classification_master(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    groups = (
+        db.query(ItemGroup)
+        .options(selectinload(ItemGroup.subgroups))
+        .filter(ItemGroup.is_active.is_(True))
+        .order_by(ItemGroup.code)
+        .all()
+    )
     return [
         {
-            "id": row.id,
-            "code": row.code,
-            "name": row.name,
-            "description": row.description,
-            "uom": row.uom,
-            "usage_uom": row.usage_uom,
-            "conversion_factor": row.conversion_factor,
-            "tax_category": row.tax_category,
-            "is_taxable": row.is_taxable,
-            "tax_rate": row.tax_rate,
-            "is_market_item": row.is_market_item,
-            **price_history.get(
-                row.id,
-                {
-                    "last_purchase_price": None,
-                    "last_purchase_date": None,
-                    "last_purchase_po_number": None,
-                },
-            ),
+            "id": group.id,
+            "code": group.code,
+            "name": group.name,
+            "subgroups": [
+                {"id": subgroup.id, "code": subgroup.code, "name": subgroup.name}
+                for subgroup in sorted(group.subgroups, key=lambda item: item.code)
+                if subgroup.is_active
+            ],
         }
-        for row in rows
+        for group in groups
     ]
 
 
+@router.get("/lookup")
+def lookup_products(search: str = Query(default="", max_length=100), market_only: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
+    query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only)
+    rows = query.order_by(Product.name, Product.code).limit(limit).all()
+    price_history = _last_purchase_prices(db, [row.id for row in rows])
+    return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion_factor": row.conversion_factor, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "is_market_item": row.is_market_item, **price_history.get(row.id, {"last_purchase_price": None, "last_purchase_date": None, "last_purchase_po_number": None})} for row in rows]
+
+
 @router.post("", status_code=201)
-def create_product(
-    data: ProductCreate,
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
+def create_product(data: ProductCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
     if db.query(Product).filter(Product.code == data.code).first():
         raise HTTPException(status_code=409, detail="Product code already exists")
     product = Product(**data.model_dump())
@@ -142,12 +97,7 @@ def create_product(
 
 
 @router.patch("/{product_id}")
-def update_product(
-    product_id: int,
-    data: ProductUpdate,
-    db: Session = Depends(get_db),
-    _=Depends(get_current_user),
-):
+def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
