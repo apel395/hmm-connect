@@ -48,6 +48,7 @@ from app.models.recurring_journal_line import RecurringJournalLine
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.stock_movement import StockMovement
+from app.models.store_request import StoreIssue, StoreIssueItem, StoreRequest, StoreRequestItem
 from app.models.supplier import Supplier, SupplierRow
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.models.supplier_product import SupplierProduct
