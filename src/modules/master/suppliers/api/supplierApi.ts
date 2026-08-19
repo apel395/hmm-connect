@@ -35,7 +35,7 @@ export const supplierApi = {
   },
 
   create: (payload: SupplierPayload) => api.post<Supplier>("/suppliers", payload),
-  update: (id: number, payload: SupplierPayload) => api.put<Supplier>(`/suppliers/${id}`, payload),
+  update: (id: number, payload: SupplierPayload) => api.patch<Supplier>(`/suppliers/${id}`, payload),
   remove: (id: number) => api.delete(`/suppliers/${id}`),
 };
 
