@@ -40,19 +40,25 @@ api.interceptors.response.use(
   (response) => response,
 
   (error: AxiosError) => {
-    const status =
-      error.response?.status;
+    const status = error.response?.status;
+    const requestUrl = String(error.config?.url || "");
 
     if (status === 401) {
-      console.warn(
-        "Unauthorized request."
-      );
+      console.warn("Unauthorized request.");
+      const isLoginRequest = requestUrl.includes("/auth/login");
+      if (!isLoginRequest && localStorage.getItem("access_token")) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("hmm-last-activity-at");
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.replace("/login?reason=session");
+        }
+      }
     }
 
     if (status === 403) {
-      console.warn(
-        "Forbidden request."
-      );
+      console.warn("Forbidden request.");
     }
 
     return Promise.reject(error);
