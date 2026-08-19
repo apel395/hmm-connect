@@ -23,19 +23,18 @@ export default function ProductTable({ rows = [], onEdit }: Props) {
             <TR>
               <TH>Code</TH><TH>Product</TH><TH>Group</TH><TH>Sub Group</TH>
               <TH>Purchase UOM</TH><TH>Usage UOM</TH><TH className="text-right">Conversion</TH>
-              <TH className="text-right">Minimum Stock</TH><TH>Market</TH><TH>PPN</TH><TH>Status</TH><TH className="text-right">Actions</TH>
+              <TH className="text-right">Minimum Stock</TH><TH>PPN</TH><TH>Status</TH><TH className="text-right">Actions</TH>
             </TR>
           </THead>
           <TBody>
             {rows.length === 0 ? (
-              <TR><TD colSpan={12} className="py-10 text-center">No Products</TD></TR>
+              <TR><TD colSpan={11} className="py-10 text-center">No Products</TD></TR>
             ) : rows.map((row) => (
               <TR key={row.id}>
                 <TD>{row.code}</TD><TD>{row.name}</TD><TD>{row.group_name}</TD><TD>{row.subgroup_name}</TD>
                 <TD>{row.uom}</TD><TD>{row.usage_uom}</TD>
                 <TD className="text-right">{Number(row.conversion).toLocaleString()}</TD>
                 <TD className="text-right tabular-nums">{Number(row.minimum_stock ?? 0).toLocaleString("id-ID")}</TD>
-                <TD><Badge variant={row.is_market_item ? "success" : "secondary"}>{row.is_market_item ? "Market" : "No"}</Badge></TD>
                 <TD>
                   <div className="space-y-1">
                     <Badge variant={row.tax_category === "REVIEW_REQUIRED" ? "warning" : row.is_taxable ? "info" : "secondary"}>{taxLabel(row)}</Badge>
