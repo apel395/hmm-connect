@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(min_length=32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    SESSION_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
     DATABASE_URL: str | None = None
     DB_HOST: str = "localhost"
