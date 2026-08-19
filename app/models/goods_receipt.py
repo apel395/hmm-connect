@@ -64,6 +64,29 @@ class GoodsReceiptItem(Base):
 
 
 @event.listens_for(OrmSession, "before_flush")
+def _inherit_po_receiving_dimensions(session, _flush_context, _instances):
+    """Make the source PO authoritative for organization dimensions on PO receipts.
+
+    A client payload must never be able to move a PO-based receipt to another
+    Business Unit, Location, or Department. Direct receipts are unaffected.
+    """
+    from app.models.purchase_order import PurchaseOrder
+
+    candidates = set(session.new).union(session.dirty)
+    for receipt in candidates:
+        if not isinstance(receipt, GoodsReceipt) or receipt.purchase_order_id is None:
+            continue
+
+        purchase_order = receipt.purchase_order or session.get(PurchaseOrder, receipt.purchase_order_id)
+        if purchase_order is None:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+
+        receipt.business_unit_id = purchase_order.business_unit_id
+        receipt.location_id = purchase_order.location_id
+        receipt.department_id = purchase_order.department_id
+
+
+@event.listens_for(OrmSession, "before_flush")
 def _prevent_duplicate_po_receiving_drafts(session, _flush_context, _instances):
     """Allow at most one active DRAFT receiving report per PO.
 
