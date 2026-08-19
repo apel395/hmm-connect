@@ -122,6 +122,12 @@ def login(
     return TokenResponse(access_token=create_access_token(user.username, session_id=session_id))
 
 
+@router.post("/activity", status_code=204)
+def activity(_: User = Depends(get_current_user)):
+    # get_current_user validates the session and refreshes server-side activity.
+    return None
+
+
 @router.post("/logout", status_code=204)
 def logout(
     token: str = Depends(oauth2_scheme),
