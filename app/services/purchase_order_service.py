@@ -10,12 +10,11 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.purchase_requisition import PurchaseRequisition
 from app.models.supplier import Supplier
-from app.models.department import Department
-from app.models.location import Location
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.purchase_order import PurchaseOrderCreate
 from app.services.activity_service import AuditService
 from app.services.document_number import next_document_number
+from app.services.organization_dimensions import validate_dimensions
 from app.services.approval import (
     approve_current_step,
     get_request,
@@ -39,6 +38,20 @@ class PurchaseOrderService:
         )
 
     @staticmethod
+    def _resolve_dimensions(db: Session, data: PurchaseOrderCreate, requisitions: list[PurchaseRequisition]):
+        if requisitions:
+            source = requisitions[0]
+            business_unit_id = source.business_unit_id
+            department_id = source.department_id
+            location_id = source.location_id
+            validate_dimensions(db, business_unit_id, location_id, department_id, True)
+            return business_unit_id, department_id, location_id
+        validate_dimensions(db, data.business_unit_id, data.location_id, data.department_id, True)
+        if data.department_id is None or data.location_id is None:
+            raise HTTPException(status_code=422, detail="Direct purchase orders require department and location")
+        return data.business_unit_id, data.department_id, data.location_id
+
+    @staticmethod
     def update(db: Session, *, purchase_order_id: int, data: PurchaseOrderCreate, user):
         purchase_order = db.get(PurchaseOrder, purchase_order_id)
         if not purchase_order:
@@ -49,16 +62,17 @@ class PurchaseOrderService:
         supplier = db.get(Supplier, data.supplier_id)
         if not supplier or not supplier.is_active:
             raise HTTPException(status_code=404, detail="Active supplier not found")
+
+        business_unit_id, department_id, location_id = PurchaseOrderService._resolve_dimensions(
+            db, data, list(purchase_order.purchase_requisitions)
+        )
         purchase_order.supplier_id = data.supplier_id
         purchase_order.order_date = data.order_date or purchase_order.order_date
         purchase_order.expected_date = data.expected_date
         purchase_order.expiry_date = data.expiry_date
-        if data.department_id is not None and not db.get(Department, data.department_id):
-            raise HTTPException(status_code=404, detail="Department not found")
-        if data.location_id is not None and not db.get(Location, data.location_id):
-            raise HTTPException(status_code=404, detail="Location not found")
-        purchase_order.department_id = data.department_id
-        purchase_order.location_id = data.location_id
+        purchase_order.business_unit_id = business_unit_id
+        purchase_order.department_id = department_id
+        purchase_order.location_id = location_id
         purchase_order.notes = data.notes
         purchase_order.items.clear()
         total = Decimal("0")
@@ -72,8 +86,16 @@ class PurchaseOrderService:
             ))
             total += line_total
         purchase_order.total_amount = total
-        PurchaseOrderService._audit(db, user, purchase_order, "UPDATE",
-            edited_during_approval=purchase_order.status == "PENDING_APPROVAL")
+        PurchaseOrderService._audit(
+            db,
+            user,
+            purchase_order,
+            "UPDATE",
+            edited_during_approval=purchase_order.status == "PENDING_APPROVAL",
+            business_unit_id=business_unit_id,
+            department_id=department_id,
+            location_id=location_id,
+        )
         db.commit(); db.refresh(purchase_order)
         return purchase_order
 
@@ -101,10 +123,6 @@ class PurchaseOrderService:
         supplier = db.get(Supplier, data.supplier_id)
         if not supplier or not supplier.is_active:
             raise HTTPException(status_code=404, detail="Active supplier not found")
-        if data.department_id is not None and not db.get(Department, data.department_id):
-            raise HTTPException(status_code=404, detail="Department not found")
-        if data.location_id is not None and not db.get(Location, data.location_id):
-            raise HTTPException(status_code=404, detail="Location not found")
 
         requisitions = (
             db.query(PurchaseRequisition)
@@ -118,6 +136,8 @@ class PurchaseOrderService:
                 status_code=409,
                 detail="Only approved, unused purchase requisitions can be selected",
             )
+
+        business_unit_id, department_id, location_id = PurchaseOrderService._resolve_dimensions(db, data, requisitions)
 
         requisition_item_ids = {
             item.id for requisition in requisitions for item in requisition.items
@@ -150,9 +170,9 @@ class PurchaseOrderService:
         purchase_order = PurchaseOrder(
             po_number=PurchaseOrderService._number(db),
             supplier_id=data.supplier_id,
-            department_id=data.department_id,
-            location_id=data.location_id,
-            business_unit_id=data.business_unit_id,
+            department_id=department_id,
+            location_id=location_id,
+            business_unit_id=business_unit_id,
             status="DRAFT",
             order_date=data.order_date or date.today(),
             source_type=data.source_type,
@@ -204,7 +224,14 @@ class PurchaseOrderService:
         db.add(purchase_order)
         db.flush()
         PurchaseOrderService._audit(
-            db, user, purchase_order, "CREATE", purchase_requisition_ids=data.purchase_requisition_ids
+            db,
+            user,
+            purchase_order,
+            "CREATE",
+            purchase_requisition_ids=data.purchase_requisition_ids,
+            business_unit_id=business_unit_id,
+            department_id=department_id,
+            location_id=location_id,
         )
         db.commit()
         db.refresh(purchase_order)
