@@ -10,6 +10,7 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.models.purchasing_item_policy import is_market_list_product
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.market_list import MarketListConvertCreate, MarketListCreate
 from app.services.activity_service import AuditService
@@ -24,10 +25,10 @@ class MarketListService:
         product = db.get(Product, product_id)
         if not product or not product.is_active:
             raise HTTPException(status_code=404, detail=f"Product {product_id} not found or inactive")
-        if not product.is_market_item:
+        if not is_market_list_product(product):
             raise HTTPException(
                 status_code=409,
-                detail=f"{product.code} - {product.name} is not marked as a market item",
+                detail=f"{product.code} - {product.name} must use Purchase Requisition; Market List only accepts VEGETABLES and FRUIT.",
             )
         return product
 
@@ -122,11 +123,11 @@ class MarketListService:
             raise HTTPException(status_code=409, detail="Market List has expired")
         if not market_list.items:
             raise HTTPException(status_code=409, detail="Market List must have items")
-        invalid_market_items = [i.product.name for i in market_list.items if not i.product.is_market_item]
+        invalid_market_items = [i.product.name for i in market_list.items if not is_market_list_product(i.product)]
         if invalid_market_items:
             raise HTTPException(
                 status_code=409,
-                detail="Market List contains item(s) no longer marked as market items: " + ", ".join(invalid_market_items[:5]),
+                detail="Market List only accepts VEGETABLES and FRUIT; invalid item(s): " + ", ".join(invalid_market_items[:5]),
             )
         unresolved = [i.product.name for i in market_list.items if i.product.tax_category == "REVIEW_REQUIRED"]
         if unresolved:
