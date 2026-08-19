@@ -99,7 +99,6 @@ def _detail(db: Session, request: StoreRequest, user) -> dict:
             "available_stock": available,
         })
     payload.update(document_context(db, "STORE_REQUEST", request.id, request.status, user))
-    payload["allowed_actions"]["can_issue"] = request.status in {"APPROVED", "PARTIALLY_ISSUED"}
     return payload
 
 
