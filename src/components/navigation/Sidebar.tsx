@@ -8,6 +8,8 @@ interface Props { open?: boolean; onClose?: () => void }
 interface Child { title: string; url?: string; roles?: string[]; disabled?: boolean; badge?: string; exact?: boolean }
 interface Group { title: string; icon: typeof LayoutDashboard; url?: string; roles?: string[]; children?: Child[] }
 
+const INVENTORY_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
+
 const groups: Group[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Approval Center", url: "/approval-center", icon: CheckSquare2, roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
@@ -25,10 +27,11 @@ const groups: Group[] = [
     { title: "Purchase Order", url: "/purchase-orders", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Receiving", url: "/receiving", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
   ] },
-  { title: "Inventory", icon: Boxes, roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
-    { title: "Stock", url: "/inventory", exact: true },
-    { title: "Stock Movement", url: "/inventory/movements" },
-    { title: "Stock Adjustment", disabled: true },
+  { title: "Inventory", icon: Boxes, roles: [...INVENTORY_ROLES, "DEPARTMENT"], children: [
+    { title: "Stock", url: "/inventory", exact: true, roles: INVENTORY_ROLES },
+    { title: "Stock Movement", url: "/inventory/movements", roles: INVENTORY_ROLES },
+    { title: "Store Request", url: "/store-requests", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "Stock Adjustment", disabled: true, roles: INVENTORY_ROLES },
   ] },
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Finance Dashboard", url: "/finance-dashboard" },
