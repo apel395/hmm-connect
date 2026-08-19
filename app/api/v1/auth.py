@@ -1,11 +1,14 @@
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import create_access_token, hash_password, verify_password
-from app.dependencies.auth import get_current_user
+from app.core.security import create_access_token, decode_access_token_claims, hash_password, verify_password
+from app.dependencies.auth import get_current_user, oauth2_scheme
 from app.models.user import User
 from app.schemas.auth import (
     RegistrationRequest,
@@ -16,6 +19,15 @@ from app.schemas.auth import (
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+SESSION_IDLE_TIMEOUT = timedelta(minutes=30)
+
+
+def _utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 @router.post("/register", response_model=RegistrationResponse, status_code=201)
@@ -76,7 +88,12 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.username == form.username).first()
+    user = (
+        db.query(User)
+        .filter(User.username == form.username)
+        .with_for_update()
+        .first()
+    )
     if not user or not user.is_active or not verify_password(
         form.password, user.password_hash
     ):
@@ -84,7 +101,39 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
-    return TokenResponse(access_token=create_access_token(user.username))
+
+    now = datetime.now(timezone.utc)
+    last_activity = _utc(user.session_last_activity_at)
+    session_is_active = (
+        bool(user.active_session_id)
+        and last_activity is not None
+        and now - last_activity < SESSION_IDLE_TIMEOUT
+    )
+    if session_is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This user already has an active session. Log out from the current session or wait until it has been idle for 30 minutes.",
+        )
+
+    session_id = str(uuid4())
+    user.active_session_id = session_id
+    user.session_last_activity_at = now
+    db.commit()
+    return TokenResponse(access_token=create_access_token(user.username, session_id=session_id))
+
+
+@router.post("/logout", status_code=204)
+def logout(
+    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    claims = decode_access_token_claims(token) or {}
+    if claims.get("sid") == user.active_session_id:
+        user.active_session_id = None
+        user.session_last_activity_at = None
+        db.commit()
+    return None
 
 
 @router.get("/me", response_model=UserSummary)
