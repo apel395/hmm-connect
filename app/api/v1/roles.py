@@ -57,24 +57,33 @@ def _ensure_permission(db: Session, code: str) -> Permission:
 
 
 def _ensure_core_roles(db: Session) -> None:
+    """Bootstrap missing core roles only; never overwrite administrator changes."""
     changed = False
     for name, codes in CORE_ROLE_PERMISSIONS.items():
         role = db.query(Role).options(selectinload(Role.permissions)).filter(Role.name == name).first()
         if not role:
             role = Role(name=name, description=CORE_ROLE_DESCRIPTIONS[name])
+            role.permissions = [_ensure_permission(db, code) for code in codes]
             db.add(role)
-            db.flush()
             changed = True
+            continue
         if not role.description:
             role.description = CORE_ROLE_DESCRIPTIONS[name]
             changed = True
-        desired = [_ensure_permission(db, code) for code in codes]
-        desired_ids = {item.id for item in desired}
-        if {item.id for item in role.permissions} != desired_ids:
-            role.permissions = desired
-            changed = True
     if changed:
         db.commit()
+
+
+def _resolve_permissions(db: Session, codes: list[str]) -> list[Permission]:
+    normalized = list(dict.fromkeys(code.strip() for code in codes if code.strip()))
+    if not normalized:
+        return []
+    rows = db.query(Permission).filter(Permission.code.in_(normalized)).all()
+    by_code = {row.code: row for row in rows}
+    missing = [code for code in normalized if code not in by_code]
+    if missing:
+        raise HTTPException(400, "Unknown permission code(s): " + ", ".join(missing))
+    return [by_code[code] for code in normalized]
 
 
 def serialize(role: Role) -> dict:
@@ -82,10 +91,7 @@ def serialize(role: Role) -> dict:
         "id": role.id,
         "name": role.name,
         "description": role.description,
-        "permissions": [
-            {"id": p.id, "code": p.code, "description": p.description}
-            for p in sorted(role.permissions, key=lambda value: value.code)
-        ],
+        "permissions": [{"id": p.id, "code": p.code, "description": p.description} for p in sorted(role.permissions, key=lambda value: value.code)],
         "user_count": len(role.users),
     }
 
@@ -100,10 +106,7 @@ def list_roles(db: Session = Depends(get_db), _: User = Depends(require_admin)):
 @router.get("/permissions")
 def list_permissions(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     _ensure_core_roles(db)
-    return [
-        {"id": item.id, "code": item.code, "description": item.description}
-        for item in db.query(Permission).order_by(Permission.code).all()
-    ]
+    return [{"id": item.id, "code": item.code, "description": item.description} for item in db.query(Permission).order_by(Permission.code).all()]
 
 
 @router.post("", status_code=201)
@@ -112,29 +115,33 @@ def create_role(data: RoleInput, db: Session = Depends(get_db), user: User = Dep
     if db.query(Role).filter(Role.name == name).first():
         raise HTTPException(409, "Role already exists")
     role = Role(name=name, description=data.description)
-    role.permissions = [_ensure_permission(db, code.strip()) for code in dict.fromkeys(data.permission_codes) if code.strip()]
+    role.permissions = _resolve_permissions(db, data.permission_codes)
     db.add(role)
     db.flush()
     record_audit(db, user, "ROLE_CREATED", "ROLE", f"Created role {name}", entity_id=role.id)
     db.commit()
-    db.refresh(role)
-    return serialize(db.query(Role).options(selectinload(Role.permissions), selectinload(Role.users)).get(role.id))
+    return serialize(db.query(Role).options(selectinload(Role.permissions), selectinload(Role.users)).filter(Role.id == role.id).first())
 
 
 @router.put("/{role_id}")
+@router.patch("/{role_id}")
 def update_role(role_id: int, data: RoleInput, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     role = db.query(Role).options(selectinload(Role.permissions), selectinload(Role.users)).filter(Role.id == role_id).first()
     if not role:
         raise HTTPException(404, "Role not found")
+    original_name = role.name
     name = data.name.strip().upper().replace(" ", "_")
+    if original_name in CORE_ROLE_PERMISSIONS and name != original_name:
+        raise HTTPException(409, "Core role names cannot be changed")
     duplicate = db.query(Role).filter(Role.name == name, Role.id != role_id).first()
     if duplicate:
         raise HTTPException(409, "Role already exists")
+    permissions = _resolve_permissions(db, data.permission_codes)
     before = {"name": role.name, "description": role.description, "permission_codes": [p.code for p in role.permissions]}
     role.name = name
     role.description = data.description
-    role.permissions = [_ensure_permission(db, code.strip()) for code in dict.fromkeys(data.permission_codes) if code.strip()]
-    record_audit(db, user, "ROLE_UPDATED", "ROLE", f"Updated role {name}", entity_id=role.id, before_data=before, after_data={"name": name, "description": data.description, "permission_codes": data.permission_codes})
+    role.permissions = permissions
+    record_audit(db, user, "ROLE_UPDATED", "ROLE", f"Updated role {name}", entity_id=role.id, before_data=before, after_data={"name": name, "description": data.description, "permission_codes": [p.code for p in permissions]})
     db.commit()
     return serialize(db.query(Role).options(selectinload(Role.permissions), selectinload(Role.users)).filter(Role.id == role_id).first())
 
@@ -144,8 +151,8 @@ def delete_role(role_id: int, db: Session = Depends(get_db), user: User = Depend
     role = db.query(Role).options(selectinload(Role.users)).filter(Role.id == role_id).first()
     if not role:
         raise HTTPException(404, "Role not found")
-    if role.name == "SYSTEM_ADMINISTRATOR":
-        raise HTTPException(409, "SYSTEM_ADMINISTRATOR cannot be deleted")
+    if role.name in CORE_ROLE_PERMISSIONS:
+        raise HTTPException(409, "Core roles cannot be deleted")
     if role.users:
         raise HTTPException(409, "Role is assigned to users and cannot be deleted")
     name = role.name
