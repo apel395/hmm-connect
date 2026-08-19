@@ -53,12 +53,15 @@ export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"
     ...(data.expected_date?[{label:"DELIVERY DATE",value:displayDate(data.expected_date)}]:[]),
     ...(data.expiry_date?[{label:"VALID UNTIL",value:displayDate(data.expiry_date)}]:[]),
   ];
+  // Keep the approved print layout intact. Only the line-item presentation changes:
+  // Code is now a dedicated column before Description and each item stays on one row.
   const columns=[
-    {label:"DESCRIPTION",align:"left" as const,render:(item:PrintItem)=><><div>{item.product_name}</div>{item.product_code&&<div className="text-[10px] text-slate-500">{item.product_code}</div>}</>},
-    {label:"Qty",align:"right" as const,render:(item:PrintItem)=>item.quantity},
-    {label:"Uom",align:"center" as const,render:(item:PrintItem)=>item.uom??"—"},
-    {label:"Price",align:"right" as const,render:(item:PrintItem)=>money(isReceipt?item.unit_cost:item.unit_price??item.estimated_price??0)},
-    {label:"AMOUNT",align:"right" as const,render:(item:PrintItem)=>money(isReceipt?(item.line_total??Number(item.quantity)*Number(item.unit_cost??0)):(item.total_price??Number(item.quantity)*Number(item.unit_price??item.estimated_price??0)))},
+    {label:"CODE",align:"left" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{item.product_code??"—"}</span>},
+    {label:"DESCRIPTION",align:"left" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{item.product_name}</span>},
+    {label:"QTY",align:"right" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{item.quantity}</span>},
+    {label:"UOM",align:"center" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{item.uom??"—"}</span>},
+    {label:"PRICE",align:"right" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{money(isReceipt?item.unit_cost:item.unit_price??item.estimated_price??0)}</span>},
+    {label:"AMOUNT",align:"right" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{money(isReceipt?(item.line_total??Number(item.quantity)*Number(item.unit_cost??0)):(item.total_price??Number(item.quantity)*Number(item.unit_price??item.estimated_price??0)))}</span>},
   ];
   const signatures=approvalSignatures(data);
   const poTerms=isPo?<section className="avoid-break mt-7 text-[11px] leading-5"><div className="mb-1 font-bold">Syarat & Ketentuan</div><ol className="list-decimal space-y-0.5 pl-5"><li>Barang harus dikirim paling lambat {indonesianLongDate(deliveryDeadline)} ke lokasi yang tertera pada PO ini.</li><li>Pembayaran dilakukan melalui transfer bank setelah 60 hari sejak barang diterima dan diverifikasi.</li><li>Faktur asli dan dokumen pendukung harus dilampirkan bersama pengiriman barang.</li><li>Apabila terjadi keterlambatan pengiriman ataupun selisih, pihak pemasok wajib memberikan pemberitahuan tertulis.</li></ol></section>:undefined;
