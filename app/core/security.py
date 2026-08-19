@@ -17,24 +17,31 @@ def hash_password(password: str) -> str:
     return password_context.hash(password)
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, session_id: str | None = None) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
+    payload = {"sub": subject, "exp": expires_at}
+    if session_id:
+        payload["sid"] = session_id
     return jwt.encode(
-        {"sub": subject, "exp": expires_at},
+        payload,
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
     )
 
 
-def decode_access_token(token: str) -> str | None:
+def decode_access_token_claims(token: str) -> dict | None:
     try:
-        payload = jwt.decode(
+        return jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
         )
     except JWTError:
         return None
-    return payload.get("sub")
+
+
+def decode_access_token(token: str) -> str | None:
+    payload = decode_access_token_claims(token)
+    return payload.get("sub") if payload else None
