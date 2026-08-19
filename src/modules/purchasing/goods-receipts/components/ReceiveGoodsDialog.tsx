@@ -128,7 +128,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
         ordered_quantity: Number(item.ordered_quantity),
         received_quantity: Number(item.received_quantity),
         remaining_quantity: Number(item.remaining_quantity),
-        quantity: Number(item.remaining_quantity),
+        quantity: 0,
         unit_cost: Number(item.unit_cost ?? 0),
         original_unit_cost: Number(item.unit_cost ?? 0),
         is_taxable: Boolean(item.is_taxable),
@@ -230,7 +230,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
                   <option value="">Select approved PO</option>
                   {(receivable.data ?? []).map((order: any) => (
                     <option key={order.id} value={order.id}>
-                      {order.po_number} — {order.supplier_name}
+                      {order.po_number} — {order.supplier_name} — BU: {order.business_unit_name ?? order.business_unit_id ?? "—"} — Dept: {order.department_name ?? order.department_id ?? "—"} — Location: {order.location_name ?? order.location_id ?? "—"}
                     </option>
                   ))}
                 </select>
