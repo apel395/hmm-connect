@@ -11,8 +11,8 @@ export interface Inventory {
   average_cost: number;
   stock_value: number;
   minimum_stock: number;
-  reorder_level: number;
-  maximum_stock: number;
-  below_minimum: boolean;
-  needs_reorder: boolean;
+  low_stock: boolean;
+  shortage: number;
+  below_minimum?: boolean;
+  needs_reorder?: boolean;
 }
