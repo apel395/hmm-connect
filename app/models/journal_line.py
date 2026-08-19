@@ -58,3 +58,4 @@ class JournalLine(Base):
     department = relationship("Department")
     location = relationship("Location")
     supplier = relationship("Supplier")
+    business_unit = relationship("BusinessUnit")
