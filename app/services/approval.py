@@ -88,6 +88,7 @@ def _workflow_entity_type(workflow_code: str) -> str | None:
         "ML_APPROVAL": "MARKET_LIST",
         "PO_APPROVAL": "PURCHASE_ORDER",
         "RR_APPROVAL": "GOODS_RECEIPT",
+        "SR_APPROVAL": "STORE_REQUEST",
     }.get(workflow_code)
 
 
@@ -97,6 +98,7 @@ def _workflow_name(workflow_code: str) -> str:
         "ML_APPROVAL": "Market List Approval",
         "PO_APPROVAL": "Purchase Order Approval",
         "RR_APPROVAL": "Receiving Report Approval",
+        "SR_APPROVAL": "Store Request Approval",
     }[workflow_code]
 
 
@@ -139,6 +141,18 @@ def _ensure_default_workflow(
         )
         db.add(workflow)
         db.flush()
+
+    # Store Request deliberately does not inherit the six-level purchasing
+    # chain. Its migration seeds a STORE-only workflow which remains editable
+    # through Approval Configuration. If someone deletes all SR steps, fail
+    # clearly rather than silently expanding it into the purchasing chain.
+    if workflow_code == "SR_APPROVAL":
+        if not workflow.steps:
+            raise HTTPException(
+                status_code=409,
+                detail="Store Request approval workflow has no configured steps",
+            )
+        return workflow
 
     if not workflow.steps or _is_legacy_generated_default(workflow):
         configured_roles = []
@@ -199,18 +213,17 @@ def _entity_location(db: Session, entity_type: str, entity_id: int):
         from app.models.goods_receipt import GoodsReceipt
 
         entity = db.get(GoodsReceipt, entity_id)
+    elif entity_type == "STORE_REQUEST":
+        from app.models.store_request import StoreRequest
+
+        entity = db.get(StoreRequest, entity_id)
     else:
         entity = None
     return getattr(entity, "location", None) if entity else None
 
 
 def _sync_document_status(db: Session, request: ApprovalRequest) -> None:
-    """Keep document lifecycle authoritative with the approval request.
-
-    PR, Market List and PO have document-level PENDING_APPROVAL/APPROVED/REJECTED
-    states. Receiving intentionally remains DRAFT after approval until it is
-    posted to inventory, so only its ApprovalRequest status is finalized here.
-    """
+    """Keep document lifecycle authoritative with the approval request."""
     if request.entity_type == "PURCHASE_REQUISITION":
         from app.models.purchase_requisition import PurchaseRequisition
 
@@ -223,6 +236,10 @@ def _sync_document_status(db: Session, request: ApprovalRequest) -> None:
         from app.models.purchase_order import PurchaseOrder
 
         document = db.get(PurchaseOrder, request.entity_id)
+    elif request.entity_type == "STORE_REQUEST":
+        from app.models.store_request import StoreRequest
+
+        document = db.get(StoreRequest, request.entity_id)
     else:
         document = None
 
