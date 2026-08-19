@@ -18,9 +18,12 @@ def hash_password(password: str) -> str:
 
 
 def create_access_token(subject: str, session_id: str | None = None) -> str:
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    expiry_minutes = (
+        settings.SESSION_ACCESS_TOKEN_EXPIRE_MINUTES
+        if session_id
+        else settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)
     payload = {"sub": subject, "exp": expires_at}
     if session_id:
         payload["sid"] = session_id
