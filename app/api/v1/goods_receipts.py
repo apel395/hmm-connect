@@ -166,34 +166,10 @@ def remaining_items(purchase_order: PurchaseOrder):
 
 
 def inherit_purchase_order_dimensions(order: PurchaseOrder, data: GoodsReceiptCreate, db: Session):
-    requisitions = order.source_purchase_requisitions
-
-    def inherited(field: str):
-        current = getattr(order, field)
-        if current is not None:
-            return current
-        values = {getattr(pr, field) for pr in requisitions if getattr(pr, field) is not None}
-        if len(values) > 1:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Source purchase requisitions have different {field.replace('_id', '').replace('_', ' ')} values. Correct the PO before receiving.",
-            )
-        return next(iter(values), None)
-
-    business_unit_id = inherited("business_unit_id")
-    location_id = inherited("location_id")
-    department_id = inherited("department_id")
-
-    if order.business_unit_id is None and business_unit_id is not None:
-        order.business_unit_id = business_unit_id
-    if order.location_id is None and location_id is not None:
-        order.location_id = location_id
-    if order.department_id is None and department_id is not None:
-        order.department_id = department_id
-
-    data.business_unit_id = data.business_unit_id or business_unit_id
-    data.location_id = data.location_id or location_id
-    data.department_id = data.department_id or department_id
+    business_unit_id, location_id, department_id = GoodsReceiptService._po_dimensions(order)
+    data.business_unit_id = business_unit_id
+    data.location_id = location_id
+    data.department_id = department_id
     db.flush()
 
 
@@ -289,8 +265,11 @@ def list_receivable_purchase_orders(db: Session = Depends(get_db), _=Depends(get
             "supplier_name": order.supplier.name if order.supplier else None,
             "status": order.status,
             "business_unit_id": order.business_unit_id,
+            "business_unit_name": order.business_unit.name if order.business_unit else None,
             "department_id": order.department_id,
+            "department_name": order.department.name if order.department else None,
             "location_id": order.location_id,
+            "location_name": order.location.name if order.location else None,
             "tax_amount": order.tax_amount,
             "total_amount": order.total_amount,
             "items": remaining_items(order),

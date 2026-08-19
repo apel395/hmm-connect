@@ -40,10 +40,23 @@ class PurchaseOrderService:
     @staticmethod
     def _resolve_dimensions(db: Session, data: PurchaseOrderCreate, requisitions: list[PurchaseRequisition]):
         if requisitions:
-            source = requisitions[0]
-            business_unit_id = source.business_unit_id
-            department_id = source.department_id
-            location_id = source.location_id
+            resolved = {}
+            for field in ("business_unit_id", "department_id", "location_id"):
+                values = {
+                    getattr(requisition, field)
+                    for requisition in requisitions
+                    if getattr(requisition, field) is not None
+                }
+                if len(values) > 1:
+                    label = field.removesuffix("_id").replace("_", " ")
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Purchase order cannot combine purchase requisitions with different {label} values",
+                    )
+                resolved[field] = next(iter(values), None)
+            business_unit_id = resolved["business_unit_id"]
+            department_id = resolved["department_id"]
+            location_id = resolved["location_id"]
             validate_dimensions(db, business_unit_id, location_id, department_id, True)
             return business_unit_id, department_id, location_id
         validate_dimensions(db, data.business_unit_id, data.location_id, data.department_id, True)

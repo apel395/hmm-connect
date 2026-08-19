@@ -45,6 +45,31 @@ class GoodsReceiptService:
                 raise HTTPException(status_code=404, detail="Warehouse not found")
 
     @staticmethod
+    def _po_dimensions(purchase_order: PurchaseOrder):
+        """Return canonical PO dimensions, repairing only uniquely resolvable legacy gaps."""
+        sources = list(purchase_order.source_purchase_requisitions)
+        if purchase_order.market_list is not None:
+            sources.append(purchase_order.market_list)
+
+        resolved = {}
+        for field in ("business_unit_id", "location_id", "department_id"):
+            current = getattr(purchase_order, field)
+            if current is not None:
+                resolved[field] = current
+                continue
+            values = {getattr(source, field) for source in sources if getattr(source, field) is not None}
+            if len(values) > 1:
+                label = field.removesuffix("_id").replace("_", " ")
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Purchase order sources contain conflicting {label} values",
+                )
+            resolved[field] = next(iter(values), None)
+            if resolved[field] is not None:
+                setattr(purchase_order, field, resolved[field])
+        return resolved["business_unit_id"], resolved["location_id"], resolved["department_id"]
+
+    @staticmethod
     def _movement(receipt: GoodsReceipt, receipt_item: GoodsReceiptItem, movement_type: str, reference_type: str):
         return StockMovement(
             product_id=receipt_item.product_id, warehouse_id=receipt.warehouse_id,
@@ -88,9 +113,7 @@ class GoodsReceiptService:
                 raise HTTPException(status_code=404, detail="Purchase order not found")
             if purchase_order.status not in {"APPROVED", "PARTIALLY_RECEIVED"}:
                 raise HTTPException(status_code=409, detail="Only approved purchase orders can be received")
-            business_unit_id = data.business_unit_id or purchase_order.business_unit_id
-            location_id = data.location_id or purchase_order.location_id
-            department_id = data.department_id or purchase_order.department_id
+            business_unit_id, location_id, department_id = cls._po_dimensions(purchase_order)
             supplier_id = purchase_order.supplier_id
         else:
             supplier = db.get(Supplier, data.supplier_id)
