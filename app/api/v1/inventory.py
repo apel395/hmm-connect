@@ -32,6 +32,10 @@ def _paged(rows, *, page: int, page_size: int, total: int):
 def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse):
     quantity = Decimal(inventory.quantity or 0)
     average_cost = Decimal(inventory.average_cost or 0)
+    minimum_stock = Decimal(product.minimum_stock or 0)
+    is_monitored = minimum_stock > 0
+    is_low_stock = is_monitored and quantity <= minimum_stock
+    shortage = max(minimum_stock - quantity, Decimal("0")) if is_low_stock else Decimal("0")
     return {
         "id": inventory.id,
         "product_id": product.id,
@@ -44,11 +48,13 @@ def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse):
         "quantity": quantity,
         "average_cost": average_cost,
         "stock_value": quantity * average_cost,
-        "minimum_stock": product.minimum_stock,
-        "reorder_level": product.reorder_level,
-        "maximum_stock": product.maximum_stock,
-        "below_minimum": quantity < Decimal(product.minimum_stock or 0),
-        "needs_reorder": quantity <= Decimal(product.reorder_level or 0),
+        "minimum_stock": minimum_stock,
+        "low_stock": is_low_stock,
+        "shortage": shortage,
+        # Compatibility fields for older UI clients. Both now follow the one
+        # canonical business rule: current warehouse stock <= item minimum.
+        "below_minimum": is_low_stock,
+        "needs_reorder": is_low_stock,
     }
 
 
@@ -57,6 +63,7 @@ def _inventory_base(db: Session, warehouse_id: int | None = None):
         db.query(Inventory, Product, Warehouse)
         .join(Product, Product.id == Inventory.product_id)
         .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
+        .filter(Product.is_active.is_(True), Warehouse.is_active.is_(True))
     )
     if warehouse_id:
         query = query.filter(Inventory.warehouse_id == warehouse_id)
@@ -66,7 +73,7 @@ def _inventory_base(db: Session, warehouse_id: int | None = None):
 @router.get("")
 def list_inventory(
     warehouse_id: int | None = None,
-    health: str | None = Query(default=None, pattern="^(HEALTHY|REORDER|BELOW_MINIMUM)$"),
+    health: str | None = Query(default=None, pattern="^(HEALTHY|LOW_STOCK|REORDER|BELOW_MINIMUM)$"),
     search: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
@@ -75,22 +82,22 @@ def list_inventory(
 ):
     quantity = func.coalesce(Inventory.quantity, 0)
     minimum = func.coalesce(Product.minimum_stock, 0)
-    reorder = func.coalesce(Product.reorder_level, 0)
+    monitored = minimum > 0
+    low_stock = monitored & (quantity <= minimum)
 
     summary_rows = _inventory_base(db, warehouse_id).with_entities(
         func.count(Inventory.id),
         func.coalesce(func.sum(quantity * func.coalesce(Inventory.average_cost, 0)), 0),
-        func.coalesce(func.sum(case((quantity <= reorder, 1), else_=0)), 0),
-        func.coalesce(func.sum(case((quantity < minimum, 1), else_=0)), 0),
+        func.coalesce(func.sum(case((monitored, 1), else_=0)), 0),
+        func.coalesce(func.sum(case((low_stock, 1), else_=0)), 0),
     ).one()
 
     query = _inventory_base(db, warehouse_id)
-    if health == "BELOW_MINIMUM":
-        query = query.filter(quantity < minimum)
-    elif health == "REORDER":
-        query = query.filter(quantity <= reorder, quantity >= minimum)
+    # REORDER and BELOW_MINIMUM remain accepted as compatibility aliases.
+    if health in {"LOW_STOCK", "REORDER", "BELOW_MINIMUM"}:
+        query = query.filter(minimum > 0, quantity <= minimum)
     elif health == "HEALTHY":
-        query = query.filter(quantity > reorder, quantity >= minimum)
+        query = query.filter(or_(minimum <= 0, quantity > minimum))
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term), Warehouse.name.ilike(term)))
@@ -100,7 +107,10 @@ def list_inventory(
     result["summary"] = {
         "stock_lines": int(summary_rows[0] or 0),
         "stock_value": summary_rows[1] or 0,
-        "needs_reorder": int(summary_rows[2] or 0),
+        "monitored_lines": int(summary_rows[2] or 0),
+        "low_stock": int(summary_rows[3] or 0),
+        # Compatibility aliases for older clients.
+        "needs_reorder": int(summary_rows[3] or 0),
         "below_minimum": int(summary_rows[3] or 0),
     }
     return result
