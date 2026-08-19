@@ -67,9 +67,6 @@ def _ensure_core_roles(db: Session) -> None:
             db.add(role)
             changed = True
             continue
-        if not role.description:
-            role.description = CORE_ROLE_DESCRIPTIONS[name]
-            changed = True
     if changed:
         db.commit()
 
