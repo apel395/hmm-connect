@@ -38,6 +38,7 @@ export default function PurchaseRequisitionItems({items, products, loadingProduc
   }, {subtotal:0,tax:0,total:0});
 
   return <div className="space-y-5">
+    <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">Purchase Requisition is for non-market items. VEGETABLES and FRUIT are requested through Market List.</div>
     <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="table-grid min-w-[1180px] w-full"><thead className="bg-slate-50"><tr>
       <th className="p-3 text-left">Product</th><th className="w-24 p-3 text-left">UOM</th><th className="w-28 p-3">Qty</th><th className="w-40 p-3">Estimated Price</th><th className="w-36 p-3">Subtotal</th><th className="w-36 p-3">PPN</th><th className="w-36 p-3">Line Total</th><th className="w-32 p-3">Tax Status</th><th/>
     </tr></thead>
@@ -48,7 +49,7 @@ export default function PurchaseRequisitionItems({items, products, loadingProduc
         const tax = subtotal * rate / 100;
         const reviewRequired = product?.tax_category === "REVIEW_REQUIRED";
         return <tr key={index} className={reviewRequired ? "border-t bg-amber-50/60" : "border-t"}>
-          <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} remote disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)} onSelect={(selected)=>selectProduct(index, selected as Product)}/></td>
+          <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} remote excludeMarket disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)} onSelect={(selected)=>selectProduct(index, selected as Product)}/></td>
           <td className="p-3 text-sm text-slate-700">{product?.uom ?? product?.usage_uom ?? "—"}</td>
           <td className="p-2"><QuantityInput value={row.quantity} min={0.01} onValueChange={(value) => updateRow(index,"quantity",value)}/></td>
           <td className="p-2"><CurrencyInput value={row.estimated_price} onValueChange={(value) => updateRow(index,"estimated_price",value)}/>{product?.last_purchase_price !== null && product?.last_purchase_price !== undefined ? <div className="mt-1 text-[11px] text-slate-500">Last PO: Rp {money(Number(product.last_purchase_price))}</div> : null}</td>
