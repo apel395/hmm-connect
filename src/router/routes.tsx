@@ -20,6 +20,7 @@ import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/Supplie
 import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
 import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
+import APReportingPage from "@/modules/finance/accounts-payable/APReportingPage";
 import APAgingPrintPage from "@/modules/finance/accounts-payable/APAgingPrintPage";
 import APInvoicesPage from "@/modules/finance/accounts-payable/APInvoicesPage";
 import APPaymentsPage from "@/modules/finance/accounts-payable/APPaymentsPage";
@@ -115,7 +116,8 @@ const router = createBrowserRouter([
       { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
       { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },
 
-      { path: "accounts-payable", element: <AccountsPayablePage /> },
+      { path: "accounts-payable", element: <APReportingPage /> },
+      { path: "accounts-payable/detail", element: <APReportingPage /> },
       { path: "accounts-payable/aging", element: <AccountsPayablePage /> },
       { path: "accounts-payable/aging/print", element: <APAgingPrintPage /> },
       { path: "accounts-payable/invoices", element: <APInvoicesPage /> },
