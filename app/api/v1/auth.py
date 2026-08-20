@@ -131,11 +131,27 @@ def activity(_: User = Depends(get_current_user)):
 @router.post("/logout", status_code=204)
 def logout(
     token: str = Depends(oauth2_scheme),
-    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Logout must be able to release a server-side session even when the
+    # normal authenticated-user dependency would reject the request first.
+    # Decode the presented session directly and clear it only when the token's
+    # session id still owns the user's active session. The operation is
+    # intentionally idempotent: stale/already-logged-out tokens return 204
+    # without affecting a newer active session.
     claims = decode_access_token_claims(token) or {}
-    if claims.get("sid") == user.active_session_id:
+    username = claims.get("sub")
+    session_id = claims.get("sid")
+    if not username or not session_id:
+        return None
+
+    user = (
+        db.query(User)
+        .filter(User.username == username)
+        .with_for_update()
+        .first()
+    )
+    if user and user.active_session_id == session_id:
         user.active_session_id = None
         user.session_last_activity_at = None
         db.commit()
