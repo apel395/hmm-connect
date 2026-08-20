@@ -19,6 +19,12 @@ const money = (value: number) =>
     maximumFractionDigits: 2,
   }).format(Number(value || 0));
 
+const statusClass: Record<string, string> = {
+  RECONCILED: "bg-emerald-50 text-emerald-700",
+  OUT_OF_BALANCE: "bg-red-100 text-red-700 ring-1 ring-inset ring-red-200",
+  NOT_CONFIGURED: "bg-amber-50 text-amber-700",
+};
+
 export default function ReconciliationPage() {
   const query = useQuery({
     queryKey: ["financial-reconciliation"],
@@ -44,6 +50,10 @@ export default function ReconciliationPage() {
         <Card className="p-4 text-sm text-red-600">
           Financial reconciliation could not be loaded.
         </Card>
+      )}
+
+      {query.isLoading && (
+        <Card className="p-6 text-sm text-slate-500">Loading financial reconciliation…</Card>
       )}
 
       {report && (
@@ -99,10 +109,19 @@ export default function ReconciliationPage() {
                       <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.gl_balance)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-medium">{money(row.difference)}</td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <span className="font-medium">{row.status.replaceAll("_", " ")}</span>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${statusClass[row.status]}`}>
+                          {row.status.replaceAll("_", " ")}
+                        </span>
                       </td>
                     </tr>
                   ))}
+                  {!report.items.length && (
+                    <tr className="border-t">
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                        No reconciliation controls were returned.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
