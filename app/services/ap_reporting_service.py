@@ -4,10 +4,12 @@ from datetime import date
 from decimal import Decimal
 from math import ceil
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.payment import Payment, PaymentAllocation
+from app.models.supplier import Supplier
+from app.models.supplier_adjustment import SupplierAdjustment
 from app.models.supplier_invoice import SupplierInvoice
 
 ZERO = Decimal("0.00")
@@ -64,9 +66,13 @@ class APReportingService:
             query = query.filter(SupplierInvoice.department_id == department_id)
         if search:
             token = f"%{search.strip()}%"
-            query = query.filter(
-                SupplierInvoice.internal_invoice_number.ilike(token)
-                | SupplierInvoice.supplier_invoice_number.ilike(token)
+            query = query.join(Supplier, Supplier.id == SupplierInvoice.supplier_id).filter(
+                or_(
+                    SupplierInvoice.internal_invoice_number.ilike(token),
+                    SupplierInvoice.supplier_invoice_number.ilike(token),
+                    Supplier.code.ilike(token),
+                    Supplier.name.ilike(token),
+                )
             )
         return query
 
@@ -95,16 +101,38 @@ class APReportingService:
             for invoice_id, paid_amount, last_payment_date in rows
         }
 
+    def _posted_adjustments(self, invoice_ids: list[int]) -> dict[int, Decimal]:
+        if not invoice_ids:
+            return {}
+        rows = (
+            self.db.query(
+                SupplierAdjustment.supplier_invoice_id,
+                func.coalesce(func.sum(SupplierAdjustment.amount), 0),
+            )
+            .filter(
+                SupplierAdjustment.status == "POSTED",
+                SupplierAdjustment.supplier_invoice_id.in_(invoice_ids),
+            )
+            .group_by(SupplierAdjustment.supplier_invoice_id)
+            .all()
+        )
+        return {
+            int(invoice_id): Decimal(amount or 0)
+            for invoice_id, amount in rows
+        }
+
     def _rows(self, **filters) -> list[dict]:
         invoices = self._invoice_query(**filters).order_by(SupplierInvoice.id.desc()).all()
-        payments = self._posted_payments([row.id for row in invoices])
+        invoice_ids = [row.id for row in invoices]
+        payments = self._posted_payments(invoice_ids)
+        adjustments_by_invoice = self._posted_adjustments(invoice_ids)
         today = date.today()
         result = []
         for invoice in invoices:
             total = Decimal(invoice.total_amount or 0)
             payment = payments.get(invoice.id, {})
             paid = Decimal(payment.get("paid_amount", 0) or 0)
-            adjustments = Decimal(invoice.adjustment_amount or 0)
+            adjustments = adjustments_by_invoice.get(invoice.id, ZERO)
             outstanding = max(ZERO, total - paid - adjustments)
             days = max((today - invoice.due_date).days, 0) if invoice.due_date else 0
             result.append({
