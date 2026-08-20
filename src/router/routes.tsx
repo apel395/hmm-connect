@@ -61,6 +61,8 @@ import InventoryMovementPage from "@/modules/warehouse/inventory/pages/Inventory
 import StoreRequestPage from "@/modules/warehouse/store-request/StoreRequestPage";
 import StoreRequestDetailPage from "@/modules/warehouse/store-request/StoreRequestDetailPage";
 import StoreRequestPrintPage from "@/modules/warehouse/store-request/StoreRequestPrintPage";
+import StockOpnamePage from "@/modules/warehouse/stock-opname/StockOpnamePage";
+import StockOpnameDetailPage from "@/modules/warehouse/stock-opname/StockOpnameDetailPage";
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
 import ProductPage from "@/modules/master/products/pages/ProductPage";
 import SupplierPage from "@/modules/master/suppliers/pages/SupplierPage";
@@ -81,122 +83,16 @@ import InternalServerErrorPage from "@/pages/errors/InternalServerErrorPage";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
 
-// eslint-disable-next-line react-refresh/only-export-components
-function RoleLanding() {
-  const roles = useAuthStore((state) => state.user?.roles ?? []);
-  return <Navigate to={canAccess({ roles }, ["FINANCE"]) ? "/finance-dashboard" : "/dashboard"} replace />;
-}
+function RoleLanding(){const roles=useAuthStore((state)=>state.user?.roles??[]);return <Navigate to={canAccess({roles},["FINANCE"])?"/finance-dashboard":"/dashboard"} replace/>;}
 
-const router = createBrowserRouter([
-  { path: "/login", element: <LoginPage /> },
-  { path: "/signup", element: <SignupPage /> },
-  {
-    path: "/",
-    element: <AuthGuard><AppLayout /></AuthGuard>,
-    children: [
-      { index: true, element: <RoleLanding /> },
-      { path: "dashboard", element: <DashboardPage /> },
-      { path: "approval-center", element: <ApprovalCenterPage /> },
-      { path: "approval-configuration", element: <ApprovalConfigurationPage /> },
-      { path: "purchase-requisitions", element: <PurchaseRequisitionListPage /> },
-      { path: "purchase-requisitions/:id", element: <PurchaseRequisitionDetailPage /> },
-      { path: "market-lists", element: <MarketListPage /> },
-      { path: "market-lists/:id", element: <MarketListDetailPage /> },
-      { path: "purchase-orders", element: <PurchaseOrderListPage /> },
-      { path: "purchase-orders/:id", element: <PurchaseOrderDetailPage /> },
-      { path: "purchasing-documents", element: <PurchasingDocumentsPage /> },
-      { path: "receiving", element: <ReceivingPage /> },
-      { path: "receiving/:id", element: <ReceivingDetailPage /> },
-      { path: "purchase-requisitions/:id/print", element: <PrintDocumentPage kind="purchase-requisitions" /> },
-      { path: "market-lists/:id/print", element: <PrintDocumentPage kind="market-lists" /> },
-      { path: "purchase-orders/:id/print", element: <PrintDocumentPage kind="purchase-orders" /> },
-      { path: "receiving/:id/print", element: <PrintDocumentPage kind="goods-receipts" /> },
-
-      { path: "accounts-payable", element: <AccountsPayablePage /> },
-      { path: "accounts-payable/aging", element: <AccountsPayablePage /> },
-      { path: "accounts-payable/aging/print", element: <APAgingPrintPage /> },
-      { path: "accounts-payable/invoices", element: <APInvoicesPage /> },
-      { path: "accounts-payable/payments", element: <APPaymentsPage /> },
-      { path: "accounts-payable/adjustments", element: <APAdjustmentsPage /> },
-      { path: "supplier-invoices", element: <SupplierInvoiceListPage /> },
-      { path: "supplier-invoices/:id", element: <SupplierInvoiceDetailPage /> },
-      { path: "supplier-invoices/:id/print", element: <AccountingPrintPage kind="supplier-invoices" /> },
-      { path: "supplier-adjustments", element: <SupplierAdjustmentsPage /> },
-      { path: "payments", element: <PaymentListPage /> },
-      { path: "payments/:id", element: <PaymentDetailPage /> },
-      { path: "payments/:id/print", element: <AccountingPrintPage kind="payments" /> },
-
-      { path: "cash-bank", element: <CashBankWorkspacePage section="overview" /> },
-      { path: "cash-bank/accounts", element: <CashBankWorkspacePage section="accounts" /> },
-      { path: "cash-bank/transfers", element: <CashBankWorkspacePage section="transfers" /> },
-      { path: "cash-bank/reconciliation", element: <CashBankWorkspacePage section="reconciliation" /> },
-      { path: "cash-bank/cash-flow", element: <CashBankWorkspacePage section="cash-flow" /> },
-      { path: "cash-flow", element: <CashFlowDashboardPage /> },
-      { path: "cash-accounts", element: <CashAccountsPage /> },
-      { path: "cash-accounts/:id", element: <CashAccountActivityPage /> },
-      { path: "cash-flow-statement", element: <CashFlowStatementPage /> },
-      { path: "bank-transfers", element: <BankTransferListPage /> },
-      { path: "bank-transfers/:id", element: <BankTransferDetailPage /> },
-      { path: "bank-transfers/:id/print", element: <BankTransferPrintPage /> },
-      { path: "bank-reconciliations", element: <BankReconciliationListPage /> },
-      { path: "bank-reconciliations/:id", element: <BankReconciliationDetailPage /> },
-
-      { path: "journal", element: <JournalWorkspacePage section="journal" /> },
-      { path: "journal/general-ledger", element: <JournalWorkspacePage section="general-ledger" /> },
-      { path: "journal/trial-balance", element: <JournalWorkspacePage section="trial-balance" /> },
-      { path: "journal-entries", element: <JournalListPage /> },
-      { path: "journal-entries/:id", element: <JournalDetailPage /> },
-      { path: "journal-entries/:id/print", element: <AccountingPrintPage kind="journal-entries" /> },
-      { path: "general-ledger", element: <GeneralLedgerPage /> },
-      { path: "trial-balance", element: <TrialBalancePage /> },
-
-      { path: "fixed-assets", element: <FixedAssetsWorkspacePage section="assets" /> },
-      { path: "fixed-assets/categories", element: <FixedAssetsWorkspacePage section="categories" /> },
-      { path: "fixed-assets/depreciation", element: <FixedAssetsWorkspacePage section="depreciation" /> },
-      { path: "fixed-assets/amortization", element: <FixedAssetsWorkspacePage section="amortization" /> },
-      { path: "fixed-assets/reports", element: <FixedAssetsWorkspacePage section="reports" /> },
-      { path: "fixed-assets/new", element: <FixedAssetFormPage /> },
-      { path: "fixed-assets/:id", element: <FixedAssetDetailPage /> },
-      { path: "asset-categories", element: <AssetCategoryPage /> },
-      { path: "depreciation-runs", element: <DepreciationRunsPage /> },
-      { path: "reports/fixed-assets", element: <FixedAssetReportPage /> },
-      { path: "reports/depreciation", element: <DepreciationReportPage /> },
-      { path: "amortization", element: <AmortizationPage /> },
-
-      { path: "finance-setup", element: <FinanceSetupWorkspacePage section="coa" /> },
-      { path: "finance-setup/posting-rules", element: <FinanceSetupWorkspacePage section="posting-rules" /> },
-      { path: "finance-setup/fiscal-periods", element: <FinanceSetupWorkspacePage section="fiscal-periods" /> },
-      { path: "chart-of-accounts", element: <ChartOfAccountPage /> },
-      { path: "posting-rules", element: <PostingRulesPage /> },
-      { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
-
-      { path: "finance-dashboard", element: <FinanceDashboardPage /> },
-      { path: "balance-sheet", element: <BalanceSheetPage /> },
-      { path: "profit-loss", element: <ProfitLossPage /> },
-      { path: "inventory", element: <InventoryPage /> },
-      { path: "inventory/movements", element: <InventoryMovementPage /> },
-      { path: "store-requests", element: <StoreRequestPage /> },
-      { path: "store-requests/:id", element: <StoreRequestDetailPage /> },
-      { path: "store-requests/:id/print", element: <StoreRequestPrintPage /> },
-      { path: "put-away", element: <PutAwayPage /> },
-      { path: "products", element: <ProductPage /> },
-      { path: "suppliers", element: <SupplierPage /> },
-      { path: "warehouses", element: <WarehousePage /> },
-      { path: "users", element: <UserPage /> },
-      { path: "roles", element: <RolePage /> },
-      { path: "settings", element: <SettingPage /> },
-      { path: "organization-dimensions", element: <OrganizationDimensionsPage /> },
-      { path: "audit", element: <AuditLogPage /> },
-      { path: "traceability/:documentType/:id", element: <TraceabilityPage /> },
-      { path: "notifications", element: <NotificationPage /> },
-      { path: "profile", element: <ProfilePage /> },
-      { path: "403", element: <ForbiddenPage /> },
-      { path: "401", element: <UnauthorizedPage /> },
-      { path: "500", element: <InternalServerErrorPage /> },
-      { path: "*", element: <NotFoundPage /> },
-    ],
-  },
-  { path: "*", element: <Navigate to="/" replace /> },
-]);
-
+const router=createBrowserRouter([{path:"/login",element:<LoginPage/>},{path:"/signup",element:<SignupPage/>},{path:"/",element:<AuthGuard><AppLayout/></AuthGuard>,children:[
+{index:true,element:<RoleLanding/>},{path:"dashboard",element:<DashboardPage/>},{path:"approval-center",element:<ApprovalCenterPage/>},{path:"approval-configuration",element:<ApprovalConfigurationPage/>},
+{path:"purchase-requisitions",element:<PurchaseRequisitionListPage/>},{path:"purchase-requisitions/:id",element:<PurchaseRequisitionDetailPage/>},{path:"market-lists",element:<MarketListPage/>},{path:"market-lists/:id",element:<MarketListDetailPage/>},{path:"purchase-orders",element:<PurchaseOrderListPage/>},{path:"purchase-orders/:id",element:<PurchaseOrderDetailPage/>},{path:"purchasing-documents",element:<PurchasingDocumentsPage/>},{path:"receiving",element:<ReceivingPage/>},{path:"receiving/:id",element:<ReceivingDetailPage/>},{path:"purchase-requisitions/:id/print",element:<PrintDocumentPage kind="purchase-requisitions"/>},{path:"market-lists/:id/print",element:<PrintDocumentPage kind="market-lists"/>},{path:"purchase-orders/:id/print",element:<PrintDocumentPage kind="purchase-orders"/>},{path:"receiving/:id/print",element:<PrintDocumentPage kind="goods-receipts"/>},
+{path:"accounts-payable",element:<AccountsPayablePage/>},{path:"accounts-payable/aging",element:<AccountsPayablePage/>},{path:"accounts-payable/aging/print",element:<APAgingPrintPage/>},{path:"accounts-payable/invoices",element:<APInvoicesPage/>},{path:"accounts-payable/payments",element:<APPaymentsPage/>},{path:"accounts-payable/adjustments",element:<APAdjustmentsPage/>},{path:"supplier-invoices",element:<SupplierInvoiceListPage/>},{path:"supplier-invoices/:id",element:<SupplierInvoiceDetailPage/>},{path:"supplier-invoices/:id/print",element:<AccountingPrintPage kind="supplier-invoices"/>},{path:"supplier-adjustments",element:<SupplierAdjustmentsPage/>},{path:"payments",element:<PaymentListPage/>},{path:"payments/:id",element:<PaymentDetailPage/>},{path:"payments/:id/print",element:<AccountingPrintPage kind="payments"/>},
+{path:"cash-bank",element:<CashBankWorkspacePage section="overview"/>},{path:"cash-bank/accounts",element:<CashBankWorkspacePage section="accounts"/>},{path:"cash-bank/transfers",element:<CashBankWorkspacePage section="transfers"/>},{path:"cash-bank/reconciliation",element:<CashBankWorkspacePage section="reconciliation"/>},{path:"cash-bank/cash-flow",element:<CashBankWorkspacePage section="cash-flow"/>},{path:"cash-flow",element:<CashFlowDashboardPage/>},{path:"cash-accounts",element:<CashAccountsPage/>},{path:"cash-accounts/:id",element:<CashAccountActivityPage/>},{path:"cash-flow-statement",element:<CashFlowStatementPage/>},{path:"bank-transfers",element:<BankTransferListPage/>},{path:"bank-transfers/:id",element:<BankTransferDetailPage/>},{path:"bank-transfers/:id/print",element:<BankTransferPrintPage/>},{path:"bank-reconciliations",element:<BankReconciliationListPage/>},{path:"bank-reconciliations/:id",element:<BankReconciliationDetailPage/>},
+{path:"journal",element:<JournalWorkspacePage section="journal"/>},{path:"journal/general-ledger",element:<JournalWorkspacePage section="general-ledger"/>},{path:"journal/trial-balance",element:<JournalWorkspacePage section="trial-balance"/>},{path:"journal-entries",element:<JournalListPage/>},{path:"journal-entries/:id",element:<JournalDetailPage/>},{path:"journal-entries/:id/print",element:<AccountingPrintPage kind="journal-entries"/>},{path:"general-ledger",element:<GeneralLedgerPage/>},{path:"trial-balance",element:<TrialBalancePage/>},
+{path:"fixed-assets",element:<FixedAssetsWorkspacePage section="assets"/>},{path:"fixed-assets/categories",element:<FixedAssetsWorkspacePage section="categories"/>},{path:"fixed-assets/depreciation",element:<FixedAssetsWorkspacePage section="depreciation"/>},{path:"fixed-assets/amortization",element:<FixedAssetsWorkspacePage section="amortization"/>},{path:"fixed-assets/reports",element:<FixedAssetsWorkspacePage section="reports"/>},{path:"fixed-assets/new",element:<FixedAssetFormPage/>},{path:"fixed-assets/:id",element:<FixedAssetDetailPage/>},{path:"asset-categories",element:<AssetCategoryPage/>},{path:"depreciation-runs",element:<DepreciationRunsPage/>},{path:"reports/fixed-assets",element:<FixedAssetReportPage/>},{path:"reports/depreciation",element:<DepreciationReportPage/>},{path:"amortization",element:<AmortizationPage/>},
+{path:"finance-setup",element:<FinanceSetupWorkspacePage section="coa"/>},{path:"finance-setup/posting-rules",element:<FinanceSetupWorkspacePage section="posting-rules"/>},{path:"finance-setup/fiscal-periods",element:<FinanceSetupWorkspacePage section="fiscal-periods"/>},{path:"chart-of-accounts",element:<ChartOfAccountPage/>},{path:"posting-rules",element:<PostingRulesPage/>},{path:"fiscal-periods",element:<FiscalPeriodsPage/>},{path:"finance-dashboard",element:<FinanceDashboardPage/>},{path:"balance-sheet",element:<BalanceSheetPage/>},{path:"profit-loss",element:<ProfitLossPage/>},
+{path:"inventory",element:<InventoryPage/>},{path:"inventory/movements",element:<InventoryMovementPage/>},{path:"store-requests",element:<StoreRequestPage/>},{path:"store-requests/:id",element:<StoreRequestDetailPage/>},{path:"store-requests/:id/print",element:<StoreRequestPrintPage/>},{path:"stock-opnames",element:<StockOpnamePage/>},{path:"stock-opnames/:id",element:<StockOpnameDetailPage/>},{path:"put-away",element:<PutAwayPage/>},
+{path:"products",element:<ProductPage/>},{path:"suppliers",element:<SupplierPage/>},{path:"warehouses",element:<WarehousePage/>},{path:"users",element:<UserPage/>},{path:"roles",element:<RolePage/>},{path:"settings",element:<SettingPage/>},{path:"organization-dimensions",element:<OrganizationDimensionsPage/>},{path:"audit",element:<AuditLogPage/>},{path:"traceability/:documentType/:id",element:<TraceabilityPage/>},{path:"notifications",element:<NotificationPage/>},{path:"profile",element:<ProfilePage/>},{path:"403",element:<ForbiddenPage/>},{path:"401",element:<UnauthorizedPage/>},{path:"500",element:<InternalServerErrorPage/>},{path:"*",element:<NotFoundPage/>}]},{path:"*",element:<Navigate to="/" replace/>}]);
 export default router;
