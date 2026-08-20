@@ -20,20 +20,22 @@ from app.services.audit import record_audit
 
 router = APIRouter(tags=["Organization Dimensions"])
 Search = Annotated[str | None, Query(max_length=100)]
-
-VIEW_PERMISSION = "organization_dimensions.view"
 MANAGE_PERMISSION = "organization_dimensions.manage"
 
 
 def require_access(user, *, manage: bool = False) -> None:
-    if is_superuser(user):
+    # Organization dimensions are shared operational lookup data used by
+    # Purchasing, Warehouse, Finance and reporting forms. Authentication is
+    # already enforced by the endpoint dependency, so reads are available to
+    # every authenticated user. Mutations remain restricted.
+    if not manage:
         return
-    required = MANAGE_PERMISSION if manage else VIEW_PERMISSION
-    if not has_permission(user, required):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "INSUFFICIENT_PERMISSION", "required_permission": required},
-        )
+    if is_superuser(user) or has_permission(user, MANAGE_PERMISSION):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "INSUFFICIENT_PERMISSION", "required_permission": MANAGE_PERMISSION},
+    )
 
 
 def normalize_code(value: str) -> str:
