@@ -1,0 +1,175 @@
+from decimal import Decimal
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.models.account_payable import AccountPayable
+from app.models.account_receivable import AccountReceivable
+from app.models.accounting_posting_rule import AccountingPostingRule
+from app.models.chart_of_account import ChartOfAccount
+from app.models.inventory import Inventory
+from app.models.journal_entry import JournalEntry
+from app.models.journal_line import JournalLine
+
+ZERO = Decimal("0.00")
+
+
+class FinancialReconciliationService:
+    """Read-only controls comparing current subledger balances with posted GL balances."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def _gl_balance(self, account_ids: list[int]) -> Decimal:
+        if not account_ids:
+            return ZERO
+        rows = (
+            self.db.query(
+                ChartOfAccount.id,
+                ChartOfAccount.normal_balance,
+                func.coalesce(func.sum(JournalLine.debit), 0),
+                func.coalesce(func.sum(JournalLine.credit), 0),
+            )
+            .join(JournalLine, JournalLine.account_id == ChartOfAccount.id)
+            .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)
+            .filter(
+                ChartOfAccount.id.in_(account_ids),
+                JournalEntry.status == "POSTED",
+            )
+            .group_by(ChartOfAccount.id, ChartOfAccount.normal_balance)
+            .all()
+        )
+        total = ZERO
+        for _, normal_balance, debit, credit in rows:
+            debit = Decimal(debit or 0)
+            credit = Decimal(credit or 0)
+            total += credit - debit if normal_balance == "CREDIT" else debit - credit
+        return total
+
+    def _accounts(self, account_ids: list[int]) -> list[dict]:
+        if not account_ids:
+            return []
+        rows = (
+            self.db.query(ChartOfAccount)
+            .filter(ChartOfAccount.id.in_(account_ids))
+            .order_by(ChartOfAccount.account_number)
+            .all()
+        )
+        return [
+            {
+                "account_id": row.id,
+                "account_code": row.account_number,
+                "account_name": row.account_name,
+                "normal_balance": row.normal_balance,
+            }
+            for row in rows
+        ]
+
+    def _rule_account_ids(self, *, debit: bool, event_types: list[str]) -> list[int]:
+        column = (
+            AccountingPostingRule.debit_account_id
+            if debit
+            else AccountingPostingRule.credit_account_id
+        )
+        rows = (
+            self.db.query(column)
+            .filter(
+                AccountingPostingRule.is_active.is_(True),
+                AccountingPostingRule.event_type.in_(event_types),
+            )
+            .distinct()
+            .all()
+        )
+        return sorted({int(value) for (value,) in rows if value is not None})
+
+    @staticmethod
+    def _row(control: str, source: Decimal, gl: Decimal, accounts: list[dict], configured: bool = True) -> dict:
+        difference = source - gl
+        if not configured:
+            status = "NOT_CONFIGURED"
+        else:
+            status = "RECONCILED" if difference == ZERO else "OUT_OF_BALANCE"
+        return {
+            "control": control,
+            "source_balance": source,
+            "gl_balance": gl,
+            "difference": difference,
+            "status": status,
+            "accounts": accounts,
+        }
+
+    def accounts_payable(self) -> dict:
+        source = Decimal(
+            self.db.query(func.coalesce(func.sum(AccountPayable.outstanding_amount), 0)).scalar()
+            or 0
+        )
+        account_ids = self._rule_account_ids(
+            debit=False,
+            event_types=["SUPPLIER_INVOICE_INVENTORY", "SUPPLIER_INVOICE_DIRECT_USE"],
+        )
+        return self._row(
+            "ACCOUNTS_PAYABLE",
+            source,
+            self._gl_balance(account_ids),
+            self._accounts(account_ids),
+            configured=bool(account_ids),
+        )
+
+    def accounts_receivable(self) -> dict:
+        source = Decimal(
+            self.db.query(func.coalesce(func.sum(AccountReceivable.outstanding_amount), 0)).scalar()
+            or 0
+        )
+        rules = (
+            self.db.query(AccountingPostingRule)
+            .filter(AccountingPostingRule.is_active.is_(True))
+            .all()
+        )
+        account_ids = sorted(
+            {
+                int(rule.debit_account_id)
+                for rule in rules
+                if rule.event_type.upper() in {"CUSTOMER_INVOICE", "ACCOUNT_RECEIVABLE", "AR_INVOICE"}
+            }
+        )
+        return self._row(
+            "ACCOUNTS_RECEIVABLE",
+            source,
+            self._gl_balance(account_ids),
+            self._accounts(account_ids),
+            configured=bool(account_ids),
+        )
+
+    def inventory(self) -> dict:
+        source_raw = self.db.query(
+            func.coalesce(func.sum(Inventory.quantity * Inventory.average_cost), 0)
+        ).scalar()
+        source = Decimal(source_raw or 0).quantize(Decimal("0.01"))
+        account_ids = self._rule_account_ids(
+            debit=True,
+            event_types=["SUPPLIER_INVOICE_INVENTORY"],
+        )
+        return self._row(
+            "INVENTORY",
+            source,
+            self._gl_balance(account_ids),
+            self._accounts(account_ids),
+            configured=bool(account_ids),
+        )
+
+    def report(self) -> dict:
+        items = [
+            self.accounts_payable(),
+            self.accounts_receivable(),
+            self.inventory(),
+        ]
+        return {
+            "items": items,
+            "summary": {
+                "reconciled": sum(row["status"] == "RECONCILED" for row in items),
+                "out_of_balance": sum(row["status"] == "OUT_OF_BALANCE" for row in items),
+                "not_configured": sum(row["status"] == "NOT_CONFIGURED" for row in items),
+            },
+            "scope": "CURRENT_BALANCE",
+            "read_only": True,
+        }
