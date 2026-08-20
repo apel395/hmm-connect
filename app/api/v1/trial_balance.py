@@ -30,11 +30,7 @@ def serialize(report: dict) -> dict:
     for row in report["items"]:
         for field in MONEY_FIELDS:
             row[field] = f"{row[field]:.2f}"
-        # Compatibility values remain numeric internally but are normalized for legacy UI consumers.
-        for field in ("opening_debit", "opening_credit", "closing_debit", "closing_credit"):
-            if field in row:
-                row[field] = f"{row[field]:.2f}"
-    for field in (*MONEY_FIELDS, "opening_debit", "opening_credit", "closing_debit", "closing_credit", "difference"):
+    for field in (*MONEY_FIELDS, "difference"):
         if field in report["summary"]:
             report["summary"][field] = f"{report['summary'][field]:.2f}"
     return report

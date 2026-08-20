@@ -28,10 +28,6 @@ class TrialBalanceService:
     def __init__(self, db: Session):
         self.db = db
 
-    @staticmethod
-    def _side(net: Decimal) -> tuple[Decimal, Decimal]:
-        return (net, ZERO) if net >= ZERO else (ZERO, abs(net))
-
     def _activity(
         self,
         *,
@@ -131,11 +127,6 @@ class TrialBalanceService:
             opening_debit_activity, opening_credit_activity = opening.get(account.id, (ZERO, ZERO))
             period_debit, period_credit = period.get(account.id, (ZERO, ZERO))
 
-            raw_opening_net = opening_debit_activity - opening_credit_activity
-            raw_closing_net = raw_opening_net + period_debit - period_credit
-            opening_debit, opening_credit = self._side(raw_opening_net)
-            closing_debit, closing_credit = self._side(raw_closing_net)
-
             opening_balance = self._normal_balance_amount(
                 account.normal_balance,
                 opening_debit_activity,
@@ -171,11 +162,6 @@ class TrialBalanceService:
                     "period_total": period_total,
                     "closing_balance": closing_balance,
                     "status": status,
-                    # Compatibility fields retained for existing consumers/export while UI migrates.
-                    "opening_debit": opening_debit,
-                    "opening_credit": opening_credit,
-                    "closing_debit": closing_debit,
-                    "closing_credit": closing_credit,
                     "is_abnormal_balance": status == "ABNORMAL",
                 }
             )
@@ -189,10 +175,6 @@ class TrialBalanceService:
             "period_credit": sum((row["period_credit"] for row in rows), ZERO),
             "period_total": sum((row["period_total"] for row in rows), ZERO),
             "closing_balance": sum((row["closing_balance"] for row in rows), ZERO),
-            "opening_debit": sum((row["opening_debit"] for row in rows), ZERO),
-            "opening_credit": sum((row["opening_credit"] for row in rows), ZERO),
-            "closing_debit": sum((row["closing_debit"] for row in rows), ZERO),
-            "closing_credit": sum((row["closing_credit"] for row in rows), ZERO),
         }
         summary["difference"] = summary["period_debit"] - summary["period_credit"]
         summary["is_balanced"] = summary["difference"] == ZERO

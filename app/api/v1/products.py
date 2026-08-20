@@ -28,7 +28,9 @@ def _apply_filters(query, *, active_only: bool, search: str | None, market_only:
     if market_only:
         query = query.filter(subgroup.in_(MARKET_SUBGROUPS))
     elif exclude_market:
-        query = query.filter(~subgroup.in_(MARKET_SUBGROUPS))
+        query = query.filter(
+            or_(Product.subgroup_name.is_(None), ~subgroup.in_(MARKET_SUBGROUPS))
+        )
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
