@@ -44,15 +44,8 @@ class FinancialStatementService:
 
     @staticmethod
     def _net(row: dict) -> Decimal:
-        """Return legacy debit-minus-credit sign from canonical closing_balance.
-
-        Trial Balance now exposes one normal-balance-adjusted closing value
-        instead of closing_debit/closing_credit. Balance Sheet still needs the
-        legacy signed value internally: debit-normal is positive and
-        credit-normal is negative.
-        """
-        balance = Decimal(row.get("closing_balance") or ZERO)
-        return balance if row.get("normal_balance") != "CREDIT" else -balance
+        """Return the canonical, normal-balance-adjusted closing balance."""
+        return Decimal(row.get("closing_balance") or ZERO)
 
     @staticmethod
     def _period_amount(row: dict) -> Decimal:
@@ -88,10 +81,10 @@ class FinancialStatementService:
             if account_type not in BALANCE_GROUPS:
                 continue
             net = self._net(row)
-            amount = net if account_type == "ASSET" else -net
+            amount = net
             comp_row = comparisons.get(row["account_id"])
             comp_net = self._net(comp_row) if comp_row else ZERO
-            comparative = (comp_net if account_type == "ASSET" else -comp_net) if comparative_date else None
+            comparative = comp_net if comparative_date else None
             if not include_zero_balance and amount == ZERO and (comparative is None or comparative == ZERO):
                 continue
             configured = row.get("financial_statement_group")

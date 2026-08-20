@@ -5,6 +5,7 @@ from decimal import Decimal
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.dependencies.authorization import is_superuser
 from app.models.approval_request import ApprovalRequest, ApprovalRequestStep
 from app.models.bank_reconciliation import BankReconciliation
 from app.models.budget import Budget, BudgetLine
@@ -73,7 +74,7 @@ class FinanceDashboardService:
         return {"purchase_requisitions":{"draft":pr_counts.get("DRAFT",0),"submitted":pr_counts.get("SUBMITTED",0),"waiting_approval":pr_counts.get("PENDING_APPROVAL",0),"approved":pr_counts.get("APPROVED",0),"rejected":pr_counts.get("REJECTED",0),"not_converted_to_po":unconverted.count(),"planned_value":planned},"purchase_orders":{"draft":po_counts.get("DRAFT",0),"waiting_approval":po_counts.get("PENDING_APPROVAL",0),"approved":po_counts.get("APPROVED",0),"partially_received":po_counts.get("PARTIALLY_RECEIVED",0),"received":po_counts.get("RECEIVED",0),"not_fully_invoiced":commitment_q.count(),"committed_value":committed},"goods_receipts":{"waiting_receipt":waiting_receipt,"pending_posting":gr_counts.get("DRAFT",0),"posted":gr_counts.get("POSTED",0),"warehouse":grq.filter(GoodsReceipt.destination_type=="WAREHOUSE").count(),"direct_use":grq.filter(GoodsReceipt.destination_type=="DIRECT_USE").count()}},commitment_q,unconverted
     def _approvals(self):
         roles={role.name for role in self.user.roles};q=self.db.query(ApprovalRequestStep).options(joinedload(ApprovalRequestStep.request).joinedload(ApprovalRequest.created_by)).join(ApprovalRequest).filter(ApprovalRequest.status=="PENDING",ApprovalRequestStep.status=="PENDING")
-        if "ADMIN" not in roles:q=q.filter(ApprovalRequestStep.approver_role_name.in_(roles))
+        if not is_superuser(self.user):q=q.filter(ApprovalRequestStep.approver_role_name.in_(roles))
         steps=[]
         for step in q.order_by(ApprovalRequest.created_at).limit(20):
             if step.department_name and (not self.user.department or self.user.department.name!=step.department_name):continue

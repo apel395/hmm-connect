@@ -224,7 +224,10 @@ def replace_user_roles(user_id: int, data: UserRolesUpdate, db: Session = Depend
     roles = _validate_roles(db, data.role_ids)
     current_role_ids = {role.id for role in user.roles}
     current_is_admin = is_superuser(user)
-    next_is_admin = any(role.name.strip().upper().replace("_", " ") in {"ADMIN", "ADMINISTRATOR", "SYSTEM ADMINISTRATOR", "SUPER ADMIN", "ERP ADMINISTRATOR"} for role in roles)
+    next_is_admin = any(
+        role.name.strip().upper().replace("_", " ") == "SYSTEM ADMINISTRATOR"
+        for role in roles
+    )
     if user.id == current_user.id and current_is_admin and not next_is_admin:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You cannot remove your own administrator role")
     if current_role_ids != {role.id for role in roles}:
