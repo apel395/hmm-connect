@@ -76,6 +76,7 @@ export const approvalApi = {
     if (row.entity_type === "PURCHASE_ORDER") return api.post(`/purchase-orders/${row.entity_id}/approve`, { comment: comment || null });
     if (row.entity_type === "GOODS_RECEIPT") return api.post(`/goods-receipts/${row.entity_id}/approve`, { comment: comment || null });
     if (row.entity_type === "STORE_REQUEST") return api.post(`/store-requests/${row.entity_id}/approve`, { comment: comment || null });
+    if (row.entity_type === "STOCK_OPNAME") return api.post(`/stock-opnames/${row.entity_id}/approve`, { comment: comment || null });
     throw new Error("This document type is not yet connected to Approval Center decisions.");
   },
   rejectDocument: async (row: ApprovalRequestRow, comment: string) => {
@@ -84,6 +85,7 @@ export const approvalApi = {
     if (row.entity_type === "PURCHASE_ORDER") return api.post(`/purchase-orders/${row.entity_id}/reject`, { comment });
     if (row.entity_type === "GOODS_RECEIPT") return api.post(`/goods-receipts/${row.entity_id}/reject`, { comment });
     if (row.entity_type === "STORE_REQUEST") return api.post(`/store-requests/${row.entity_id}/reject`, { comment });
+    if (row.entity_type === "STOCK_OPNAME") return api.post(`/stock-opnames/${row.entity_id}/reject`, { comment });
     throw new Error("This document type is not yet connected to Approval Center decisions.");
   },
 };
@@ -94,6 +96,7 @@ export function approvalDocumentPath(row: ApprovalRequestRow): string | null {
   if (row.entity_type === "PURCHASE_ORDER") return `/purchase-orders/${row.entity_id}`;
   if (row.entity_type === "GOODS_RECEIPT") return `/receiving/${row.entity_id}`;
   if (row.entity_type === "STORE_REQUEST") return `/store-requests/${row.entity_id}`;
+  if (row.entity_type === "STOCK_OPNAME") return `/stock-opnames/${row.entity_id}`;
   if (row.entity_type === "SUPPLIER_INVOICE") return `/supplier-invoices/${row.entity_id}`;
   if (row.entity_type === "PAYMENT") return `/payments/${row.entity_id}`;
   return null;

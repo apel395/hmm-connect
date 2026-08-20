@@ -62,6 +62,8 @@ import StoreRequestPage from "@/modules/warehouse/store-request/StoreRequestPage
 import StoreRequestDetailPage from "@/modules/warehouse/store-request/StoreRequestDetailPage";
 import StoreRequestPrintPage from "@/modules/warehouse/store-request/StoreRequestPrintPage";
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
+import StockOpnamePage from "@/modules/warehouse/stock-opname/StockOpnamePage";
+import StockOpnameDetailPage from "@/modules/warehouse/stock-opname/StockOpnameDetailPage";
 import ProductPage from "@/modules/master/products/pages/ProductPage";
 import SupplierPage from "@/modules/master/suppliers/pages/SupplierPage";
 import WarehousePage from "@/modules/master/warehouses/WarehousePage";
@@ -178,6 +180,8 @@ const router = createBrowserRouter([
       { path: "store-requests", element: <StoreRequestPage /> },
       { path: "store-requests/:id", element: <StoreRequestDetailPage /> },
       { path: "store-requests/:id/print", element: <StoreRequestPrintPage /> },
+      { path: "stock-opnames", element: <StockOpnamePage /> },
+      { path: "stock-opnames/:id", element: <StockOpnameDetailPage /> },
       { path: "put-away", element: <PutAwayPage /> },
       { path: "products", element: <ProductPage /> },
       { path: "suppliers", element: <SupplierPage /> },
