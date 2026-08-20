@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from math import ceil
 
-from sqlalchemy import func, or_
+from sqlalchemy import exists, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
@@ -93,7 +93,14 @@ class TrialBalanceService:
         if date_from > date_to:
             raise ValueError("date_from must be on or before date_to")
 
-        accounts_query = self.db.query(ChartOfAccount).filter(ChartOfAccount.is_posting.is_(True))
+        # Trial Balance reports only leaf/posting accounts. Parent/header COA
+        # remains in the COA hierarchy but must not appear as a separate row.
+        child = ChartOfAccount.__table__.alias("trial_balance_child")
+        has_child = exists().where(child.c.parent_account_id == ChartOfAccount.id)
+        accounts_query = self.db.query(ChartOfAccount).filter(
+            ChartOfAccount.is_posting.is_(True),
+            ~has_child,
+        )
         if not include_inactive:
             accounts_query = accounts_query.filter(ChartOfAccount.is_active.is_(True))
         if search:
@@ -126,7 +133,6 @@ class TrialBalanceService:
         for account in accounts_query.all():
             opening_debit_activity, opening_credit_activity = opening.get(account.id, (ZERO, ZERO))
             period_debit, period_credit = period.get(account.id, (ZERO, ZERO))
-
             opening_balance = self._normal_balance_amount(
                 account.normal_balance,
                 opening_debit_activity,
