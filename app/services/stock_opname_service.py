@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.inventory import Inventory
+from app.models.location import Location
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
 from app.models.stock_opname import StockOpname, StockOpnameItem
@@ -37,24 +38,58 @@ class StockOpnameService:
         return row
 
     @staticmethod
+    def _resolve_dimensions(
+        db: Session, *, data: StockOpnameCreate, current_user: User
+    ) -> tuple[int, int, int | None]:
+        location_id = (
+            data.location_id
+            or current_user.default_location_id
+            or current_user.location_id
+        )
+        if not location_id:
+            raise HTTPException(422, "Location is required for Stock Opname")
+
+        location = db.get(Location, location_id)
+        if not location or not location.is_active:
+            raise HTTPException(422, "Active Location is required for Stock Opname")
+
+        business_unit_id = (
+            data.business_unit_id
+            or current_user.default_business_unit_id
+            or location.business_unit_id
+        )
+        if not business_unit_id:
+            raise HTTPException(
+                422, "Selected Location is not assigned to a Business Unit"
+            )
+
+        department_id = (
+            data.department_id
+            or current_user.default_department_id
+            or current_user.department_id
+        )
+
+        validate_dimensions(
+            db,
+            business_unit_id,
+            location_id,
+            department_id,
+            True,
+        )
+        return business_unit_id, location_id, department_id
+
+    @staticmethod
     def create(
         db: Session, *, data: StockOpnameCreate, current_user: User
     ) -> StockOpname:
         wh = db.get(Warehouse, data.warehouse_id)
         if not wh or not wh.is_active:
             raise HTTPException(404, "Active warehouse not found")
-        bu = data.business_unit_id or current_user.default_business_unit_id
-        loc = (
-            data.location_id
-            or current_user.default_location_id
-            or current_user.location_id
+
+        bu, loc, dep = StockOpnameService._resolve_dimensions(
+            db, data=data, current_user=current_user
         )
-        dep = (
-            data.department_id
-            or current_user.default_department_id
-            or current_user.department_id
-        )
-        validate_dimensions(db, bu, loc, dep, True)
+
         if (
             db.query(StockOpname)
             .filter(
