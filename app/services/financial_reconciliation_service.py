@@ -109,7 +109,10 @@ class FinancialReconciliationService:
         # mirror and has its own exception checker in ap_reconciliation.
         source = Decimal(
             self.db.query(func.coalesce(func.sum(SupplierInvoice.balance_amount), 0))
-            .filter(SupplierInvoice.status.in_(["VERIFIED", "POSTED"]))
+            # Posting the invoice journal is the point at which this lifecycle
+            # recognizes the liability. VERIFIED invoices still have only a
+            # draft (or no) journal and therefore are not part of AP.
+            .filter(SupplierInvoice.status == "POSTED")
             .scalar()
             or 0
         )
@@ -130,19 +133,10 @@ class FinancialReconciliationService:
             self.db.query(func.coalesce(func.sum(AccountReceivable.outstanding_amount), 0)).scalar()
             or 0
         )
-        rules = (
-            self.db.query(AccountingPostingRule)
-            .filter(AccountingPostingRule.is_active.is_(True))
-            .all()
-        )
-        account_ids = sorted(
-            {
-                int(rule.debit_account_id)
-                for rule in rules
-                if rule.event_type.upper()
-                in {"CUSTOMER_INVOICE", "ACCOUNT_RECEIVABLE", "AR_INVOICE"}
-            }
-        )
+        # Customer/AR posting still uses a legacy hard-coded posting service;
+        # there is no canonical AccountingPostingRule event to resolve safely.
+        # Do not infer a control account from names, types, or AR rows.
+        account_ids: list[int] = []
         return self._row(
             "ACCOUNTS_RECEIVABLE",
             source,
