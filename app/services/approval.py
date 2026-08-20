@@ -25,6 +25,7 @@ WORKFLOW_CHAINS = {
     "PR_APPROVAL": LOCAL_APPROVAL_CHAIN,
     "ML_APPROVAL": LOCAL_APPROVAL_CHAIN,
     "RR_APPROVAL": LOCAL_APPROVAL_CHAIN,
+    "SO_APPROVAL": LOCAL_APPROVAL_CHAIN,
     "PO_APPROVAL": MANAGER_APPROVAL_CHAIN,
 }
 
@@ -75,6 +76,7 @@ def _workflow_entity_type(workflow_code: str) -> str | None:
         "PO_APPROVAL": "PURCHASE_ORDER",
         "RR_APPROVAL": "GOODS_RECEIPT",
         "SR_APPROVAL": "STORE_REQUEST",
+        "SO_APPROVAL": "STOCK_OPNAME",
     }.get(workflow_code)
 
 
@@ -85,6 +87,7 @@ def _workflow_name(workflow_code: str) -> str:
         "PO_APPROVAL": "Purchase Order Approval",
         "RR_APPROVAL": "Receiving Report Approval",
         "SR_APPROVAL": "Store Request Approval",
+        "SO_APPROVAL": "Stock Opname Approval",
     }[workflow_code]
 
 
@@ -155,6 +158,9 @@ def _entity_location(db: Session, entity_type: str, entity_id: int):
     elif entity_type == "STORE_REQUEST":
         from app.models.store_request import StoreRequest
         entity = db.get(StoreRequest, entity_id)
+    elif entity_type == "STOCK_OPNAME":
+        from app.models.stock_opname import StockOpname
+        entity = db.get(StockOpname, entity_id)
     else:
         entity = None
     return getattr(entity, "location", None) if entity else None
@@ -173,6 +179,9 @@ def _sync_document_status(db: Session, request: ApprovalRequest) -> None:
     elif request.entity_type == "STORE_REQUEST":
         from app.models.store_request import StoreRequest
         document = db.get(StoreRequest, request.entity_id)
+    elif request.entity_type == "STOCK_OPNAME":
+        from app.models.stock_opname import StockOpname
+        document = db.get(StockOpname, request.entity_id)
     else:
         document = None
     if document is None:

@@ -46,7 +46,7 @@ class StockMovement(Base, TimestampMixin):
         ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
     )
     movement_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
     reference_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     reference_id: Mapped[int | None] = mapped_column(nullable=True)

@@ -28,6 +28,9 @@ def _entity_location_name(db: Session, entity_type: str, entity_id: int) -> str 
     elif entity_type == "STORE_REQUEST":
         from app.models.store_request import StoreRequest
         entity = db.get(StoreRequest, entity_id)
+    elif entity_type == "STOCK_OPNAME":
+        from app.models.stock_opname import StockOpname
+        entity = db.get(StockOpname, entity_id)
     else:
         entity = None
     location = getattr(entity, "location", None) if entity else None
@@ -56,6 +59,9 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
     can_issue = entity_type == "STORE_REQUEST" and status in {"APPROVED", "PARTIALLY_ISSUED"} and (
         admin or has_any_role(user, "WAREHOUSE")
     )
+    can_post = entity_type == "STOCK_OPNAME" and status == "APPROVED" and (
+        admin or has_any_role(user, "WAREHOUSE")
+    )
     can_reopen = admin and entity_type in REOPENABLE_WORKFLOW_DOCUMENTS and status != "DRAFT"
     events = db.query(AuditLog).filter(
         AuditLog.entity_type == entity_type,
@@ -75,6 +81,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
             "can_manage_attachments": True,
             "can_receive": can_receive,
             "can_issue": can_issue,
+            "can_post": can_post,
         },
         "approval_history": [{
             "level": step.step_order,
