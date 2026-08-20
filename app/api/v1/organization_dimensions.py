@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import has_permission, is_superuser
 from app.models.business_unit import BusinessUnit
 from app.models.department import Department
 from app.models.location import Location
@@ -22,22 +23,13 @@ Search = Annotated[str | None, Query(max_length=100)]
 
 VIEW_PERMISSION = "organization_dimensions.view"
 MANAGE_PERMISSION = "organization_dimensions.manage"
-ADMIN_ROLES = {"ADMIN", "ADMINISTRATOR", "SUPER_ADMIN"}
-
-
-def _roles(user) -> set[str]:
-    return {role.name.strip().upper() for role in user.roles}
-
-
-def _permissions(user) -> set[str]:
-    return {permission.code for role in user.roles for permission in role.permissions}
 
 
 def require_access(user, *, manage: bool = False) -> None:
-    if _roles(user).intersection(ADMIN_ROLES):
+    if is_superuser(user):
         return
     required = MANAGE_PERMISSION if manage else VIEW_PERMISSION
-    if required not in _permissions(user):
+    if not has_permission(user, required):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "INSUFFICIENT_PERMISSION", "required_permission": required},
@@ -93,59 +85,29 @@ def commit_or_conflict(db: Session) -> None:
 
 
 def business_unit_row(value: BusinessUnit) -> dict:
-    return {
-        "id": value.id, "code": value.code, "name": value.name,
-        "description": value.description, "is_active": value.is_active,
-        "created_at": value.created_at, "updated_at": value.updated_at,
-    }
+    return {"id": value.id, "code": value.code, "name": value.name, "description": value.description, "is_active": value.is_active, "created_at": value.created_at, "updated_at": value.updated_at}
 
 
 def department_row(value: Department) -> dict:
-    return {
-        "id": value.id, "code": value.code, "name": value.name,
-        "business_unit_id": value.business_unit_id,
-        "business_unit_name": value.business_unit.name if value.business_unit else None,
-        "is_active": value.is_active, "created_at": value.created_at,
-        "updated_at": value.updated_at,
-    }
+    return {"id": value.id, "code": value.code, "name": value.name, "business_unit_id": value.business_unit_id, "business_unit_name": value.business_unit.name if value.business_unit else None, "is_active": value.is_active, "created_at": value.created_at, "updated_at": value.updated_at}
 
 
 def location_row(value: Location) -> dict:
-    return {
-        "id": value.id, "code": value.code, "name": value.name,
-        "business_unit_id": value.business_unit_id,
-        "business_unit_name": value.business_unit.name if value.business_unit else None,
-        "location_type": value.location_type, "address": value.address,
-        "city": value.city, "province": value.province,
-        "postal_code": value.postal_code, "is_active": value.is_active,
-        "created_at": value.created_at, "updated_at": value.updated_at,
-    }
+    return {"id": value.id, "code": value.code, "name": value.name, "business_unit_id": value.business_unit_id, "business_unit_name": value.business_unit.name if value.business_unit else None, "location_type": value.location_type, "address": value.address, "city": value.city, "province": value.province, "postal_code": value.postal_code, "is_active": value.is_active, "created_at": value.created_at, "updated_at": value.updated_at}
 
 
 @router.get("/business-units")
-def list_business_units(
-    is_active: bool | None = None, active_only: bool = False, search: Search = None,
-    db: Session = Depends(get_db), user=Depends(get_current_user),
-):
-    require_access(user)
-    query = db.query(BusinessUnit)
-    active_filter = True if active_only else is_active
-    if active_filter is not None:
-        query = query.filter(BusinessUnit.is_active.is_(active_filter))
+def list_business_units(is_active: bool | None = None, active_only: bool = False, search: Search = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    require_access(user); query = db.query(BusinessUnit); active_filter = True if active_only else is_active
+    if active_filter is not None: query = query.filter(BusinessUnit.is_active.is_(active_filter))
     if search:
-        term = f"%{search.strip()}%"
-        query = query.filter(or_(BusinessUnit.code.ilike(term), BusinessUnit.name.ilike(term)))
+        term = f"%{search.strip()}%"; query = query.filter(or_(BusinessUnit.code.ilike(term), BusinessUnit.name.ilike(term)))
     return [business_unit_row(value) for value in query.order_by(BusinessUnit.code)]
 
 
 @router.post("/business-units", status_code=201)
 def create_business_unit(data: BusinessUnitCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    require_access(user, manage=True)
-    values = data.model_dump(); values["code"] = normalize_code(data.code); values["name"] = normalize_name(data.name)
-    reject_duplicate(db, BusinessUnit, values["code"], values["name"])
-    value = BusinessUnit(**values); db.add(value); db.flush()
-    record_audit(db, user, "BUSINESS_UNIT_CREATED", "BUSINESS_UNIT", f"Created {value.code}", entity_id=value.id)
-    commit_or_conflict(db); db.refresh(value); return business_unit_row(value)
+    require_access(user, manage=True); values = data.model_dump(); values["code"] = normalize_code(data.code); values["name"] = normalize_name(data.name); reject_duplicate(db, BusinessUnit, values["code"], values["name"]); value = BusinessUnit(**values); db.add(value); db.flush(); record_audit(db, user, "BUSINESS_UNIT_CREATED", "BUSINESS_UNIT", f"Created {value.code}", entity_id=value.id); commit_or_conflict(db); db.refresh(value); return business_unit_row(value)
 
 
 @router.get("/business-units/{business_unit_id}")
@@ -162,24 +124,16 @@ def update_business_unit(business_unit_id: int, data: BusinessUnitUpdate, db: Se
     changes = data.model_dump(exclude_unset=True)
     if "code" in changes: changes["code"] = normalize_code(changes["code"])
     if "name" in changes: changes["name"] = normalize_name(changes["name"])
-    reject_duplicate(db, BusinessUnit, changes.get("code"), changes.get("name"), value.id)
-    deactivated = changes.get("is_active") is False and value.is_active
+    reject_duplicate(db, BusinessUnit, changes.get("code"), changes.get("name"), value.id); deactivated = changes.get("is_active") is False and value.is_active
     for key, item in changes.items(): setattr(value, key, item)
-    action = "BUSINESS_UNIT_DEACTIVATED" if deactivated else "BUSINESS_UNIT_UPDATED"
-    record_audit(db, user, action, "BUSINESS_UNIT", f"{'Deactivated' if deactivated else 'Updated'} {value.code}", entity_id=value.id)
-    commit_or_conflict(db); db.refresh(value); return business_unit_row(value)
+    action = "BUSINESS_UNIT_DEACTIVATED" if deactivated else "BUSINESS_UNIT_UPDATED"; record_audit(db, user, action, "BUSINESS_UNIT", f"{'Deactivated' if deactivated else 'Updated'} {value.code}", entity_id=value.id); commit_or_conflict(db); db.refresh(value); return business_unit_row(value)
 
 
 @router.get("/departments")
-def list_departments(
-    business_unit_id: int | None = None, is_active: bool | None = None,
-    include_shared: bool = True, search: Search = None,
-    db: Session = Depends(get_db), user=Depends(get_current_user),
-):
+def list_departments(business_unit_id: int | None = None, is_active: bool | None = None, include_shared: bool = True, search: Search = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     require_access(user); query = db.query(Department).options(joinedload(Department.business_unit))
     if business_unit_id is not None:
-        validate_business_unit(db, business_unit_id, required=True)
-        dimension_filter = Department.business_unit_id == business_unit_id
+        validate_business_unit(db, business_unit_id, required=True); dimension_filter = Department.business_unit_id == business_unit_id
         if include_shared: dimension_filter = or_(dimension_filter, Department.business_unit_id.is_(None))
         query = query.filter(dimension_filter)
     if is_active is not None: query = query.filter(Department.is_active.is_(is_active))
@@ -190,89 +144,77 @@ def list_departments(
 
 @router.post("/departments", status_code=201)
 def create_department(data: DepartmentCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    require_access(user, manage=True); validate_business_unit(db, data.business_unit_id, required=False)
-    values=data.model_dump(); values["code"]=normalize_code(data.code); values["name"]=normalize_name(data.name)
-    reject_duplicate(db, Department, values["code"], values["name"])
-    value=Department(**values); db.add(value); db.flush(); record_audit(db,user,"DEPARTMENT_CREATED","DEPARTMENT",f"Created {value.code}",entity_id=value.id)
-    commit_or_conflict(db); return department_row(db.query(Department).options(joinedload(Department.business_unit)).filter(Department.id==value.id).one())
+    require_access(user, manage=True); validate_business_unit(db, data.business_unit_id, required=False); values=data.model_dump(); values["code"]=normalize_code(data.code); values["name"]=normalize_name(data.name); reject_duplicate(db, Department, values["code"], values["name"]); value=Department(**values); db.add(value); db.flush(); record_audit(db,user,"DEPARTMENT_CREATED","DEPARTMENT",f"Created {value.code}",entity_id=value.id); commit_or_conflict(db); return department_row(db.query(Department).options(joinedload(Department.business_unit)).filter(Department.id==value.id).one())
 
 
 @router.get("/departments/{department_id}")
 def get_department(department_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user);value=db.query(Department).options(joinedload(Department.business_unit)).filter(Department.id==department_id).first()
-    if not value:raise HTTPException(404,"Department not found")
+    require_access(user); value=db.query(Department).options(joinedload(Department.business_unit)).filter(Department.id==department_id).first()
+    if not value: raise HTTPException(404,"Department not found")
     return department_row(value)
 
 
 @router.patch("/departments/{department_id}")
 def update_department(department_id:int,data:DepartmentUpdate,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user,manage=True);value=db.get(Department,department_id)
-    if not value:raise HTTPException(404,"Department not found")
+    require_access(user,manage=True); value=db.get(Department,department_id)
+    if not value: raise HTTPException(404,"Department not found")
     changes=data.model_dump(exclude_unset=True)
-    if "business_unit_id" in changes:validate_business_unit(db,changes["business_unit_id"],required=False)
-    if "code" in changes:changes["code"]=normalize_code(changes["code"])
-    if "name" in changes:changes["name"]=normalize_name(changes["name"])
-    reject_duplicate(db,Department,changes.get("code"),changes.get("name"),value.id);deactivated=changes.get("is_active") is False and value.is_active
-    for key,item in changes.items():setattr(value,key,item)
-    action="DEPARTMENT_DEACTIVATED" if deactivated else "DEPARTMENT_UPDATED";record_audit(db,user,action,"DEPARTMENT",f"{'Deactivated' if deactivated else 'Updated'} {value.code}",entity_id=value.id)
-    commit_or_conflict(db);return get_department(value.id,db,user)
+    if "business_unit_id" in changes: validate_business_unit(db,changes["business_unit_id"],required=False)
+    if "code" in changes: changes["code"]=normalize_code(changes["code"])
+    if "name" in changes: changes["name"]=normalize_name(changes["name"])
+    reject_duplicate(db,Department,changes.get("code"),changes.get("name"),value.id); deactivated=changes.get("is_active") is False and value.is_active
+    for key,item in changes.items(): setattr(value,key,item)
+    action="DEPARTMENT_DEACTIVATED" if deactivated else "DEPARTMENT_UPDATED"; record_audit(db,user,action,"DEPARTMENT",f"{'Deactivated' if deactivated else 'Updated'} {value.code}",entity_id=value.id); commit_or_conflict(db); return get_department(value.id,db,user)
 
 
 @router.delete("/departments/{department_id}")
 def deactivate_department(department_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user,manage=True);value=db.get(Department,department_id)
-    if not value:raise HTTPException(404,"Department not found")
-    if value.is_active:value.is_active=False;record_audit(db,user,"DEPARTMENT_DEACTIVATED","DEPARTMENT",f"Deactivated {value.code}",entity_id=value.id);db.commit()
+    require_access(user,manage=True); value=db.get(Department,department_id)
+    if not value: raise HTTPException(404,"Department not found")
+    if value.is_active: value.is_active=False; record_audit(db,user,"DEPARTMENT_DEACTIVATED","DEPARTMENT",f"Deactivated {value.code}",entity_id=value.id); db.commit()
     return get_department(value.id,db,user)
 
 
 @router.get("/locations")
-def list_locations(
-    business_unit_id:int|None=None,location_type:str|None=None,is_active:bool|None=None,search:Search=None,
-    db:Session=Depends(get_db),user=Depends(get_current_user),
-):
-    require_access(user);query=db.query(Location).options(joinedload(Location.business_unit))
-    if business_unit_id is not None:validate_business_unit(db,business_unit_id,required=True);query=query.filter(Location.business_unit_id==business_unit_id)
-    if location_type:query=query.filter(Location.location_type==normalize_location_type(location_type))
-    if is_active is not None:query=query.filter(Location.is_active.is_(is_active))
+def list_locations(business_unit_id:int|None=None,location_type:str|None=None,is_active:bool|None=None,search:Search=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    require_access(user); query=db.query(Location).options(joinedload(Location.business_unit))
+    if business_unit_id is not None: validate_business_unit(db,business_unit_id,required=True); query=query.filter(Location.business_unit_id==business_unit_id)
+    if location_type: query=query.filter(Location.location_type==normalize_location_type(location_type))
+    if is_active is not None: query=query.filter(Location.is_active.is_(is_active))
     if search:
-        term=f"%{search.strip()}%";query=query.filter(or_(Location.code.ilike(term),Location.name.ilike(term)))
+        term=f"%{search.strip()}%"; query=query.filter(or_(Location.code.ilike(term),Location.name.ilike(term)))
     return [location_row(value) for value in query.order_by(Location.code)]
 
 
 @router.post("/locations",status_code=201)
 def create_location(data:LocationCreate,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user,manage=True);validate_business_unit(db,data.business_unit_id,required=True)
-    values=data.model_dump();values["code"]=normalize_code(data.code);values["name"]=normalize_name(data.name);values["location_type"]=normalize_location_type(data.location_type)
-    reject_duplicate(db,Location,values["code"],values["name"]);value=Location(**values);db.add(value);db.flush();record_audit(db,user,"LOCATION_CREATED","LOCATION",f"Created {value.code}",entity_id=value.id)
-    commit_or_conflict(db);return get_location(value.id,db,user)
+    require_access(user,manage=True); validate_business_unit(db,data.business_unit_id,required=True); values=data.model_dump(); values["code"]=normalize_code(data.code); values["name"]=normalize_name(data.name); values["location_type"]=normalize_location_type(data.location_type); reject_duplicate(db,Location,values["code"],values["name"]); value=Location(**values); db.add(value); db.flush(); record_audit(db,user,"LOCATION_CREATED","LOCATION",f"Created {value.code}",entity_id=value.id); commit_or_conflict(db); return get_location(value.id,db,user)
 
 
 @router.get("/locations/{location_id}")
 def get_location(location_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user);value=db.query(Location).options(joinedload(Location.business_unit)).filter(Location.id==location_id).first()
-    if not value:raise HTTPException(404,"Location not found")
+    require_access(user); value=db.query(Location).options(joinedload(Location.business_unit)).filter(Location.id==location_id).first()
+    if not value: raise HTTPException(404,"Location not found")
     return location_row(value)
 
 
 @router.patch("/locations/{location_id}")
 def update_location(location_id:int,data:LocationUpdate,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user,manage=True);value=db.get(Location,location_id)
-    if not value:raise HTTPException(404,"Location not found")
+    require_access(user,manage=True); value=db.get(Location,location_id)
+    if not value: raise HTTPException(404,"Location not found")
     changes=data.model_dump(exclude_unset=True)
-    if "business_unit_id" in changes:validate_business_unit(db,changes["business_unit_id"],required=True)
-    if "code" in changes:changes["code"]=normalize_code(changes["code"])
-    if "name" in changes:changes["name"]=normalize_name(changes["name"])
-    if "location_type" in changes:changes["location_type"]=normalize_location_type(changes["location_type"])
-    reject_duplicate(db,Location,changes.get("code"),changes.get("name"),value.id);deactivated=changes.get("is_active") is False and value.is_active
-    for key,item in changes.items():setattr(value,key,item)
-    action="LOCATION_DEACTIVATED" if deactivated else "LOCATION_UPDATED";record_audit(db,user,action,"LOCATION",f"{'Deactivated' if deactivated else 'Updated'} {value.code}",entity_id=value.id)
-    commit_or_conflict(db);return get_location(value.id,db,user)
+    if "business_unit_id" in changes: validate_business_unit(db,changes["business_unit_id"],required=True)
+    if "code" in changes: changes["code"]=normalize_code(changes["code"])
+    if "name" in changes: changes["name"]=normalize_name(changes["name"])
+    if "location_type" in changes: changes["location_type"]=normalize_location_type(changes["location_type"])
+    reject_duplicate(db,Location,changes.get("code"),changes.get("name"),value.id); deactivated=changes.get("is_active") is False and value.is_active
+    for key,item in changes.items(): setattr(value,key,item)
+    action="LOCATION_DEACTIVATED" if deactivated else "LOCATION_UPDATED"; record_audit(db,user,action,"LOCATION",f"{'Deactivated' if deactivated else 'Updated'} {value.code}",entity_id=value.id); commit_or_conflict(db); return get_location(value.id,db,user)
 
 
 @router.delete("/locations/{location_id}")
 def deactivate_location(location_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user,manage=True);value=db.get(Location,location_id)
-    if not value:raise HTTPException(404,"Location not found")
-    if value.is_active:value.is_active=False;record_audit(db,user,"LOCATION_DEACTIVATED","LOCATION",f"Deactivated {value.code}",entity_id=value.id);db.commit()
+    require_access(user,manage=True); value=db.get(Location,location_id)
+    if not value: raise HTTPException(404,"Location not found")
+    if value.is_active: value.is_active=False; record_audit(db,user,"LOCATION_DEACTIVATED","LOCATION",f"Deactivated {value.code}",entity_id=value.id); db.commit()
     return get_location(value.id,db,user)
