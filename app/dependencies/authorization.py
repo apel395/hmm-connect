@@ -5,21 +5,10 @@ from fastapi import Depends, HTTPException, status
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 
-SUPERUSER_ROLES = frozenset({
-    "ADMIN",
-    "ADMINISTRATOR",
-    "SYSTEM ADMIN",
-    "SYSTEM ADMINISTRATOR",
-    "SYSTEM_ADMIN",
-    "SYSTEM_ADMINISTRATOR",
-    "SUPER ADMIN",
-    "SUPER_ADMIN",
-    "SUPERUSER",
-    "ERP ADMIN",
-    "ERP ADMINISTRATOR",
-    "ERP_ADMIN",
-    "ERP_ADMINISTRATOR",
-})
+# SYSTEM_ADMINISTRATOR is the single canonical unrestricted administrator role.
+# Any operational exception should be handled by assigning the appropriate
+# normal role/permission in the database rather than introducing admin aliases.
+SUPERUSER_ROLES = frozenset({"SYSTEM_ADMINISTRATOR"})
 
 # Canonical HMM-Connect roles can satisfy legacy endpoint role checks while we
 # progressively migrate individual APIs to permission-based authorization.
@@ -52,11 +41,8 @@ def effective_role_names(user: User) -> set[str]:
 
 def is_superuser(user: User) -> bool:
     roles = role_names(user)
-    normalized_superusers = {normalize_role_name(role) for role in SUPERUSER_ROLES}
-    return bool(roles.intersection(normalized_superusers)) or any(
-        role == "ADMIN" or role.endswith(" ADMIN") or role.endswith(" ADMINISTRATOR")
-        for role in roles
-    )
+    canonical_admin = normalize_role_name("SYSTEM_ADMINISTRATOR")
+    return canonical_admin in roles
 
 
 def has_any_role(user: User, *allowed_roles: str) -> bool:
