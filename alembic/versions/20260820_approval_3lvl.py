@@ -68,6 +68,15 @@ def _replace_steps(connection, role_map, workflow_id: int, steps):
         )
 
 
+def _definitions(local_steps, manager_steps):
+    return (
+        ("PR_APPROVAL", "Purchase Requisition Approval", "PURCHASE_REQUISITION", local_steps),
+        ("ML_APPROVAL", "Market List Approval", "MARKET_LIST", local_steps),
+        ("PO_APPROVAL", "Purchase Order Approval", "PURCHASE_ORDER", manager_steps),
+        ("RR_APPROVAL", "Receiving Report Approval", "GOODS_RECEIPT", local_steps),
+    )
+
+
 def upgrade():
     connection = op.get_bind()
     role_map = _roles(connection)
@@ -81,19 +90,28 @@ def upgrade():
         (2, "Finance Approval", "FINANCE"),
         (3, "General Manager Approval", "GENERAL MANAGER"),
     )
-    definitions = (
-        ("PR_APPROVAL", "Purchase Requisition Approval", "PURCHASE_REQUISITION", local_steps),
-        ("ML_APPROVAL", "Market List Approval", "MARKET_LIST", local_steps),
-        ("PO_APPROVAL", "Purchase Order Approval", "PURCHASE_ORDER", manager_steps),
-        ("RR_APPROVAL", "Receiving Report Approval", "GOODS_RECEIPT", local_steps),
-    )
-    for code, name, entity_type, steps in definitions:
+    for code, name, entity_type, steps in _definitions(local_steps, manager_steps):
         workflow_id = _workflow(connection, code, name, entity_type)
         _replace_steps(connection, role_map, workflow_id, steps)
 
 
 def downgrade():
-    # Approval configuration is business data. Downgrade intentionally leaves
-    # the latest configured workflows intact rather than restoring an obsolete
-    # six-level chain and potentially changing live approval behavior.
-    pass
+    connection = op.get_bind()
+    role_map = _roles(connection)
+    six_level = (
+        (1, "Store Approval", "STORE"),
+        (2, "Chef Approval", "CHEF"),
+        (3, "PM / Camp Boss Approval", "PM/CAMP BOSS"),
+        (4, "Head Office Purchasing Approval", "HO PURCHASING"),
+        (5, "Finance Approval", "FINANCE"),
+        (6, "General Manager Approval", "GENERAL MANAGER"),
+    )
+    definitions = (
+        ("PR_APPROVAL", "Purchase Requisition Approval", "PURCHASE_REQUISITION"),
+        ("ML_APPROVAL", "Market List Approval", "MARKET_LIST"),
+        ("PO_APPROVAL", "Purchase Order Approval", "PURCHASE_ORDER"),
+        ("RR_APPROVAL", "Receiving Report Approval", "GOODS_RECEIPT"),
+    )
+    for code, name, entity_type in definitions:
+        workflow_id = _workflow(connection, code, name, entity_type)
+        _replace_steps(connection, role_map, workflow_id, six_level)
