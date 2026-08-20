@@ -39,6 +39,7 @@ const groups: Group[] = [
     { title: "Accounts Payable", url: "/accounts-payable" },
     { title: "Cash & Bank", url: "/cash-bank" },
     { title: "Journal", url: "/journal" },
+    { title: "Reconciliation", url: "/financial-reconciliation" },
     { title: "Fixed Assets", url: "/fixed-assets" },
   ] },
   { title: "Reports", icon: FileBarChart, children: [

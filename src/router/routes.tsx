@@ -43,6 +43,7 @@ import TrialBalancePage from "@/modules/finance/trial-balance/TrialBalancePage";
 import BalanceSheetPage from "@/modules/finance/financial-statements/BalanceSheetPage";
 import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPage";
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
+import ReconciliationPage from "@/modules/finance/reconciliation/ReconciliationPage";
 import BankReconciliationListPage from "@/modules/finance/bank-reconciliation/BankReconciliationListPage";
 import BankReconciliationDetailPage from "@/modules/finance/bank-reconciliation/BankReconciliationDetailPage";
 import FixedAssetFormPage from "@/modules/finance/fixed-assets/FixedAssetFormPage";
@@ -173,6 +174,7 @@ const router = createBrowserRouter([
       { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
 
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
+      { path: "financial-reconciliation", element: <ReconciliationPage /> },
       { path: "balance-sheet", element: <BalanceSheetPage /> },
       { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "inventory", element: <InventoryPage /> },
