@@ -44,7 +44,15 @@ class FinancialStatementService:
 
     @staticmethod
     def _net(row: dict) -> Decimal:
-        return row["closing_debit"] - row["closing_credit"]
+        """Return legacy debit-minus-credit sign from canonical closing_balance.
+
+        Trial Balance now exposes one normal-balance-adjusted closing value
+        instead of closing_debit/closing_credit. Balance Sheet still needs the
+        legacy signed value internally: debit-normal is positive and
+        credit-normal is negative.
+        """
+        balance = Decimal(row.get("closing_balance") or ZERO)
+        return balance if row.get("normal_balance") != "CREDIT" else -balance
 
     @staticmethod
     def _period_amount(row: dict) -> Decimal:
