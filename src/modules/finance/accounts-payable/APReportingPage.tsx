@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "react-router-dom";
 
@@ -42,6 +42,8 @@ export default function APReportingPage() {
   const error = isDetail ? detail.isError : summary.isError;
   const data = isDetail ? detail.data : summary.data;
 
+  useEffect(() => setPage(1), [isDetail]);
+
   return (
     <div className="space-y-5">
       <APWorkspaceHeader />
@@ -63,7 +65,19 @@ export default function APReportingPage() {
         </>
       )}
 
-      {error && <Card className="p-5 text-sm text-red-600">Accounts Payable reporting could not be loaded.</Card>}
+      {error && (
+        <Card className="p-5 text-center">
+          <p className="text-sm text-red-600">Accounts Payable reporting could not be loaded.</p>
+          <Button
+            className="mt-3"
+            variant="outline"
+            size="sm"
+            onClick={() => (isDetail ? detail.refetch() : summary.refetch())}
+          >
+            Try Again
+          </Button>
+        </Card>
+      )}
       {loading && <Card className="p-8 text-center text-sm text-slate-500">Loading Accounts Payable report…</Card>}
 
       {!loading && !error && !isDetail && summary.data && (
