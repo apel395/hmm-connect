@@ -9,7 +9,9 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.stock_opnames import listing
 from app.models import Base
+from app.models.business_unit import BusinessUnit
 from app.models.inventory import Inventory
+from app.models.location import Location
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
 from app.models.stock_opname import StockOpname
@@ -29,8 +31,30 @@ def stock_db(monkeypatch):
     sequence = iter(range(1, 500))
     monkeypatch.setattr("app.services.stock_opname_service.next_document_number", lambda *args: f"SO-{next(sequence):04d}")
 
+    business_unit = BusinessUnit(code="BU-1", name="Business Unit 1", is_active=True)
+    db.add(business_unit)
+    db.flush()
+    location = Location(
+        code="LOC-1",
+        name="Location 1",
+        location_type="HOTEL",
+        is_active=True,
+        business_unit_id=business_unit.id,
+    )
+    db.add(location)
+    db.flush()
+
     warehouse = Warehouse(code="WH-1", name="Warehouse 1", is_active=True)
-    user = User(username="warehouse", email="warehouse@example.test", full_name="Warehouse", password_hash="x", is_active=True)
+    user = User(
+        username="warehouse",
+        email="warehouse@example.test",
+        full_name="Warehouse",
+        password_hash="x",
+        is_active=True,
+        location_id=location.id,
+        default_location_id=location.id,
+        default_business_unit_id=business_unit.id,
+    )
     products = [
         Product(code="A", name="Product A", group_code="1", group_name="Food", subgroup_code="1-1", subgroup_name="GROCERIES", uom="PCS", usage_uom="PCS", is_active=True),
         Product(code="B", name="Product B", group_code="1", group_name="Food", subgroup_code="1-1", subgroup_name="GROCERIES", uom="KG", usage_uom="KG", is_active=True),
@@ -104,6 +128,8 @@ def test_post_variance_preserves_cost_reference_and_dimensions(stock_db, physica
     assert inventory[0].average_cost == Decimal("10.0000")
     assert (movement.movement_type, movement.quantity, movement.unit_cost) == (movement_type, variance, Decimal("10.0000"))
     assert (movement.reference_type, movement.reference_id, movement.warehouse_id) == ("STOCK_OPNAME", opname.id, warehouse.id)
+    assert movement.business_unit_id == opname.business_unit_id
+    assert movement.location_id == opname.location_id
 
 
 def test_zero_variance_posts_without_movement_and_duplicate_post_fails(stock_db):
