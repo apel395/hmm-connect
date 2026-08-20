@@ -3,13 +3,13 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.account_payable import AccountPayable
 from app.models.account_receivable import AccountReceivable
 from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.chart_of_account import ChartOfAccount
 from app.models.inventory import Inventory
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
+from app.models.supplier_invoice import SupplierInvoice
 
 ZERO = Decimal("0.00")
 
@@ -83,7 +83,13 @@ class FinancialReconciliationService:
         return sorted({int(value) for (value,) in rows if value is not None})
 
     @staticmethod
-    def _row(control: str, source: Decimal, gl: Decimal, accounts: list[dict], configured: bool = True) -> dict:
+    def _row(
+        control: str,
+        source: Decimal,
+        gl: Decimal,
+        accounts: list[dict],
+        configured: bool = True,
+    ) -> dict:
         difference = source - gl
         if not configured:
             status = "NOT_CONFIGURED"
@@ -99,8 +105,12 @@ class FinancialReconciliationService:
         }
 
     def accounts_payable(self) -> dict:
+        # SupplierInvoice is authoritative. account_payables is a compatibility
+        # mirror and has its own exception checker in ap_reconciliation.
         source = Decimal(
-            self.db.query(func.coalesce(func.sum(AccountPayable.outstanding_amount), 0)).scalar()
+            self.db.query(func.coalesce(func.sum(SupplierInvoice.balance_amount), 0))
+            .filter(SupplierInvoice.status.in_(["VERIFIED", "POSTED"]))
+            .scalar()
             or 0
         )
         account_ids = self._rule_account_ids(
@@ -129,7 +139,8 @@ class FinancialReconciliationService:
             {
                 int(rule.debit_account_id)
                 for rule in rules
-                if rule.event_type.upper() in {"CUSTOMER_INVOICE", "ACCOUNT_RECEIVABLE", "AR_INVOICE"}
+                if rule.event_type.upper()
+                in {"CUSTOMER_INVOICE", "ACCOUNT_RECEIVABLE", "AR_INVOICE"}
             }
         )
         return self._row(
