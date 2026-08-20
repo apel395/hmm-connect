@@ -61,15 +61,14 @@ def _normalized_role_name(value: str) -> str:
 
 
 def _administrator_role(db: Session) -> Role | None:
-    roles = db.query(Role).order_by(Role.id).all()
-    preferred = {
-        "SYSTEM_ADMINISTRATOR", "ERP_ADMINISTRATOR", "SUPER_ADMIN",
-        "ADMINISTRATOR", "SYSTEM_ADMIN", "ERP_ADMIN", "ADMIN",
-    }
-    for role in roles:
-        if _normalized_role_name(role.name) in preferred:
-            return role
-    return next((role for role in roles if "ADMIN" in _normalized_role_name(role.name)), None)
+    return next(
+        (
+            role
+            for role in db.query(Role).order_by(Role.id).all()
+            if _normalized_role_name(role.name) == "SYSTEM_ADMINISTRATOR"
+        ),
+        None,
+    )
 
 
 def _role_by_name(db: Session, name: str) -> Role | None:
@@ -144,8 +143,8 @@ def _ensure_default_workflow(db: Session, *, workflow_code: str, user=None) -> A
             if user is not None and is_superuser(user):
                 administrator_role = _administrator_role(db)
                 if not administrator_role:
-                    raise HTTPException(status_code=409, detail="Approval fallback is unavailable because no administrator role exists")
-                configured_roles = [(1, "Administrator Approval", administrator_role)]
+                    raise HTTPException(status_code=409, detail="Approval fallback is unavailable because SYSTEM_ADMINISTRATOR role does not exist")
+                configured_roles = [(1, "System Administrator Approval", administrator_role)]
             else:
                 raise HTTPException(status_code=409, detail="Approval workflow is incomplete. Configure these roles before submitting: " + ", ".join(missing_roles))
         workflow.steps.clear()
