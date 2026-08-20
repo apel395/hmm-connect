@@ -24,8 +24,13 @@ export type StockOpname = {
   total_items: number;
   total_variance_quantity: number;
   items: StockOpnameItem[];
-  can_approve?: boolean;
-  can_reject?: boolean;
+  allowed_actions?: {
+    can_edit?: boolean;
+    can_submit?: boolean;
+    can_approve?: boolean;
+    can_reject?: boolean;
+    can_post?: boolean;
+  };
 };
 
 export type StockOpnameList = {
