@@ -171,6 +171,16 @@ def downgrade():
         sa.text("SELECT id FROM approval_workflows WHERE code='SO_APPROVAL'")
     ).scalar()
     if workflow_id is not None:
+        request_count = bind.execute(
+            sa.text(
+                "SELECT count(*) FROM approval_requests WHERE workflow_id=:id"
+            ),
+            {"id": workflow_id},
+        ).scalar_one()
+        if request_count:
+            raise RuntimeError(
+                "Cannot downgrade Stock Opname while approval history exists"
+            )
         bind.execute(
             sa.text("DELETE FROM approval_workflow_steps WHERE workflow_id=:id"),
             {"id": workflow_id},
