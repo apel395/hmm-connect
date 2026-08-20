@@ -5,6 +5,7 @@ import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import { listLocations } from "@/modules/admin/organization/api";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
 import { stockOpnameApi } from "./api";
 
@@ -20,8 +21,13 @@ export default function StockOpnamePage() {
   const [status, setStatus] = useState("ALL");
   const [show, setShow] = useState(false);
   const [warehouseId, setWarehouseId] = useState<number>();
+  const [locationId, setLocationId] = useState<number>();
   const [notes, setNotes] = useState("");
   const warehouses = useWarehouses();
+  const locations = useQuery({
+    queryKey: ["organization-locations", "active"],
+    queryFn: () => listLocations({ is_active: true }),
+  });
   const query = useQuery({
     queryKey: ["stock-opnames", page, search, status],
     queryFn: async () =>
@@ -37,14 +43,19 @@ export default function StockOpnamePage() {
   const create = useMutation({
     mutationFn: () => {
       if (!warehouseId) throw new Error("Warehouse is required");
+      if (!locationId) throw new Error("Location is required");
       return stockOpnameApi.create({
         warehouse_id: warehouseId,
+        location_id: locationId,
         notes: notes || undefined,
       });
     },
     onSuccess: async (r) => {
       await qc.invalidateQueries({ queryKey: ["stock-opnames"] });
       setShow(false);
+      setWarehouseId(undefined);
+      setLocationId(undefined);
+      setNotes("");
       navigate(`/stock-opnames/${r.data.id}`);
     },
   });
@@ -150,24 +161,43 @@ export default function StockOpnamePage() {
             <h2 className="text-lg font-semibold">Create Stock Opname</h2>
             <p className="mb-5 text-xs text-slate-500">
               Inventory quantities and average costs are snapshotted when this
-              document is created.
+              document is created. Business Unit is resolved automatically from
+              the selected Location.
             </p>
-            <select
-              className={input}
-              value={warehouseId ?? ""}
-              onChange={(e) =>
-                setWarehouseId(Number(e.target.value) || undefined)
-              }
-            >
-              <option value="">Warehouse</option>
-              {(warehouses.data ?? [])
-                .filter((w) => w.is_active)
-                .map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.code} - {w.name}
-                  </option>
-                ))}
-            </select>
+            <div className="space-y-3">
+              <select
+                className={input}
+                value={warehouseId ?? ""}
+                onChange={(e) =>
+                  setWarehouseId(Number(e.target.value) || undefined)
+                }
+              >
+                <option value="">Warehouse</option>
+                {(warehouses.data ?? [])
+                  .filter((w) => w.is_active)
+                  .map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.code} - {w.name}
+                    </option>
+                  ))}
+              </select>
+              <select
+                className={input}
+                value={locationId ?? ""}
+                onChange={(e) =>
+                  setLocationId(Number(e.target.value) || undefined)
+                }
+              >
+                <option value="">Location</option>
+                {(locations.data ?? [])
+                  .filter((location) => location.is_active)
+                  .map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.code} - {location.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
             <textarea
               className="mt-3 min-h-20 w-full rounded-md border p-3 text-sm"
               placeholder="Notes"
@@ -182,11 +212,19 @@ export default function StockOpnamePage() {
               </p>
             )}
             <div className="mt-5 flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setShow(false)}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShow(false);
+                  setWarehouseId(undefined);
+                  setLocationId(undefined);
+                  setNotes("");
+                }}
+              >
                 Cancel
               </Button>
               <Button
-                disabled={create.isPending}
+                disabled={create.isPending || !warehouseId || !locationId}
                 onClick={() => create.mutate()}
               >
                 Create
