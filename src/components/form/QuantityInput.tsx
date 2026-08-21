@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FORM_UI } from "@/config/formUi";
 
 interface Props {
   value: number;
@@ -33,7 +34,9 @@ export default function QuantityInput({
       disabled={disabled}
       value={text}
       placeholder="0.00"
-      className={`h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 ${className}`}
+      data-form-control
+      data-form-density="compact"
+      className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} text-right tabular-nums ${className}`}
       onFocus={() => {
         setFocused(true);
         if (Number(text) === 0) setText("");
