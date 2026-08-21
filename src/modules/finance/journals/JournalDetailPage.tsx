@@ -1,7 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -25,6 +25,17 @@ type EditLine = {
 };
 
 const blankLine = (): EditLine => ({ account_id: 0, debit: 0, credit: 0, description: "" });
+
+const sourceDocumentPath = (referenceType: string, referenceId: number) => {
+  if (!referenceId) return null;
+  const paths: Record<string, string> = {
+    SUPPLIER_INVOICE: `/supplier-invoices/${referenceId}`,
+    SUPPLIER_PAYMENT: `/payments/${referenceId}`,
+    SUPPLIER_ADJUSTMENT: `/supplier-adjustments?document=${referenceId}`,
+    BANK_TRANSFER: `/bank-transfers/${referenceId}`,
+  };
+  return paths[(referenceType || "").toUpperCase()] || null;
+};
 
 export default function JournalDetailPage() {
   const { id } = useParams();
@@ -93,6 +104,7 @@ export default function JournalDetailPage() {
   if (!q.data) return <p>Journal not found.</p>;
   const x = q.data;
   const a = x.allowed_actions;
+  const sourcePath = sourceDocumentPath(x.reference_type, x.reference_id);
 
   const openEditor = () => {
     setPostingDate(x.journal_date);
@@ -134,7 +146,7 @@ export default function JournalDetailPage() {
         {a.can_void && <Button variant="danger" loading={act.isPending} onClick={() => act.mutate("void")}>Void</Button>}
       </div>
     </div>
-    <Card><div className="grid gap-4 md:grid-cols-4"><div><small>Date</small><div>{x.journal_date}</div></div><div><small>Source</small><div>{(x.reference_type || "MANUAL").replaceAll("_", " ")}</div></div><div><small>Reference</small><div>{x.reference_number || "—"}</div></div><div><small>Created By</small><div>{x.created_by_name || "—"}</div></div><div className="md:col-span-4"><small>Description</small><div>{x.description || "—"}</div></div></div></Card>
+    <Card><div className="grid gap-4 md:grid-cols-4"><div><small>Date</small><div>{x.journal_date}</div></div><div><small>Source</small><div>{(x.reference_type || "MANUAL").replaceAll("_", " ")}</div></div><div><small>Reference</small><div>{sourcePath?<Link className="font-medium text-emerald-700 hover:underline" to={sourcePath} state={{returnTo:`/journal-entries/${x.id}`}}>{x.reference_number||"View Source Document"}</Link>:x.reference_number||"—"}</div></div><div><small>Created By</small><div>{x.created_by_name || "—"}</div></div><div className="md:col-span-4"><small>Description</small><div>{x.description || "—"}</div></div></div></Card>
     <Card><Table variant="grid" className="min-w-[820px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Account</TH><TH>Description</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH>Organization</TH></TR></THead><TBody>{x.lines.map((l: any) => <TR key={l.id} className="whitespace-nowrap"><TD className="max-w-[280px]"><TableCellStack primary={l.account_name} secondary={l.account_code}/></TD><TD className="max-w-[280px]"><span className="block truncate" title={l.description || undefined}>{l.description || "—"}</span></TD><TD numeric className="w-40">{Number(l.debit).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}</TD><TD numeric className="w-40">{Number(l.credit).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}</TD><TD>{l.department_name || l.location_name ? <TableCellStack primary={l.department_name || l.location_name} secondary={l.department_name ? l.location_name : undefined}/> : "—"}</TD></TR>)}</TBody></Table></Card>
     <Card><div className="grid grid-cols-3 gap-4 text-right"><div><small>Total Debit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_debit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Total Credit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_credit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Difference</small><div className="text-lg font-bold tabular-nums">{Number(x.difference).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div></div></Card>
     {x.status === "POSTED" && !a.can_unpost && <p className="text-xs text-slate-500">This journal cannot be safely unposted from Journal. Reverse it from the originating module or reopen the required fiscal period first.</p>}
