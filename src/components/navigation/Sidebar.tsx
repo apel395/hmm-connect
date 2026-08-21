@@ -37,6 +37,7 @@ const groups: Group[] = [
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Finance Dashboard", url: "/finance-dashboard" },
     { title: "Accounts Payable", url: "/accounts-payable" },
+    { title: "Accounts Receivable", url: "/accounts-receivable" },
     { title: "Cash & Bank", url: "/cash-bank" },
     { title: "Journal", url: "/journal" },
     { title: "Reconciliation", url: "/financial-reconciliation" },
