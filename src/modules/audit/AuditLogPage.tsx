@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Loading from "@/components/ui/Loading";
+import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 
 import { getAuditReport } from "./reportApi";
 
@@ -122,46 +123,19 @@ export default function AuditLogPage() {
         {isLoading ? (
           <div className="py-12"><Loading /></div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-3 text-left">Time</th>
-                  <th className="px-4 py-3 text-left">User / Roles</th>
-                  <th className="px-4 py-3 text-left">Document</th>
-                  <th className="px-4 py-3 text-left">Action</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Description</th>
-                </tr>
-              </thead>
-              <tbody className={isFetching ? "opacity-60" : undefined}>
-                {events.map((event) => (
-                  <tr key={event.id} className="border-t align-top">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {new Date(event.occurred_at).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div>{event.actor_name ?? "System"}</div>
-                      <div className="text-xs text-slate-500">
-                        {(event.role_names ?? []).join(", ") || "-"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-medium">
-                      {event.document_type ?? event.entity_type}
-                      {" "}
-                      {event.document_number ?? `#${event.entity_id}`}
-                    </td>
-                    <td className="px-4 py-3">{event.action}</td>
-                    <td className="px-4 py-3">{event.document_status ?? "-"}</td>
-                    <td className="px-4 py-3">{event.summary}</td>
-                  </tr>
-                ))}
-                {events.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center">No audit events found.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <Table className="min-w-[900px]" containerClassName="rounded-none border-0 shadow-none">
+            <THead><TR className="whitespace-nowrap"><TH>Time</TH><TH>User</TH><TH>Document</TH><TH>Event</TH><TH>Description</TH></TR></THead>
+            <TBody className={isFetching ? "opacity-60" : undefined}>
+              {events.map((event) => <TR key={event.id} className="align-top">
+                <TD className="whitespace-nowrap">{new Date(event.occurred_at).toLocaleString()}</TD>
+                <TD><TableCellStack primary={event.actor_name ?? "System"} secondary={(event.role_names ?? []).join(", ") || undefined}/></TD>
+                <TD className="font-medium">{event.document_type ?? event.entity_type} {event.document_number ?? `#${event.entity_id}`}</TD>
+                <TD><TableCellStack primary={event.action} secondary={event.document_status ?? undefined}/></TD>
+                <TD className="max-w-[360px]"><span className="block truncate" title={event.summary}>{event.summary}</span></TD>
+              </TR>)}
+              {events.length === 0 && <TR><TD colSpan={5} className="py-12 text-center">No audit events found.</TD></TR>}
+            </TBody>
+          </Table>
         )}
         {!isLoading && (
           <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
