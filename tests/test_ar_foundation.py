@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -14,6 +15,9 @@ from app.models.chart_of_account import ChartOfAccount
 from app.models.customer import Customer
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
+from app.models.user import User
+from app.api.v1 import customer_payments as customer_payment_api
+from app.schemas.customer_payment import CustomerPaymentCreate
 from app.services.financial_reconciliation_service import FinancialReconciliationService
 from app.services.journal_service import JournalService
 from app.services.posting_service import PostingService
@@ -151,3 +155,91 @@ def test_ar_reconciliation_uses_rule_credit_account(db):
     assert row["difference"] == Decimal("0.00")
     assert row["status"] == "RECONCILED"
     assert row["accounts"][0]["account_id"] == receivable_account.id
+
+
+def test_customer_payment_amount_must_be_positive():
+    with pytest.raises(ValidationError):
+        CustomerPaymentCreate(
+            account_receivable_id=1,
+            payment_date=date(2026, 8, 21),
+            amount=Decimal("0"),
+            payment_method="BANK_TRANSFER",
+        )
+
+
+def test_customer_payment_updates_balance_atomically(db, monkeypatch):
+    customer = Customer(customer_code="CUS-PAY", customer_name="Customer", is_active=True)
+    user = User(
+        username="finance-ar",
+        email="finance-ar@example.test",
+        full_name="Finance AR",
+        password_hash="x",
+        is_active=True,
+    )
+    db.add_all([customer, user])
+    db.flush()
+    receivable = AccountReceivable(
+        invoice_number="AR-PAY",
+        customer_id=customer.id,
+        invoice_date=date(2026, 8, 21),
+        due_date=date(2026, 9, 21),
+        amount=Decimal("100000.00"),
+        received_amount=Decimal("0.00"),
+        outstanding_amount=Decimal("100000.00"),
+        status="UNPAID",
+    )
+    db.add(receivable)
+    db.commit()
+
+    monkeypatch.setattr(customer_payment_api, "next_document_number", lambda *_args, **_kwargs: "CP-202608-0001")
+    monkeypatch.setattr(PostingService, "post_customer_payment", lambda **_kwargs: None)
+
+    payment = customer_payment_api.create_customer_payment(
+        CustomerPaymentCreate(
+            account_receivable_id=receivable.id,
+            payment_date=date(2026, 8, 21),
+            amount=Decimal("40000.00"),
+            payment_method="BANK_TRANSFER",
+        ),
+        db,
+        user,
+    )
+
+    assert payment.payment_number == "CP-202608-0001"
+    assert receivable.received_amount == Decimal("40000.00")
+    assert receivable.outstanding_amount == Decimal("60000.00")
+    assert receivable.status == "PARTIAL"
+
+
+def test_customer_payment_rejects_overpayment_without_balance_mutation(db):
+    customer = Customer(customer_code="CUS-LIMIT", customer_name="Customer", is_active=True)
+    db.add(customer)
+    db.flush()
+    receivable = AccountReceivable(
+        invoice_number="AR-LIMIT",
+        customer_id=customer.id,
+        invoice_date=date(2026, 8, 21),
+        due_date=date(2026, 9, 21),
+        amount=Decimal("100.00"),
+        received_amount=Decimal("0.00"),
+        outstanding_amount=Decimal("100.00"),
+        status="UNPAID",
+    )
+    db.add(receivable)
+    db.commit()
+
+    with pytest.raises(HTTPException) as error:
+        customer_payment_api.create_customer_payment(
+            CustomerPaymentCreate(
+                account_receivable_id=receivable.id,
+                payment_date=date(2026, 8, 21),
+                amount=Decimal("101.00"),
+                payment_method="BANK_TRANSFER",
+            ),
+            db,
+            SimpleNamespace(id=1),
+        )
+
+    assert error.value.status_code == 400
+    assert receivable.received_amount == Decimal("0.00")
+    assert receivable.outstanding_amount == Decimal("100.00")
