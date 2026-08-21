@@ -171,18 +171,18 @@ export default function DirectReceiveDialog({
   };
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>Create Direct Receiving Draft</DialogTitle>
         </DialogHeader>
-        <DialogBody className="space-y-5">
-          <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">
+        <DialogBody className="space-y-4">
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
             Use this only when goods/services are received without a Purchase
             Order. Saving creates a <strong>Draft RR</strong>; it must follow
             Store → Chef → PM/Camp Boss → HO Purchasing → Finance → General
             Manager approval before it can be posted to inventory.
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
             <SearchableSelect
               label="Supplier"
               value={supplierId}
@@ -215,28 +215,28 @@ export default function DirectReceiveDialog({
               options={(locations.data ?? []).map(option)}
               onChange={setLocationId}
             />
-            <label className="text-sm font-medium">
+            <label className="text-xs font-medium text-slate-700">
               Receipt Date
               <input
                 type="datetime-local"
                 min={nowLocal()}
-                className="mt-1 h-10 w-full rounded border px-3"
+                className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
                 value={receivedAt}
                 onChange={(e) => setReceivedAt(e.target.value)}
               />
             </label>
-            <label className="text-sm font-medium">
+            <label className="text-xs font-medium text-slate-700">
               Delivery Note / Reference
               <input
-                className="mt-1 h-10 w-full rounded border px-3"
+                className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
               />
             </label>
-            <label className="text-sm font-medium">
+            <label className="text-xs font-medium text-slate-700">
               Destination
               <select
-                className="mt-1 h-10 w-full rounded border px-3"
+                className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
                 value={destinationType}
                 onChange={(e) => setDestinationType(e.target.value as any)}
               >
@@ -255,16 +255,16 @@ export default function DirectReceiveDialog({
             )}
           </div>
           {hasTaxReview && (
-            <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800">
               Tax review required: Finance must classify all selected items in
               Item Master before this RR can proceed.
             </div>
           )}
-          <div className="overflow-x-auto rounded border">
-            <table className="min-w-[1050px] w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="min-w-[940px] w-full text-xs">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="p-3 text-left">Product</th>
+                  <th className="p-2 text-left">Product</th>
                   <th>UOM</th>
                   <th>Qty</th>
                   <th>Unit Cost</th>
@@ -358,7 +358,7 @@ export default function DirectReceiveDialog({
             >
               Add Item
             </Button>
-            <div className="min-w-72 space-y-1 text-right text-sm">
+            <div className="min-w-64 space-y-1 text-right text-xs tabular-nums">
               <div className="flex justify-between gap-8">
                 <span>Subtotal</span>
                 <strong>{money(subtotal)}</strong>
@@ -367,16 +367,16 @@ export default function DirectReceiveDialog({
                 <span>PPN</span>
                 <strong>{money(tax)}</strong>
               </div>
-              <div className="flex justify-between gap-8 border-t pt-2 text-base">
+              <div className="flex justify-between gap-8 border-t pt-2 text-sm">
                 <span>Grand Total</span>
                 <strong>{money(subtotal + tax)}</strong>
               </div>
             </div>
           </div>
-          <label className="block text-sm font-medium">
+          <label className="block text-xs font-medium text-slate-700">
             Notes
             <textarea
-              className="mt-1 min-h-20 w-full rounded border p-2"
+              className="mt-1 min-h-20 w-full rounded-md border p-2 text-[13px]"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
