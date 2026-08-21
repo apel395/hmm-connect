@@ -152,7 +152,7 @@ export default function ARReportingPage() {
                     <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                   </TR>
                 ))}
-                {!detail.data.items.length && <TR><TD colSpan={6} className="py-10 text-center text-slate-500">No receivables found.</TD></TR>}
+                {!summary.data.items.length && <TR><TD colSpan={6} className="py-10 text-center text-slate-500">No receivables found.</TD></TR>}
               </TBody>
             </Table>
           </div>
@@ -166,7 +166,7 @@ export default function ARReportingPage() {
             <Table variant="standard">
               <THead><TR><TH>Date</TH><TH>Invoice</TH><TH>Customer</TH><TH>Due Date</TH><TH className="text-right">Gross</TH><TH className="text-right">Receipts</TH><TH className="text-right">Outstanding</TH><TH>Status</TH></TR></THead>
               <TBody>
-                {aging.data.items.map((row) => (
+                {detail.data.items.map((row) => (
                   <TR key={row.invoice_id}>
                     <TD>{row.invoice_date}</TD>
                     <TD className="font-medium">{row.invoice_number}</TD>
@@ -178,7 +178,7 @@ export default function ARReportingPage() {
                     <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                   </TR>
                 ))}
-                {!summary.data.items.length && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No receivable invoices found.</TD></TR>}
+                {!detail.data.items.length && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No receivable invoices found.</TD></TR>}
               </TBody>
             </Table>
           </div>
@@ -192,7 +192,7 @@ export default function ARReportingPage() {
             <Table variant="standard">
               <THead><TR><TH>Customer</TH>{(Object.keys(bucketLabels) as AgingBucket[]).map((bucket) => <TH key={bucket} className="text-right">{bucketLabels[bucket]}</TH>)}<TH className="text-right">Outstanding</TH></TR></THead>
               <TBody>
-                {detail.data.items.map((row) => (
+                {aging.data.items.map((row) => (
                   <TR key={row.customer_id}>
                     <TD><div className="font-medium">{row.customer_name || `Customer #${row.customer_id}`}</div><div className="text-[10px] text-slate-500">{row.customer_code || "—"}</div></TD>
                     {(Object.keys(bucketLabels) as AgingBucket[]).map((bucket) => <TD key={bucket} className="text-right">{money(row[bucket])}</TD>)}
