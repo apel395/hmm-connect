@@ -3,6 +3,7 @@ from sqlalchemy.orm import Query
 
 from app.dependencies.authorization import is_superuser
 from app.models.user import User
+from app.models.warehouse import Warehouse
 
 
 def assigned_location_id(user: User) -> int | None:
@@ -45,3 +46,16 @@ def resolve_location_id(user: User, requested_location_id: int | None) -> int | 
     if requested_location_id not in (None, assigned):
         enforce_location_access(user, requested_location_id)
     return assigned
+
+
+def apply_warehouse_scope(query: Query, user: User) -> Query:
+    """Restrict joined warehouse queries to the assigned work location."""
+    location_id = assigned_location_id(user)
+    if location_id is None:
+        return query
+    return query.filter(Warehouse.location_id == location_id)
+
+
+def enforce_warehouse_access(user: User, warehouse: Warehouse) -> None:
+    """Reject warehouse access outside the assigned work location."""
+    enforce_location_access(user, warehouse.location_id)
