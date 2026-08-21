@@ -25,6 +25,7 @@ from app.services.document_context import print_metadata
 from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
 from app.services.fiscal_period_service import FiscalPeriodService
+from app.services.location_access import apply_location_scope, enforce_location_access, resolve_location_id
 
 router = APIRouter(prefix="/journal-entries", tags=["Journal Entries"])
 ZERO = Decimal("0")
@@ -36,10 +37,11 @@ def access(user):
         raise HTTPException(403, "Finance access required")
 
 
-def get(db, id):
+def get(db, id, user):
     x = db.get(JournalEntry, id)
     if not x:
         raise HTTPException(404, "Journal entry not found")
+    enforce_location_access(user, x.location_id)
     return x
 
 
@@ -173,7 +175,8 @@ def listing(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    q = db.query(JournalEntry)
+    access(user)
+    q = apply_location_scope(db.query(JournalEntry), JournalEntry, user)
     if search:
         q = q.filter(or_(
             JournalEntry.journal_number.ilike(f"%{search}%"),
@@ -209,6 +212,7 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(get_
     debit, credit = validate(db, data.lines)
     if debit != credit:
         raise HTTPException(422, "Journal debit and credit must be balanced")
+    location_id = resolve_location_id(user, data.location_id)
     x = JournalEntry(
         journal_number=next_document_number(db, "MAN", digits=6),
         posting_date=data.posting_date,
@@ -220,11 +224,13 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(get_
         status="DRAFT",
         created_by_id=user.id,
         business_unit_id=data.business_unit_id,
-        location_id=data.location_id,
+        location_id=location_id,
         department_id=data.department_id,
     )
     for i, line in enumerate(data.lines, 1):
-        x.lines.append(JournalLine(line_number=i, **line.model_dump()))
+        line_data = line.model_dump()
+        line_data["location_id"] = location_id
+        x.lines.append(JournalLine(line_number=i, **line_data))
     db.add(x)
     db.flush()
     record_audit(db, user, "JOURNAL_CREATED", "JOURNAL_ENTRY", f"Created {x.journal_number}", entity_id=x.id, reference_document=x.document_number)
@@ -331,13 +337,13 @@ def recreate_current_period(
 
 @router.get("/{journal_id}")
 def detail(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return serialize(get(db, journal_id), user)
+    return serialize(get(db, journal_id, user), user)
 
 
 @router.patch("/{journal_id}")
 def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    x = get(db, journal_id)
+    x = get(db, journal_id, user)
     if x.status != "DRAFT":
         raise HTTPException(409, "Unpost the journal before editing it")
     if data.posting_date:
@@ -348,7 +354,9 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
         validate(db, data.lines)
         x.lines.clear()
         for i, l in enumerate(data.lines, 1):
-            x.lines.append(JournalLine(line_number=i, **l.model_dump()))
+            line_data = l.model_dump()
+            line_data["location_id"] = x.location_id
+            x.lines.append(JournalLine(line_number=i, **line_data))
     record_audit(db, user, "JOURNAL_UPDATED", "JOURNAL_ENTRY", f"Updated {x.journal_number}", entity_id=x.id)
     db.commit()
     db.refresh(x)
@@ -361,6 +369,7 @@ def post(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     x = db.query(JournalEntry).filter(JournalEntry.id == journal_id).with_for_update().first()
     if not x:
         raise HTTPException(404, "Journal entry not found")
+    enforce_location_access(user, x.location_id)
     post_locked_journal(db, journal=x, user=user)
     db.commit()
     db.refresh(x)
@@ -394,6 +403,7 @@ def unpost(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curr
     x = db.query(JournalEntry).filter(JournalEntry.id == journal_id).with_for_update().first()
     if not x:
         raise HTTPException(404, "Journal entry not found")
+    enforce_location_access(user, x.location_id)
     source = (x.reference_type or "MANUAL").upper()
     if source not in STANDARD_UNPOSTABLE_SOURCES and not is_superuser(user):
         raise HTTPException(403, "Only an administrator can unpost a source-controlled journal")
@@ -403,7 +413,7 @@ def unpost(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 @router.post("/{journal_id}/void")
 def void(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    x = get(db, journal_id)
+    x = get(db, journal_id, user)
     if x.status != "DRAFT":
         raise HTTPException(409, "Only draft journals can be voided without reversal")
     x.status = "VOID"
@@ -416,4 +426,4 @@ def void(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 
 @router.get("/{journal_id}/print")
 def printable(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return {**serialize(get(db, journal_id), user), "document_type": "Journal Entry", **print_metadata(user)}
+    return {**serialize(get(db, journal_id, user), user), "document_type": "Journal Entry", **print_metadata(user)}
