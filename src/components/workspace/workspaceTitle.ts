@@ -90,3 +90,8 @@ export function workspaceTitle(pathname: string, search = ""): string {
   const segment = pathname.split("/").filter(Boolean).at(-1) ?? "Workspace";
   return segment.replaceAll("-", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
+
+export function workspaceTabGroup(pathname: string): string | undefined {
+  if (!/\/\d+$/.test(pathname)) return undefined;
+  return `detail:${pathname.replace(/\/\d+$/, "/:id")}`;
+}
