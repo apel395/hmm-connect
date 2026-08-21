@@ -1,4 +1,4 @@
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
+import { Table, THead, TBody, TR, TH, TD, TableCellStack } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import type { Product } from "../types";
@@ -21,20 +21,16 @@ export default function ProductTable({ rows = [], onEdit }: Props) {
         <Table>
           <THead>
             <TR>
-              <TH>Code</TH><TH>Product</TH><TH>Group</TH><TH>Sub Group</TH>
-              <TH>Purchase UOM</TH><TH>Usage UOM</TH><TH className="text-right">Conversion</TH>
-              <TH className="text-right">Minimum Stock</TH><TH>PPN</TH><TH>Status</TH><TH className="text-right">Actions</TH>
+              <TH>Product</TH><TH>Classification</TH><TH>UOM</TH><TH numeric>Minimum Stock</TH><TH>PPN</TH><TH>Status</TH><TH numeric>Actions</TH>
             </TR>
           </THead>
           <TBody>
             {rows.length === 0 ? (
-              <TR><TD colSpan={11} className="py-10 text-center">No Products</TD></TR>
+              <TR><TD colSpan={7} className="py-10 text-center">No Products</TD></TR>
             ) : rows.map((row) => (
               <TR key={row.id}>
-                <TD>{row.code}</TD><TD>{row.name}</TD><TD>{row.group_name}</TD><TD>{row.subgroup_name}</TD>
-                <TD>{row.uom}</TD><TD>{row.usage_uom}</TD>
-                <TD className="text-right">{Number(row.conversion).toLocaleString()}</TD>
-                <TD className="text-right tabular-nums">{Number(row.minimum_stock ?? 0).toLocaleString("id-ID")}</TD>
+                <TD><TableCellStack primary={row.name} secondary={row.code}/></TD><TD><TableCellStack primary={row.group_name} secondary={row.subgroup_name}/></TD><TD><TableCellStack primary={row.uom} secondary={`${row.usage_uom} · ×${Number(row.conversion).toLocaleString("id-ID")}`}/></TD>
+                <TD numeric>{Number(row.minimum_stock ?? 0).toLocaleString("id-ID")}</TD>
                 <TD>
                   <div className="space-y-1">
                     <Badge variant={row.tax_category === "REVIEW_REQUIRED" ? "warning" : row.is_taxable ? "info" : "secondary"}>{taxLabel(row)}</Badge>
