@@ -182,6 +182,8 @@ export default function SearchableSelect({
           required={required}
           placeholder={placeholder}
           autoComplete="off"
+          role="combobox"
+          aria-haspopup="listbox"
           aria-expanded={open}
           aria-autocomplete="list"
           data-form-control
