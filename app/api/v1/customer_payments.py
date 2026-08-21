@@ -15,19 +15,13 @@ from app.schemas.customer_payment import (
     CustomerPaymentResponse,
 )
 
+from app.services.document_number import next_document_number
 from app.services.posting_service import PostingService
 
 router = APIRouter(
     prefix="/customer-payments",
     tags=["Customer Payments"],
 )
-
-
-def generate_payment_number(db: Session):
-
-    count = db.query(CustomerPayment).count() + 1
-
-    return f"CP-{count:06d}"
 
 
 @router.post(
@@ -48,9 +42,8 @@ def create_customer_payment(
 
     receivable = (
         db.query(AccountReceivable)
-        .filter(
-            AccountReceivable.id == data.account_receivable_id,
-        )
+        .filter(AccountReceivable.id == data.account_receivable_id)
+        .with_for_update()
         .first()
     )
 
@@ -60,7 +53,13 @@ def create_customer_payment(
             detail="Account receivable not found.",
         )
 
-    outstanding = receivable.outstanding_amount
+    outstanding = Decimal(receivable.outstanding_amount or 0)
+
+    if outstanding <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Account receivable is already paid.",
+        )
 
     if data.amount > outstanding:
         raise HTTPException(
@@ -69,7 +68,7 @@ def create_customer_payment(
         )
 
     payment = CustomerPayment(
-        payment_number=generate_payment_number(db),
+        payment_number=next_document_number(db, "CP"),
         account_receivable_id=receivable.id,
         payment_date=data.payment_date,
         amount=data.amount,
