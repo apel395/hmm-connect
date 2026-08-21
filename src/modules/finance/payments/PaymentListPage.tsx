@@ -34,7 +34,13 @@ export default function PaymentListPage() {
     const payment=(location.state as any)?.editPayment;
     if(!payment)return;
     setEditingId(payment.id);
-    setEditingInvoices((payment.allocations??[]).map((row:any)=>({...row,id:row.supplier_invoice_id})));
+    setEditingInvoices((payment.allocations??[]).map((row:any)=>({
+      ...row,
+      id:row.supplier_invoice_id,
+      total_amount:row.total_amount??row.invoice_total,
+      available_balance:row.available_balance??row.outstanding_balance??row.allocated_amount,
+      reserved_amount:row.reserved_amount??0,
+    })));
     setForm({
       supplier_id:payment.supplier_id,
       payment_date:payment.payment_date,
@@ -65,7 +71,16 @@ export default function PaymentListPage() {
   const toggleInvoice=(row:any,checked:boolean)=>setAllocation(row.id,checked?availableBalance(row):0);
   const selectAll=()=>setForm((current:any)=>({...current,allocations:invoiceRows.map((row:any)=>({supplier_invoice_id:row.id,allocated_amount:availableBalance(row)}))}));
   const clearAll=()=>setForm((current:any)=>({...current,allocations:[]}));
-  const setFunding=(index:number,patch:any)=>setForm((current:any)=>({...current,funding_lines:current.funding_lines.map((row:any,i:number)=>i===index?{...row,...patch}:row)}));
+  const setFunding=(index:number,patch:any)=>setForm((current:any)=>{
+    const fundingLines=current.funding_lines.map((row:any,i:number)=>i===index?{...row,...patch}:row);
+    if (Object.prototype.hasOwnProperty.call(patch,"amount")&&fundingLines.length===1&&current.allocations.length===1) {
+      const allocation=current.allocations[0];
+      const invoice=invoiceRows.find((row:any)=>row.id===allocation.supplier_invoice_id);
+      const amount=Math.min(Math.max(0,Number(patch.amount)||0),invoice?availableBalance(invoice):Number(patch.amount)||0);
+      return {...current,funding_lines:fundingLines,allocations:[{...allocation,allocated_amount:amount}]};
+    }
+    return {...current,funding_lines:fundingLines};
+  });
   const useAllocatedAsFunding=()=>setForm((current:any)=>({...current,funding_lines:current.funding_lines.length===1?[{...current.funding_lines[0],amount:allocated}]:current.funding_lines}));
 
   const save=useMutation({mutationFn:()=>editingId?updatePayment(editingId,{...form,total_amount:allocated}):createPayment({...form,total_amount:allocated}),onSuccess:(payment)=>{toast.success(editingId?"Draft payment updated":"Payment saved as draft");setOpen(false);setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["payment",String(payment.id)]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});navigate(`/payments/${payment.id}`)},onError:(error:any)=>toast.error(error.response?.data?.detail||"Payment could not be saved")});
