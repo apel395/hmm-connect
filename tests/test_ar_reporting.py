@@ -172,4 +172,3 @@ def test_reporting_is_read_only(ar_db):
 
     assert {model: ar_db.query(model).count() for model in models} == before
     assert not ar_db.new and not ar_db.dirty and not ar_db.deleted
-
