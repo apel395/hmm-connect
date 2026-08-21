@@ -4,6 +4,7 @@ import {
   TableHTMLAttributes,
   TdHTMLAttributes,
   ThHTMLAttributes,
+  type ReactNode,
   useContext,
 } from "react";
 import clsx from "clsx";
@@ -129,8 +130,8 @@ export function TableCellStack({
   secondary,
   className,
 }: {
-  primary: React.ReactNode;
-  secondary?: React.ReactNode;
+  primary: ReactNode;
+  secondary?: ReactNode;
   className?: string;
 }) {
   return (
