@@ -39,12 +39,22 @@ export default function StoreRequestPage() {
   const departments = useQuery({ queryKey: ["departments", businessUnitId], queryFn: () => listDepartments(businessUnitId ?? {}), enabled: !!businessUnitId });
   const locations = useQuery({ queryKey: ["locations", businessUnitId], queryFn: () => listLocations(businessUnitId ?? {}), enabled: !!businessUnitId });
   const warehouses = useWarehouses();
+  const productIds = useMemo(() => items.flatMap((row) => row.product_id ? [row.product_id] : []), [items]);
+  const availability = useQuery({
+    queryKey: ["store-request-availability", warehouseId, productIds],
+    queryFn: async () => (await storeRequestApi.availability(warehouseId!, productIds)).data,
+    enabled: !!warehouseId && productIds.length > 0,
+  });
+  const stockByProduct = useMemo(() => new Map((availability.data ?? []).map((row) => [row.product_id, Number(row.available_stock || 0)])), [availability.data]);
+  const hasShortage = items.some((row) => row.product_id && row.quantity > (stockByProduct.get(row.product_id) ?? 0));
 
   const createMutation = useMutation({
     mutationFn: () => {
       if (!businessUnitId || !departmentId || !locationId || !warehouseId) throw new Error("Complete Business Unit, Department, Location, and Warehouse");
       const validItems = items.filter((row) => row.product_id && row.quantity > 0).map((row) => ({ product_id: row.product_id!, quantity: row.quantity }));
       if (!validItems.length) throw new Error("Add at least one item with quantity greater than zero");
+      if (availability.isLoading) throw new Error("Wait for warehouse stock to finish loading");
+      if (hasShortage) throw new Error("Requested quantity exceeds available warehouse stock");
       return storeRequestApi.create({ business_unit_id: businessUnitId, department_id: departmentId, location_id: locationId, warehouse_id: warehouseId, notes: notes || null, items: validItems });
     },
     onSuccess: async (response) => {
@@ -67,11 +77,11 @@ export default function StoreRequestPage() {
 
     {showCreate && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-semibold">Create Store Request</h2><p className="text-xs text-slate-500">Request stock from a warehouse for internal use.</p></div><Button variant="secondary" onClick={() => setShowCreate(false)}>Close</Button></div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><select className={input} value={businessUnitId ?? ""} onChange={(e) => { const id = Number(e.target.value) || undefined; setBusinessUnitId(id); setDepartmentId(undefined); setLocationId(undefined); }}><option value="">Business Unit</option>{(businessUnits.data ?? []).filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><select className={input} value={departmentId ?? ""} onChange={(e) => setDepartmentId(Number(e.target.value) || undefined)}><option value="">Department</option>{(departments.data ?? []).filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><select className={input} value={locationId ?? ""} onChange={(e) => setLocationId(Number(e.target.value) || undefined)}><option value="">Location</option>{(locations.data ?? []).filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select><select className={input} value={warehouseId ?? ""} onChange={(e) => setWarehouseId(Number(e.target.value) || undefined)}><option value="">Warehouse</option>{(warehouses.data ?? []).filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} - {row.name}</option>)}</select></div>
-      <div className="mt-5 space-y-3">{items.map((row, index) => <div key={index} className="grid gap-3 md:grid-cols-[1fr_180px_80px]"><ProductCombobox remote value={row.product_id} onChange={(productId) => setItems((old) => old.map((item, i) => i === index ? { ...item, product_id: productId } : item))} onSelect={(product) => setItems((old) => old.map((item, i) => i === index ? { ...item, product } : item))} /><input className={input} type="number" min="0" step="0.01" placeholder="Quantity" value={row.quantity || ""} onChange={(e) => setItems((old) => old.map((item, i) => i === index ? { ...item, quantity: Number(e.target.value) } : item))} /><Button variant="secondary" onClick={() => setItems((old) => old.length === 1 ? old : old.filter((_, i) => i !== index))}>Remove</Button></div>)}</div>
+      <div className="mt-5 space-y-3">{items.map((row, index) => { const available=row.product_id?(stockByProduct.get(row.product_id)??0):0; const shortage=Boolean(row.product_id&&row.quantity>available); return <div key={index} className="grid gap-3 md:grid-cols-[1fr_150px_180px_80px]"><ProductCombobox remote value={row.product_id} onChange={(productId) => setItems((old) => old.map((item, i) => i === index ? { ...item, product_id: productId } : item))} onSelect={(product) => setItems((old) => old.map((item, i) => i === index ? { ...item, product } : item))} /><div className={`flex h-10 items-center rounded-md border px-3 text-sm ${shortage?"border-red-300 bg-red-50 text-red-700":"border-slate-200 bg-slate-50 text-slate-600"}`}>Available: {availability.isLoading?"…":available.toLocaleString("id-ID")}</div><input className={`${input} ${shortage?"border-red-400":""}`} type="number" min="0" max={available} step="0.01" placeholder="Quantity" value={row.quantity || ""} onChange={(e) => setItems((old) => old.map((item, i) => i === index ? { ...item, quantity: Number(e.target.value) } : item))} /><Button variant="secondary" onClick={() => setItems((old) => old.length === 1 ? old : old.filter((_, i) => i !== index))}>Remove</Button></div>})}</div>
       <button className="mt-3 text-sm font-medium text-emerald-700" onClick={() => setItems((old) => [...old, { quantity: 0 }])}>+ Add Item</button>
       <textarea className="mt-5 min-h-20 w-full rounded-md border border-slate-300 p-3 text-sm" placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
       {createMutation.error && <div className="mt-3 text-sm text-red-600">{createMutation.error instanceof Error ? createMutation.error.message : "Unable to create Store Request"}</div>}
-      <div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={() => setShowCreate(false)}>Cancel</Button><Button disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Saving..." : "Create"}</Button></div>
+      <div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={() => setShowCreate(false)}>Cancel</Button><Button disabled={createMutation.isPending || availability.isLoading || hasShortage} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Saving..." : "Create"}</Button></div>
     </div></div>}
   </div>;
 }
