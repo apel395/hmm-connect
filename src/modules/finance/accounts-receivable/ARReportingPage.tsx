@@ -46,17 +46,23 @@ export default function ARReportingPage() {
 
   useEffect(() => setPage(1), [section, search]);
 
-  const query = useQuery({
-    queryKey: ["ar-reporting", section, page, search],
-    queryFn: () =>
-      section === "detail"
-        ? arReportingApi.detail(page, pageSize, search)
-        : section === "aging"
-          ? arReportingApi.aging(page, pageSize, search)
-          : arReportingApi.summary(page, pageSize, search),
+  const summary = useQuery({
+    queryKey: ["ar-reporting", "summary", page, search],
+    queryFn: () => arReportingApi.summary(page, pageSize, search),
+    enabled: section === "summary",
   });
-
-  const data = query.data;
+  const detail = useQuery({
+    queryKey: ["ar-reporting", "detail", page, search],
+    queryFn: () => arReportingApi.detail(page, pageSize, search),
+    enabled: section === "detail",
+  });
+  const aging = useQuery({
+    queryKey: ["ar-reporting", "aging", page, search],
+    queryFn: () => arReportingApi.aging(page, pageSize, search),
+    enabled: section === "aging",
+  });
+  const activeQuery = section === "detail" ? detail : section === "aging" ? aging : summary;
+  const data = activeQuery.data;
 
   return (
     <div className="space-y-5">
@@ -93,50 +99,50 @@ export default function ARReportingPage() {
         </form>
       </Card>
 
-      {section === "summary" && query.data && "metrics" in query.data && (
+      {section === "summary" && summary.data && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Gross Receivables" value={money(query.data.metrics.gross_receivables)} />
-          <Metric label="Total Receipts" value={money(query.data.metrics.total_receipts)} />
-          <Metric label="Outstanding Receivables" value={money(query.data.metrics.outstanding_receivables)} emphasis />
-          <Metric label="Overdue Receivables" value={money(query.data.metrics.overdue_receivables)} emphasis />
+          <Metric label="Gross Receivables" value={money(summary.data.metrics.gross_receivables)} />
+          <Metric label="Total Receipts" value={money(summary.data.metrics.total_receipts)} />
+          <Metric label="Outstanding Receivables" value={money(summary.data.metrics.outstanding_receivables)} emphasis />
+          <Metric label="Overdue Receivables" value={money(summary.data.metrics.overdue_receivables)} emphasis />
         </div>
       )}
 
-      {section === "aging" && query.data && "buckets" in query.data && (
+      {section === "aging" && aging.data && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {(Object.keys(bucketLabels) as AgingBucket[]).map((bucket) => (
             <Metric
               key={bucket}
               label={bucketLabels[bucket]}
-              value={money(query.data.buckets[bucket].amount)}
+              value={money(aging.data.buckets[bucket].amount)}
               emphasis={bucket !== "current"}
             />
           ))}
         </div>
       )}
 
-      {query.isError && (
+      {activeQuery.isError && (
         <Card className="p-5 text-center">
           <p className="text-sm text-red-600">Accounts Receivable reporting could not be loaded.</p>
-          <Button className="mt-3" variant="outline" size="sm" onClick={() => query.refetch()}>
+          <Button className="mt-3" variant="outline" size="sm" onClick={() => activeQuery.refetch()}>
             Try Again
           </Button>
         </Card>
       )}
-      {query.isLoading && (
+      {activeQuery.isLoading && (
         <Card className="p-8 text-center text-sm text-slate-500">
           Loading Accounts Receivable report…
         </Card>
       )}
 
-      {!query.isLoading && !query.isError && section === "summary" && query.data && "metrics" in query.data && (
+      {!activeQuery.isLoading && !activeQuery.isError && section === "summary" && summary.data && (
         <Card className="p-0">
           <Title title="Receivables by Customer" subtitle="Customer balances from the Accounts Receivable subledger." />
           <div className="overflow-x-auto">
             <Table variant="standard">
               <THead><TR><TH>Customer</TH><TH className="text-right">Gross</TH><TH className="text-right">Receipts</TH><TH className="text-right">Outstanding</TH><TH className="text-right">Overdue Invoices</TH><TH>Status</TH></TR></THead>
               <TBody>
-                {query.data.items.map((row) => (
+                {summary.data.items.map((row) => (
                   <TR key={row.customer_id}>
                     <TD><div className="font-medium">{row.customer_name || `Customer #${row.customer_id}`}</div><div className="text-[10px] text-slate-500">{row.customer_code || "—"} · {row.invoice_count} invoices</div></TD>
                     <TD className="text-right">{money(row.gross_amount)}</TD>
@@ -146,21 +152,21 @@ export default function ARReportingPage() {
                     <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                   </TR>
                 ))}
-                {!query.data.items.length && <TR><TD colSpan={6} className="py-10 text-center text-slate-500">No receivables found.</TD></TR>}
+                {!detail.data.items.length && <TR><TD colSpan={6} className="py-10 text-center text-slate-500">No receivables found.</TD></TR>}
               </TBody>
             </Table>
           </div>
         </Card>
       )}
 
-      {!query.isLoading && !query.isError && section === "detail" && query.data && !("metrics" in query.data) && !("buckets" in query.data) && (
+      {!activeQuery.isLoading && !activeQuery.isError && section === "detail" && detail.data && (
         <Card className="p-0">
           <Title title="Receivables Detail" subtitle="Invoice-level customer balances and collection status." />
           <div className="overflow-x-auto">
             <Table variant="standard">
               <THead><TR><TH>Date</TH><TH>Invoice</TH><TH>Customer</TH><TH>Due Date</TH><TH className="text-right">Gross</TH><TH className="text-right">Receipts</TH><TH className="text-right">Outstanding</TH><TH>Status</TH></TR></THead>
               <TBody>
-                {query.data.items.map((row) => (
+                {aging.data.items.map((row) => (
                   <TR key={row.invoice_id}>
                     <TD>{row.invoice_date}</TD>
                     <TD className="font-medium">{row.invoice_number}</TD>
@@ -172,28 +178,28 @@ export default function ARReportingPage() {
                     <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                   </TR>
                 ))}
-                {!query.data.items.length && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No receivable invoices found.</TD></TR>}
+                {!summary.data.items.length && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No receivable invoices found.</TD></TR>}
               </TBody>
             </Table>
           </div>
         </Card>
       )}
 
-      {!query.isLoading && !query.isError && section === "aging" && query.data && "buckets" in query.data && (
+      {!activeQuery.isLoading && !activeQuery.isError && section === "aging" && aging.data && (
         <Card className="p-0">
-          <Title title="AR Aging" subtitle={`Outstanding customer balances as of ${query.data.as_of_date}.`} />
+          <Title title="AR Aging" subtitle={`Outstanding customer balances as of ${aging.data.as_of_date}.`} />
           <div className="overflow-x-auto">
             <Table variant="standard">
               <THead><TR><TH>Customer</TH>{(Object.keys(bucketLabels) as AgingBucket[]).map((bucket) => <TH key={bucket} className="text-right">{bucketLabels[bucket]}</TH>)}<TH className="text-right">Outstanding</TH></TR></THead>
               <TBody>
-                {query.data.items.map((row) => (
+                {detail.data.items.map((row) => (
                   <TR key={row.customer_id}>
                     <TD><div className="font-medium">{row.customer_name || `Customer #${row.customer_id}`}</div><div className="text-[10px] text-slate-500">{row.customer_code || "—"}</div></TD>
                     {(Object.keys(bucketLabels) as AgingBucket[]).map((bucket) => <TD key={bucket} className="text-right">{money(row[bucket])}</TD>)}
                     <TD className="text-right font-semibold">{money(row.outstanding_amount)}</TD>
                   </TR>
                 ))}
-                {!query.data.items.length && <TR><TD colSpan={7} className="py-10 text-center text-slate-500">No outstanding receivables.</TD></TR>}
+                {!aging.data.items.length && <TR><TD colSpan={7} className="py-10 text-center text-slate-500">No outstanding receivables.</TD></TR>}
               </TBody>
             </Table>
           </div>
