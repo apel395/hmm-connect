@@ -16,6 +16,7 @@ from app.services.activity_service import AuditService
 from app.services.approval import approve_current_step, get_request, reject_current_step, start_approval
 from app.services.document_number import next_document_number
 from app.services.organization_dimensions import validate_dimensions
+from app.services.location_access import enforce_location_access, resolve_location_id
 
 
 class StoreRequestService:
@@ -77,7 +78,7 @@ class StoreRequestService:
     def create(db: Session, *, data: StoreRequestCreate, current_user: User) -> StoreRequest:
         StoreRequestService._warehouse(db, data.warehouse_id)
         business_unit_id = data.business_unit_id or current_user.default_business_unit_id
-        location_id = data.location_id or current_user.default_location_id or current_user.location_id
+        location_id = resolve_location_id(current_user, data.location_id)
         department_id = data.department_id or current_user.default_department_id or current_user.department_id
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
         request = StoreRequest(
@@ -108,13 +109,14 @@ class StoreRequestService:
         request = db.get(StoreRequest, request_id)
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only draft Store Requests can be edited")
         StoreRequestService._warehouse(db, data.warehouse_id)
         request.request_date = data.request_date or request.request_date
         request.notes = data.notes
         request.business_unit_id = data.business_unit_id or request.business_unit_id
-        request.location_id = data.location_id or request.location_id
+        request.location_id = resolve_location_id(current_user, data.location_id or request.location_id)
         request.department_id = data.department_id or request.department_id
         request.warehouse_id = data.warehouse_id
         validate_dimensions(db, request.business_unit_id, request.location_id, request.department_id, True)
@@ -133,6 +135,7 @@ class StoreRequestService:
         request = db.get(StoreRequest, request_id)
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only draft Store Requests can be submitted")
         if not request.items:
@@ -154,6 +157,7 @@ class StoreRequestService:
         request = db.get(StoreRequest, request_id)
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status != "PENDING_APPROVAL":
             raise HTTPException(status_code=409, detail="Store Request does not have pending approval")
         StoreRequestService._validate_available_stock(db, request)
@@ -178,6 +182,7 @@ class StoreRequestService:
         request = db.get(StoreRequest, request_id)
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status != "PENDING_APPROVAL":
             raise HTTPException(status_code=409, detail="Store Request does not have pending approval")
         approval = get_request(db, "STORE_REQUEST", request.id, for_update=True)
@@ -199,6 +204,7 @@ class StoreRequestService:
         request = db.query(StoreRequest).filter(StoreRequest.id == request_id).with_for_update().first()
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status not in {"APPROVED", "PARTIALLY_ISSUED"}:
             raise HTTPException(status_code=409, detail="Only approved Store Requests can issue goods")
         if db.query(StoreIssue).filter(StoreIssue.store_request_id == request.id, StoreIssue.status == "DRAFT").first():
