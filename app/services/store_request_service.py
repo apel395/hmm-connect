@@ -64,7 +64,9 @@ class StoreRequestService:
             requested = Decimal(item.requested_quantity or 0)
             available = inventory.get(item.product_id, Decimal("0"))
             if requested > available:
-                shortages.append(f"{item.product.name}: available {available}, requested {requested}")
+                product = db.get(Product, item.product_id)
+                name = product.name if product else f"Product {item.product_id}"
+                shortages.append(f"{name}: available {available}, requested {requested}")
         if shortages:
             raise HTTPException(
                 status_code=409,
