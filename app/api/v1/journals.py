@@ -88,6 +88,7 @@ def serialize(x, user=None):
         "allowed_actions": {
             "can_edit": x.status == "DRAFT",
             "can_post": x.status == "DRAFT" and bool(x.lines) and debit == credit,
+            "can_recreate": x.status == "POSTED" and bool(user and is_superuser(user)),
             "can_unpost": x.status == "POSTED" and (
                 source in STANDARD_UNPOSTABLE_SOURCES or admin_unpost
             ),
