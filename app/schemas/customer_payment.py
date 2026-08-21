@@ -1,14 +1,14 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CustomerPaymentCreate(BaseModel):
 
     account_receivable_id: int
     payment_date: date
-    amount: Decimal
+    amount: Decimal = Field(gt=0)
     payment_method: str
     reference_number: str | None = None
 
