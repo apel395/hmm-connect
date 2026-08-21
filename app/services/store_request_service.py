@@ -54,6 +54,24 @@ class StoreRequestService:
             )
 
     @staticmethod
+    def _validate_available_stock(db: Session, request: StoreRequest) -> None:
+        inventory = {
+            row.product_id: Decimal(row.quantity or 0)
+            for row in db.query(Inventory).filter(Inventory.warehouse_id == request.warehouse_id).all()
+        }
+        shortages = []
+        for item in request.items:
+            requested = Decimal(item.requested_quantity or 0)
+            available = inventory.get(item.product_id, Decimal("0"))
+            if requested > available:
+                shortages.append(f"{item.product.name}: available {available}, requested {requested}")
+        if shortages:
+            raise HTTPException(
+                status_code=409,
+                detail="Warehouse stock is insufficient: " + "; ".join(shortages),
+            )
+
+    @staticmethod
     def create(db: Session, *, data: StoreRequestCreate, current_user: User) -> StoreRequest:
         StoreRequestService._warehouse(db, data.warehouse_id)
         business_unit_id = data.business_unit_id or current_user.default_business_unit_id
@@ -72,6 +90,7 @@ class StoreRequestService:
             requested_by_id=current_user.id,
         )
         StoreRequestService._fill_items(db, request, data)
+        StoreRequestService._validate_available_stock(db, request)
         db.add(request)
         db.flush()
         AuditService.log(
@@ -98,6 +117,7 @@ class StoreRequestService:
         request.warehouse_id = data.warehouse_id
         validate_dimensions(db, request.business_unit_id, request.location_id, request.department_id, True)
         StoreRequestService._fill_items(db, request, data)
+        StoreRequestService._validate_available_stock(db, request)
         AuditService.log(
             db=db, user=current_user, action="UPDATE", entity_type="STORE_REQUEST", entity_id=request.id,
             summary=f"Updated {request.sr_number}", document_type="SR", document_number=request.sr_number,
@@ -116,6 +136,7 @@ class StoreRequestService:
         if not request.items:
             raise HTTPException(status_code=409, detail="Store Request must have items")
         StoreRequestService._warehouse(db, request.warehouse_id)
+        StoreRequestService._validate_available_stock(db, request)
         start_approval(db, entity_type="STORE_REQUEST", entity_id=request.id, workflow_code="SR_APPROVAL", user=current_user)
         request.status = "PENDING_APPROVAL"
         AuditService.log(
@@ -133,6 +154,7 @@ class StoreRequestService:
             raise HTTPException(status_code=404, detail="Store Request not found")
         if request.status != "PENDING_APPROVAL":
             raise HTTPException(status_code=409, detail="Store Request does not have pending approval")
+        StoreRequestService._validate_available_stock(db, request)
         approval = get_request(db, "STORE_REQUEST", request.id, for_update=True)
         if not approval:
             raise HTTPException(status_code=500, detail="Approval workflow not found")
