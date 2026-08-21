@@ -151,48 +151,50 @@ h6 {
 }
 
 
-  /*
-   * Compact fallback for legacy/raw form controls. Shared components opt out
-   * with data-form-control and use FORM_UI directly.
-   */
-  :where(main, [role="dialog"]) :is(input, select, textarea):not([data-form-control]):not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
-    width: 100%;
-    min-height: 2.25rem;
-    border: 1px solid #cbd5e1;
-    border-radius: 0.375rem;
-    background: #fff;
-    padding: 0.5rem 0.75rem;
-    color: #0f172a;
-    font-size: 13px;
-    line-height: 1.25rem;
-    box-shadow: 0 1px 2px rgb(15 23 42 / 0.03);
-    transition: border-color 150ms ease, box-shadow 150ms ease;
-  }
-
-  :where(main, [role="dialog"]) select:not([data-form-control]) {
-    padding-right: 2rem;
-  }
-
-  :where(main, [role="dialog"]) textarea:not([data-form-control]) {
-    min-height: 5rem;
-    resize: vertical;
-  }
-
-  :where(main, [role="dialog"]) :is(input, select, textarea):not([data-form-control]):focus {
-    border-color: #3b82f6;
-    outline: none;
-    box-shadow: 0 0 0 3px rgb(59 130 246 / 0.14);
-  }
-
-  :where(main, [role="dialog"]) :is(input, select, textarea):not([data-form-control]):disabled {
-    cursor: not-allowed;
-    background: #f1f5f9;
-    color: #64748b;
-  }
-
-  :where(main, [role="dialog"]) :is(input, textarea)::placeholder {
-    color: #94a3b8;
-  }
+@media screen {
+    /*
+     * Compact fallback for legacy/raw form controls. Shared components opt out
+     * with data-form-control and use FORM_UI directly.
+     */
+    :where(main, [role="dialog"]) :is(input, select, textarea):not([data-form-control]):not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+      max-width: 100%;
+      min-height: 2.25rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.375rem;
+      background: #fff;
+      padding: 0.5rem 0.75rem;
+      color: #0f172a;
+      font-size: 13px;
+      line-height: 1.25rem;
+      box-shadow: 0 1px 2px rgb(15 23 42 / 0.03);
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+  
+    :where(main, [role="dialog"]) select:not([data-form-control]) {
+      padding-right: 2rem;
+    }
+  
+    :where(main, [role="dialog"]) textarea:not([data-form-control]) {
+      min-height: 5rem;
+      resize: vertical;
+    }
+  
+    :where(main, [role="dialog"]) :is(input, select, textarea):not([data-form-control]):focus {
+      border-color: #3b82f6;
+      outline: none;
+      box-shadow: 0 0 0 3px rgb(59 130 246 / 0.14);
+    }
+  
+    :where(main, [role="dialog"]) :is(input, select, textarea):not([data-form-control]):disabled {
+      cursor: not-allowed;
+      background: #f1f5f9;
+      color: #64748b;
+    }
+  
+    :where(main, [role="dialog"]) :is(input, textarea)::placeholder {
+      color: #94a3b8;
+    }
+}
 
 @page { size: A4; margin: 14mm; }
 @media print {
