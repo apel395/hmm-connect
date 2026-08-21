@@ -133,10 +133,13 @@ class FinancialReconciliationService:
             self.db.query(func.coalesce(func.sum(AccountReceivable.outstanding_amount), 0)).scalar()
             or 0
         )
-        # Customer/AR posting still uses a legacy hard-coded posting service;
-        # there is no canonical AccountingPostingRule event to resolve safely.
-        # Do not infer a control account from names, types, or AR rows.
-        account_ids: list[int] = []
+        # CUSTOMER_PAYMENT identifies the canonical AR control account on
+        # the credit side. Missing invoice-side postings remain visible as an
+        # out-of-balance result instead of being hidden by account guessing.
+        account_ids = self._rule_account_ids(
+            debit=False,
+            event_types=["CUSTOMER_PAYMENT"],
+        )
         return self._row(
             "ACCOUNTS_RECEIVABLE",
             source,
