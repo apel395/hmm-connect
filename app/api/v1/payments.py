@@ -260,20 +260,31 @@ def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_
         SupplierInvoice.status.in_(OPEN_INVOICE_STATUSES),
         SupplierInvoice.balance_amount > 0,
     ).order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id).all()
-    return [{
-        "id": row.id,
-        "invoice_number": row.internal_invoice_number,
-        "supplier_invoice_number": row.supplier_invoice_number,
-        "invoice_date": row.invoice_date,
-        "due_date": row.due_date,
-        "total_amount": row.total_amount,
-        "paid_amount": row.paid_amount,
-        "outstanding_balance": invoice_balance(row),
-        "currency": row.currency,
-        "business_unit_id": row.business_unit_id,
-        "location_id": row.location_id,
-        "department_id": row.department_id,
-    } for row in rows]
+
+    available_rows = []
+    for row in rows:
+        outstanding = invoice_balance(row)
+        reserved = reserved_amount(db, row.id)
+        available = max(ZERO, outstanding - reserved)
+        if available == ZERO:
+            continue
+        available_rows.append({
+            "id": row.id,
+            "invoice_number": row.internal_invoice_number,
+            "supplier_invoice_number": row.supplier_invoice_number,
+            "invoice_date": row.invoice_date,
+            "due_date": row.due_date,
+            "total_amount": row.total_amount,
+            "paid_amount": row.paid_amount,
+            "outstanding_balance": outstanding,
+            "reserved_amount": reserved,
+            "available_balance": available,
+            "currency": row.currency,
+            "business_unit_id": row.business_unit_id,
+            "location_id": row.location_id,
+            "department_id": row.department_id,
+        })
+    return available_rows
 
 
 @router.get("/{payment_id}")
