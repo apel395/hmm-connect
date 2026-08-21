@@ -15,6 +15,7 @@ from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.store_request import StoreRequestCreate, StoreRequestIssueCreate
 from app.services.document_context import document_context, print_metadata
 from app.services.store_request_service import StoreRequestService
+from app.services.location_access import apply_location_scope, enforce_location_access
 
 
 router = APIRouter(prefix="/store-requests", tags=["Store Requests"])
@@ -109,9 +110,10 @@ def list_store_requests(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
     query = db.query(StoreRequest, User.full_name).outerjoin(User, User.id == StoreRequest.requested_by_id)
+    query = apply_location_scope(query, StoreRequest, user)
     if status and status.upper() != "ALL":
         query = query.filter(StoreRequest.status == status.upper())
     if search and search.strip():
@@ -120,7 +122,8 @@ def list_store_requests(
     total = query.count()
     rows = query.order_by(StoreRequest.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     total_pages = ceil(total / page_size) if total else 0
-    status_counts = dict(db.query(StoreRequest.status, func.count(StoreRequest.id)).group_by(StoreRequest.status).all())
+    counts_query = apply_location_scope(db.query(StoreRequest.status, func.count(StoreRequest.id)), StoreRequest, user)
+    status_counts = dict(counts_query.group_by(StoreRequest.status).all())
     return {
         "items": [_row(request, requester_name) for request, requester_name in rows],
         "page": page,
@@ -158,6 +161,7 @@ def get_store_request(request_id: int, db: Session = Depends(get_db), user=Depen
     request = db.get(StoreRequest, request_id)
     if not request:
         raise HTTPException(status_code=404, detail="Store Request not found")
+    enforce_location_access(user, request.location_id)
     return _detail(db, request, user)
 
 
