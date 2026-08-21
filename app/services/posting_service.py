@@ -1,8 +1,10 @@
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.account_payable import AccountPayable
+from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.goods_receipt import GoodsReceipt
 from app.models.payment import Payment
 from app.models.purchase_order import PurchaseOrder
@@ -18,17 +20,31 @@ from app.services.journal_service import JournalService
 
 class PostingService:
     """
-    Temporary implementation for demo.
-
-    Account IDs are hardcoded for now.
-    After the demo these will come from Accounting Settings.
+    Legacy purchasing posting remains hard-coded until its callers migrate.
+    Accounts Receivable uses canonical AccountingPostingRule configuration.
     """
 
     CASH_ACCOUNT = 1000
     INVENTORY_ACCOUNT = 1100
-    ACCOUNT_RECEIVABLE = 1200
     ACCOUNT_PAYABLE = 2100
     PURCHASE_EXPENSE = 5100
+
+    @staticmethod
+    def _active_rule(db: Session, event_type: str) -> AccountingPostingRule:
+        rule = (
+            db.query(AccountingPostingRule)
+            .filter(
+                AccountingPostingRule.event_type == event_type,
+                AccountingPostingRule.is_active.is_(True),
+            )
+            .one_or_none()
+        )
+        if rule is None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Active accounting posting rule required for {event_type}.",
+            )
+        return rule
 
     @classmethod
     def post_goods_receipt(
@@ -121,7 +137,10 @@ class PostingService:
         receivable,
         user,
     ):
-        JournalService.post(
+        rule = cls._active_rule(db, "CUSTOMER_PAYMENT")
+        amount = Decimal(payment.amount)
+
+        return JournalService.post(
             db=db,
             user=user,
             journal=JournalCreate(
@@ -133,15 +152,15 @@ class PostingService:
                 description=f"Customer Payment {payment.payment_number}",
                 lines=[
                     JournalLineCreate(
-                        account_id=cls.CASH_ACCOUNT,
-                        debit=payment.amount,
+                        account_id=rule.debit_account_id,
+                        debit=amount,
                         credit=Decimal("0.00"),
                         description="Cash / Bank",
                     ),
                     JournalLineCreate(
-                        account_id=cls.ACCOUNT_RECEIVABLE,
+                        account_id=rule.credit_account_id,
                         debit=Decimal("0.00"),
-                        credit=payment.amount,
+                        credit=amount,
                         description="Accounts Receivable",
                     ),
                 ],
