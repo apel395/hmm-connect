@@ -254,6 +254,7 @@ class StoreRequestService:
         if issue.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Store Issue is already posted")
         request = db.query(StoreRequest).filter(StoreRequest.id == issue.store_request_id).with_for_update().one()
+        enforce_location_access(current_user, request.location_id)
         if request.status not in {"APPROVED", "PARTIALLY_ISSUED"}:
             raise HTTPException(status_code=409, detail="Store Request is not eligible for issue posting")
         if not issue.items:
