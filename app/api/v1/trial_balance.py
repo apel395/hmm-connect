@@ -131,8 +131,8 @@ def export_trial_balance_csv(
         department_id, business_unit_id, sort_by, sort_order, paginate=False,
     )
     headers = [
-        "Account Code", "Account Name", "Opening Balance", "Debit Movement", "Credit Movement",
-        "Net Movement", "Closing Balance", "Balance Status",
+        "COA No.", "COA Name", "Opening", "Debit Movement", "Credit Movement",
+        "Total", "Closing", "Status",
     ]
     fields = [
         "account_code", "account_name", "opening_balance", "period_debit",
