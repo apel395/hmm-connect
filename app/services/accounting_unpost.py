@@ -14,6 +14,7 @@ from app.models.supplier_adjustment import SupplierAdjustment
 from app.models.supplier_invoice import SupplierInvoice
 from app.services.audit import record_audit
 from app.services.fiscal_period_service import FiscalPeriodService
+from app.services.general_ledger import GeneralLedgerService
 
 ZERO = Decimal("0")
 SUPPORTED_SOURCE_TYPES = {
@@ -233,7 +234,70 @@ def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
     )
 
 
-def unpost_journal(db: Session, *, journal: JournalEntry, user) -> JournalEntry:
+def matching_ledger_rows(db: Session, journal: JournalEntry) -> list[GeneralLedger]:
+    return db.query(GeneralLedger).filter(
+        GeneralLedger.reference_number == journal.journal_number,
+        GeneralLedger.reference_type == journal.reference_type,
+        GeneralLedger.reference_id == journal.reference_id,
+    ).all()
+
+
+def recreate_journal_ledger(
+    db: Session,
+    *,
+    journal: JournalEntry,
+    user,
+) -> int:
+    """Replace persisted GL rows for a posted journal without changing its source state."""
+    if journal.status != "POSTED":
+        raise HTTPException(status_code=409, detail="Only posted journals can be recreated")
+    if not journal.lines:
+        raise HTTPException(status_code=409, detail="Journal has no lines to recreate")
+
+    FiscalPeriodService.validate_posting_date(db=db, posting_date=journal.posting_date)
+    previous_rows = matching_ledger_rows(db, journal)
+    for row in previous_rows:
+        db.delete(row)
+    db.flush()
+
+    for line in journal.lines:
+        GeneralLedgerService.post(
+            db=db,
+            account_id=line.account_id,
+            debit=line.debit,
+            credit=line.credit,
+            posting_date=journal.posting_date,
+            journal_source=journal.reference_type,
+            document_type=journal.document_type,
+            document_number=journal.document_number,
+            reference_type=journal.reference_type,
+            reference_id=journal.reference_id,
+            reference_number=journal.journal_number,
+            description=line.description,
+            user_id=user.id,
+        )
+
+    record_audit(
+        db,
+        user,
+        "JOURNAL_LEDGER_RECREATED",
+        "JOURNAL_ENTRY",
+        f"Recreated ledger rows for {journal.journal_number}",
+        entity_id=journal.id,
+        reference_document=journal.document_number,
+        before_data={"ledger_row_count": len(previous_rows)},
+        after_data={"ledger_row_count": len(journal.lines)},
+    )
+    return len(journal.lines)
+
+
+def unpost_journal(
+    db: Session,
+    *,
+    journal: JournalEntry,
+    user,
+    commit: bool = True,
+) -> JournalEntry:
     if journal.status != "POSTED":
         raise HTTPException(status_code=409, detail="Only posted journals can be unposted")
 
@@ -248,11 +312,7 @@ def unpost_journal(db: Session, *, journal: JournalEntry, user) -> JournalEntry:
     # then unpost/rework the document. We never silently bypass a closed period.
     FiscalPeriodService.validate_posting_date(db=db, posting_date=journal.posting_date)
 
-    gl_rows = db.query(GeneralLedger).filter(
-        GeneralLedger.reference_number == journal.journal_number,
-        GeneralLedger.reference_type == journal.reference_type,
-        GeneralLedger.reference_id == journal.reference_id,
-    ).all()
+    gl_rows = matching_ledger_rows(db, journal)
     if not gl_rows:
         raise HTTPException(status_code=409, detail="Journal has no matching ledger rows to unpost")
 
@@ -280,6 +340,9 @@ def unpost_journal(db: Session, *, journal: JournalEntry, user) -> JournalEntry:
         },
         after_data={"status": "DRAFT", "source": source},
     )
-    db.commit()
-    db.refresh(journal)
+    if commit:
+        db.commit()
+        db.refresh(journal)
+    else:
+        db.flush()
     return journal

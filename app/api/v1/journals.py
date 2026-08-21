@@ -12,16 +12,19 @@ from app.dependencies.authorization import has_any_role, is_superuser
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
-from app.schemas.journal import JournalCreate, JournalUpdate
+from app.models.fiscal_period import FiscalPeriod
+from app.schemas.journal import JournalBulkAction, JournalCreate, JournalUpdate
 from app.services.accounting_unpost import (
     SUPPORTED_SOURCE_TYPES,
     apply_source_post_state,
+    recreate_journal_ledger,
     unpost_journal,
 )
 from app.services.audit import record_audit
 from app.services.document_context import print_metadata
 from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
+from app.services.fiscal_period_service import FiscalPeriodService
 
 router = APIRouter(prefix="/journal-entries", tags=["Journal Entries"])
 ZERO = Decimal("0")
@@ -85,6 +88,7 @@ def serialize(x, user=None):
         "allowed_actions": {
             "can_edit": x.status == "DRAFT",
             "can_post": x.status == "DRAFT" and bool(x.lines) and debit == credit,
+            "can_recreate": x.status == "POSTED" and bool(user and is_superuser(user)),
             "can_unpost": x.status == "POSTED" and (
                 source in STANDARD_UNPOSTABLE_SOURCES or admin_unpost
             ),
@@ -110,6 +114,50 @@ def serialize(x, user=None):
             for l in x.lines
         ],
     }
+
+
+def require_admin(user) -> None:
+    access(user)
+    if not is_superuser(user):
+        raise HTTPException(403, "Administrator access required for bulk or recreate journal operations")
+
+
+def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
+    if journal.status != "DRAFT":
+        raise HTTPException(409, f"Journal {journal.journal_number} is not draft")
+    debit, credit = validate(db, journal.lines)
+    if debit != credit:
+        raise HTTPException(409, f"Journal {journal.journal_number} is not balanced")
+
+    apply_source_post_state(db, journal=journal, user=user)
+    for line in journal.lines:
+        GeneralLedgerService.post(
+            db=db,
+            account_id=line.account_id,
+            debit=line.debit,
+            credit=line.credit,
+            posting_date=journal.posting_date,
+            journal_source=journal.reference_type,
+            document_type=journal.document_type,
+            document_number=journal.document_number,
+            reference_type=journal.reference_type,
+            reference_id=journal.reference_id,
+            reference_number=journal.journal_number,
+            description=line.description,
+            user_id=user.id,
+        )
+    journal.status = "POSTED"
+    journal.posted_by_id = user.id
+    journal.posted_at = datetime.now(timezone.utc)
+    record_audit(
+        db,
+        user,
+        "JOURNAL_POSTED",
+        "JOURNAL_ENTRY",
+        f"Posted {journal.journal_number}",
+        entity_id=journal.id,
+        reference_document=journal.document_number,
+    )
 
 
 @router.get("")
@@ -185,6 +233,102 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(get_
     return serialize(x, user)
 
 
+@router.get("/bulk/current-period-preview")
+def current_period_preview(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    require_admin(user)
+    period = FiscalPeriodService.validate_posting_date(db=db, posting_date=date.today())
+    if period is None:
+        raise HTTPException(409, "Fiscal periods must be configured before using current-period actions")
+    q = db.query(JournalEntry).filter(
+        JournalEntry.posting_date >= period.start_date,
+        JournalEntry.posting_date <= period.end_date,
+    )
+    return {
+        "period_id": period.id,
+        "period_name": period.period_name,
+        "start_date": period.start_date,
+        "end_date": period.end_date,
+        "draft_count": q.filter(JournalEntry.status == "DRAFT").count(),
+        "posted_count": q.filter(JournalEntry.status == "POSTED").count(),
+    }
+
+
+@router.post("/bulk/post")
+def post_all(
+    data: JournalBulkAction,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    require_admin(user)
+    ids = list(dict.fromkeys(data.journal_ids))
+    journals = db.query(JournalEntry).filter(
+        JournalEntry.id.in_(ids),
+    ).with_for_update().all()
+    found = {journal.id for journal in journals}
+    missing = [journal_id for journal_id in ids if journal_id not in found]
+    if missing:
+        raise HTTPException(404, f"Journal entries not found: {missing}")
+    for journal in journals:
+        post_locked_journal(db, journal=journal, user=user)
+    db.commit()
+    return {"processed": len(journals), "status": "POSTED", "journal_ids": ids}
+
+
+@router.post("/bulk/unpost")
+def unpost_all(
+    data: JournalBulkAction,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    require_admin(user)
+    ids = list(dict.fromkeys(data.journal_ids))
+    journals = db.query(JournalEntry).filter(
+        JournalEntry.id.in_(ids),
+    ).with_for_update().all()
+    found = {journal.id for journal in journals}
+    missing = [journal_id for journal_id in ids if journal_id not in found]
+    if missing:
+        raise HTTPException(404, f"Journal entries not found: {missing}")
+    for journal in journals:
+        unpost_journal(db, journal=journal, user=user, commit=False)
+    db.commit()
+    return {"processed": len(journals), "status": "DRAFT", "journal_ids": ids}
+
+
+@router.post("/bulk/recreate-current-period")
+def recreate_current_period(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    require_admin(user)
+    period = FiscalPeriodService.validate_posting_date(db=db, posting_date=date.today())
+    if period is None:
+        raise HTTPException(409, "Fiscal periods must be configured before recreating a period")
+    journals = db.query(JournalEntry).filter(
+        JournalEntry.status == "POSTED",
+        JournalEntry.posting_date >= period.start_date,
+        JournalEntry.posting_date <= period.end_date,
+    ).with_for_update().all()
+    if len(journals) > 500:
+        raise HTTPException(409, "Current period contains more than 500 posted journals; recreate in smaller batches")
+    row_count = 0
+    for journal in journals:
+        debit, credit = validate(db, journal.lines)
+        if debit != credit:
+            raise HTTPException(409, f"Journal {journal.journal_number} is not balanced")
+        row_count += recreate_journal_ledger(db, journal=journal, user=user)
+    db.commit()
+    return {
+        "period_id": period.id,
+        "period_name": period.period_name,
+        "journals_recreated": len(journals),
+        "ledger_rows_recreated": row_count,
+    }
+
+
 @router.get("/{journal_id}")
 def detail(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     return serialize(get(db, journal_id), user)
@@ -217,39 +361,31 @@ def post(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     x = db.query(JournalEntry).filter(JournalEntry.id == journal_id).with_for_update().first()
     if not x:
         raise HTTPException(404, "Journal entry not found")
-    if x.status != "DRAFT":
-        raise HTTPException(409, "Only draft journals can be posted")
-    debit, credit = validate(db, x.lines)
-    if debit != credit:
-        raise HTTPException(409, "Journal is not balanced")
-
-    # If this journal was generated by an operational document and previously
-    # unposted, revalidate and restore that source state in the same transaction.
-    apply_source_post_state(db, journal=x, user=user)
-
-    for l in x.lines:
-        GeneralLedgerService.post(
-            db=db,
-            account_id=l.account_id,
-            debit=l.debit,
-            credit=l.credit,
-            posting_date=x.posting_date,
-            journal_source=x.reference_type,
-            document_type=x.document_type,
-            document_number=x.document_number,
-            reference_type=x.reference_type,
-            reference_id=x.reference_id,
-            reference_number=x.journal_number,
-            description=l.description,
-            user_id=user.id,
-        )
-    x.status = "POSTED"
-    x.posted_by_id = user.id
-    x.posted_at = datetime.now(timezone.utc)
-    record_audit(db, user, "JOURNAL_POSTED", "JOURNAL_ENTRY", f"Posted {x.journal_number}", entity_id=x.id, reference_document=x.document_number)
+    post_locked_journal(db, journal=x, user=user)
     db.commit()
     db.refresh(x)
     return serialize(x, user)
+
+
+@router.post("/{journal_id}/recreate")
+def recreate(
+    journal_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    require_admin(user)
+    journal = db.query(JournalEntry).filter(
+        JournalEntry.id == journal_id,
+    ).with_for_update().first()
+    if not journal:
+        raise HTTPException(404, "Journal entry not found")
+    debit, credit = validate(db, journal.lines)
+    if debit != credit:
+        raise HTTPException(409, "Journal is not balanced")
+    rows = recreate_journal_ledger(db, journal=journal, user=user)
+    db.commit()
+    db.refresh(journal)
+    return {**serialize(journal, user), "ledger_rows_recreated": rows}
 
 
 @router.post("/{journal_id}/unpost")

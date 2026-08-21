@@ -51,6 +51,11 @@ class JournalResponse(BaseModel):
 
     lines: list[JournalLineResponse]
 
+
+class JournalBulkAction(BaseModel):
+    journal_ids: list[int] = Field(min_length=1, max_length=100)
+
+
 class JournalUpdate(BaseModel):
     posting_date: date | None = None
     description: str | None = None
