@@ -1,6 +1,8 @@
 name: Backend CI
 
 on:
+  push:
+    branches: [sprint7b/ar-foundation-backend]
   pull_request:
     branches: [backend]
     paths:
