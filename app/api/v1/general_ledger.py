@@ -12,6 +12,7 @@ from app.dependencies.authorization import has_any_role
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
+from app.services.location_access import resolve_location_id
 
 router = APIRouter(prefix="/general-ledger", tags=["General Ledger"])
 ZERO = Decimal("0")
@@ -106,6 +107,7 @@ def listing(
     user=Depends(get_current_user),
 ):
     access(user)
+    location_id = resolve_location_id(user, location_id)
     q = base(db, account_id, date_from, date_to, reference_type, supplier_id, department_id, location_id, search, business_unit_id)
     total = q.count()
     rows = _ledger_query(q).offset((page - 1) * page_size).limit(page_size).all()
@@ -126,13 +128,14 @@ def summary(account_id: int, date_from: date | None = None, date_to: date | None
     account = db.get(ChartOfAccount, account_id)
     if not account:
         raise HTTPException(404, "Account not found")
-    opening_q = base(db, account_id, date_to=(date_from if date_from else None))
+    location_id = resolve_location_id(user, None)
+    opening_q = base(db, account_id, date_to=(date_from if date_from else None), location_id=location_id)
     if date_from:
         opening_q = opening_q.filter(JournalEntry.posting_date < date_from)
     else:
         opening_q = opening_q.filter(False)
     od, oc = opening_q.with_entities(func.coalesce(func.sum(JournalLine.debit), 0), func.coalesce(func.sum(JournalLine.credit), 0)).one()
-    q = base(db, account_id, date_from, date_to)
+    q = base(db, account_id, date_from, date_to, location_id=location_id)
     td, tc = q.with_entities(func.coalesce(func.sum(JournalLine.debit), 0), func.coalesce(func.sum(JournalLine.credit), 0)).one()
     opening = Decimal(od) - Decimal(oc) if account.normal_balance == "DEBIT" else Decimal(oc) - Decimal(od)
     movement = Decimal(td) - Decimal(tc) if account.normal_balance == "DEBIT" else Decimal(tc) - Decimal(td)
