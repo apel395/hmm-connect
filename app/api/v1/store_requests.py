@@ -133,6 +133,26 @@ def list_store_requests(
     }
 
 
+@router.get("/availability")
+def warehouse_availability(
+    warehouse_id: int,
+    product_ids: list[int] = Query(default=[]),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    if not product_ids:
+        return []
+    rows = db.query(Inventory).filter(
+        Inventory.warehouse_id == warehouse_id,
+        Inventory.product_id.in_(set(product_ids)),
+    ).all()
+    quantities = {row.product_id: Decimal(row.quantity or 0) for row in rows}
+    return [
+        {"product_id": product_id, "available_stock": quantities.get(product_id, Decimal("0"))}
+        for product_id in dict.fromkeys(product_ids)
+    ]
+
+
 @router.get("/{request_id}")
 def get_store_request(request_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     request = db.get(StoreRequest, request_id)
