@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 
 from app.models.journal_entry import JournalEntry
+from app.services.location_access import enforce_location_access
 
 router = APIRouter(
     prefix="/journal-detail",
@@ -38,4 +39,5 @@ def get_journal_detail(
             detail="Journal not found",
         )
 
+    enforce_location_access(current_user, journal.location_id)
     return journal
