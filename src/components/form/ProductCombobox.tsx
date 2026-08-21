@@ -249,6 +249,8 @@ export default function ProductCombobox({
         disabled={disabled}
         placeholder={placeholder}
         autoComplete="off"
+        role="combobox"
+        aria-haspopup="listbox"
         aria-expanded={open}
         aria-autocomplete="list"
         data-form-control
