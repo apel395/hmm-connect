@@ -110,8 +110,9 @@ def list_store_requests(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    _=Depends(get_current_user),
 ):
+    user = _
     query = db.query(StoreRequest, User.full_name).outerjoin(User, User.id == StoreRequest.requested_by_id)
     query = apply_location_scope(query, StoreRequest, user)
     if status and status.upper() != "ALL":
