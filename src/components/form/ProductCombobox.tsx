@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { productApi } from "@/modules/master/products/api/productApi";
+import { FORM_UI } from "@/config/formUi";
 
 export interface ProductComboboxOption {
   id: number;
@@ -191,11 +192,11 @@ export default function ProductCombobox({
           style={{ left: position.left, top: position.top, width: position.width }}
         >
           {loading && visibleOptions.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-500">Loading items...</div>
+            <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div>
           ) : loadError ? (
-            <div className="px-3 py-3 text-sm text-red-600">Unable to load items. Please try again.</div>
+            <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div>
           ) : visibleOptions.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-500">No matching items.</div>
+            <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div>
           ) : (
             visibleOptions.map((product, index) => {
               const lastPrice = priceFor(product.last_purchase_price);
@@ -219,7 +220,7 @@ export default function ProductCombobox({
                     selectProduct(product);
                   }}
                 >
-                  <div className="text-sm font-medium text-slate-800">{labelFor(product)}</div>
+                  <div className="text-[13px] font-medium text-slate-800">{labelFor(product)}</div>
                   {(product.uom || product.usage_uom) && (
                     <div className="mt-0.5 text-xs text-slate-500">
                       UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}
@@ -248,9 +249,13 @@ export default function ProductCombobox({
         disabled={disabled}
         placeholder={placeholder}
         autoComplete="off"
+        role="combobox"
+        aria-haspopup="listbox"
         aria-expanded={open}
         aria-autocomplete="list"
-        className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0F6758] focus:ring-2 focus:ring-[#0F6758]/20 disabled:bg-slate-100"
+        data-form-control
+        data-form-density="compact"
+        className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`}
         onFocus={() => {
           updatePosition();
           setOpen(true);

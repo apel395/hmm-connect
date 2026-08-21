@@ -213,17 +213,17 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="max-w-7xl">
+      <DialogContent className="max-w-6xl">
         <DialogHeader>
           <DialogTitle>Create Receiving Report</DialogTitle>
         </DialogHeader>
         <DialogBody>
-          <div className="space-y-5">
+          <div className="space-y-4">
             {!purchaseOrder && (
               <label>
                 Approved Purchase Order
                 <select
-                  className="mt-1 w-full rounded-md border p-2"
+                  className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
                   value={purchaseOrderId ?? ""}
                   onChange={(event) => setPurchaseOrderId(Number(event.target.value) || undefined)}
                 >
@@ -254,13 +254,13 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
               </div>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2">
               <label>
                 Receipt Date
                 <input
                   type="datetime-local"
                   min={nowLocal()}
-                  className="mt-1 w-full rounded-md border p-2"
+                  className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
                   value={receivedAt}
                   onChange={(event) => setReceivedAt(event.target.value)}
                 />
@@ -268,21 +268,21 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
               <label>
                 Delivery Note Number
                 <input
-                  className="mt-1 w-full rounded-md border p-2"
+                  className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
                   value={deliveryNote}
                   onChange={(event) => setDeliveryNote(event.target.value)}
                 />
               </label>
             </div>
 
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
               Partial receiving is supported. Enter only the quantity physically received. Remaining
               quantities stay open for the next Receiving Report.
               {isPartial && <strong className="ml-1">This draft is a partial receipt.</strong>}
             </div>
 
             <select
-              className="w-full rounded-md border p-2"
+              className="h-9 w-full rounded-md border px-3 text-[13px]"
               value={destinationType}
               onChange={(event) => setDestinationType(event.target.value as "WAREHOUSE" | "DIRECT_USE")}
             >
@@ -292,7 +292,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
 
             {destinationType === "WAREHOUSE" && (
               <select
-                className="w-full rounded-md border p-2"
+                className="h-9 w-full rounded-md border px-3 text-[13px]"
                 value={warehouseId ?? ""}
                 onChange={(event) => setWarehouseId(Number(event.target.value) || null)}
               >
@@ -311,8 +311,8 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
               <p>Loading remaining PO items…</p>
             ) : (
               !!lines.length && (
-                <div className="overflow-x-auto rounded border">
-                  <table className="w-full min-w-[1200px] text-sm">
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full min-w-[1040px] text-xs">
                     <thead>
                       <tr>
                         <th>Item</th>
@@ -339,7 +339,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
                               min="0"
                               max={line.remaining_quantity}
                               step="0.01"
-                              className="w-28 rounded border p-2"
+                              className="h-9 w-24 rounded-md border px-2 text-right text-[13px] tabular-nums"
                               value={line.quantity}
                               onChange={(event) =>
                                 updateQuantity(line.purchase_order_item_id, Number(event.target.value))
@@ -367,7 +367,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
               )
             )}
 
-            <div className="ml-auto max-w-md rounded border p-4">
+            <div className="ml-auto w-full max-w-sm rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs tabular-nums">
               Subtotal <strong className="float-right">{money(subtotal)}</strong>
               <br />
               PPN <strong className="float-right">{money(taxAmount)}</strong>
@@ -377,14 +377,14 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
 
             {hasCostOverride && (
               <textarea
-                className="w-full rounded border p-2"
+                className="min-h-20 w-full rounded-md border p-2 text-[13px]"
                 placeholder="Cost correction reason"
                 value={costCorrectionReason}
                 onChange={(event) => setCostCorrectionReason(event.target.value)}
               />
             )}
             <textarea
-              className="w-full rounded border p-2"
+              className="min-h-20 w-full rounded-md border p-2 text-[13px]"
               placeholder="Notes"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}

@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FORM_UI } from "@/config/formUi";
 
 export interface SearchableSelectOption {
   id: number;
@@ -140,7 +141,7 @@ export default function SearchableSelect({
           style={{ left: position.left, top: position.top, width: position.width }}
         >
           {filteredOptions.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-500">No matching options.</div>
+            <div className="px-3 py-2 text-xs text-slate-500">No matching options.</div>
           ) : filteredOptions.map((option, index) => (
             <button
               key={option.id}
@@ -148,7 +149,7 @@ export default function SearchableSelect({
               type="button"
               role="option"
               aria-selected={index === activeIndex}
-              className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`}
+              className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`}
               onMouseEnter={() => setActiveIndex(index)}
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -170,8 +171,8 @@ export default function SearchableSelect({
     : null;
 
   return (
-    <label className="block text-sm font-medium">
-      {label && <span>{label}{required ? " *" : ""}</span>}
+    <label className="block">
+      {label && <span className={`${FORM_UI.label} ${FORM_UI.density.compact.label}`}>{label}{required ? <span className="text-red-500"> *</span> : null}</span>}
       <div ref={rootRef} className={`relative ${label ? "mt-1" : ""}`}>
         <input
           ref={inputRef}
@@ -181,9 +182,13 @@ export default function SearchableSelect({
           required={required}
           placeholder={placeholder}
           autoComplete="off"
+          role="combobox"
+          aria-haspopup="listbox"
           aria-expanded={open}
           aria-autocomplete="list"
-          className={`h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0F6758] focus:ring-2 focus:ring-[#0F6758]/20 disabled:bg-slate-100 ${className}`}
+          data-form-control
+          data-form-density="compact"
+          className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} ${className}`}
           onFocus={(event) => {
             updatePosition();
             setOpen(true);

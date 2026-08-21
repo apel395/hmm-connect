@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import clsx from "clsx";
+import { FORM_UI } from "@/config/formUi";
 
 export interface DialogProps {
   open?: boolean;
@@ -30,21 +31,18 @@ export default function Dialog({
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogPortal = DialogPrimitive.Portal;
 export const DialogTitle = DialogPrimitive.Title;
-export const DialogDescription =
-  DialogPrimitive.Description;
+export const DialogDescription = DialogPrimitive.Description;
 
 export interface DialogOverlayProps {
   className?: string;
 }
 
-export function DialogOverlay({
-  className,
-}: DialogOverlayProps) {
+export function DialogOverlay({ className }: DialogOverlayProps) {
   return (
     <DialogPrimitive.Overlay
       className={clsx(
-        "fixed inset-0 z-50 bg-black/50 backdrop-blur-sm",
-        className
+        "fixed inset-0 z-50 bg-slate-950/55 backdrop-blur-[1px]",
+        className,
       )}
     />
   );
@@ -62,8 +60,8 @@ export function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-
       <DialogPrimitive.Content
+        role="dialog"
         className={clsx(
           "fixed left-1/2 top-1/2 z-50",
           "flex max-h-[calc(100vh-2rem)] w-[95vw] max-w-2xl flex-col overflow-hidden",
@@ -71,7 +69,7 @@ export function DialogContent({
           "-translate-x-1/2 -translate-y-1/2",
           "rounded-xl border border-slate-200 bg-white shadow-2xl",
           "focus:outline-none",
-          className
+          className,
         )}
         onEscapeKeyDown={() => {}}
         onPointerDownOutside={() => {}}
@@ -79,13 +77,12 @@ export function DialogContent({
         <DialogPrimitive.Close asChild>
           <button
             type="button"
-            className="absolute right-3 top-3 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="absolute right-3 top-3 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
         </DialogPrimitive.Close>
-
         {children}
       </DialogPrimitive.Content>
     </DialogPortal>
@@ -102,12 +99,7 @@ export function DialogHeader({
   className,
 }: DialogHeaderProps) {
   return (
-    <div
-      className={clsx(
-        "shrink-0 border-b border-slate-200 px-4 py-3 pr-12",
-        className
-      )}
-    >
+    <div className={clsx(FORM_UI.dialog.header, className)}>
       {children}
     </div>
   );
@@ -123,12 +115,7 @@ export function DialogBody({
   className,
 }: DialogBodyProps) {
   return (
-    <div
-      className={clsx(
-        "min-h-0 flex-1 overflow-y-auto px-4 py-4 text-[13px]",
-        className
-      )}
-    >
+    <div className={clsx(FORM_UI.dialog.body, className)}>
       {children}
     </div>
   );
@@ -144,12 +131,7 @@ export function DialogFooter({
   className,
 }: DialogFooterProps) {
   return (
-    <div
-      className={clsx(
-        "shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-4 py-3",
-        className
-      )}
-    >
+    <div className={clsx(FORM_UI.dialog.footer, className)}>
       {children}
     </div>
   );
