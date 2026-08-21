@@ -133,7 +133,9 @@ export default function WorkspaceTabs() {
 
   const target = contextMenu ? tabs.find((tab) => tab.id === contextMenu.id) : undefined;
   const targetIndex = target ? tabs.findIndex((tab) => tab.id === target.id) : -1;
-  const hasClosableRight = targetIndex >= 0 && tabs.slice(targetIndex + 1).some((tab) => !tab.pinned);
+  const tabsToRight = targetIndex >= 0 ? tabs.slice(targetIndex + 1) : [];
+  const hasClosableRight = tabsToRight.some((tab) => !tab.pinned);
+  const activeWillCloseToRight = tabsToRight.some((tab) => tab.id === currentPath && !tab.pinned);
 
   return (
     <div className="flex h-10 shrink-0 items-stretch border-b border-[#DCD6CB] bg-[#F3F0EA]">
@@ -208,7 +210,7 @@ export default function WorkspaceTabs() {
         >
           <button type="button" disabled={target.pinned} onClick={() => { close(target.id); setContextMenu(null); }} className="block w-full px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-40">Close</button>
           <button type="button" onClick={() => { const path = closeOtherTabs(target.id); if (path) navigate(path); setContextMenu(null); }} className="block w-full px-3 py-2 text-left hover:bg-slate-50">Close Others</button>
-          <button type="button" disabled={!hasClosableRight} onClick={() => { const path = closeTabsToRight(target.id); if (!tabs.some((tab) => tab.id === currentPath && tab.path === path)) navigate(path || "/dashboard"); setContextMenu(null); }} className="block w-full px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-40">Close Tabs to the Right</button>
+          <button type="button" disabled={!hasClosableRight} onClick={() => { const path = closeTabsToRight(target.id); if (activeWillCloseToRight) navigate(path || "/dashboard"); setContextMenu(null); }} className="block w-full px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-40">Close Tabs to the Right</button>
           <button type="button" onClick={() => { navigate(closeAllTabs()); setContextMenu(null); }} className="block w-full px-3 py-2 text-left text-red-600 hover:bg-red-50">Close All</button>
         </div>
       )}
