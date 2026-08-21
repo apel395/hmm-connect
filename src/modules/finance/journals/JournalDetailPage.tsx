@@ -55,7 +55,7 @@ export default function JournalDetailPage() {
   const act = useMutation({
     mutationFn: (action: string) => journalAction(Number(id), action),
     onSuccess: (_, action) => {
-      toast.success(action === "unpost" ? "Journal returned to draft and the source document was synchronized." : `Journal ${action}ed.`);
+      toast.success(action === "unpost" ? "Journal returned to draft and the source document was synchronized." : action === "recreate" ? "General Ledger rows recreated without creating a new journal." : `Journal ${action}ed.`);
       refresh();
     },
     onError: (error: any) => toast.error(error?.response?.data?.detail || "Journal action failed."),
@@ -112,6 +112,11 @@ export default function JournalDetailPage() {
     setLines((current) => current.map((line, i) => i === index ? { ...line, ...patch } : line));
   };
 
+  const confirmRecreate = () => {
+    if (!window.confirm(`Recreate General Ledger rows for ${x.journal_number}?\n\nExisting linked GL rows will be replaced from the current journal lines. The Journal Entry and source document remain unchanged.`)) return;
+    act.mutate("recreate");
+  };
+
   const confirmUnpost = () => {
     const source = (x.reference_type || "MANUAL").replaceAll("_", " ");
     if (!window.confirm(`Unpost ${x.journal_number}?\n\nThis will remove its General Ledger rows and synchronize the ${source} source document back to its editable/pre-posting state. Closed fiscal periods remain locked.`)) return;
@@ -125,7 +130,7 @@ export default function JournalDetailPage() {
         <PrintPreviewButton src={`/journal-entries/${x.id}/print`} title={`Journal ${x.journal_number}`} ariaLabel="Preview journal" />
         {a.can_edit && <Button variant="outline" onClick={openEditor}>Edit</Button>}
         {a.can_post && <Button loading={act.isPending} onClick={() => act.mutate("post")}>Post</Button>}
-        {a.can_unpost && <Button loading={act.isPending} variant="outline" onClick={confirmUnpost}>Unpost</Button>}
+        {a.can_unpost && <Button loading={act.isPending} variant="outline" onClick={confirmUnpost}>Unpost</Button>}{a.can_recreate && <Button loading={act.isPending} variant="outline" onClick={confirmRecreate}>Recreate GL</Button>}
         {a.can_void && <Button variant="danger" loading={act.isPending} onClick={() => act.mutate("void")}>Void</Button>}
       </div>
     </div>

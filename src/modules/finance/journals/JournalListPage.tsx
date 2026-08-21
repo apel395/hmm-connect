@@ -12,7 +12,8 @@ import CurrencyInput from "@/components/form/CurrencyInput";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { isBeforeToday, todayLocal } from "@/utils/dateConstraints";
-import { createJournal, journalAction, listJournals } from "./api";
+import { bulkJournalAction, createJournal, getCurrentPeriodPreview, journalAction, listJournals, recreateCurrentPeriod } from "./api";
+import useAuthorization from "@/hooks/useAuthorization";
 
 type Line = { account_id: number; debit: number; credit: number; description: string };
 const blankLine = (): Line => ({ account_id: 0, debit: 0, credit: 0, description: "" });
@@ -20,6 +21,8 @@ const blankLine = (): Line => ({ account_id: 0, debit: 0, credit: 0, description
 export default function JournalListPage() {
   const nav = useNavigate();
   const client = useQueryClient();
+  const { isSuperuser } = useAuthorization();
+  const canBulkManage = isSuperuser();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -31,12 +34,16 @@ export default function JournalListPage() {
   const [departmentId, setDepartmentId] = useState<number>();
   const [locationId, setLocationId] = useState<number>();
   const [lines, setLines] = useState<Line[]>([blankLine(), blankLine()]);
+  const [selected, setSelected] = useState<number[]>([]);
 
   const q = useQuery({ queryKey: ["journal-entries", page, search, status], queryFn: () => listJournals({ page, page_size: 20, search: search || undefined, status: status || undefined }) });
   const accounts = useQuery({ queryKey: ["journal-account-lookup"], queryFn: () => getAccountLookup({ is_posting: true, is_active: true }), enabled: open });
   const businessUnits = useQuery({ queryKey: ["business-units", "manual-journal", "active"], queryFn: () => filterBusinessUnits({ is_active: true }), enabled: open });
   const departments = useQuery({ queryKey: ["journal-departments", businessUnitId], queryFn: () => listDepartments({ business_unit_id: businessUnitId, is_active: true }), enabled: open && Boolean(businessUnitId) });
   const locations = useQuery({ queryKey: ["journal-locations", businessUnitId], queryFn: () => listLocations({ business_unit_id: businessUnitId, is_active: true }), enabled: open && Boolean(businessUnitId) });
+  const currentPeriod = useQuery({ queryKey: ["journal-current-period-preview"], queryFn: getCurrentPeriodPreview, enabled: canBulkManage });
+
+  useEffect(() => { setSelected([]); }, [page, search, status]);
 
   useEffect(() => {
     if (open && !businessUnitId && businessUnits.data?.length === 1) setBusinessUnitId(businessUnits.data[0].id);
@@ -58,6 +65,28 @@ export default function JournalListPage() {
     onError: (error: any) => toast.error(error?.response?.data?.detail || "Journal action failed."),
   });
 
+  const bulkLifecycle = useMutation({
+    mutationFn: ({ ids, action }: { ids: number[]; action: "post" | "unpost" }) =>
+      bulkJournalAction(ids, action),
+    onSuccess: (result) => {
+      toast.success(`${result.processed} journal(s) changed to ${result.status}.`);
+      setSelected([]);
+      refreshFinance();
+      currentPeriod.refetch();
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.detail || "Bulk journal action failed. No journals were changed."),
+  });
+
+  const recreatePeriod = useMutation({
+    mutationFn: recreateCurrentPeriod,
+    onSuccess: (result) => {
+      toast.success(`${result.journals_recreated} journal(s) and ${result.ledger_rows_recreated} GL row(s) recreated for ${result.period_name}.`);
+      refreshFinance();
+      currentPeriod.refetch();
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.detail || "Current period recreation failed. No GL rows were changed."),
+  });
+
   const save = useMutation({
     mutationFn: () => createJournal({
       posting_date: postingDate, document_type: "MANUAL_JOURNAL", document_number: documentNumber.trim(), reference_type: "MANUAL", reference_id: 0,
@@ -75,12 +104,36 @@ export default function JournalListPage() {
   const changeBusinessUnit = (value?: number) => { setBusinessUnitId(value); setDepartmentId(undefined); setLocationId(undefined); };
   const createJournalEntry = () => { if (isBeforeToday(postingDate)) return toast.error("Posting Date cannot be before today."); save.mutate(); };
 
+  const visibleRows: any[] = q.data?.items ?? [];
+  const selectedRows = visibleRows.filter((row) => selected.includes(row.id));
+  const bulkCandidates = (action: "post" | "unpost") => {
+    const desiredStatus = action === "post" ? "DRAFT" : "POSTED";
+    const source = selectedRows.length ? selectedRows : visibleRows;
+    return source.filter((row) => row.status === desiredStatus).map((row) => row.id);
+  };
+  const runBulk = (action: "post" | "unpost") => {
+    const ids = bulkCandidates(action);
+    if (!ids.length) return toast.error(`No ${action === "post" ? "draft" : "posted"} journals available on this page.`);
+    const verb = action === "post" ? "Post" : "Unpost";
+    if (!window.confirm(`${verb} ${ids.length} journal(s)?\n\nThis operation is atomic. If one journal fails validation, none will be changed.`)) return;
+    bulkLifecycle.mutate({ ids, action });
+  };
+  const runRecreatePeriod = () => {
+    const preview = currentPeriod.data;
+    if (!preview) return toast.error("Current fiscal period could not be determined.");
+    if (!window.confirm(`Recreate GL rows for ${preview.posted_count} posted journal(s) in ${preview.period_name}?\n\nExisting linked GL rows will be replaced. Journal Entries and source documents remain unchanged.`)) return;
+    recreatePeriod.mutate();
+  };
+  const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((row) => selected.includes(row.id));
+  const toggleAllVisible = () => setSelected(allVisibleSelected ? [] : visibleRows.map((row) => row.id));
+
   return <>
-    <PageHeader title="Journal Entries" description="Review debit and credit entries, then post or safely unpost eligible journals." actions={<Button onClick={() => { setPostingDate(todayLocal()); setOpen(true); }}>Create Journal Entry</Button>} />
+    <PageHeader title="Journal Entries" description="Review debit and credit entries, then post or safely unpost eligible journals." actions={<div className="flex flex-wrap gap-2">{canBulkManage && <><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post All</Button><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost All</Button><Button variant="outline" loading={recreatePeriod.isPending} disabled={!currentPeriod.data?.posted_count} onClick={runRecreatePeriod}>Recreate Current Period</Button></>}<Button onClick={() => { setPostingDate(todayLocal()); setOpen(true); }}>Create Journal Entry</Button></div>} />
     <Card><div className="mb-4 flex gap-3"><input className="h-10 flex-1 rounded border px-3" placeholder="Search journal, document, or description" value={search} onChange={(e) => setSearch(e.target.value)} /><select className="h-10 rounded border px-3" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select></div>
       <Table className="min-w-[850px]" containerClassName="border-0 shadow-none">
-        <THead><TR className="whitespace-nowrap"><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Amount</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead>
-        <TBody>{q.data?.items.map((x: any) => <TR key={x.id} className="whitespace-nowrap">
+        <THead><TR className="whitespace-nowrap"><TH className="w-10"><input type="checkbox" aria-label="Select all journals on this page" checked={allVisibleSelected} onChange={toggleAllVisible} /></TH><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Amount</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead>
+        <TBody>{visibleRows.map((x: any) => <TR key={x.id} className="whitespace-nowrap">
+          <TD><input type="checkbox" aria-label={`Select ${x.journal_number}`} checked={selected.includes(x.id)} onChange={() => setSelected((current) => current.includes(x.id) ? current.filter((value) => value !== x.id) : [...current, x.id])} /></TD>
           <TD><TableCellStack primary={x.journal_number} secondary={x.reference_type?.replaceAll("_", " ")}/></TD>
           <TD>{x.journal_date}</TD>
           <TD className="font-medium">{x.reference_number || "—"}</TD>

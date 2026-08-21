@@ -80,3 +80,37 @@ export const getJournal = async (id: number) => (await api.get<Journal>(`/journa
 export const createJournal = async (payload: JournalCreatePayload) => (await api.post<Journal>("/journal-entries", payload)).data;
 export const updateJournal = async (id: number, payload: JournalUpdatePayload) => (await api.patch<Journal>(`/journal-entries/${id}`, payload)).data;
 export const journalAction = async (id: number, action: string) => (await api.post<Journal>(`/journal-entries/${id}/${action}`)).data;
+
+
+export type CurrentPeriodPreview = {
+  period_id: number;
+  period_name: string;
+  start_date: string;
+  end_date: string;
+  draft_count: number;
+  posted_count: number;
+};
+
+export const getCurrentPeriodPreview = async () =>
+  (await api.get<CurrentPeriodPreview>("/journal-entries/bulk/current-period-preview")).data;
+
+export const bulkJournalAction = async (
+  journalIds: number[],
+  action: "post" | "unpost",
+) =>
+  (
+    await api.post<{ processed: number; status: string; journal_ids: number[] }>(
+      `/journal-entries/bulk/${action}`,
+      { journal_ids: journalIds },
+    )
+  ).data;
+
+export const recreateCurrentPeriod = async () =>
+  (
+    await api.post<{
+      period_id: number;
+      period_name: string;
+      journals_recreated: number;
+      ledger_rows_recreated: number;
+    }>("/journal-entries/bulk/recreate-current-period")
+  ).data;
