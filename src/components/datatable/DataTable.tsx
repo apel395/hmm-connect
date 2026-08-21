@@ -1,110 +1,64 @@
-import{
+import type { ReactNode } from "react";
+import {
+  Table,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+} from "@/components/ui/Table";
+import type { TableDensity } from "@/config/tableUi";
 
-Table,
-THead,
-TBody,
-TR,
-TH,
-TD,
-
-}from"@/components/ui/Table";
-
-interface Column{
-
-key:string;
-
-title:string;
-
-render?:(row:any)=>React.ReactNode;
-
+export interface DataTableColumn<Row> {
+  key: string;
+  title: string;
+  render?: (row: Row) => ReactNode;
+  numeric?: boolean;
+  className?: string;
+  headerClassName?: string;
 }
 
-interface Props{
-
-columns:Column[];
-
-rows:any[];
-
+interface DataTableProps<Row> {
+  columns: DataTableColumn<Row>[];
+  rows: Row[];
+  density?: TableDensity;
+  stickyHeader?: boolean;
+  variant?: "standard" | "grid";
+  className?: string;
+  getRowKey?: (row: Row, index: number) => string | number;
 }
 
-export default function DataTable({
-
-columns,
-
-rows,
-
-}:Props){
-
-return(
-
-<Table>
-
-<THead>
-
-<TR>
-
-{
-
-columns.map(col=>(
-
-<TH key={col.key}>
-
-{col.title}
-
-</TH>
-
-))
-
-}
-
-</TR>
-
-</THead>
-
-<TBody>
-
-{
-
-rows.map((row,index)=>(
-
-<TR key={index}>
-
-{
-
-columns.map(col=>(
-
-<TD key={col.key}>
-
-{
-
-col.render
-
-?
-
-col.render(row)
-
-:
-
-row[col.key]
-
-}
-
-</TD>
-
-))
-
-}
-
-</TR>
-
-))
-
-}
-
-</TBody>
-
-</Table>
-
-);
-
+export default function DataTable<Row extends Record<string, unknown>>({
+  columns,
+  rows,
+  density,
+  stickyHeader = false,
+  variant = "standard",
+  className,
+  getRowKey,
+}: DataTableProps<Row>) {
+  return (
+    <Table density={density} stickyHeader={stickyHeader} variant={variant} className={className}>
+      <THead>
+        <TR>
+          {columns.map((column) => (
+            <TH key={column.key} numeric={column.numeric} className={column.headerClassName}>
+              {column.title}
+            </TH>
+          ))}
+        </TR>
+      </THead>
+      <TBody>
+        {rows.map((row, index) => (
+          <TR key={getRowKey ? getRowKey(row, index) : index}>
+            {columns.map((column) => (
+              <TD key={column.key} numeric={column.numeric} className={column.className}>
+                {column.render ? column.render(row) : (row[column.key] as ReactNode)}
+              </TD>
+            ))}
+          </TR>
+        ))}
+      </TBody>
+    </Table>
+  );
 }
