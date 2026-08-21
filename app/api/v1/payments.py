@@ -258,7 +258,6 @@ def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_
         SupplierInvoice.supplier_id == supplier_id,
         SupplierInvoice.currency == currency.upper(),
         SupplierInvoice.status.in_(OPEN_INVOICE_STATUSES),
-        SupplierInvoice.balance_amount > 0,
     ).order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id).all()
 
     available_rows = []
