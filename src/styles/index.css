@@ -53,6 +53,45 @@ h6 {
 }
 
 @media screen {
+  /*
+   * Global fallback for legacy/raw tables. New screens should use the shared
+   * Table component and TABLE_UI config; this keeps existing modules aligned
+   * with the Stock table until they are migrated.
+   */
+  main table:not([data-table-density]) {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  main table:not([data-table-density]) thead th {
+    padding: 0.625rem 1rem;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #475569;
+    background: #f8fafc;
+  }
+
+  main table:not([data-table-density]) tbody td {
+    padding: 0.625rem 1rem;
+    vertical-align: middle;
+    color: #334155;
+  }
+
+  main table:not([data-table-density]) :is(th, td).text-right {
+    font-variant-numeric: tabular-nums;
+  }
+
+  main table:not([data-table-density]) tbody tr {
+    transition: background-color 150ms ease;
+  }
+
+  main table:not([data-table-density]) tbody tr:hover {
+    background: #f8fafc;
+  }
+
   .table-standard,
   .table-grid {
     border-collapse: separate;

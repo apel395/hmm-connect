@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listLocations } from "@/modules/admin/organization/api";
 import { getCashAccounts } from "./api";
@@ -70,13 +71,13 @@ export default function CashAccountsPage() {
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />Active</label>
       </div>
       <div className="flex justify-end gap-2">{form.id && <Button variant="outline" onClick={() => setForm({ ...empty, business_unit_id: businessUnits.data?.length === 1 ? businessUnits.data[0].id : 0 })}>Cancel Edit</Button>}<Button loading={save.isPending} disabled={!canSave} onClick={submit}>{form.id ? "Update Bank Account" : "Create Bank Account"}</Button></div>
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th className="text-left">Bank</th><th>Account</th><th>Number</th><th>Business Unit</th><th>Location</th><th>Linked COA</th><th>Status</th><th>Action</th></tr></thead><tbody>{bankAccounts.data?.map((row) => <tr key={row.id} className="border-t"><td>{row.bank_name}</td><td>{row.account_name}</td><td>{row.account_number}</td><td>{row.business_unit_name ?? "—"}</td><td>{row.location_name ?? "—"}</td><td>{row.coa_account_code} — {row.coa_account_name}</td><td>{row.is_active ? "Active" : "Inactive"}</td><td><Button size="xs" variant="outline" onClick={() => edit(row)}>Edit</Button></td></tr>)}</tbody></table></div>
+      <Table className="min-w-[780px]"><THead><TR className="whitespace-nowrap"><TH>Bank Account</TH><TH>Organization</TH><TH>Linked COA</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{bankAccounts.data?.map((row) => <TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={`${row.bank_name} — ${row.account_name}`} secondary={row.account_number}/></TD><TD><TableCellStack primary={row.business_unit_name ?? "—"} secondary={row.location_name ?? undefined}/></TD><TD><TableCellStack primary={row.coa_account_name} secondary={row.coa_account_code}/></TD><TD>{row.is_active ? "Active" : "Inactive"}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => edit(row)}>Edit</Button></div></TD></TR>)}</TBody></Table>
     </Card>
 
     <Card className="space-y-4">
       <div><h2 className="text-lg font-semibold">Posted Cash & Bank Activity</h2><p className="text-sm text-slate-500">Balances below are derived from posted accounting transactions.</p></div>
       <div className="flex gap-3"><input type="date" className={input} onChange={(e) => setDates({ ...dates, date_from: e.target.value })} /><input type="date" className={input} onChange={(e) => setDates({ ...dates, date_to: e.target.value })} /></div>
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th>Code</th><th>Name</th><th>Subtype</th><th>Opening</th><th>Inflow</th><th>Outflow</th><th>Closing</th><th>Last Activity</th><th>Action</th></tr></thead><tbody>{activity.data?.map((row: any) => <tr key={row.account_id} className="border-t"><td>{row.account_code}</td><td>{row.account_name}</td><td>{row.account_subtype}</td><td>{money(row.opening_balance)}</td><td>{money(row.total_inflow)}</td><td>{money(row.total_outflow)}</td><td>{money(row.closing_balance)}</td><td>{row.last_transaction_date || "—"}</td><td><button className="text-emerald-700" onClick={() => nav(`/cash-accounts/${row.account_id}`)}>View</button></td></tr>)}</tbody></table></div>
+      <Table className="min-w-[850px]"><THead><TR className="whitespace-nowrap"><TH>Account</TH><TH numeric>Opening</TH><TH numeric>Inflow</TH><TH numeric>Outflow</TH><TH numeric>Closing</TH><TH>Last Activity</TH><TH numeric>Action</TH></TR></THead><TBody>{activity.data?.map((row: any) => <TR key={row.account_id} className="whitespace-nowrap"><TD><TableCellStack primary={row.account_name} secondary={`${row.account_code} · ${row.account_subtype}`}/></TD><TD numeric>{money(row.opening_balance)}</TD><TD numeric>{money(row.total_inflow)}</TD><TD numeric>{money(row.total_outflow)}</TD><TD numeric className="font-semibold">{money(row.closing_balance)}</TD><TD>{row.last_transaction_date || "—"}</TD><TD><div className="flex justify-end"><button className="font-medium text-emerald-700 hover:underline" onClick={() => nav(`/cash-accounts/${row.account_id}`)}>View</button></div></TD></TR>)}</TBody></Table>
     </Card>
   </div>;
 }

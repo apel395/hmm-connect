@@ -1,103 +1,80 @@
 import {
+  createContext,
   HTMLAttributes,
   TableHTMLAttributes,
   TdHTMLAttributes,
   ThHTMLAttributes,
+  type ReactNode,
+  useContext,
 } from "react";
 import clsx from "clsx";
+import { TABLE_UI, type TableDensity } from "@/config/tableUi";
+
+const TableDensityContext = createContext<TableDensity>(TABLE_UI.defaultDensity);
 
 export interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
   variant?: "standard" | "grid";
   stickyHeader?: boolean;
+  density?: TableDensity;
+  containerClassName?: string;
 }
 
 export function Table({
   className,
+  containerClassName,
   children,
   variant = "standard",
   stickyHeader = false,
+  density = TABLE_UI.defaultDensity,
   ...props
 }: TableProps) {
   return (
-    <div className="w-full overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-      <table
-        className={clsx(
-          "min-w-full text-[12.5px]",
-          variant === "grid" ? "table-grid" : "table-standard",
-          stickyHeader && "table-sticky-header",
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </table>
-    </div>
+    <TableDensityContext.Provider value={density}>
+      <div className={clsx("w-full overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm", containerClassName)}>
+        <table
+          data-table-density={density}
+          className={clsx(
+            "min-w-full",
+            TABLE_UI.density[density].table,
+            variant === "grid" ? "table-grid" : "table-standard",
+            stickyHeader && "table-sticky-header",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </table>
+      </div>
+    </TableDensityContext.Provider>
   );
 }
 
 export type THeadProps = HTMLAttributes<HTMLTableSectionElement>;
 
-export function THead({
-  className,
-  children,
-  ...props
-}: THeadProps) {
-  return (
-    <thead
-      className={clsx("bg-slate-50", className)}
-      {...props}
-    >
-      {children}
-    </thead>
-  );
+export function THead({ className, children, ...props }: THeadProps) {
+  return <thead className={clsx("bg-slate-50", className)} {...props}>{children}</thead>;
 }
 
 export type TBodyProps = HTMLAttributes<HTMLTableSectionElement>;
 
-export function TBody({
-  className,
-  children,
-  ...props
-}: TBodyProps) {
-  return (
-    <tbody
-      className={clsx("divide-y divide-slate-100", className)}
-      {...props}
-    >
-      {children}
-    </tbody>
-  );
+export function TBody({ className, children, ...props }: TBodyProps) {
+  return <tbody className={clsx("divide-y divide-slate-100", className)} {...props}>{children}</tbody>;
 }
 
 export type TFootProps = HTMLAttributes<HTMLTableSectionElement>;
 
-export function TFoot({
-  className,
-  children,
-  ...props
-}: TFootProps) {
-  return (
-    <tfoot
-      className={clsx("bg-slate-50", className)}
-      {...props}
-    >
-      {children}
-    </tfoot>
-  );
+export function TFoot({ className, children, ...props }: TFootProps) {
+  return <tfoot className={clsx("bg-slate-50", className)} {...props}>{children}</tfoot>;
 }
 
 export type TRProps = HTMLAttributes<HTMLTableRowElement>;
 
-export function TR({
-  className,
-  children,
-  ...props
-}: TRProps) {
+export function TR({ className, children, ...props }: TRProps) {
   return (
     <tr
       className={clsx(
         "transition-colors hover:bg-slate-50 aria-selected:bg-blue-50 data-[state=selected]:bg-blue-50",
-        className
+        className,
       )}
       {...props}
     >
@@ -106,18 +83,19 @@ export function TR({
   );
 }
 
-export type THProps = ThHTMLAttributes<HTMLTableCellElement>;
+export interface THProps extends ThHTMLAttributes<HTMLTableCellElement> {
+  numeric?: boolean;
+}
 
-export function TH({
-  className,
-  children,
-  ...props
-}: THProps) {
+export function TH({ className, children, numeric = false, ...props }: THProps) {
+  const density = useContext(TableDensityContext);
   return (
     <th
       className={clsx(
-        "h-9 px-4 py-2 text-left text-[10.5px] font-semibold uppercase tracking-[0.04em] text-slate-600",
-        className
+        TABLE_UI.density[density].headerCell,
+        TABLE_UI.header,
+        numeric ? TABLE_UI.numeric : "text-left",
+        className,
       )}
       {...props}
     >
@@ -126,18 +104,19 @@ export function TH({
   );
 }
 
-export type TDProps = TdHTMLAttributes<HTMLTableCellElement>;
+export interface TDProps extends TdHTMLAttributes<HTMLTableCellElement> {
+  numeric?: boolean;
+}
 
-export function TD({
-  className,
-  children,
-  ...props
-}: TDProps) {
+export function TD({ className, children, numeric = false, ...props }: TDProps) {
+  const density = useContext(TableDensityContext);
   return (
     <td
       className={clsx(
-        "h-10 px-4 py-2 align-middle text-slate-700",
-        className
+        TABLE_UI.density[density].bodyCell,
+        "align-middle text-slate-700",
+        numeric && TABLE_UI.numeric,
+        className,
       )}
       {...props}
     >
@@ -146,7 +125,22 @@ export function TD({
   );
 }
 
-/* Optional aliases for compatibility */
+export function TableCellStack({
+  primary,
+  secondary,
+  className,
+}: {
+  primary: ReactNode;
+  secondary?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={clsx("block min-w-0", className)}>
+      <span className="block truncate font-medium text-slate-800">{primary}</span>
+      {secondary ? <span className={clsx("block truncate", TABLE_UI.secondaryText)}>{secondary}</span> : null}
+    </span>
+  );
+}
 
 export const TableHead = THead;
 export const TableBody = TBody;

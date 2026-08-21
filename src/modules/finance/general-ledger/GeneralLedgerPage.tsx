@@ -4,8 +4,12 @@ import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
+import { TABLE_UI } from "@/config/tableUi";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { getAccountSummary, listLedger } from "./api";
+
+const amount = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID");
 
 export default function GeneralLedgerPage() {
   const [searchParams] = useSearchParams();
@@ -19,8 +23,28 @@ export default function GeneralLedgerPage() {
   const input = "h-10 rounded border px-3";
 
   return <div className="space-y-6"><PageHeader title="General Ledger" description="Read-only posted journal activity with server-calculated balances."/>
-    <Card><div className="grid gap-3 md:grid-cols-4"><input className={input} placeholder="Search journal, reference, description" value={filters.search} onChange={event => change("search", event.target.value)}/><select className={input} value={filters.account_id} onChange={event => change("account_id", event.target.value)}><option value="">All accounts</option>{accounts.data?.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select><input className={input} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/><input className={input} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/><select className={input} value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All reference types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select><input className={input} placeholder="Supplier ID" value={filters.supplier_id} onChange={event => change("supplier_id", event.target.value)}/><input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/><input className={input} placeholder="Location ID" value={filters.location_id} onChange={event => change("location_id", event.target.value)}/></div></Card>
-    {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold">{Number(summary.data.opening_balance).toLocaleString()}</div></div><div><small>Total Debit</small><div className="font-bold">{Number(summary.data.total_debit).toLocaleString()}</div></div><div><small>Total Credit</small><div className="font-bold">{Number(summary.data.total_credit).toLocaleString()}</div></div><div><small>Closing Balance</small><div className="font-bold">{Number(summary.data.closing_balance).toLocaleString()}</div></div></div></Card>}
-    <Card className="overflow-x-auto"><table className="table-grid min-w-[1250px] w-full text-sm"><thead><tr className="border-b text-left"><th>Date</th><th>Journal</th><th>Account</th><th>Description</th><th>Reference Type</th><th>Reference</th><th className="text-right">Debit</th><th className="text-right">Credit</th><th className="text-right">Running Balance</th><th>Supplier</th><th>Department</th><th>Location</th></tr></thead><tbody>{ledger.data?.items.map((row: any) => <tr key={row.id} className="border-b"><td>{row.posting_date}</td><td><Link className="text-emerald-700" to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></td><td>{row.account_code} — {row.account_name}</td><td>{row.description || "—"}</td><td>{row.reference_type || "—"}</td><td>{row.reference_number || "—"}</td><td className="text-right">{Number(row.debit).toLocaleString()}</td><td className="text-right">{Number(row.credit).toLocaleString()}</td><td className="text-right">{Number(row.balance).toLocaleString()}</td><td>{row.supplier_name || "—"}</td><td>{row.department_name || "—"}</td><td>{row.location_name || "—"}</td></tr>)}</tbody></table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
+    <Card><div className="grid gap-3 md:grid-cols-4"><input className={input} placeholder="Search journal, document, description" value={filters.search} onChange={event => change("search", event.target.value)}/><select className={input} value={filters.account_id} onChange={event => change("account_id", event.target.value)}><option value="">All accounts</option>{accounts.data?.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select><input className={input} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/><input className={input} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/><select className={input} value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select><input className={input} placeholder="Supplier ID" value={filters.supplier_id} onChange={event => change("supplier_id", event.target.value)}/><input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/><input className={input} placeholder="Location ID" value={filters.location_id} onChange={event => change("location_id", event.target.value)}/></div></Card>
+    {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Total Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Total Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
+    <Card>
+      <Table variant="grid" stickyHeader className="min-w-[1100px]" containerClassName="border-0 shadow-none">
+        <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
+        <TBody>{ledger.data?.items.map((row: any) => {
+          const contextPrimary = row.supplier_name || row.business_unit_name;
+          const contextSecondary = [row.department_name, row.location_name].filter(Boolean).join(" · ");
+          return <TR key={row.id} className="whitespace-nowrap">
+            <TD>{row.posting_date}</TD>
+            <TD><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
+            <TD className="max-w-[280px]"><TableCellStack primary={row.account_name} secondary={row.account_code}/></TD>
+            <TD className="max-w-[260px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
+            <TD className="font-medium text-slate-700">{row.reference_number || "—"}</TD>
+            <TD numeric>{amount(row.debit)}</TD>
+            <TD numeric>{amount(row.credit)}</TD>
+            <TD numeric className="font-semibold">{amount(row.balance)}</TD>
+            <TD className="max-w-[220px]">{contextPrimary || contextSecondary ? <TableCellStack primary={contextPrimary || contextSecondary} secondary={contextPrimary ? contextSecondary : undefined}/> : "—"}</TD>
+          </TR>;
+        })}</TBody>
+      </Table>
+      <div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div>
+    </Card>
   </div>;
 }
