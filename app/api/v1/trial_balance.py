@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_any_role
 from app.services.trial_balance_service import TrialBalanceService
+from app.services.location_access import resolve_location_id
 
 router = APIRouter(prefix="/trial-balance", tags=["Financial Reports"])
 MONEY_FIELDS = (
@@ -99,6 +100,7 @@ def get_trial_balance(
     user=Depends(get_current_user),
 ):
     access(user)
+    location_id = resolve_location_id(user, location_id)
     return serialize(build_report(
         db, date_from, date_to, page, page_size, search, account_type, account_id,
         parent_account_id, include_zero_balance, include_inactive, location_id,
@@ -125,6 +127,7 @@ def export_trial_balance_csv(
     user=Depends(get_current_user),
 ):
     access(user)
+    location_id = resolve_location_id(user, location_id)
     report = build_report(
         db, date_from, date_to, 1, 200, search, account_type, account_id,
         parent_account_id, include_zero_balance, include_inactive, location_id,

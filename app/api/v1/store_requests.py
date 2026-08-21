@@ -11,10 +11,12 @@ from app.dependencies.authorization import require_roles
 from app.models.inventory import Inventory
 from app.models.store_request import StoreIssue, StoreRequest
 from app.models.user import User
+from app.models.warehouse import Warehouse
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.store_request import StoreRequestCreate, StoreRequestIssueCreate
 from app.services.document_context import document_context, print_metadata
 from app.services.store_request_service import StoreRequestService
+from app.services.location_access import apply_location_scope, enforce_location_access, enforce_warehouse_access
 
 
 router = APIRouter(prefix="/store-requests", tags=["Store Requests"])
@@ -111,7 +113,9 @@ def list_store_requests(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    user = _
     query = db.query(StoreRequest, User.full_name).outerjoin(User, User.id == StoreRequest.requested_by_id)
+    query = apply_location_scope(query, StoreRequest, user)
     if status and status.upper() != "ALL":
         query = query.filter(StoreRequest.status == status.upper())
     if search and search.strip():
@@ -120,7 +124,8 @@ def list_store_requests(
     total = query.count()
     rows = query.order_by(StoreRequest.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     total_pages = ceil(total / page_size) if total else 0
-    status_counts = dict(db.query(StoreRequest.status, func.count(StoreRequest.id)).group_by(StoreRequest.status).all())
+    counts_query = apply_location_scope(db.query(StoreRequest.status, func.count(StoreRequest.id)), StoreRequest, user)
+    status_counts = dict(counts_query.group_by(StoreRequest.status).all())
     return {
         "items": [_row(request, requester_name) for request, requester_name in rows],
         "page": page,
@@ -133,11 +138,37 @@ def list_store_requests(
     }
 
 
+@router.get("/availability")
+def warehouse_availability(
+    warehouse_id: int,
+    product_ids: list[int] = Query(default=[]),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    user = _
+    warehouse = db.get(Warehouse, warehouse_id)
+    if not warehouse or not warehouse.is_active:
+        raise HTTPException(status_code=404, detail="Active warehouse not found")
+    enforce_warehouse_access(user, warehouse)
+    if not product_ids:
+        return []
+    rows = db.query(Inventory).filter(
+        Inventory.warehouse_id == warehouse_id,
+        Inventory.product_id.in_(set(product_ids)),
+    ).all()
+    quantities = {row.product_id: Decimal(row.quantity or 0) for row in rows}
+    return [
+        {"product_id": product_id, "available_stock": quantities.get(product_id, Decimal("0"))}
+        for product_id in dict.fromkeys(product_ids)
+    ]
+
+
 @router.get("/{request_id}")
 def get_store_request(request_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     request = db.get(StoreRequest, request_id)
     if not request:
         raise HTTPException(status_code=404, detail="Store Request not found")
+    enforce_location_access(user, request.location_id)
     return _detail(db, request, user)
 
 

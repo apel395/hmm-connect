@@ -11,6 +11,7 @@ from app.models.inventory import Inventory
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
 from app.models.warehouse import Warehouse
+from app.services.location_access import apply_warehouse_scope, resolve_location_id
 
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -58,13 +59,14 @@ def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse):
     }
 
 
-def _inventory_base(db: Session, warehouse_id: int | None = None):
+def _inventory_base(db: Session, user, warehouse_id: int | None = None):
     query = (
         db.query(Inventory, Product, Warehouse)
         .join(Product, Product.id == Inventory.product_id)
         .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
         .filter(Product.is_active.is_(True), Warehouse.is_active.is_(True))
     )
+    query = apply_warehouse_scope(query, user)
     if warehouse_id:
         query = query.filter(Inventory.warehouse_id == warehouse_id)
     return query
@@ -85,14 +87,15 @@ def list_inventory(
     monitored = minimum > 0
     low_stock = monitored & (quantity <= minimum)
 
-    summary_rows = _inventory_base(db, warehouse_id).with_entities(
+    user = _
+    summary_rows = _inventory_base(db, user, warehouse_id).with_entities(
         func.count(Inventory.id),
         func.coalesce(func.sum(quantity * func.coalesce(Inventory.average_cost, 0)), 0),
         func.coalesce(func.sum(case((monitored, 1), else_=0)), 0),
         func.coalesce(func.sum(case((low_stock, 1), else_=0)), 0),
     ).one()
 
-    query = _inventory_base(db, warehouse_id)
+    query = _inventory_base(db, user, warehouse_id)
     # REORDER and BELOW_MINIMUM remain accepted as compatibility aliases.
     if health in {"LOW_STOCK", "REORDER", "BELOW_MINIMUM"}:
         query = query.filter(minimum > 0, quantity <= minimum)
@@ -130,11 +133,14 @@ def list_movements(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    user = _
+    location_id = resolve_location_id(user, location_id)
     query = (
         db.query(StockMovement, Product, Warehouse)
         .join(Product, Product.id == StockMovement.product_id)
         .join(Warehouse, Warehouse.id == StockMovement.warehouse_id)
     )
+    query = apply_warehouse_scope(query, user)
     if product_id:
         query = query.filter(StockMovement.product_id == product_id)
     if warehouse_id:
@@ -200,8 +206,9 @@ def get_inventory(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    user = _
     row = (
-        db.query(Inventory, Product, Warehouse)
+        apply_warehouse_scope(db.query(Inventory, Product, Warehouse), user)
         .join(Product, Product.id == Inventory.product_id)
         .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
         .filter(Inventory.id == inventory_id)

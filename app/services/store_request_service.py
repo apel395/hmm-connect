@@ -16,6 +16,7 @@ from app.services.activity_service import AuditService
 from app.services.approval import approve_current_step, get_request, reject_current_step, start_approval
 from app.services.document_number import next_document_number
 from app.services.organization_dimensions import validate_dimensions
+from app.services.location_access import enforce_location_access, enforce_warehouse_access, resolve_location_id
 
 
 class StoreRequestService:
@@ -27,10 +28,13 @@ class StoreRequestService:
         return product
 
     @staticmethod
-    def _warehouse(db: Session, warehouse_id: int) -> Warehouse:
+    def _warehouse(db: Session, warehouse_id: int, current_user: User, location_id: int | None = None) -> Warehouse:
         warehouse = db.get(Warehouse, warehouse_id)
         if not warehouse or not warehouse.is_active:
             raise HTTPException(status_code=404, detail="Active warehouse not found")
+        enforce_warehouse_access(current_user, warehouse)
+        if location_id is not None and warehouse.location_id != location_id:
+            raise HTTPException(status_code=422, detail="Warehouse must belong to the Store Request location")
         return warehouse
 
     @staticmethod
@@ -54,10 +58,30 @@ class StoreRequestService:
             )
 
     @staticmethod
+    def _validate_available_stock(db: Session, request: StoreRequest) -> None:
+        inventory = {
+            row.product_id: Decimal(row.quantity or 0)
+            for row in db.query(Inventory).filter(Inventory.warehouse_id == request.warehouse_id).all()
+        }
+        shortages = []
+        for item in request.items:
+            requested = Decimal(item.requested_quantity or 0)
+            available = inventory.get(item.product_id, Decimal("0"))
+            if requested > available:
+                product = db.get(Product, item.product_id)
+                name = product.name if product else f"Product {item.product_id}"
+                shortages.append(f"{name}: available {available}, requested {requested}")
+        if shortages:
+            raise HTTPException(
+                status_code=409,
+                detail="Warehouse stock is insufficient: " + "; ".join(shortages),
+            )
+
+    @staticmethod
     def create(db: Session, *, data: StoreRequestCreate, current_user: User) -> StoreRequest:
-        StoreRequestService._warehouse(db, data.warehouse_id)
         business_unit_id = data.business_unit_id or current_user.default_business_unit_id
-        location_id = data.location_id or current_user.default_location_id or current_user.location_id
+        location_id = resolve_location_id(current_user, data.location_id)
+        StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
         department_id = data.department_id or current_user.default_department_id or current_user.department_id
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
         request = StoreRequest(
@@ -72,6 +96,7 @@ class StoreRequestService:
             requested_by_id=current_user.id,
         )
         StoreRequestService._fill_items(db, request, data)
+        StoreRequestService._validate_available_stock(db, request)
         db.add(request)
         db.flush()
         AuditService.log(
@@ -87,17 +112,20 @@ class StoreRequestService:
         request = db.get(StoreRequest, request_id)
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only draft Store Requests can be edited")
-        StoreRequestService._warehouse(db, data.warehouse_id)
+        location_id = resolve_location_id(current_user, data.location_id or request.location_id)
+        StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
         request.request_date = data.request_date or request.request_date
         request.notes = data.notes
         request.business_unit_id = data.business_unit_id or request.business_unit_id
-        request.location_id = data.location_id or request.location_id
+        request.location_id = location_id
         request.department_id = data.department_id or request.department_id
         request.warehouse_id = data.warehouse_id
         validate_dimensions(db, request.business_unit_id, request.location_id, request.department_id, True)
         StoreRequestService._fill_items(db, request, data)
+        StoreRequestService._validate_available_stock(db, request)
         AuditService.log(
             db=db, user=current_user, action="UPDATE", entity_type="STORE_REQUEST", entity_id=request.id,
             summary=f"Updated {request.sr_number}", document_type="SR", document_number=request.sr_number,
@@ -111,11 +139,13 @@ class StoreRequestService:
         request = db.get(StoreRequest, request_id)
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only draft Store Requests can be submitted")
         if not request.items:
             raise HTTPException(status_code=409, detail="Store Request must have items")
-        StoreRequestService._warehouse(db, request.warehouse_id)
+        StoreRequestService._warehouse(db, request.warehouse_id, current_user, request.location_id)
+        StoreRequestService._validate_available_stock(db, request)
         start_approval(db, entity_type="STORE_REQUEST", entity_id=request.id, workflow_code="SR_APPROVAL", user=current_user)
         request.status = "PENDING_APPROVAL"
         AuditService.log(
@@ -131,8 +161,10 @@ class StoreRequestService:
         request = db.get(StoreRequest, request_id)
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status != "PENDING_APPROVAL":
             raise HTTPException(status_code=409, detail="Store Request does not have pending approval")
+        StoreRequestService._validate_available_stock(db, request)
         approval = get_request(db, "STORE_REQUEST", request.id, for_update=True)
         if not approval:
             raise HTTPException(status_code=500, detail="Approval workflow not found")
@@ -154,6 +186,7 @@ class StoreRequestService:
         request = db.get(StoreRequest, request_id)
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status != "PENDING_APPROVAL":
             raise HTTPException(status_code=409, detail="Store Request does not have pending approval")
         approval = get_request(db, "STORE_REQUEST", request.id, for_update=True)
@@ -175,6 +208,7 @@ class StoreRequestService:
         request = db.query(StoreRequest).filter(StoreRequest.id == request_id).with_for_update().first()
         if not request:
             raise HTTPException(status_code=404, detail="Store Request not found")
+        enforce_location_access(current_user, request.location_id)
         if request.status not in {"APPROVED", "PARTIALLY_ISSUED"}:
             raise HTTPException(status_code=409, detail="Only approved Store Requests can issue goods")
         if db.query(StoreIssue).filter(StoreIssue.store_request_id == request.id, StoreIssue.status == "DRAFT").first():
@@ -224,6 +258,7 @@ class StoreRequestService:
         if issue.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Store Issue is already posted")
         request = db.query(StoreRequest).filter(StoreRequest.id == issue.store_request_id).with_for_update().one()
+        enforce_location_access(current_user, request.location_id)
         if request.status not in {"APPROVED", "PARTIALLY_ISSUED"}:
             raise HTTPException(status_code=409, detail="Store Request is not eligible for issue posting")
         if not issue.items:
