@@ -15,6 +15,7 @@ export type Payment = {
   cheque_number?: string | null;
   status: string;
   notes?: string | null;
+  source_type?: string | null;
   journal_entry_id?: number | null;
   journal_number?: string | null;
   business_unit_id?: number | null;
