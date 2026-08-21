@@ -6,6 +6,7 @@ import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
@@ -76,7 +77,20 @@ export default function JournalListPage() {
 
   return <>
     <PageHeader title="Journal Entries" description="Review debit and credit entries, then post or safely unpost eligible journals." actions={<Button onClick={() => { setPostingDate(todayLocal()); setOpen(true); }}>Create Journal Entry</Button>} />
-    <Card><div className="mb-4 flex gap-3"><input className="h-10 flex-1 rounded border px-3" placeholder="Search journal, reference, or description" value={search} onChange={(e) => setSearch(e.target.value)} /><select className="h-10 rounded border px-3" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select></div><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead><tr className="border-b text-left"><th className="p-3">Journal Number</th><th>Date</th><th>Reference</th><th>Description</th><th>Total Debit</th><th>Total Credit</th><th>Status</th><th>Actions</th></tr></thead><tbody>{q.data?.items.map((x: any) => <tr key={x.id} className="border-b"><td className="p-3 font-medium">{x.journal_number}</td><td>{x.journal_date}</td><td>{x.reference_number || x.reference_type}</td><td>{x.description || "—"}</td><td>{Number(x.total_debit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td>{Number(x.total_credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td>{x.status}</td><td><div className="flex gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}</div></td></tr>)}</tbody></table></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
+    <Card><div className="mb-4 flex gap-3"><input className="h-10 flex-1 rounded border px-3" placeholder="Search journal, document, or description" value={search} onChange={(e) => setSearch(e.target.value)} /><select className="h-10 rounded border px-3" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select></div>
+      <Table className="min-w-[850px]" containerClassName="border-0 shadow-none">
+        <THead><TR className="whitespace-nowrap"><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Amount</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead>
+        <TBody>{q.data?.items.map((x: any) => <TR key={x.id} className="whitespace-nowrap">
+          <TD><TableCellStack primary={x.journal_number} secondary={x.reference_type?.replaceAll("_", " ")}/></TD>
+          <TD>{x.journal_date}</TD>
+          <TD className="font-medium">{x.reference_number || "—"}</TD>
+          <TD className="max-w-[280px]"><span className="block truncate" title={x.description || undefined}>{x.description || "—"}</span></TD>
+          <TD numeric className="font-semibold">{Number(x.total_debit).toLocaleString("id-ID", { minimumFractionDigits: 2 })}</TD>
+          <TD>{x.status}</TD>
+          <TD><div className="flex justify-end gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}</div></TD>
+        </TR>)}</TBody>
+      </Table>
+      <div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
 
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-5xl"><DialogHeader><DialogTitle>Create Journal Entry</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-4 md:grid-cols-3">
