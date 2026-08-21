@@ -21,6 +21,7 @@ from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
 from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
+from app.services.location_access import apply_location_scope, enforce_location_access
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 ZERO = Decimal("0")
@@ -32,10 +33,11 @@ def access(user):
         raise HTTPException(403, "Finance access required")
 
 
-def get(db: Session, payment_id: int) -> Payment:
+def get(db: Session, payment_id: int, user) -> Payment:
     payment = db.get(Payment, payment_id)
     if not payment:
         raise HTTPException(404, "Payment not found")
+    enforce_location_access(user, payment.location_id)
     return payment
 
 
@@ -83,7 +85,7 @@ def sync_payable(db: Session, invoice: SupplierInvoice, payment_date: date | Non
     return balance
 
 
-def validate_data(db: Session, data: PaymentCreate, exclude: int | None = None):
+def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = None):
     invoices = []
     seen_invoice_ids: set[int] = set()
     for allocation in data.allocations:
@@ -94,6 +96,7 @@ def validate_data(db: Session, data: PaymentCreate, exclude: int | None = None):
         invoice = db.get(SupplierInvoice, allocation.supplier_invoice_id)
         if not invoice or invoice.supplier_id != data.supplier_id:
             raise HTTPException(400, "Allocated invoice does not belong to selected supplier")
+        enforce_location_access(user, invoice.location_id)
         if invoice.status not in OPEN_INVOICE_STATUSES or invoice.payment_status == "PAID":
             raise HTTPException(409, "Only posted unpaid invoices can be allocated")
         if invoice.currency != data.currency.upper():
@@ -225,7 +228,7 @@ def listing(
     user=Depends(get_current_user),
 ):
     access(user)
-    query = db.query(Payment)
+    query = apply_location_scope(db.query(Payment), Payment, user)
     if search:
         query = query.filter(or_(Payment.payment_number.ilike(f"%{search}%"), Payment.reference_number.ilike(f"%{search}%")))
     if supplier_id:
@@ -254,7 +257,7 @@ def listing(
 @router.get("/eligible-invoices")
 def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    rows = db.query(SupplierInvoice).filter(
+    rows = apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user).filter(
         SupplierInvoice.supplier_id == supplier_id,
         SupplierInvoice.currency == currency.upper(),
         SupplierInvoice.status.in_(OPEN_INVOICE_STATUSES),
@@ -289,13 +292,13 @@ def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_
 @router.get("/{payment_id}")
 def detail(payment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    return result(db, get(db, payment_id), user)
+    return result(db, get(db, payment_id, user), user)
 
 
 @router.post("", status_code=201)
 def create(data: PaymentCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    validate_data(db, data)
+    validate_data(db, data, user)
     payment = Payment(
         payment_number=next_document_number(db, "PAY"),
         supplier_id=data.supplier_id,
@@ -326,10 +329,10 @@ def create(data: PaymentCreate, db: Session = Depends(get_db), user=Depends(get_
 @router.patch("/{payment_id}")
 def update(payment_id: int, data: PaymentUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    payment = get(db, payment_id)
+    payment = get(db, payment_id, user)
     if payment.status != "DRAFT":
         raise HTTPException(409, "Only draft payments can be edited")
-    validate_data(db, data, payment.id)
+    validate_data(db, data, user, payment.id)
     payment.supplier_id = data.supplier_id
     payment.payment_date = data.payment_date
     payment.amount = data.total_amount
@@ -356,6 +359,7 @@ def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cur
     payment = db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
     if not payment or payment.status != "DRAFT":
         raise HTTPException(409, "Only draft payments can be approved")
+    enforce_location_access(user, payment.location_id)
 
     # Re-check every invoice at approval time so another approved payment cannot reserve it first.
     for allocation in payment.allocations:
@@ -382,7 +386,7 @@ def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cur
 @router.post("/{payment_id}/generate-journal")
 def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    payment = get(db, payment_id)
+    payment = get(db, payment_id, user)
     if payment.status != "APPROVED":
         raise HTTPException(409, "Payment must be approved")
     if payment.journal_entry_id:
@@ -450,6 +454,7 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     payment = db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
     if not payment or payment.status != "APPROVED" or not payment.journal_entry_id:
         raise HTTPException(409, "Approved payment with draft journal required")
+    enforce_location_access(user, payment.location_id)
     journal = db.query(JournalEntry).filter(JournalEntry.id == payment.journal_entry_id).with_for_update().one()
     if journal.status != "DRAFT":
         raise HTTPException(409, "Payment journal is not draft")
@@ -502,7 +507,7 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 @router.post("/{payment_id}/void")
 def void(payment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    payment = get(db, payment_id)
+    payment = get(db, payment_id, user)
     if payment.status == "POSTED":
         raise HTTPException(409, "Posted payments require a reversal and cannot be voided")
     if payment.status == "VOID":
@@ -520,10 +525,10 @@ def void(payment_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 @router.get("/{payment_id}/allowed-actions")
 def actions(payment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    return result(db, get(db, payment_id), user)["allowed_actions"]
+    return result(db, get(db, payment_id, user), user)["allowed_actions"]
 
 
 @router.get("/{payment_id}/print")
 def printable(payment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    return {**result(db, get(db, payment_id), user), "document_type": "Supplier Payment", **print_metadata(user)}
+    return {**result(db, get(db, payment_id, user), user), "document_type": "Supplier Payment", **print_metadata(user)}
