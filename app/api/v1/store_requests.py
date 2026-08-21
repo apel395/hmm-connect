@@ -11,11 +11,12 @@ from app.dependencies.authorization import require_roles
 from app.models.inventory import Inventory
 from app.models.store_request import StoreIssue, StoreRequest
 from app.models.user import User
+from app.models.warehouse import Warehouse
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.store_request import StoreRequestCreate, StoreRequestIssueCreate
 from app.services.document_context import document_context, print_metadata
 from app.services.store_request_service import StoreRequestService
-from app.services.location_access import apply_location_scope, enforce_location_access
+from app.services.location_access import apply_location_scope, enforce_location_access, enforce_warehouse_access
 
 
 router = APIRouter(prefix="/store-requests", tags=["Store Requests"])
@@ -144,6 +145,11 @@ def warehouse_availability(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    user = _
+    warehouse = db.get(Warehouse, warehouse_id)
+    if not warehouse or not warehouse.is_active:
+        raise HTTPException(status_code=404, detail="Active warehouse not found")
+    enforce_warehouse_access(user, warehouse)
     if not product_ids:
         return []
     rows = db.query(Inventory).filter(
