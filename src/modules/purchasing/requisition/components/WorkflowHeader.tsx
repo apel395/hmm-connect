@@ -66,6 +66,13 @@ export default function WorkflowHeader({
 
 }: Props) {
 
+  const pendingStep = approval?.steps?.find((step: any) => step.status === "PENDING");
+  const currentApprover =
+    approval?.current_approver_role ??
+    pendingStep?.approver_role_name ??
+    pendingStep?.name ??
+    "-";
+
   return (
 
     <Card>
@@ -186,8 +193,7 @@ export default function WorkflowHeader({
 
           <div className="mt-1">
 
-            {approval?.current_approver_role ??
-              "-"}
+            {currentApprover}
 
           </div>
 
