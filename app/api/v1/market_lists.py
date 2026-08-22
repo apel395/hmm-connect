@@ -19,6 +19,7 @@ from app.schemas.market_list import MarketListConvertCreate, MarketListCreate
 from app.services.activity_service import AuditService
 from app.services.approval import reset_approval
 from app.services.document_context import document_context, print_metadata
+from app.services.location_access import apply_location_scope, enforce_location_access
 from app.services.market_list_service import MarketListService
 
 
@@ -108,13 +109,22 @@ def list_market_lists(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    scoped = _scope(db.query(MarketList), scope)
+    scoped = _scope(apply_location_scope(db.query(MarketList), MarketList, user), scope)
     status_counts = dict(scoped.with_entities(MarketList.status, func.count(MarketList.id)).group_by(MarketList.status).all())
     this_month_prefix = date.today().strftime("%Y-%m")
     this_month = scoped.filter(func.to_char(MarketList.request_date, "YYYY-MM") == this_month_prefix).count()
-    query = _scope(db.query(MarketList, User.full_name).outerjoin(User, User.id == MarketList.requested_by_id), scope)
+    query = _scope(
+        apply_location_scope(
+            db.query(MarketList, User.full_name).outerjoin(
+                User, User.id == MarketList.requested_by_id
+            ),
+            MarketList,
+            user,
+        ),
+        scope,
+    )
     if status and status.upper() != "ALL":
         query = query.filter(MarketList.status == status.upper())
     if search and search.strip():
@@ -136,6 +146,7 @@ def get_market_list(market_list_id: int, db: Session = Depends(get_db), user=Dep
     market_list = db.get(MarketList, market_list_id)
     if not market_list:
         raise HTTPException(status_code=404, detail="Market List not found")
+    enforce_location_access(user, market_list.location_id)
     return _detail(db, market_list, user)
 
 
