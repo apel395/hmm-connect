@@ -91,7 +91,7 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$DATABASE_URL"
-          DATABASE_URL="$DATABASE_URL" alembic upgrade head
+          DATABASE_URL="$DATABASE_URL" PYTHONPATH=build python -m alembic upgrade head
 
       - name: Upload ZIP to Lambda
         run: |
