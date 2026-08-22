@@ -169,7 +169,46 @@ def test_decimal_variance_preserved(stock_db):
 def test_listing_page_three_has_fifteen_rows(stock_db):
     db, warehouse, user, *_ = stock_db
     for index in range(55):
-        db.add(StockOpname(opname_number=f"HIST-{index:03d}", status="POSTED", count_date=date(2026, 8, 1), warehouse_id=warehouse.id, created_by_id=user.id))
+        db.add(StockOpname(opname_number=f"HIST-{index:03d}", status="POSTED", count_date=date(2026, 8, 1), warehouse_id=warehouse.id, location_id=user.location_id, business_unit_id=user.default_business_unit_id, created_by_id=user.id))
     db.commit()
     page = listing(page=3, page_size=20, db=db, _=user)
     assert (len(page["items"]), page["total_items"], page["total_pages"]) == (15, 55, 3)
+
+
+def test_listing_is_restricted_to_user_work_location(stock_db):
+    db, warehouse, user, *_ = stock_db
+    own = StockOpname(
+        opname_number="OWN-LOCATION",
+        status="POSTED",
+        count_date=date(2026, 8, 1),
+        warehouse_id=warehouse.id,
+        location_id=user.location_id,
+        business_unit_id=user.default_business_unit_id,
+        created_by_id=user.id,
+    )
+    other_location = Location(
+        code="LOC-2",
+        name="Location 2",
+        location_type="HOTEL",
+        is_active=True,
+        business_unit_id=user.default_business_unit_id,
+    )
+    db.add_all([own, other_location])
+    db.flush()
+    db.add(
+        StockOpname(
+            opname_number="OTHER-LOCATION",
+            status="POSTED",
+            count_date=date(2026, 8, 1),
+            warehouse_id=warehouse.id,
+            location_id=other_location.id,
+            business_unit_id=user.default_business_unit_id,
+            created_by_id=user.id,
+        )
+    )
+    db.commit()
+
+    page = listing(page=1, page_size=25, db=db, _=user)
+
+    assert [row["opname_number"] for row in page["items"]] == ["OWN-LOCATION"]
+    assert page["total_items"] == 1
