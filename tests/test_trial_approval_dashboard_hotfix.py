@@ -19,6 +19,7 @@ from app.models.user import User
 from app.services.approval import (
     LOCAL_APPROVAL_CHAIN,
     MANAGER_APPROVAL_CHAIN,
+    MARKET_LIST_APPROVAL_CHAIN,
     WORKFLOW_CHAINS,
     can_user_decide_step,
 )
@@ -61,12 +62,13 @@ def test_balance_sheet_uses_normalized_closing_balance():
         ) == Decimal("800")
 
 
-def test_approval_chains_are_exactly_three_steps():
+def test_approval_chains_match_each_document_flow():
     assert WORKFLOW_CHAINS["PR_APPROVAL"] == LOCAL_APPROVAL_CHAIN
-    assert WORKFLOW_CHAINS["ML_APPROVAL"] == LOCAL_APPROVAL_CHAIN
+    assert WORKFLOW_CHAINS["ML_APPROVAL"] == MARKET_LIST_APPROVAL_CHAIN
     assert WORKFLOW_CHAINS["RR_APPROVAL"] == LOCAL_APPROVAL_CHAIN
     assert WORKFLOW_CHAINS["PO_APPROVAL"] == MANAGER_APPROVAL_CHAIN
     assert [step[2] for step in LOCAL_APPROVAL_CHAIN] == ["STORE", "CHEF", "PM/CAMP BOSS"]
+    assert [step[2] for step in MARKET_LIST_APPROVAL_CHAIN] == ["CHEF", "PM/CAMP BOSS"]
     assert [step[2] for step in MANAGER_APPROVAL_CHAIN] == ["HO PURCHASING", "FINANCE", "GENERAL MANAGER"]
 
 
