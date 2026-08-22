@@ -1,5 +1,3 @@
-# Production schema target: Alembic head
-# Schema upgrades complete before application code is replaced.
 name: Deploy backend to AWS Lambda
 
 on:
@@ -81,20 +79,6 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_LAMBDA_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-      - name: Upgrade production database schema
-        env:
-          FUNCTION_NAME: ${{ vars.AWS_LAMBDA_FUNCTION_NAME }}
-        run: |
-          set -euo pipefail
-          DATABASE_URL="$(aws lambda get-function-configuration --function-name "$FUNCTION_NAME" --query 'Environment.Variables.DATABASE_URL' --output text)"
-          if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "None" ]; then
-            echo "Lambda DATABASE_URL is not configured; refusing to deploy code ahead of the database schema."
-            exit 1
-          fi
-          echo "::add-mask::$DATABASE_URL"
-          python -m pip install "alembic==1.16.5"
-          DATABASE_URL="$DATABASE_URL" PYTHONPATH=build python -m alembic upgrade head
-
       - name: Upload ZIP to Lambda
         run: |
           set -euo pipefail
