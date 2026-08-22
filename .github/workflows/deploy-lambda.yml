@@ -91,6 +91,7 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$DATABASE_URL"
+          python -m pip install "alembic==1.16.5"
           DATABASE_URL="$DATABASE_URL" PYTHONPATH=build python -m alembic upgrade head
 
       - name: Upload ZIP to Lambda
