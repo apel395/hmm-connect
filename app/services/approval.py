@@ -15,6 +15,11 @@ LOCAL_APPROVAL_CHAIN = (
     (3, "PM / Camp Boss Approval", "PM/CAMP BOSS"),
 )
 
+MARKET_LIST_APPROVAL_CHAIN = (
+    (1, "Chef Approval", "CHEF"),
+    (2, "PM / Camp Boss Approval", "PM/CAMP BOSS"),
+)
+
 MANAGER_APPROVAL_CHAIN = (
     (1, "Head Office Purchasing Approval", "HO PURCHASING"),
     (2, "Finance Approval", "FINANCE"),
@@ -23,7 +28,7 @@ MANAGER_APPROVAL_CHAIN = (
 
 WORKFLOW_CHAINS = {
     "PR_APPROVAL": LOCAL_APPROVAL_CHAIN,
-    "ML_APPROVAL": LOCAL_APPROVAL_CHAIN,
+    "ML_APPROVAL": MARKET_LIST_APPROVAL_CHAIN,
     "RR_APPROVAL": LOCAL_APPROVAL_CHAIN,
     "SO_APPROVAL": LOCAL_APPROVAL_CHAIN,
     "PO_APPROVAL": MANAGER_APPROVAL_CHAIN,
@@ -104,6 +109,18 @@ def _is_legacy_generated_default(workflow: ApprovalWorkflow) -> bool:
     )
 
 
+def _workflow_matches_chain(workflow: ApprovalWorkflow, chain) -> bool:
+    steps = sorted(workflow.steps, key=lambda step: step.step_order)
+    if len(steps) != len(chain):
+        return False
+    return all(
+        step.step_order == order
+        and step.name == step_name
+        and _normalized_role_name(step.approver_role.name) == _normalized_role_name(role_name)
+        for step, (order, step_name, role_name) in zip(steps, chain)
+    )
+
+
 def _ensure_default_workflow(db: Session, *, workflow_code: str, user=None) -> ApprovalWorkflow | None:
     entity_type = _workflow_entity_type(workflow_code)
     if not entity_type:
@@ -121,8 +138,12 @@ def _ensure_default_workflow(db: Session, *, workflow_code: str, user=None) -> A
             raise HTTPException(status_code=409, detail="Store Request approval workflow has no configured steps")
         return workflow
 
-    if not workflow.steps or _is_legacy_generated_default(workflow):
-        chain = WORKFLOW_CHAINS[workflow_code]
+    chain = WORKFLOW_CHAINS[workflow_code]
+    must_reconcile_market_list = (
+        workflow_code == "ML_APPROVAL"
+        and not _workflow_matches_chain(workflow, chain)
+    )
+    if not workflow.steps or _is_legacy_generated_default(workflow) or must_reconcile_market_list:
         configured_roles = []
         missing_roles = []
         for order, step_name, role_name in chain:
