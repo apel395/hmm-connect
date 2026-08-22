@@ -109,9 +109,9 @@ def list_market_lists(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    _=Depends(get_current_user),
 ):
-    scoped = _scope(apply_location_scope(db.query(MarketList), MarketList, user), scope)
+    scoped = _scope(apply_location_scope(db.query(MarketList), MarketList, _), scope)
     status_counts = dict(scoped.with_entities(MarketList.status, func.count(MarketList.id)).group_by(MarketList.status).all())
     this_month_prefix = date.today().strftime("%Y-%m")
     this_month = scoped.filter(func.to_char(MarketList.request_date, "YYYY-MM") == this_month_prefix).count()
@@ -121,7 +121,7 @@ def list_market_lists(
                 User, User.id == MarketList.requested_by_id
             ),
             MarketList,
-            user,
+            _,
         ),
         scope,
     )
