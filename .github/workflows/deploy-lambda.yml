@@ -1,4 +1,5 @@
 # Production schema target: Alembic head
+# Schema upgrades complete before application code is replaced.
 name: Deploy backend to AWS Lambda
 
 on:
