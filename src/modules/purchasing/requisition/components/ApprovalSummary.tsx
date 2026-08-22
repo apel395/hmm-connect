@@ -14,8 +14,6 @@ function badgeVariant(status?: string) {
   }
 }
 
-const isLocalRole = (role?: string) => ["STORE", "CHEF", "PM/CAMP BOSS"].includes((role ?? "").toUpperCase());
-
 export default function ApprovalSummary({ approval }: Props) {
   const workflow = approval?.workflow;
   const steps = approval?.steps ?? [];
@@ -23,7 +21,7 @@ export default function ApprovalSummary({ approval }: Props) {
 
   return <Card>
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-      <div><h3 className="text-lg font-semibold">Approval Workflow</h3><p className="mt-1 text-sm text-slate-500">Store → Chef → PM/Camp Boss → HO Purchasing → Finance → General Manager</p></div>
+      <div><h3 className="text-lg font-semibold">Approval Workflow</h3><p className="mt-1 text-sm text-slate-500">Store → Chef → PM/Camp Boss</p></div>
       {approval?.status && <Badge variant={badgeVariant(approval.status) as any}>{approval.status}</Badge>}
     </div>
     <div className="space-y-4">
@@ -33,10 +31,9 @@ export default function ApprovalSummary({ approval }: Props) {
       </div>
       {steps.length === 0 && <div className="py-6 text-center text-sm text-slate-500">Approval starts after the document is submitted.</div>}
       {steps.map((step:any,index:number) => {
-        const local = isLocalRole(step.approver_role_name);
         return <div key={step.id ?? index} className={`rounded-lg border p-4 ${step.status === "PENDING" ? "border-amber-300 bg-amber-50/50" : "border-slate-200"}`}>
           <div className="flex items-start justify-between gap-3">
-            <div><div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold">{step.step_order}</span><span className="font-medium">{step.name ?? step.approver_role_name}</span></div><div className="mt-1 pl-8 text-sm text-slate-500">Role: {step.approver_role_name}</div><div className="mt-1 pl-8 text-xs text-slate-500">{local ? `Location scope: ${step.location_name ?? "document location"}` : "Head Office / cross-location approval"}</div></div>
+            <div><div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold">{step.step_order}</span><span className="font-medium">{step.name ?? step.approver_role_name}</span></div><div className="mt-1 pl-8 text-sm text-slate-500">Role: {step.approver_role_name}</div><div className="mt-1 pl-8 text-xs text-slate-500">{`Location scope: ${step.location_name ?? "document location"}`}</div></div>
             <Badge variant={badgeVariant(step.status) as any}>{step.status}</Badge>
           </div>
           {(step.approver_name || step.action_date || step.decided_at) && <div className="mt-4 border-t pt-3 text-sm text-slate-600">{step.approver_name && <div><span className="font-medium">By:</span> {step.approver_name}</div>}{(step.action_date || step.decided_at) && <div><span className="font-medium">Date:</span> {new Date(step.action_date || step.decided_at).toLocaleString()}</div>}</div>}
