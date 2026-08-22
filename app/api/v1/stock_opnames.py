@@ -82,9 +82,9 @@ def listing(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    _=Depends(get_current_user),
 ):
-    query = apply_location_scope(db.query(StockOpname), StockOpname, user)
+    query = apply_location_scope(db.query(StockOpname), StockOpname, _)
     if status and status.upper() != "ALL":
         query = query.filter(StockOpname.status == status.upper())
     if warehouse_id:
