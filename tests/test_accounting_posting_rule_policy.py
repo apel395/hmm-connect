@@ -54,3 +54,46 @@ def test_valid_supplier_invoice_controls_are_accepted():
         coa("EXPENSE", "DEBIT"),
         coa("LIABILITY", "CREDIT"),
     )
+
+
+def test_supplier_payment_requires_payable_debit_and_bank_credit():
+    AccountingPostingRuleService._validate_event_accounts(
+        "SUPPLIER_PAYMENT",
+        coa("LIABILITY", "CREDIT", "ACCOUNTS_PAYABLE"),
+        coa("ASSET", "DEBIT", "BANK"),
+    )
+
+
+def test_supplier_payment_rejects_bank_debit():
+    with pytest.raises(HTTPException) as error:
+        AccountingPostingRuleService._validate_event_accounts(
+            "SUPPLIER_PAYMENT",
+            coa("ASSET", "DEBIT", "BANK"),
+            coa("ASSET", "DEBIT", "BANK"),
+        )
+    assert "payable liability" in error.value.detail
+
+
+def test_source_payment_journal_rejects_legacy_bank_debit():
+    with pytest.raises(HTTPException) as error:
+        AccountingPostingRuleService.validate_source_journal_accounts(
+            "SUPPLIER_PAYMENT",
+            [coa("ASSET", "DEBIT", "BANK")],
+            [coa("ASSET", "DEBIT", "BANK")],
+        )
+    assert error.value.status_code == 409
+
+
+def test_source_invoice_journal_rejects_bank_control_accounts():
+    with pytest.raises(HTTPException):
+        AccountingPostingRuleService.validate_source_journal_accounts(
+            "SUPPLIER_INVOICE",
+            [coa("ASSET", "DEBIT", "BANK")],
+            [coa("LIABILITY", "CREDIT", "ACCOUNTS_PAYABLE")],
+        )
+    with pytest.raises(HTTPException):
+        AccountingPostingRuleService.validate_source_journal_accounts(
+            "SUPPLIER_INVOICE",
+            [coa("ASSET", "DEBIT", "INVENTORY")],
+            [coa("ASSET", "DEBIT", "BANK")],
+        )

@@ -14,6 +14,7 @@ from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.fiscal_period import FiscalPeriod
 from app.schemas.journal import JournalBulkAction, JournalCreate, JournalUpdate
+from app.services.accounting_posting_rule_service import AccountingPostingRuleService
 from app.services.accounting_unpost import (
     SUPPORTED_SOURCE_TYPES,
     apply_source_post_state,
@@ -130,6 +131,16 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
     debit, credit = validate(db, journal.lines)
     if debit != credit:
         raise HTTPException(409, f"Journal {journal.journal_number} is not balanced")
+
+    source_type = str(journal.reference_type or journal.document_type or "").upper()
+    if source_type in {"SUPPLIER_INVOICE", "SUPPLIER_PAYMENT"}:
+        debit_accounts = [line.account for line in journal.lines if Decimal(line.debit) > ZERO]
+        credit_accounts = [line.account for line in journal.lines if Decimal(line.credit) > ZERO]
+        AccountingPostingRuleService.validate_source_journal_accounts(
+            source_type,
+            debit_accounts,
+            credit_accounts,
+        )
 
     apply_source_post_state(db, journal=journal, user=user)
     for line in journal.lines:

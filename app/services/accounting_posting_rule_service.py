@@ -25,11 +25,45 @@ class AccountingPostingRuleService:
                 raise HTTPException(400, "Direct-use invoice debit account must be a debit-balance expense")
             if credit.account_type != "LIABILITY" or credit.normal_balance != "CREDIT":
                 raise HTTPException(400, "Supplier invoice credit account must be a credit-balance liability")
+        elif event_type == "SUPPLIER_PAYMENT":
+            if debit.account_type != "LIABILITY" or debit.normal_balance != "CREDIT":
+                raise HTTPException(400, "Supplier payment debit account must be a credit-balance payable liability")
+            if (
+                credit.account_type != "ASSET"
+                or credit.normal_balance != "DEBIT"
+                or str(credit.account_subtype or "").upper() not in cls.BANK_SUBTYPES
+            ):
+                raise HTTPException(400, "Supplier payment credit account must be a debit-balance cash or bank asset")
         elif event_type == "CUSTOMER_PAYMENT":
             if debit.account_type != "ASSET" or debit.normal_balance != "DEBIT":
                 raise HTTPException(400, "Customer payment debit account must be a debit-balance asset")
             if credit.account_type != "ASSET" or credit.normal_balance != "DEBIT":
                 raise HTTPException(400, "Customer payment credit account must be a debit-balance receivable asset")
+
+    @classmethod
+    def validate_source_journal_accounts(cls, event_type, debit_accounts, credit_accounts):
+        event_type = str(event_type or "").upper()
+        if event_type == "SUPPLIER_PAYMENT":
+            for account in debit_accounts:
+                if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
+                    raise HTTPException(409, "Supplier payment journal must debit a credit-balance payable liability")
+            for account in credit_accounts:
+                if (
+                    account.account_type != "ASSET"
+                    or account.normal_balance != "DEBIT"
+                    or str(account.account_subtype or "").upper() not in cls.BANK_SUBTYPES
+                ):
+                    raise HTTPException(409, "Supplier payment journal must credit a debit-balance cash or bank asset")
+        elif event_type == "SUPPLIER_INVOICE":
+            for account in debit_accounts:
+                subtype = str(account.account_subtype or "").upper()
+                if account.normal_balance != "DEBIT" or account.account_type not in {"ASSET", "EXPENSE"}:
+                    raise HTTPException(409, "Supplier invoice journal debits must use debit-balance asset or expense accounts")
+                if subtype in cls.BANK_SUBTYPES:
+                    raise HTTPException(409, "Supplier invoice journal cannot debit a cash or bank account")
+            for account in credit_accounts:
+                if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
+                    raise HTTPException(409, "Supplier invoice journal must credit a credit-balance payable liability")
 
     def validate(
         self,
