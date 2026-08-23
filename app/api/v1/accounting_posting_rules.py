@@ -41,6 +41,8 @@ def create_rule(data: PostingRuleCreate, db: Session = Depends(get_db), user=Dep
         data.event_type,
         active=data.is_active,
         input_vat_account_id=data.input_vat_account_id,
+        business_unit_id=data.business_unit_id,
+        location_id=data.location_id,
     )
     row = AccountingPostingRule(**data.model_dump(), created_by_id=user.id)
     db.add(row)
@@ -63,6 +65,8 @@ def update_rule(rule_id: int, data: PostingRuleUpdate, db: Session = Depends(get
     vat = values.get("input_vat_account_id", row.input_vat_account_id)
     event = values.get("event_type", row.event_type)
     active = values.get("is_active", row.is_active)
+    business_unit_id = values.get("business_unit_id", row.business_unit_id)
+    location_id = values.get("location_id", row.location_id)
     AccountingPostingRuleService(db).validate(
         debit,
         credit,
@@ -70,6 +74,8 @@ def update_rule(rule_id: int, data: PostingRuleUpdate, db: Session = Depends(get
         row.id,
         active,
         input_vat_account_id=vat,
+        business_unit_id=business_unit_id,
+        location_id=location_id,
     )
     for key, value in values.items():
         setattr(row, key, value)
@@ -92,6 +98,8 @@ def toggle(rule_id: int, active: bool, db, user):
             row.id,
             True,
             input_vat_account_id=row.input_vat_account_id,
+            business_unit_id=row.business_unit_id,
+            location_id=row.location_id,
         )
     row.is_active = active
     action = "POSTING_RULE_RESTORED" if active else "POSTING_RULE_ARCHIVED"
