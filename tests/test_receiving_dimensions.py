@@ -64,3 +64,24 @@ def test_receiving_dimensions_reject_conflicting_legacy_sources():
         GoodsReceiptService._po_dimensions(purchase_order)
 
     assert error.value.status_code == 409
+
+
+
+def test_receiving_rejects_warehouse_from_another_location():
+    warehouse = SimpleNamespace(id=10, location_id=2)
+    db = SimpleNamespace(get=lambda _model, _id: warehouse)
+    payload = SimpleNamespace(destination_type="WAREHOUSE", warehouse_id=10)
+
+    with pytest.raises(HTTPException) as error:
+        GoodsReceiptService._validate_destination(db, payload, location_id=1)
+
+    assert error.value.status_code == 409
+    assert "receiving work location" in error.value.detail
+
+
+def test_receiving_accepts_warehouse_from_same_location():
+    warehouse = SimpleNamespace(id=10, location_id=2)
+    db = SimpleNamespace(get=lambda _model, _id: warehouse)
+    payload = SimpleNamespace(destination_type="WAREHOUSE", warehouse_id=10)
+
+    GoodsReceiptService._validate_destination(db, payload, location_id=2)

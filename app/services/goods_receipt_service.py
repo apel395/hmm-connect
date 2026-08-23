@@ -37,12 +37,19 @@ class GoodsReceiptService:
         return has_any_role(user, "GENERAL MANAGER", "FINANCE", "FINANCE MANAGER", "PURCHASING MANAGER", "PROCUREMENT MANAGER")
 
     @staticmethod
-    def _validate_destination(db: Session, data: GoodsReceiptCreate):
+    def _validate_destination(db: Session, data: GoodsReceiptCreate, location_id: int | None):
         if data.destination_type == "WAREHOUSE":
             if data.warehouse_id is None:
                 raise HTTPException(status_code=400, detail="Warehouse is required for warehouse receiving")
-            if not db.get(Warehouse, data.warehouse_id):
+            warehouse = db.get(Warehouse, data.warehouse_id)
+            if not warehouse:
                 raise HTTPException(status_code=404, detail="Warehouse not found")
+            if location_id is None:
+                raise HTTPException(status_code=409, detail="Receiving location is required for warehouse validation")
+            if warehouse.location_id is None:
+                raise HTTPException(status_code=409, detail="Warehouse must be assigned to a work location before receiving")
+            if warehouse.location_id != location_id:
+                raise HTTPException(status_code=409, detail="Warehouse must belong to the receiving work location")
 
     @staticmethod
     def _po_dimensions(purchase_order: PurchaseOrder):
@@ -104,7 +111,6 @@ class GoodsReceiptService:
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
         cls._check_access(user, "WAREHOUSE", "PURCHASING")
-        cls._validate_destination(db, data)
         from app.services.organization_dimensions import validate_dimensions
 
         purchase_order = db.get(PurchaseOrder, data.purchase_order_id) if data.purchase_order_id else None
@@ -122,6 +128,7 @@ class GoodsReceiptService:
             business_unit_id, location_id, department_id, supplier_id = data.business_unit_id, data.location_id, data.department_id, data.supplier_id
 
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
+        cls._validate_destination(db, data, location_id)
         receipt = GoodsReceipt(
             receipt_number=cls._number(db), status="DRAFT", purchase_order_id=purchase_order.id if purchase_order else None,
             supplier_id=supplier_id, received_by_id=user.id, received_at=data.received_at or datetime.now(timezone.utc),
@@ -194,6 +201,15 @@ class GoodsReceiptService:
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
         if receipt.purchase_order_id and (not purchase_order or purchase_order.status not in {"APPROVED", "PARTIALLY_RECEIVED"}):
             raise HTTPException(status_code=409, detail="Purchase order is no longer receivable")
+        if receipt.destination_type == "WAREHOUSE":
+            warehouse = db.get(Warehouse, receipt.warehouse_id)
+            if not warehouse or warehouse.location_id is None:
+                raise HTTPException(status_code=409, detail="Receiving warehouse must be assigned to a work location")
+            if warehouse.location_id != receipt.location_id:
+                raise HTTPException(status_code=409, detail="Warehouse must belong to the receiving work location")
+        cls._recalculate_totals(receipt)
+        if Decimal(receipt.total_amount or 0) <= 0:
+            raise HTTPException(status_code=409, detail="Goods receipt total must be greater than zero")
         for receipt_item in receipt.items:
             quantity = Decimal(receipt_item.quantity)
             if quantity <= 0: raise HTTPException(status_code=409, detail=f"Receipt item {receipt_item.id} must have positive quantity")
