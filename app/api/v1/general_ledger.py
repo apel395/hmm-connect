@@ -41,9 +41,13 @@ def base(db, account_id=None, date_from=None, date_to=None, reference_type=None,
         q = q.filter(JournalLine.location_id == location_id)
     if business_unit_id:
         q = q.filter(JournalLine.business_unit_id == business_unit_id)
-    if search:
-        term = f"%{search}%"
-        q = q.filter(or_(JournalEntry.journal_number.ilike(term), JournalEntry.document_number.ilike(term), JournalLine.description.ilike(term)))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        q = q.filter(or_(
+            JournalEntry.journal_number.ilike(term),
+            JournalEntry.document_number.ilike(term),
+            JournalLine.description.ilike(term),
+        ))
     return q
 
 
