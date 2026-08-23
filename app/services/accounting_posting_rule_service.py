@@ -7,6 +7,7 @@ from app.models.chart_of_account import ChartOfAccount
 
 class AccountingPostingRuleService:
     BANK_SUBTYPES = {"BANK", "CASH", "CASH_AND_BANK"}
+    DIRECT_USE_ASSET_FALLBACK_CODES = {"100-300-999"}
 
     def __init__(self, db: Session):
         self.db = db
@@ -21,8 +22,20 @@ class AccountingPostingRuleService:
             if credit.account_type != "LIABILITY" or credit.normal_balance != "CREDIT":
                 raise HTTPException(400, "Supplier invoice credit account must be a credit-balance liability")
         elif event_type == "SUPPLIER_INVOICE_DIRECT_USE":
-            if debit.account_type != "EXPENSE" or debit.normal_balance != "DEBIT":
-                raise HTTPException(400, "Direct-use invoice debit account must be a debit-balance expense")
+            account_code = str(debit.account_number or "").strip()
+            is_expense = debit.account_type == "EXPENSE" and debit.normal_balance == "DEBIT"
+            is_approved_asset_fallback = (
+                debit.account_type == "ASSET"
+                and debit.normal_balance == "DEBIT"
+                and account_code in cls.DIRECT_USE_ASSET_FALLBACK_CODES
+                and str(debit.account_subtype or "").upper() not in cls.BANK_SUBTYPES
+            )
+            if not (is_expense or is_approved_asset_fallback):
+                raise HTTPException(
+                    400,
+                    "Direct-use invoice debit account must be a debit-balance expense "
+                    "or an approved temporary inventory fallback",
+                )
             if credit.account_type != "LIABILITY" or credit.normal_balance != "CREDIT":
                 raise HTTPException(400, "Supplier invoice credit account must be a credit-balance liability")
         elif event_type == "SUPPLIER_PAYMENT":
