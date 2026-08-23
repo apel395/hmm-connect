@@ -14,6 +14,7 @@ from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.fiscal_period import FiscalPeriod
 from app.schemas.journal import JournalBulkAction, JournalCreate, JournalUpdate
+from app.services.accounting_posting_rule_service import AccountingPostingRuleService
 from app.services.accounting_unpost import (
     SUPPORTED_SOURCE_TYPES,
     apply_source_post_state,
