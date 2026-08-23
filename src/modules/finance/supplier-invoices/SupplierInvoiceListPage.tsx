@@ -23,6 +23,14 @@ const blankLine = (): InvoiceLine => ({ description: "", quantity: 0, uom: "", u
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const emptyForm = (): any => ({ supplier_id: 0, supplier_invoice_number: "", invoice_date: today(), received_date: today(), due_date: "", purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, withholding_tax_amount: 0, tax_invoice_number: "", tax_invoice_date: "", notes: "", source_type: "LIVE", lines: [blankLine()] });
+const invoiceErrorMessage = (error: unknown) => {
+  if (!axios.isAxiosError(error)) return "Invoice could not be saved";
+  const detail = error.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((item: any) => item?.msg ?? String(item)).join("; ");
+  if (detail && typeof detail === "object" && "message" in detail) return String((detail as any).message);
+  return error.message || "Invoice could not be saved";
+};
 
 const withTaxSnapshot = (item: any, extra: Record<string, unknown> = {}): InvoiceLine => ({
   product_id: item.product_id,
@@ -104,10 +112,9 @@ export default function SupplierInvoiceListPage() {
       queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] }); queryClient.invalidateQueries({ queryKey: ["invoice-receipts"] }); queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
       navigate(`/supplier-invoices/${invoice.id}`);
     },
-    onError: (error) => toast.error(axios.isAxiosError(error) && typeof error.response?.data?.detail === "string" ? error.response.data.detail : "Invoice could not be saved"),
   });
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.supplier_id) return toast.error("Select a Supplier");
     if (!form.supplier_invoice_number.trim()) return toast.error("Supplier Invoice Number is required");
     if (!form.business_unit_id) return toast.error(sourceLocked ? "Source document has no Business Unit. Fix the source document before invoicing." : "Select a Business Unit");
@@ -117,7 +124,11 @@ export default function SupplierInvoiceListPage() {
     if (hasVat && !selectedSupplier?.is_pkp) return toast.error("This invoice contains PPN. Mark the supplier as PKP in Supplier Master first.");
     if (hasVat && !form.tax_invoice_number.trim()) return toast.error("Faktur Pajak Number is required for an invoice with PPN.");
     if (hasVat && !form.tax_invoice_date) return toast.error("Faktur Pajak Date is required for an invoice with PPN.");
-    save.mutate();
+    try {
+      await save.mutateAsync();
+    } catch (error) {
+      toast.error(invoiceErrorMessage(error));
+    }
   };
 
   return <>
