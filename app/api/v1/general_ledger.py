@@ -23,6 +23,11 @@ def access(user):
         raise HTTPException(403, "Finance access required")
 
 
+def _search_pattern(search: str | None) -> str | None:
+    token = str(search or "").strip()
+    return f"%{token}%" if token else None
+
+
 def base(db, account_id=None, date_from=None, date_to=None, reference_type=None, supplier_id=None, department_id=None, location_id=None, search=None, business_unit_id=None):
     q = db.query(JournalLine).join(JournalEntry).filter(JournalEntry.status == "POSTED")
     if account_id:
@@ -41,8 +46,8 @@ def base(db, account_id=None, date_from=None, date_to=None, reference_type=None,
         q = q.filter(JournalLine.location_id == location_id)
     if business_unit_id:
         q = q.filter(JournalLine.business_unit_id == business_unit_id)
-    if search and search.strip():
-        term = f"%{search.strip()}%"
+    term = _search_pattern(search)
+    if term:
         q = q.filter(or_(
             JournalEntry.journal_number.ilike(term),
             JournalEntry.document_number.ilike(term),
