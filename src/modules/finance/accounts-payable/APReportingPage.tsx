@@ -88,18 +88,19 @@ export default function APReportingPage() {
           </div>
           <div className="overflow-x-auto">
             <Table variant="standard">
-              <THead><TR><TH>Supplier</TH><TH className="text-right">Gross Payables</TH><TH className="text-right">Payments</TH><TH className="text-right">Outstanding</TH><TH>Status</TH></TR></THead>
+              <THead><TR><TH>Supplier</TH><TH className="text-right">Gross Payables</TH><TH className="text-right">Payments</TH><TH className="text-right">Adjustments</TH><TH className="text-right">Outstanding</TH><TH>Status</TH></TR></THead>
               <TBody>
                 {summary.data.items.map((row) => (
                   <TR key={row.supplier_id}>
                     <TD><div className="font-medium">{row.supplier_name || `Supplier #${row.supplier_id}`}</div><div className="text-[10px] text-slate-500">{row.supplier_code || "—"} · {row.invoice_count} invoices</div></TD>
                     <TD className="text-right">{money(row.gross_amount)}</TD>
                     <TD className="text-right">{money(row.paid_amount)}</TD>
+                    <TD className="text-right">{money(row.adjustment_amount)}</TD>
                     <TD className="text-right font-semibold">{money(row.outstanding_amount)}</TD>
                     <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                   </TR>
                 ))}
-                {!summary.data.items.length && <TR><TD colSpan={5} className="py-10 text-center text-slate-500">No posted supplier invoices.</TD></TR>}
+                {!summary.data.items.length && <TR><TD colSpan={6} className="py-10 text-center text-slate-500">No posted supplier invoices.</TD></TR>}
               </TBody>
             </Table>
           </div>
@@ -114,7 +115,7 @@ export default function APReportingPage() {
           </div>
           <div className="overflow-x-auto">
             <Table variant="standard">
-              <THead><TR><TH>Date</TH><TH>Invoice</TH><TH>Supplier</TH><TH>Due Date</TH><TH className="text-right">Gross</TH><TH className="text-right">Payments</TH><TH className="text-right">Outstanding</TH><TH>Status</TH></TR></THead>
+              <THead><TR><TH>Date</TH><TH>Invoice</TH><TH>Supplier</TH><TH>Due Date</TH><TH className="text-right">Gross</TH><TH className="text-right">Payments</TH><TH className="text-right">Adjustments</TH><TH className="text-right">Outstanding</TH><TH>Status</TH></TR></THead>
               <TBody>
                 {detail.data.items.map((row) => (
                   <TR key={row.invoice_id}>
@@ -124,11 +125,12 @@ export default function APReportingPage() {
                     <TD>{row.due_date || "—"}</TD>
                     <TD className="text-right">{money(row.gross_amount)}</TD>
                     <TD className="text-right">{money(row.paid_amount)}</TD>
+                    <TD className="text-right">{money(row.adjustment_amount)}</TD>
                     <TD className="text-right font-semibold">{money(row.outstanding_amount)}</TD>
                     <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                   </TR>
                 ))}
-                {!detail.data.items.length && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No posted supplier invoices.</TD></TR>}
+                {!detail.data.items.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">No posted supplier invoices.</TD></TR>}
               </TBody>
             </Table>
           </div>
