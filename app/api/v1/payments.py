@@ -17,6 +17,7 @@ from app.models.journal_line import JournalLine
 from app.models.payment import Payment, PaymentAllocation, PaymentFundingLine
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.payment import PaymentCreate, PaymentUpdate
+from app.services.accounting_posting_rule_service import AccountingPostingRuleService
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
 from app.services.document_number import next_document_number
