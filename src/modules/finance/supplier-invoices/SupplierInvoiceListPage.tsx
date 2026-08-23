@@ -112,9 +112,10 @@ export default function SupplierInvoiceListPage() {
       queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] }); queryClient.invalidateQueries({ queryKey: ["invoice-receipts"] }); queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
       navigate(`/supplier-invoices/${invoice.id}`);
     },
+    onError: (error) => toast.error(invoiceErrorMessage(error)),
   });
 
-  const submit = async () => {
+  const submit = () => {
     try {
       if (!form.supplier_id) return toast.error("Select a Supplier");
       if (!form.supplier_invoice_number.trim()) return toast.error("Supplier Invoice Number is required");
@@ -139,7 +140,7 @@ export default function SupplierInvoiceListPage() {
           line_total: undefined,
         })),
       };
-      await save.mutateAsync(payload);
+      save.mutate(payload);
     } catch (error) {
       toast.error(invoiceErrorMessage(error));
     }
@@ -171,6 +172,6 @@ export default function SupplierInvoiceListPage() {
       <div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Discount<CurrencyInput value={Number(form.discount_amount)} onValueChange={(value) => setForm({ ...form, discount_amount: value })} /></label><label className="text-sm">Withholding Tax<CurrencyInput value={Number(form.withholding_tax_amount)} onValueChange={(value) => setForm({ ...form, withholding_tax_amount: value })} /></label></div>
       <div className="ml-auto max-w-sm space-y-2 rounded-lg border bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(calculation.subtotal)}</span></div><div className="flex justify-between"><span>PPN</span><span>{money(calculation.tax)}</span></div>{Number(form.discount_amount)>0&&<div className="flex justify-between"><span>Discount</span><span>({money(form.discount_amount)})</span></div>}{Number(form.withholding_tax_amount)>0&&<div className="flex justify-between"><span>Withholding</span><span>({money(form.withholding_tax_amount)})</span></div>}<div className="flex justify-between border-t pt-2 text-lg font-bold"><span>Invoice Total</span><span>{money(calculation.total)}</span></div></div>
       <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-    </DialogBody><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" loading={save.isPending} onClick={() => void submit()}>Save Draft</Button></DialogFooter></DialogContent></Dialog>
+    </DialogBody><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" loading={save.isPending} onClick={submit}>Save Draft</Button></DialogFooter></DialogContent></Dialog>
   </>;
 }
