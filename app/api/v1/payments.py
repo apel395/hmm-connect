@@ -399,6 +399,17 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cu
     rule = db.query(AccountingPostingRule).filter_by(event_type="SUPPLIER_PAYMENT", is_active=True).first()
     if not rule:
         raise HTTPException(409, "No active SUPPLIER_PAYMENT posting rule configured")
+    funding_accounts = [
+        db.get(ChartOfAccount, funding.bank_account.coa_account_id)
+        for funding in payment.funding_lines
+    ]
+    if any(account is None for account in funding_accounts):
+        raise HTTPException(409, "Payment funding bank account is missing its linked COA")
+    AccountingPostingRuleService.validate_source_journal_accounts(
+        "SUPPLIER_PAYMENT",
+        [rule.debit_account],
+        funding_accounts,
+    )
     journal = JournalEntry(
         journal_number=next_document_number(db, "JV"),
         posting_date=payment.payment_date,
