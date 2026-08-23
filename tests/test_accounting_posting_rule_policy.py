@@ -6,11 +6,12 @@ from fastapi import HTTPException
 from app.services.accounting_posting_rule_service import AccountingPostingRuleService
 
 
-def coa(account_type, normal_balance, account_subtype="OTHER"):
+def coa(account_type, normal_balance, account_subtype="OTHER", account_number=""):
     return SimpleNamespace(
         account_type=account_type,
         normal_balance=normal_balance,
         account_subtype=account_subtype,
+        account_number=account_number,
     )
 
 
@@ -97,3 +98,22 @@ def test_source_invoice_journal_rejects_bank_control_accounts():
             [coa("ASSET", "DEBIT", "INVENTORY")],
             [coa("ASSET", "DEBIT", "BANK")],
         )
+
+
+def test_direct_use_accepts_only_approved_inventory_asset_fallback():
+    AccountingPostingRuleService._validate_event_accounts(
+        "SUPPLIER_INVOICE_DIRECT_USE",
+        coa("ASSET", "DEBIT", "INVENTORY", "100-300-999"),
+        coa("LIABILITY", "CREDIT"),
+    )
+
+
+@pytest.mark.parametrize("account_number", ["100-300-100", "100-110-119", ""])
+def test_direct_use_rejects_unapproved_asset_fallback(account_number):
+    with pytest.raises(HTTPException) as error:
+        AccountingPostingRuleService._validate_event_accounts(
+            "SUPPLIER_INVOICE_DIRECT_USE",
+            coa("ASSET", "DEBIT", "INVENTORY", account_number),
+            coa("LIABILITY", "CREDIT"),
+        )
+    assert "approved temporary inventory fallback" in error.value.detail
