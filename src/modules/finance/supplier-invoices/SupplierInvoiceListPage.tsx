@@ -106,7 +106,7 @@ export default function SupplierInvoiceListPage() {
   const hasVat = calculation.tax > 0;
 
   const save = useMutation({
-    mutationFn: () => createInvoice({ ...form, tax_amount: calculation.tax, tax_invoice_number: form.tax_invoice_number || null, tax_invoice_date: form.tax_invoice_date || null, due_date: form.due_date || null, lines: form.lines.map((line: any) => ({ ...line, line_amount: undefined, tax_amount: undefined, line_total: undefined })) }),
+    mutationFn: (payload: any) => createInvoice(payload),
     onSuccess: (invoice) => {
       toast.success("Invoice saved as draft"); setOpen(false); setForm(emptyForm());
       queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] }); queryClient.invalidateQueries({ queryKey: ["invoice-receipts"] }); queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
@@ -115,17 +115,31 @@ export default function SupplierInvoiceListPage() {
   });
 
   const submit = async () => {
-    if (!form.supplier_id) return toast.error("Select a Supplier");
-    if (!form.supplier_invoice_number.trim()) return toast.error("Supplier Invoice Number is required");
-    if (!form.business_unit_id) return toast.error(sourceLocked ? "Source document has no Business Unit. Fix the source document before invoicing." : "Select a Business Unit");
-    if (!form.department_id) return toast.error(sourceLocked ? "Source document has no Department. Fix the source document before invoicing." : "Select a Department");
-    if (!form.location_id) return toast.error(sourceLocked ? "Source document has no Location. Fix the source document before invoicing." : "Select a Location");
-    if (!form.lines.length || form.lines.some((line: any) => !line.description?.trim() || Number(line.quantity) <= 0 || Number(line.unit_price) < 0)) return toast.error("Complete all invoice lines with valid quantities and prices");
-    if (hasVat && !selectedSupplier?.is_pkp) return toast.error("This invoice contains PPN. Mark the supplier as PKP in Supplier Master first.");
-    if (hasVat && !form.tax_invoice_number.trim()) return toast.error("Faktur Pajak Number is required for an invoice with PPN.");
-    if (hasVat && !form.tax_invoice_date) return toast.error("Faktur Pajak Date is required for an invoice with PPN.");
     try {
-      await save.mutateAsync();
+      if (!form.supplier_id) return toast.error("Select a Supplier");
+      if (!form.supplier_invoice_number.trim()) return toast.error("Supplier Invoice Number is required");
+      if (!form.business_unit_id) return toast.error(sourceLocked ? "Source document has no Business Unit. Fix the source document before invoicing." : "Select a Business Unit");
+      if (!form.department_id) return toast.error(sourceLocked ? "Source document has no Department. Fix the source document before invoicing." : "Select a Department");
+      if (!form.location_id) return toast.error(sourceLocked ? "Source document has no Location. Fix the source document before invoicing." : "Select a Location");
+      if (!form.lines.length || form.lines.some((line: any) => !String(line.description ?? "").trim() || Number(line.quantity) <= 0 || Number(line.unit_price) < 0)) return toast.error("Complete all invoice lines with valid quantities and prices");
+      if (hasVat && !selectedSupplier?.is_pkp) return toast.error("This invoice contains PPN. Mark the supplier as PKP in Supplier Master first.");
+      if (hasVat && !form.tax_invoice_number.trim()) return toast.error("Faktur Pajak Number is required for an invoice with PPN.");
+      if (hasVat && !form.tax_invoice_date) return toast.error("Faktur Pajak Date is required for an invoice with PPN.");
+
+      const payload = {
+        ...form,
+        tax_amount: calculation.tax,
+        tax_invoice_number: form.tax_invoice_number || null,
+        tax_invoice_date: form.tax_invoice_date || null,
+        due_date: form.due_date || null,
+        lines: form.lines.map((line: any) => ({
+          ...line,
+          line_amount: undefined,
+          tax_amount: undefined,
+          line_total: undefined,
+        })),
+      };
+      await save.mutateAsync(payload);
     } catch (error) {
       toast.error(invoiceErrorMessage(error));
     }
@@ -157,6 +171,6 @@ export default function SupplierInvoiceListPage() {
       <div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Discount<CurrencyInput value={Number(form.discount_amount)} onValueChange={(value) => setForm({ ...form, discount_amount: value })} /></label><label className="text-sm">Withholding Tax<CurrencyInput value={Number(form.withholding_tax_amount)} onValueChange={(value) => setForm({ ...form, withholding_tax_amount: value })} /></label></div>
       <div className="ml-auto max-w-sm space-y-2 rounded-lg border bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(calculation.subtotal)}</span></div><div className="flex justify-between"><span>PPN</span><span>{money(calculation.tax)}</span></div>{Number(form.discount_amount)>0&&<div className="flex justify-between"><span>Discount</span><span>({money(form.discount_amount)})</span></div>}{Number(form.withholding_tax_amount)>0&&<div className="flex justify-between"><span>Withholding</span><span>({money(form.withholding_tax_amount)})</span></div>}<div className="flex justify-between border-t pt-2 text-lg font-bold"><span>Invoice Total</span><span>{money(calculation.total)}</span></div></div>
       <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-    </DialogBody><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button loading={save.isPending} onClick={submit}>Save Draft</Button></DialogFooter></DialogContent></Dialog>
+    </DialogBody><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" loading={save.isPending} onClick={() => void submit()}>Save Draft</Button></DialogFooter></DialogContent></Dialog>
   </>;
 }
