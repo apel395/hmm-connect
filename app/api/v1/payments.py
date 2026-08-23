@@ -12,6 +12,7 @@ from app.dependencies.authorization import has_any_role
 from app.models.account_payable import AccountPayable
 from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.bank_account import BankAccount
+from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.payment import Payment, PaymentAllocation, PaymentFundingLine
