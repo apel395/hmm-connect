@@ -14,6 +14,7 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.schemas.supplier_invoice import SupplierInvoiceInput
+from app.services.accounting_posting_rule_service import AccountingPostingRuleService
 from app.services.audit import record_audit
 from app.services.document_number import next_document_number
 from app.services.payable_balance import sync_account_payable, sync_invoice_balance
@@ -384,10 +385,11 @@ class SupplierInvoiceService:
             return existing
 
         event = "SUPPLIER_INVOICE_INVENTORY" if invoice.goods_receipt and invoice.goods_receipt.destination_type == "WAREHOUSE" else "SUPPLIER_INVOICE_DIRECT_USE"
-        rule = self.db.query(AccountingPostingRule).filter(
-            AccountingPostingRule.event_type == event,
-            AccountingPostingRule.is_active.is_(True),
-        ).first()
+        rule = AccountingPostingRuleService(self.db).select_rule(
+            event,
+            invoice.business_unit_id,
+            invoice.location_id,
+        )
         if not rule:
             raise HTTPException(409, f"No active posting rule configured for {event}")
 
@@ -400,6 +402,7 @@ class SupplierInvoiceService:
             account = self.db.get(ChartOfAccount, account_id)
             if not account or not account.is_active or not account.is_posting:
                 raise HTTPException(409, "Invoice line requires a valid active posting account")
+            AccountingPostingRuleService.validate_invoice_debit_account(event, account)
             grouped[account_id] = grouped.get(account_id, ZERO) + Decimal(line.line_amount or 0)
 
         if not rule.credit_account.is_active or not rule.credit_account.is_posting:
