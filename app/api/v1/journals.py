@@ -132,6 +132,16 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
     if debit != credit:
         raise HTTPException(409, f"Journal {journal.journal_number} is not balanced")
 
+    source_type = str(journal.reference_type or journal.document_type or "").upper()
+    if source_type in {"SUPPLIER_INVOICE", "SUPPLIER_PAYMENT"}:
+        debit_accounts = [line.account for line in journal.lines if Decimal(line.debit) > ZERO]
+        credit_accounts = [line.account for line in journal.lines if Decimal(line.credit) > ZERO]
+        AccountingPostingRuleService.validate_source_journal_accounts(
+            source_type,
+            debit_accounts,
+            credit_accounts,
+        )
+
     apply_source_post_state(db, journal=journal, user=user)
     for line in journal.lines:
         GeneralLedgerService.post(
