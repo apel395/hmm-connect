@@ -55,6 +55,7 @@ export default function SupplierInvoiceListPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [form, setForm] = useState<any>(emptyForm());
   const sourceLocked = Boolean(form.goods_receipt_id || form.purchase_order_id);
 
@@ -108,24 +109,35 @@ export default function SupplierInvoiceListPage() {
   const save = useMutation({
     mutationFn: (payload: any) => createInvoice(payload),
     onSuccess: (invoice) => {
+      setSubmitError("");
       toast.success("Invoice saved as draft"); setOpen(false); setForm(emptyForm());
       queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] }); queryClient.invalidateQueries({ queryKey: ["invoice-receipts"] }); queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
       navigate(`/supplier-invoices/${invoice.id}`);
     },
-    onError: (error) => toast.error(invoiceErrorMessage(error)),
+    onError: (error) => {
+      const message = invoiceErrorMessage(error);
+      setSubmitError(message);
+      toast.error(message);
+    },
   });
+
+  const failSubmit = (message: string) => {
+    setSubmitError(message);
+    toast.error(message);
+  };
 
   const submit = () => {
     try {
-      if (!form.supplier_id) return toast.error("Select a Supplier");
-      if (!form.supplier_invoice_number.trim()) return toast.error("Supplier Invoice Number is required");
-      if (!form.business_unit_id) return toast.error(sourceLocked ? "Source document has no Business Unit. Fix the source document before invoicing." : "Select a Business Unit");
-      if (!form.department_id) return toast.error(sourceLocked ? "Source document has no Department. Fix the source document before invoicing." : "Select a Department");
-      if (!form.location_id) return toast.error(sourceLocked ? "Source document has no Location. Fix the source document before invoicing." : "Select a Location");
-      if (!form.lines.length || form.lines.some((line: any) => !String(line.description ?? "").trim() || Number(line.quantity) <= 0 || Number(line.unit_price) < 0)) return toast.error("Complete all invoice lines with valid quantities and prices");
-      if (hasVat && !selectedSupplier?.is_pkp) return toast.error("This invoice contains PPN. Mark the supplier as PKP in Supplier Master first.");
-      if (hasVat && !form.tax_invoice_number.trim()) return toast.error("Faktur Pajak Number is required for an invoice with PPN.");
-      if (hasVat && !form.tax_invoice_date) return toast.error("Faktur Pajak Date is required for an invoice with PPN.");
+      setSubmitError("");
+      if (!form.supplier_id) return failSubmit("Select a Supplier");
+      if (!form.supplier_invoice_number.trim()) return failSubmit("Supplier Invoice Number is required");
+      if (!form.business_unit_id) return failSubmit(sourceLocked ? "Source document has no Business Unit. Fix the source document before invoicing." : "Select a Business Unit");
+      if (!form.department_id) return failSubmit(sourceLocked ? "Source document has no Department. Fix the source document before invoicing." : "Select a Department");
+      if (!form.location_id) return failSubmit(sourceLocked ? "Source document has no Location. Fix the source document before invoicing." : "Select a Location");
+      if (!form.lines.length || form.lines.some((line: any) => !String(line.description ?? "").trim() || Number(line.quantity) <= 0 || Number(line.unit_price) < 0)) return failSubmit("Complete all invoice lines with valid quantities and prices");
+      if (hasVat && !selectedSupplier?.is_pkp) return failSubmit("This invoice contains PPN. Mark the supplier as PKP in Supplier Master first.");
+      if (hasVat && !form.tax_invoice_number.trim()) return failSubmit("Faktur Pajak Number is required for an invoice with PPN.");
+      if (hasVat && !form.tax_invoice_date) return failSubmit("Faktur Pajak Date is required for an invoice with PPN.");
 
       const payload = {
         ...form,
@@ -142,7 +154,7 @@ export default function SupplierInvoiceListPage() {
       };
       save.mutate(payload);
     } catch (error) {
-      toast.error(invoiceErrorMessage(error));
+      failSubmit(invoiceErrorMessage(error));
     }
   };
 
@@ -172,6 +184,7 @@ export default function SupplierInvoiceListPage() {
       <div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Discount<CurrencyInput value={Number(form.discount_amount)} onValueChange={(value) => setForm({ ...form, discount_amount: value })} /></label><label className="text-sm">Withholding Tax<CurrencyInput value={Number(form.withholding_tax_amount)} onValueChange={(value) => setForm({ ...form, withholding_tax_amount: value })} /></label></div>
       <div className="ml-auto max-w-sm space-y-2 rounded-lg border bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(calculation.subtotal)}</span></div><div className="flex justify-between"><span>PPN</span><span>{money(calculation.tax)}</span></div>{Number(form.discount_amount)>0&&<div className="flex justify-between"><span>Discount</span><span>({money(form.discount_amount)})</span></div>}{Number(form.withholding_tax_amount)>0&&<div className="flex justify-between"><span>Withholding</span><span>({money(form.withholding_tax_amount)})</span></div>}<div className="flex justify-between border-t pt-2 text-lg font-bold"><span>Invoice Total</span><span>{money(calculation.total)}</span></div></div>
       <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+      {submitError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{submitError}</div>}
     </DialogBody><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" loading={save.isPending} onClick={submit}>Save Draft</Button></DialogFooter></DialogContent></Dialog>
   </>;
 }
