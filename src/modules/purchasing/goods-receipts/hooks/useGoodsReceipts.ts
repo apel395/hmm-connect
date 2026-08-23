@@ -11,7 +11,8 @@ export function useRemainingPurchaseOrderItems(purchaseOrderId?:number){return u
 export function useGoodsReceipts(purchaseOrderId?:number){return useQuery({queryKey:["goods-receipts-by-po",purchaseOrderId],queryFn:async()=>purchaseOrderId?((await goodsReceiptApi.listByPurchaseOrder(purchaseOrderId)).data?.items ?? []):[],enabled:!!purchaseOrderId})}
 
 async function invalidateReceipt(qc:ReturnType<typeof useQueryClient>,id?:number,detail?:unknown){
-  if(id&&detail)qc.setQueryData(["goods-receipt",id],detail);
+  const completeDetail=Boolean(detail&&typeof detail==="object"&&"allowed_actions" in detail);
+  if(id&&completeDetail)qc.setQueryData(["goods-receipt",id],detail);
   await Promise.all([
     id?qc.refetchQueries({queryKey:["goods-receipt",id],exact:true,type:"active"}):Promise.resolve(),
     qc.invalidateQueries({queryKey:["goods-receipts"]}),
