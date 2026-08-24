@@ -8,6 +8,12 @@ class AccountingPostingRule(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     event_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    business_unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("business_units.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    location_id: Mapped[int | None] = mapped_column(
+        ForeignKey("locations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     debit_account_id: Mapped[int] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=False)
     credit_account_id: Mapped[int] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=False)
     input_vat_account_id: Mapped[int | None] = mapped_column(
@@ -17,6 +23,8 @@ class AccountingPostingRule(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
+    business_unit = relationship("BusinessUnit")
+    location = relationship("Location")
     debit_account = relationship("ChartOfAccount", foreign_keys=[debit_account_id])
     credit_account = relationship("ChartOfAccount", foreign_keys=[credit_account_id])
     input_vat_account = relationship("ChartOfAccount", foreign_keys=[input_vat_account_id])

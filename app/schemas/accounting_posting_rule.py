@@ -11,6 +11,8 @@ EventType = Literal[
 
 class PostingRuleCreate(BaseModel):
     event_type: EventType
+    business_unit_id: int | None = None
+    location_id: int | None = None
     debit_account_id: int
     credit_account_id: int
     input_vat_account_id: int | None = None
@@ -20,6 +22,8 @@ class PostingRuleCreate(BaseModel):
 
 class PostingRuleUpdate(BaseModel):
     event_type: EventType | None = None
+    business_unit_id: int | None = None
+    location_id: int | None = None
     debit_account_id: int | None = None
     credit_account_id: int | None = None
     input_vat_account_id: int | None = None

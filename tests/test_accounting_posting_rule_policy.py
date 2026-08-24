@@ -117,3 +117,27 @@ def test_direct_use_rejects_unapproved_asset_fallback(account_number):
             coa("LIABILITY", "CREDIT"),
         )
     assert "approved temporary inventory fallback" in error.value.detail
+
+
+@pytest.mark.parametrize(
+    ("subtype", "account_number"),
+    [
+        ("ACCOUNTS_RECEIVABLE", "100-999-001"),
+        ("OTHER", "100-200-103"),
+    ],
+)
+def test_supplier_invoice_rejects_receivable_line_accounts(subtype, account_number):
+    with pytest.raises(HTTPException) as error:
+        AccountingPostingRuleService.validate_invoice_debit_account(
+            "SUPPLIER_INVOICE_INVENTORY",
+            coa("ASSET", "DEBIT", subtype, account_number),
+        )
+    assert error.value.status_code == 409
+    assert "accounts receivable" in error.value.detail
+
+
+def test_supplier_invoice_accepts_valid_scoped_default_account():
+    AccountingPostingRuleService.validate_invoice_debit_account(
+        "SUPPLIER_INVOICE_INVENTORY",
+        coa("ASSET", "DEBIT", "INVENTORY", "100-300-100"),
+    )
