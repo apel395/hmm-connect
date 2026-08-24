@@ -564,6 +564,7 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cu
             cash_flow_category=category,
             cash_flow_direction="OUTFLOW",
         ))
+    validate_payment_journal_integrity(db, payment, journal)
     db.add(journal)
     db.flush()
     payment.journal_entry_id = journal.id
