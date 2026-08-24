@@ -30,6 +30,19 @@ class SupplierInvoiceService:
     @staticmethod
     def serialize(x):
         journal = next((j for j in getattr(x, "_journals", []) if j.reference_type == "SUPPLIER_INVOICE"), None)
+        receipt = x.goods_receipt
+        purchase_order = x.purchase_order or (receipt.purchase_order if receipt else None)
+        location = (
+            x.location
+            or (receipt.location if receipt else None)
+            or (
+                receipt.warehouse.location
+                if receipt and receipt.warehouse and receipt.warehouse.location
+                else None
+            )
+            or (purchase_order.location if purchase_order else None)
+            or (journal.location if journal and journal.location else None)
+        )
         return {
             "id": x.id,
             "internal_invoice_number": x.internal_invoice_number,
@@ -46,8 +59,8 @@ class SupplierInvoiceService:
             "business_unit_id": x.business_unit_id,
             "department_id": x.department_id,
             "department_name": x.department.name if x.department else None,
-            "location_id": x.location_id,
-            "location_name": x.location.name if x.location else None,
+            "location_id": location.id if location else x.location_id,
+            "location_name": location.name if location else None,
             "currency": x.currency,
             "subtotal": x.subtotal,
             "discount_amount": x.discount_amount,
