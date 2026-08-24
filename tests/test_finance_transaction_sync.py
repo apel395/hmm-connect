@@ -82,6 +82,9 @@ def test_supplier_invoice_serializer_falls_back_to_receipt_warehouse_location():
 def test_supplier_invoice_serializer_falls_back_to_posted_journal_location():
     location = SimpleNamespace(id=3, name="Zamped")
     journal = SimpleNamespace(
+        id=27,
+        journal_number="SI-TEST",
+        status="POSTED",
         reference_type="SUPPLIER_INVOICE",
         location=None,
         lines=[SimpleNamespace(location=location)],
