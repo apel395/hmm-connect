@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from math import ceil
@@ -120,6 +121,18 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
             raise HTTPException(422, "Funding bank account must be active")
         if bank.currency != data.currency.upper():
             raise HTTPException(422, "Funding bank account currency must match payment currency")
+        linked_account = bank.coa_account
+        if (
+            not linked_account
+            or not linked_account.is_active
+            or not linked_account.is_posting
+            or linked_account.account_type != "ASSET"
+            or linked_account.account_subtype not in {"BANK", "CASH", "PETTY_CASH"}
+        ):
+            raise HTTPException(
+                422,
+                "Funding bank account must have an active BANK/CASH posting COA",
+            )
         if Decimal(funding.amount) <= ZERO:
             raise HTTPException(422, "Funding amount must be greater than zero")
         bank_accounts.append(bank)
@@ -137,10 +150,103 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
         for invoice in invoices[1:]:
             if invoice.business_unit_id != source.business_unit_id:
                 raise HTTPException(422, "A payment cannot combine invoices from different Business Units")
+            if invoice.location_id != source.location_id:
+                raise HTTPException(422, "A payment cannot combine invoices from different Locations")
+            if invoice.department_id != source.department_id:
+                raise HTTPException(422, "A payment cannot combine invoices from different Departments")
         data.business_unit_id = source.business_unit_id
         data.location_id = source.location_id
         data.department_id = source.department_id
+        for bank in bank_accounts:
+            if bank.business_unit_id != source.business_unit_id:
+                raise HTTPException(
+                    422,
+                    "Funding bank account must belong to the invoice Business Unit",
+                )
+            if bank.location_id is not None and bank.location_id != source.location_id:
+                raise HTTPException(
+                    422,
+                    "Funding bank account is restricted to a different Location",
+                )
     return invoices, bank_accounts
+
+
+def validate_payment_journal_integrity(db: Session, payment: Payment, journal: JournalEntry):
+    rule = AccountingPostingRuleService(db).select_rule(
+        "SUPPLIER_PAYMENT",
+        payment.business_unit_id,
+        payment.location_id,
+    )
+    if not rule:
+        raise HTTPException(
+            409,
+            "No active SUPPLIER_PAYMENT posting rule configured for this Business Unit and Location",
+        )
+
+    if (
+        journal.reference_type != "SUPPLIER_PAYMENT"
+        or journal.reference_id != payment.id
+        or journal.document_number != payment.payment_number
+        or journal.business_unit_id != payment.business_unit_id
+        or journal.location_id != payment.location_id
+        or journal.department_id != payment.department_id
+    ):
+        raise HTTPException(409, "Payment journal context does not match its source payment")
+
+    expected_debits = {rule.debit_account_id: Decimal(payment.amount)}
+    expected_credits = defaultdict(Decimal)
+    funding_accounts = []
+    for funding in payment.funding_lines:
+        account = funding.bank_account.coa_account
+        if (
+            not account
+            or not account.is_active
+            or not account.is_posting
+            or account.account_type != "ASSET"
+            or account.account_subtype not in {"BANK", "CASH", "PETTY_CASH"}
+        ):
+            raise HTTPException(
+                409,
+                "Payment funding bank account has no valid linked BANK/CASH posting COA",
+            )
+        expected_credits[account.id] += Decimal(funding.amount)
+        funding_accounts.append(account)
+
+    actual_debits = defaultdict(Decimal)
+    actual_credits = defaultdict(Decimal)
+    for line in journal.lines:
+        debit = Decimal(line.debit or 0)
+        credit = Decimal(line.credit or 0)
+        if debit < ZERO or credit < ZERO or (debit > ZERO and credit > ZERO):
+            raise HTTPException(409, "Payment journal contains an invalid debit/credit line")
+        if (
+            line.business_unit_id != payment.business_unit_id
+            or line.location_id != payment.location_id
+            or line.department_id != payment.department_id
+        ):
+            raise HTTPException(409, "Payment journal line dimensions do not match the source payment")
+        if debit:
+            actual_debits[line.account_id] += debit
+        if credit:
+            actual_credits[line.account_id] += credit
+
+    if dict(actual_debits) != expected_debits:
+        raise HTTPException(
+            409,
+            "Payment journal debit must match the scoped Accounts Payable control account and payment total",
+        )
+    if dict(actual_credits) != dict(expected_credits):
+        raise HTTPException(
+            409,
+            "Payment journal credit must match the selected funding accounts and amounts",
+        )
+
+    AccountingPostingRuleService.validate_source_journal_accounts(
+        "SUPPLIER_PAYMENT",
+        [rule.debit_account],
+        funding_accounts,
+    )
+    return rule
 
 
 def serialize(payment: Payment):
@@ -194,6 +300,8 @@ def serialize(payment: Payment):
             "account_name": row.bank_account.account_name,
             "account_number": row.bank_account.account_number,
             "coa_account_id": row.bank_account.coa_account_id,
+            "coa_account_code": row.bank_account.coa_account.account_number if row.bank_account.coa_account else None,
+            "coa_account_name": row.bank_account.coa_account.account_name if row.bank_account.coa_account else None,
             "amount": row.amount,
         } for row in payment.funding_lines],
     }
@@ -458,6 +566,7 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cu
             cash_flow_category=category,
             cash_flow_direction="OUTFLOW",
         ))
+    validate_payment_journal_integrity(db, payment, journal)
     db.add(journal)
     db.flush()
     payment.journal_entry_id = journal.id
@@ -477,6 +586,7 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     journal = db.query(JournalEntry).filter(JournalEntry.id == payment.journal_entry_id).with_for_update().one()
     if journal.status != "DRAFT":
         raise HTTPException(409, "Payment journal is not draft")
+    validate_payment_journal_integrity(db, payment, journal)
     debit = sum((Decimal(line.debit) for line in journal.lines), ZERO)
     credit = sum((Decimal(line.credit) for line in journal.lines), ZERO)
     if debit != credit or debit != Decimal(payment.amount):
