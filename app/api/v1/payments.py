@@ -300,6 +300,8 @@ def serialize(payment: Payment):
             "account_name": row.bank_account.account_name,
             "account_number": row.bank_account.account_number,
             "coa_account_id": row.bank_account.coa_account_id,
+            "coa_account_code": row.bank_account.coa_account.account_number if row.bank_account.coa_account else None,
+            "coa_account_name": row.bank_account.coa_account.account_name if row.bank_account.coa_account else None,
             "amount": row.amount,
         } for row in payment.funding_lines],
     }
