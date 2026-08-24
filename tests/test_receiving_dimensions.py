@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from app.services.goods_receipt_service import GoodsReceiptService
 from app.services.purchase_order_service import PurchaseOrderService
+from app.services.supplier_invoice_service import SupplierInvoiceService
 
 
 def dimensions(business_unit_id=None, department_id=None, location_id=None):
@@ -85,3 +86,19 @@ def test_receiving_accepts_warehouse_from_same_location():
     payload = SimpleNamespace(destination_type="WAREHOUSE", warehouse_id=10)
 
     GoodsReceiptService._validate_destination(db, payload, location_id=2)
+
+
+def test_supplier_invoice_location_falls_back_to_receipt_warehouse():
+    receipt = SimpleNamespace(location_id=None, warehouse=SimpleNamespace(location_id=4))
+    purchase_order = SimpleNamespace(location_id=3)
+
+    assert SupplierInvoiceService._source_location_id(receipt, purchase_order) == 4
+
+
+def test_supplier_invoice_location_prefers_receipt_then_po():
+    receipt = SimpleNamespace(location_id=5, warehouse=SimpleNamespace(location_id=4))
+    purchase_order = SimpleNamespace(location_id=3)
+    assert SupplierInvoiceService._source_location_id(receipt, purchase_order) == 5
+
+    legacy_receipt = SimpleNamespace(location_id=None, warehouse=None)
+    assert SupplierInvoiceService._source_location_id(legacy_receipt, purchase_order) == 3
