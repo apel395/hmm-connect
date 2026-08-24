@@ -19,7 +19,7 @@ const PAGE_SIZE = 25;
 export default function PurchaseRequisitionListPage() {
   const navigate = useNavigate();
   const { canPerform } = useAuthorization();
-  const canCreate = canPerform("create", ["REQUESTER"]);
+  const canCreate = canPerform("create", ["REQUESTER"], true, "pr.create");
   const [scope, setScope] = useState<"active"|"history">("active");
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
