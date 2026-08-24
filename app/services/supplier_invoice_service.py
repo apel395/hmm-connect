@@ -41,7 +41,6 @@ class SupplierInvoiceService:
                 else None
             )
             or (purchase_order.location if purchase_order else None)
-            or (journal.location if journal and journal.location else None)
         )
         return {
             "id": x.id,
