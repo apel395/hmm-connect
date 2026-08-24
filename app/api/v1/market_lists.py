@@ -155,7 +155,7 @@ def get_market_list(market_list_id: int, db: Session = Depends(get_db), user=Dep
 
 
 @router.get("/{market_list_id}/print")
-def print_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def print_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(market_list_view_user)):
     return {**get_market_list(market_list_id, db, user), "document_type": "Market List", **print_metadata(user)}
 
 
