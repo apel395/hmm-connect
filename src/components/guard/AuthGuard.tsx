@@ -67,7 +67,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   }
 
   if (location.pathname !== "/403") {
-    const rule = ROUTE_ACCESS.find(({ prefix }) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`));
+    const rule = ROUTE_ACCESS.find(({ prefix }) => prefix.endsWith("-") ? location.pathname.startsWith(prefix) : location.pathname === prefix || location.pathname.startsWith(`${prefix}/`));
     if (rule && !canAccess(user, rule.legacyRoles, rule.permission)) {
       return <Navigate to="/403" replace />;
     }
