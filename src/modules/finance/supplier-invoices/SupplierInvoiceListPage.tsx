@@ -16,7 +16,7 @@ import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import purchaseOrderApi from "@/modules/purchasing/purchase-order/api/purchaseOrderApi";
 import goodsReceiptApi from "@/modules/purchasing/goods-receipts/api/goodsReceiptApi";
-import { createInvoice, InvoiceLine, listEligibleReceiptSources, listInvoices } from "./api";
+import { createInvoice, getInvoice, InvoiceLine, listEligibleReceiptSources, listInvoices, updateInvoice } from "./api";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const blankLine = (): InvoiceLine => ({ description: "", quantity: 0, uom: "", unit_price: 0, account_id: null, is_taxable: false, tax_rate: 0, tax_amount: 0 });
@@ -56,6 +56,7 @@ export default function SupplierInvoiceListPage() {
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<any>(emptyForm());
   const sourceLocked = Boolean(form.goods_receipt_id || form.purchase_order_id);
 
@@ -93,6 +94,26 @@ export default function SupplierInvoiceListPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const editId = Number(searchParams.get("edit_id"));
+    if (!editId) return;
+    setSubmitError("");
+    setOpen(true);
+    getInvoice(editId)
+      .then((invoice) => {
+        if (invoice.status !== "DRAFT") throw new Error("Only draft invoices can be edited");
+        setEditingId(editId);
+        setForm({ ...emptyForm(), ...invoice, lines: invoice.lines.map((line) => ({ ...line })) });
+      })
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Draft invoice could not be loaded");
+        setOpen(false);
+      })
+      .finally(() => setSearchParams({}, { replace: true }));
+  // The edit query-string handoff is intentionally consumed once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const calculation = useMemo(() => {
     const subtotal = form.lines.reduce((sum: number, line: any) => sum + Number(line.quantity || 0) * Number(line.unit_price || 0), 0);
     const tax = form.lines.reduce((sum: number, line: any) => {
@@ -107,10 +128,10 @@ export default function SupplierInvoiceListPage() {
   const hasVat = calculation.tax > 0;
 
   const save = useMutation({
-    mutationFn: (payload: any) => createInvoice(payload),
+    mutationFn: (payload: any) => editingId ? updateInvoice(editingId, payload) : createInvoice(payload),
     onSuccess: (invoice) => {
       setSubmitError("");
-      toast.success("Invoice saved as draft"); setOpen(false); setForm(emptyForm());
+      toast.success(editingId ? "Draft invoice updated" : "Invoice saved as draft"); setOpen(false); setEditingId(null); setForm(emptyForm());
       queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] }); queryClient.invalidateQueries({ queryKey: ["invoice-receipts"] }); queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
       navigate(`/supplier-invoices/${invoice.id}`);
     },
@@ -159,10 +180,10 @@ export default function SupplierInvoiceListPage() {
   };
 
   return <>
-    <PageHeader title="Supplier Invoices" description="Create invoices from posted receiving documents or enter a direct supplier invoice." actions={<Button onClick={() => { const next = emptyForm(); if (businessUnits.data?.length === 1) next.business_unit_id = businessUnits.data[0].id; setForm(next); setOpen(true); }}>Create Invoice</Button>} />
+    <PageHeader title="Supplier Invoices" description="Create invoices from posted receiving documents or enter a direct supplier invoice." actions={<Button onClick={() => { const next = emptyForm(); if (businessUnits.data?.length === 1) next.business_unit_id = businessUnits.data[0].id; setEditingId(null); setForm(next); setOpen(true); }}>Create Invoice</Button>} />
     <Card className="mt-6"><div className="mb-4 flex gap-3"><input className={input} placeholder="Search invoices" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><select className={input} value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["DRAFT", "VERIFIED", "REJECTED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}</select></div><Table className="min-w-[900px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Invoice</TH><TH>Supplier</TH><TH>Dates</TH><TH>Source Document</TH><TH numeric>PPN</TH><TH numeric>Total</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{invoices.data?.items.map((row: any) => <TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={row.internal_invoice_number} secondary={row.supplier_invoice_number}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD><TableCellStack primary={row.invoice_date} secondary={row.due_date ? `Due ${row.due_date}` : undefined}/></TD><TD>{row.receipt_number || "—"}</TD><TD numeric>{money(row.tax_amount)}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => navigate(`/supplier-invoices/${row.id}`)}>View</Button></div></TD></TR>)}</TBody></Table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!invoices.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!invoices.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
 
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>Create Supplier Invoice</DialogTitle></DialogHeader><DialogBody className="space-y-5">
+    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditingId(null); }}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId ? "Edit Draft Supplier Invoice" : "Create Supplier Invoice"}</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
         <label className="text-sm">Posted Receipt<select className={input} value={form.goods_receipt_id ?? ""} onChange={(event) => loadReceipt(Number(event.target.value))}><option value="">Direct / no receipt</option>{receipts.data?.map((row: any) => <option key={row.id} value={row.id}>{row.receipt_number} — {row.supplier_name}</option>)}</select></label>
         <label className="text-sm">Purchase Order<select disabled={Boolean(form.goods_receipt_id)} className={input} value={form.purchase_order_id ?? ""} onChange={(event) => loadPo(Number(event.target.value))}><option value="">Direct / no PO</option>{purchaseOrders.data?.map((row: any) => <option key={row.id} value={row.id}>{row.po_number}</option>)}</select></label>
@@ -185,6 +206,6 @@ export default function SupplierInvoiceListPage() {
       <div className="ml-auto max-w-sm space-y-2 rounded-lg border bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(calculation.subtotal)}</span></div><div className="flex justify-between"><span>PPN</span><span>{money(calculation.tax)}</span></div>{Number(form.discount_amount)>0&&<div className="flex justify-between"><span>Discount</span><span>({money(form.discount_amount)})</span></div>}{Number(form.withholding_tax_amount)>0&&<div className="flex justify-between"><span>Withholding</span><span>({money(form.withholding_tax_amount)})</span></div>}<div className="flex justify-between border-t pt-2 text-lg font-bold"><span>Invoice Total</span><span>{money(calculation.total)}</span></div></div>
       <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
       {submitError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{submitError}</div>}
-    </DialogBody><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" loading={save.isPending} onClick={submit}>Save Draft</Button></DialogFooter></DialogContent></Dialog>
+    </DialogBody><DialogFooter><Button variant="outline" onClick={() => { setOpen(false); setEditingId(null); }}>Cancel</Button><Button type="button" loading={save.isPending} onClick={submit}>{editingId ? "Save Changes" : "Save Draft"}</Button></DialogFooter></DialogContent></Dialog>
   </>;
 }
