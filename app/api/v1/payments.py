@@ -10,7 +10,6 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_any_role
 from app.models.account_payable import AccountPayable
-from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
@@ -396,9 +395,16 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(get_cu
     for allocation in payment.allocations:
         if allocation.supplier_invoice.status not in OPEN_INVOICE_STATUSES:
             raise HTTPException(409, f"Invoice {allocation.supplier_invoice.internal_invoice_number} is not posted")
-    rule = db.query(AccountingPostingRule).filter_by(event_type="SUPPLIER_PAYMENT", is_active=True).first()
+    rule = AccountingPostingRuleService(db).select_rule(
+        "SUPPLIER_PAYMENT",
+        payment.business_unit_id,
+        payment.location_id,
+    )
     if not rule:
-        raise HTTPException(409, "No active SUPPLIER_PAYMENT posting rule configured")
+        raise HTTPException(
+            409,
+            "No active SUPPLIER_PAYMENT posting rule configured for this Business Unit and Location",
+        )
     funding_accounts = [
         db.get(ChartOfAccount, funding.bank_account.coa_account_id)
         for funding in payment.funding_lines

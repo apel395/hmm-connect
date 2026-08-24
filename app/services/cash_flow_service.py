@@ -4,6 +4,7 @@ from decimal import Decimal
 from math import ceil
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
+from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
@@ -13,9 +14,34 @@ from app.models.bank_transfer import BankTransfer
 ZERO=Decimal("0");CASH_TYPES={"CASH","BANK","PETTY_CASH"};CATEGORIES={"OPERATING","INVESTING","FINANCING","UNCLASSIFIED"}
 
 class CashFlowService:
-    def __init__(self,db:Session):self.db=db
+    def __init__(self,db:Session):
+        self.db=db
+        self._linked_bank_account_ids=None
+
+    def linked_bank_account_ids(self):
+        if self._linked_bank_account_ids is None:
+            self._linked_bank_account_ids={
+                row[0] for row in self.db.query(BankAccount.coa_account_id).filter(
+                    BankAccount.is_active.is_(True)
+                ).all()
+            }
+        return self._linked_bank_account_ids
+
+    def is_cash_account(self,account):
+        return bool(
+            account
+            and (
+                account.account_subtype in CASH_TYPES
+                or account.id in self.linked_bank_account_ids()
+            )
+        )
+
     def cash_accounts(self,subtypes=None,active_only=True):
-        q=self.db.query(ChartOfAccount).filter(ChartOfAccount.account_subtype.in_(subtypes or CASH_TYPES))
+        requested=set(subtypes or CASH_TYPES)
+        filters=[ChartOfAccount.account_subtype.in_(requested)]
+        if "BANK" in requested:
+            filters.append(ChartOfAccount.id.in_(self.linked_bank_account_ids()))
+        q=self.db.query(ChartOfAccount).filter(or_(*filters))
         if active_only:q=q.filter(ChartOfAccount.is_active.is_(True),ChartOfAccount.is_posting.is_(True),ChartOfAccount.account_type=="ASSET")
         return q.order_by(ChartOfAccount.account_number).all()
     def journals(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
@@ -28,9 +54,8 @@ class CashFlowService:
         if department_id:q=q.filter(JournalEntry.lines.any(JournalLine.department_id==department_id))
         if business_unit_id:q=q.filter(JournalEntry.lines.any(JournalLine.business_unit_id==business_unit_id))
         return q.order_by(JournalEntry.posting_date,JournalEntry.posted_at,JournalEntry.id).all()
-    @staticmethod
-    def cash_lines(journal):
-        lines=[line for line in journal.lines if line.account.account_subtype in CASH_TYPES]
+    def cash_lines(self,journal):
+        lines=[line for line in journal.lines if self.is_cash_account(line.account)]
         return sorted(lines,key=lambda line:(line.line_number is None,line.line_number or 0,line.id or 0))
     def is_transfer(self,journal):
         lines=self.cash_lines(journal);return len({line.account_id for line in lines})>=2 and sum((Decimal(line.debit)-Decimal(line.credit) for line in lines),ZERO)==ZERO
@@ -82,7 +107,7 @@ class CashFlowService:
         return result
     def activity(self,account_id,page=1,page_size=20,date_from=None,date_to=None,search=None,direction=None,reference_type=None,category=None):
         account=self.db.get(ChartOfAccount,account_id)
-        if not account or account.account_subtype not in CASH_TYPES:raise ValueError("Cash account not found")
+        if not self.is_cash_account(account):raise ValueError("Cash account not found")
         opening=self.opening(date_from,account_id);items=self.movements(date_from,date_to,account_id);balance=opening;rows=[]
         for m in items:
             j=m["journal"];balance+=m["delta"]
