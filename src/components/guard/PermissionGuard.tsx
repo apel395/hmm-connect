@@ -1,13 +1,18 @@
+import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
+
+import { canAccess } from "@/lib/access";
 import useAuthStore from "@/store/auth";
-import { isSuperuser } from "@/lib/access";
 
-export default function PermissionGuard({ allow, children }: any) {
+interface Props {
+  permission: string;
+  legacyRoles?: string[];
+  children: ReactNode;
+}
+
+export default function PermissionGuard({ permission, legacyRoles = [], children }: Props) {
   const user = useAuthStore((state) => state.user);
-
-  if (!isSuperuser(user) && !allow) {
-    return <Navigate to="/403" replace />;
-  }
-
-  return children;
+  return canAccess(user, legacyRoles, permission)
+    ? <>{children}</>
+    : <Navigate to="/403" replace />;
 }
