@@ -32,6 +32,16 @@ class SupplierInvoiceService:
         journal = next((j for j in getattr(x, "_journals", []) if j.reference_type == "SUPPLIER_INVOICE"), None)
         receipt = x.goods_receipt
         purchase_order = x.purchase_order or (receipt.purchase_order if receipt else None)
+        journal_location = getattr(journal, "location", None) if journal else None
+        if journal and not journal_location:
+            journal_location = next(
+                (
+                    line.location
+                    for line in getattr(journal, "lines", [])
+                    if getattr(line, "location", None)
+                ),
+                None,
+            )
         location = (
             x.location
             or (receipt.location if receipt else None)
@@ -41,6 +51,7 @@ class SupplierInvoiceService:
                 else None
             )
             or (purchase_order.location if purchase_order else None)
+            or journal_location
         )
         return {
             "id": x.id,
