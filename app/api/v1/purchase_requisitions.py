@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import is_superuser, require_roles
+from app.dependencies.authorization import is_superuser, require_permission
 from app.models.business_unit import BusinessUnit
 from app.models.department import Department
 from app.models.location import Location
@@ -22,11 +22,16 @@ from app.services.activity_service import AuditService
 from app.services.approval import reset_approval
 from app.services.purchase_requisition_service import PurchaseRequisitionService
 from app.services.document_context import document_context, print_metadata
+from app.services.location_access import apply_location_scope, require_location_access, resolve_location_id
 
 
 router = APIRouter(prefix="/purchase-requisitions", tags=["Purchase Requisitions"])
-requester_user = require_roles("REQUESTER")
-purchasing_user = require_roles("PURCHASING")
+pr_view_user = require_permission("pr.view", "REQUESTER", "PURCHASING", "GENERAL_MANAGER", "AUDITOR")
+pr_create_user = require_permission("pr.create", "REQUESTER")
+pr_edit_user = require_permission("pr.edit", "REQUESTER")
+pr_submit_user = require_permission("pr.submit", "REQUESTER")
+pr_approve_user = require_permission("pr.approve", "GENERAL_MANAGER", "PURCHASING")
+pr_convert_user = require_permission("pr.convert", "PURCHASING")
 
 ACTIVE_STATUSES = {"DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_CONVERTED"}
 HISTORY_STATUSES = {"CONVERTED", "REJECTED", "CANCELLED", "EXPIRED"}
@@ -101,9 +106,13 @@ def list_requisitions(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(pr_view_user),
 ):
-    scoped = _apply_scope(db.query(PurchaseRequisition), scope)
+    scoped = apply_location_scope(
+        _apply_scope(db.query(PurchaseRequisition), scope),
+        PurchaseRequisition.location_id,
+        user,
+    )
     status_counts = dict(
         scoped.with_entities(PurchaseRequisition.status, func.count(PurchaseRequisition.id))
         .group_by(PurchaseRequisition.status)
@@ -112,10 +121,11 @@ def list_requisitions(
     this_month_prefix = date.today().strftime("%Y-%m")
     this_month = scoped.filter(func.to_char(PurchaseRequisition.request_date, "YYYY-MM") == this_month_prefix).count()
 
-    query = (
-        _apply_scope(db.query(PurchaseRequisition, User.full_name), scope)
-        .outerjoin(User, User.id == PurchaseRequisition.requested_by_id)
-    )
+    query = apply_location_scope(
+        _apply_scope(db.query(PurchaseRequisition, User.full_name), scope),
+        PurchaseRequisition.location_id,
+        user,
+    ).outerjoin(User, User.id == PurchaseRequisition.requested_by_id)
     if status and status.upper() != "ALL":
         query = query.filter(PurchaseRequisition.status == status.upper())
     if search and search.strip():
@@ -141,8 +151,17 @@ def list_requisitions(
 
 
 @router.get("/eligible-for-po")
-def list_requisitions_eligible_for_po(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    requisitions = db.query(PurchaseRequisition).filter(PurchaseRequisition.status.in_({"APPROVED", "PARTIALLY_CONVERTED"})).order_by(PurchaseRequisition.id.desc()).all()
+def list_requisitions_eligible_for_po(db: Session = Depends(get_db), user=Depends(pr_convert_user)):
+    requisitions = (
+        apply_location_scope(
+            db.query(PurchaseRequisition),
+            PurchaseRequisition.location_id,
+            user,
+        )
+        .filter(PurchaseRequisition.status.in_({"APPROVED", "PARTIALLY_CONVERTED"}))
+        .order_by(PurchaseRequisition.id.desc())
+        .all()
+    )
     result = []
     for requisition in requisitions:
         payload = {
@@ -184,10 +203,11 @@ def list_requisitions_eligible_for_po(db: Session = Depends(get_db), _=Depends(g
 
 
 @router.get("/{requisition_id}")
-def get_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(pr_view_user)):
     requisition = db.get(PurchaseRequisition, requisition_id)
     if not requisition:
         raise HTTPException(status_code=404, detail="Purchase requisition not found")
+    require_location_access(requisition.location_id, user)
     requester = db.get(User, requisition.requested_by_id) if requisition.requested_by_id else None
     result = {
         "id": requisition.id,
@@ -226,19 +246,24 @@ def get_requisition(requisition_id: int, db: Session = Depends(get_db), user=Dep
 
 
 @router.get("/{requisition_id}/print")
-def print_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def print_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(pr_view_user)):
     return {**get_requisition(requisition_id, db, user), "document_type": "Purchase Requisition", **print_metadata(user)}
 
 
 @router.post("", status_code=201)
-def create_requisition(data: PurchaseRequisitionCreate, db: Session = Depends(get_db), user=Depends(requester_user)):
+def create_requisition(data: PurchaseRequisitionCreate, db: Session = Depends(get_db), user=Depends(pr_create_user)):
+    data.location_id = resolve_location_id(user, data.location_id)
     requisition = PurchaseRequisitionService.create(db=db, data=data, current_user=user)
     return _apply_tax(db, requisition, data)
 
 
 @router.put("/{requisition_id}")
 @router.patch("/{requisition_id}")
-def update_requisition(requisition_id: int, data: PurchaseRequisitionCreate, db: Session = Depends(get_db), user=Depends(requester_user)):
+def update_requisition(requisition_id: int, data: PurchaseRequisitionCreate, db: Session = Depends(get_db), user=Depends(pr_edit_user)):
+    existing = db.get(PurchaseRequisition, requisition_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Purchase requisition not found")
+    require_location_access(existing.location_id, user)
     requisition = PurchaseRequisitionService.update(db=db, purchase_requisition_id=requisition_id, data=data, current_user=user)
     return _apply_tax(db, requisition, data)
 
@@ -266,20 +291,36 @@ def reopen_requisition(requisition_id: int, db: Session = Depends(get_db), user=
 
 
 @router.post("/{requisition_id}/submit")
-def submit_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(requester_user)):
+def submit_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(pr_submit_user)):
+    requisition = db.get(PurchaseRequisition, requisition_id)
+    if not requisition:
+        raise HTTPException(status_code=404, detail="Purchase requisition not found")
+    require_location_access(requisition.location_id, user)
     return PurchaseRequisitionService.submit(db=db, purchase_requisition_id=requisition_id, current_user=user)
 
 
 @router.post("/{requisition_id}/approve")
-def approve_requisition(requisition_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def approve_requisition(requisition_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(pr_approve_user)):
+    requisition = db.get(PurchaseRequisition, requisition_id)
+    if not requisition:
+        raise HTTPException(status_code=404, detail="Purchase requisition not found")
+    require_location_access(requisition.location_id, user)
     return PurchaseRequisitionService.approve(db=db, purchase_requisition_id=requisition_id, data=data, current_user=user)
 
 
 @router.post("/{requisition_id}/reject")
-def reject_requisition(requisition_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def reject_requisition(requisition_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(pr_approve_user)):
+    requisition = db.get(PurchaseRequisition, requisition_id)
+    if not requisition:
+        raise HTTPException(status_code=404, detail="Purchase requisition not found")
+    require_location_access(requisition.location_id, user)
     return PurchaseRequisitionService.reject(db=db, purchase_requisition_id=requisition_id, data=data, current_user=user)
 
 
 @router.post("/{requisition_id}/convert-to-po")
-def convert_requisition(requisition_id: int, data: PurchaseRequisitionConvertCreate, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+def convert_requisition(requisition_id: int, data: PurchaseRequisitionConvertCreate, db: Session = Depends(get_db), user=Depends(pr_convert_user)):
+    requisition = db.get(PurchaseRequisition, requisition_id)
+    if not requisition:
+        raise HTTPException(status_code=404, detail="Purchase requisition not found")
+    require_location_access(requisition.location_id, user)
     return PurchaseRequisitionService.convert_to_purchase_order(db=db, purchase_requisition_id=requisition_id, data=data, current_user=user)

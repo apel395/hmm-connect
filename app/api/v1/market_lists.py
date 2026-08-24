@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import is_superuser, require_roles
+from app.dependencies.authorization import is_superuser, require_permission
 from app.models.business_unit import BusinessUnit
 from app.models.department import Department
 from app.models.location import Location
@@ -19,13 +19,17 @@ from app.schemas.market_list import MarketListConvertCreate, MarketListCreate
 from app.services.activity_service import AuditService
 from app.services.approval import reset_approval
 from app.services.document_context import document_context, print_metadata
-from app.services.location_access import apply_location_scope, enforce_location_access
+from app.services.location_access import apply_location_scope, require_location_access, resolve_location_id
 from app.services.market_list_service import MarketListService
 
 
 router = APIRouter(prefix="/market-lists", tags=["Market Lists"])
-requester_user = require_roles("REQUESTER")
-purchasing_user = require_roles("PURCHASING")
+market_list_view_user = require_permission("market_list.view", "REQUESTER", "PURCHASING", "GENERAL_MANAGER", "AUDITOR")
+market_list_create_user = require_permission("market_list.create", "REQUESTER")
+market_list_edit_user = require_permission("market_list.edit", "REQUESTER")
+market_list_submit_user = require_permission("market_list.submit", "REQUESTER")
+market_list_approve_user = require_permission("market_list.approve", "GENERAL_MANAGER", "PURCHASING")
+market_list_convert_user = require_permission("market_list.convert", "PURCHASING")
 
 ACTIVE_STATUSES = {"DRAFT", "PENDING_APPROVAL", "APPROVED"}
 HISTORY_STATUSES = {"CONVERTED", "REJECTED", "CANCELLED", "EXPIRED"}
@@ -109,9 +113,9 @@ def list_market_lists(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(market_list_view_user),
 ):
-    scoped = _scope(apply_location_scope(db.query(MarketList), MarketList, _), scope)
+    scoped = _scope(apply_location_scope(db.query(MarketList), MarketList.location_id, user), scope)
     status_counts = dict(scoped.with_entities(MarketList.status, func.count(MarketList.id)).group_by(MarketList.status).all())
     this_month_prefix = date.today().strftime("%Y-%m")
     this_month = scoped.filter(func.to_char(MarketList.request_date, "YYYY-MM") == this_month_prefix).count()
@@ -120,8 +124,8 @@ def list_market_lists(
             db.query(MarketList, User.full_name).outerjoin(
                 User, User.id == MarketList.requested_by_id
             ),
-            MarketList,
-            _,
+            MarketList.location_id,
+            user,
         ),
         scope,
     )
@@ -142,28 +146,34 @@ def list_market_lists(
 
 
 @router.get("/{market_list_id}")
-def get_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(market_list_view_user)):
     market_list = db.get(MarketList, market_list_id)
     if not market_list:
         raise HTTPException(status_code=404, detail="Market List not found")
-    enforce_location_access(user, market_list.location_id)
+    require_location_access(market_list.location_id, user)
     return _detail(db, market_list, user)
 
 
 @router.get("/{market_list_id}/print")
-def print_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def print_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(market_list_view_user)):
     return {**get_market_list(market_list_id, db, user), "document_type": "Market List", **print_metadata(user)}
 
 
 @router.post("", status_code=201)
-def create_market_list(data: MarketListCreate, db: Session = Depends(get_db), user=Depends(requester_user)):
+def create_market_list(data: MarketListCreate, db: Session = Depends(get_db), user=Depends(market_list_create_user)):
+    data.location_id = resolve_location_id(user, data.location_id)
     market_list = MarketListService.create(db=db, data=data, current_user=user)
     return _detail(db, market_list, user)
 
 
 @router.put("/{market_list_id}")
 @router.patch("/{market_list_id}")
-def update_market_list(market_list_id: int, data: MarketListCreate, db: Session = Depends(get_db), user=Depends(requester_user)):
+def update_market_list(market_list_id: int, data: MarketListCreate, db: Session = Depends(get_db), user=Depends(market_list_edit_user)):
+    existing = db.get(MarketList, market_list_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Market List not found")
+    require_location_access(existing.location_id, user)
+    data.location_id = resolve_location_id(user, data.location_id)
     market_list = MarketListService.update(db=db, market_list_id=market_list_id, data=data, current_user=user)
     return _detail(db, market_list, user)
 
@@ -195,23 +205,39 @@ def reopen_market_list(market_list_id: int, db: Session = Depends(get_db), user=
 
 
 @router.post("/{market_list_id}/submit")
-def submit_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(requester_user)):
+def submit_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(market_list_submit_user)):
+    existing = db.get(MarketList, market_list_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Market List not found")
+    require_location_access(existing.location_id, user)
     market_list = MarketListService.submit(db=db, market_list_id=market_list_id, current_user=user)
     return _detail(db, market_list, user)
 
 
 @router.post("/{market_list_id}/approve")
-def approve_market_list(market_list_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def approve_market_list(market_list_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(market_list_approve_user)):
+    existing = db.get(MarketList, market_list_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Market List not found")
+    require_location_access(existing.location_id, user)
     market_list = MarketListService.approve(db=db, market_list_id=market_list_id, data=data, current_user=user)
     return _detail(db, market_list, user)
 
 
 @router.post("/{market_list_id}/reject")
-def reject_market_list(market_list_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def reject_market_list(market_list_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(market_list_approve_user)):
+    existing = db.get(MarketList, market_list_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Market List not found")
+    require_location_access(existing.location_id, user)
     market_list = MarketListService.reject(db=db, market_list_id=market_list_id, data=data, current_user=user)
     return _detail(db, market_list, user)
 
 
 @router.post("/{market_list_id}/convert-to-po")
-def convert_market_list(market_list_id: int, data: MarketListConvertCreate, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+def convert_market_list(market_list_id: int, data: MarketListConvertCreate, db: Session = Depends(get_db), user=Depends(market_list_convert_user)):
+    existing = db.get(MarketList, market_list_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Market List not found")
+    require_location_access(existing.location_id, user)
     return MarketListService.convert_to_purchase_order(db=db, market_list_id=market_list_id, data=data, current_user=user)

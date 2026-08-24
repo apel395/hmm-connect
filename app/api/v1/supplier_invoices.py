@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import require_permission
 from app.models.journal_entry import JournalEntry
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
@@ -18,10 +18,13 @@ from app.services.location_access import apply_location_scope, enforce_location_
 
 router = APIRouter(prefix="/supplier-invoices", tags=["Supplier Invoices"])
 
-
-def access(user):
-    if not has_any_role(user, "FINANCE"):
-        raise HTTPException(403, "Finance access required")
+invoice_view_user = require_permission("supplier_invoice.view", "FINANCE")
+invoice_create_user = require_permission("supplier_invoice.create", "FINANCE")
+invoice_edit_user = require_permission("supplier_invoice.edit", "FINANCE")
+invoice_verify_user = require_permission("supplier_invoice.verify", "FINANCE")
+invoice_reject_user = require_permission("supplier_invoice.reject", "FINANCE")
+invoice_post_user = require_permission("supplier_invoice.post", "FINANCE")
+invoice_void_user = require_permission("supplier_invoice.void", "FINANCE")
 
 
 def get(db, invoice_id, user):
@@ -66,9 +69,8 @@ def listing(
     receipt_number: str | None = None,
     source_type: str | None = None,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(invoice_view_user),
 ):
-    access(user)
     query = apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user)
     if search:
         query = query.filter(or_(SupplierInvoice.internal_invoice_number.ilike(f"%{search}%"), SupplierInvoice.supplier_invoice_number.ilike(f"%{search}%")))
@@ -105,29 +107,25 @@ def listing(
 
 
 @router.get("/{invoice_id}")
-def detail(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def detail(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_view_user)):
     return result(db, get(db, invoice_id, user), user)
 
 
 @router.post("", status_code=201)
-def create(data: SupplierInvoiceInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def create(data: SupplierInvoiceInput, db: Session = Depends(get_db), user=Depends(invoice_create_user)):
     data.location_id = resolve_location_id(user, data.location_id)
     return result(db, SupplierInvoiceService(db).create(data, user), user)
 
 
 @router.patch("/{invoice_id}")
-def update(invoice_id: int, data: SupplierInvoiceInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def update(invoice_id: int, data: SupplierInvoiceInput, db: Session = Depends(get_db), user=Depends(invoice_edit_user)):
     data.location_id = resolve_location_id(user, data.location_id)
     return result(db, SupplierInvoiceService(db).update(get(db, invoice_id, user), data, user), user)
 
 
 @router.post("/{invoice_id}/verify")
-def verify(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def verify(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_verify_user)):
     """Verify the invoice and prepare accounting, but never post the journal here."""
-    access(user)
     service = SupplierInvoiceService(db)
     invoice = service.verify(get(db, invoice_id, user), user)
     try:
@@ -141,8 +139,7 @@ def verify(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 
 
 @router.post("/{invoice_id}/reject")
-def reject(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def reject(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_reject_user)):
     invoice = get(db, invoice_id, user)
     if invoice.status not in {"DRAFT", "VERIFIED"}:
         raise HTTPException(409, "Only draft or verified invoices without a journal can be rejected")
@@ -166,8 +163,7 @@ def reject(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 
 
 @router.post("/{invoice_id}/generate-journal")
-def generate(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def generate(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_post_user)):
     invoice = get(db, invoice_id, user)
     existing = db.query(JournalEntry).filter(
         JournalEntry.reference_type == "SUPPLIER_INVOICE",
@@ -181,8 +177,7 @@ def generate(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_cu
 
 
 @router.post("/{invoice_id}/void")
-def void(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def void(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_void_user)):
     invoice = get(db, invoice_id, user)
     if invoice.status == "POSTED":
         raise HTTPException(409, "Posted invoices cannot be voided without a reversal")
@@ -207,12 +202,10 @@ def void(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 
 
 @router.get("/{invoice_id}/allowed-actions")
-def actions(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def actions(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_view_user)):
     return result(db, get(db, invoice_id, user), user)["allowed_actions"]
 
 
 @router.get("/{invoice_id}/print")
-def printable(invoice_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def printable(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_view_user)):
     return {**result(db, get(db, invoice_id, user), user), "document_type": "Supplier Invoice", **print_metadata(user)}

@@ -7,49 +7,50 @@ from app.models.warehouse import Warehouse
 
 
 def assigned_location_id(user: User) -> int | None:
-    """Return the hard row-level location scope for an operational user."""
+    """Return the assigned row-level location scope for an operational user."""
     if is_superuser(user):
         return None
     return user.default_location_id or user.location_id
 
 
-def apply_location_scope(query: Query, model, user: User) -> Query:
-    """Restrict a model query when the signed-in user has a work location."""
+def apply_location_scope(query: Query, location_column, user: User) -> Query:
+    """Restrict a query by the user's location when one is assigned.
+
+    location_column accepts either a SQLAlchemy column or a mapped model for
+    backward compatibility with endpoints merged before the centralized API.
+    """
     location_id = assigned_location_id(user)
     if location_id is None:
         return query
-    column = getattr(model, "location_id", None)
+    column = getattr(location_column, "location_id", location_column)
     if column is None:
-        raise RuntimeError(f"{model.__name__} does not expose location_id")
+        raise RuntimeError("Location scope requires a location column")
     return query.filter(column == location_id)
 
 
-def enforce_location_access(user: User, location_id: int | None) -> None:
-    """Reject cross-location detail access and writes."""
+def require_location_access(document_location_id: int | None, user: User) -> None:
+    """Hide documents outside the user's assigned location."""
     assigned = assigned_location_id(user)
-    if assigned is not None and location_id != assigned:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "LOCATION_ACCESS_DENIED",
-                "message": "This record is outside your assigned work location.",
-                "assigned_location_id": assigned,
-            },
-        )
+    if assigned is not None and document_location_id != assigned:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+
+# Compatibility alias for endpoints already using the previous helper name.
+def enforce_location_access(user: User, location_id: int | None) -> None:
+    require_location_access(location_id, user)
 
 
 def resolve_location_id(user: User, requested_location_id: int | None) -> int | None:
-    """Force scoped writes to the user's work location."""
+    """Force scoped writes to the user's location while preserving unscoped users."""
     assigned = assigned_location_id(user)
     if assigned is None:
         return requested_location_id
     if requested_location_id not in (None, assigned):
-        enforce_location_access(user, requested_location_id)
+        require_location_access(requested_location_id, user)
     return assigned
 
 
 def apply_warehouse_scope(query: Query, user: User) -> Query:
-    """Restrict joined warehouse queries to the assigned work location."""
     location_id = assigned_location_id(user)
     if location_id is None:
         return query
@@ -57,5 +58,4 @@ def apply_warehouse_scope(query: Query, user: User) -> Query:
 
 
 def enforce_warehouse_access(user: User, warehouse: Warehouse) -> None:
-    """Reject warehouse access outside the assigned work location."""
-    enforce_location_access(user, warehouse.location_id)
+    require_location_access(warehouse.location_id, user)

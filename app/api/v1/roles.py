@@ -12,14 +12,40 @@ from app.services.audit import record_audit
 
 router = APIRouter(prefix="/roles", tags=["Roles"])
 
+PERMISSION_CATALOG = {
+    "dashboard.view",
+    "approval.view", "approval.manage",
+    "products.view", "products.manage",
+    "suppliers.view", "suppliers.manage",
+    "warehouse.view", "warehouse.manage",
+    "pr.view", "pr.create", "pr.edit", "pr.submit", "pr.approve", "pr.convert", "pr.manage",
+    "market_list.view", "market_list.create", "market_list.edit", "market_list.submit", "market_list.approve", "market_list.convert", "market_list.manage",
+    "po.view", "po.create", "po.edit", "po.submit", "po.approve", "po.manage",
+    "receiving.view", "receiving.manage",
+    "inventory.view", "inventory.manage",
+    "store_request.view", "store_request.manage",
+    "stock_opname.view", "stock_opname.manage",
+    "finance.view", "finance.manage",
+    "ap.view", "ap.manage",
+    "supplier_invoice.view", "supplier_invoice.create", "supplier_invoice.edit",
+    "supplier_invoice.verify", "supplier_invoice.reject", "supplier_invoice.post",
+    "supplier_invoice.void", "supplier_invoice.manage",
+    "payment.view", "payment.manage",
+    "journal.view", "journal.manage",
+    "coa.view", "coa.manage",
+    "reports.view", "reports.purchasing", "reports.inventory", "reports.finance", "reports.own",
+    "audit.read",
+    "admin.users.manage", "admin.roles.manage", "admin.settings.manage",
+}
+
 CORE_ROLE_PERMISSIONS = {
     "SYSTEM_ADMINISTRATOR": ["*"],
-    "GENERAL_MANAGER": ["dashboard.view", "reports.view", "purchasing.view", "inventory.view", "finance.view", "approval.final"],
-    "PURCHASING": ["dashboard.view", "products.view", "suppliers.manage", "pr.manage", "po.manage", "receiving.manage", "inventory.view", "reports.purchasing"],
-    "WAREHOUSE": ["dashboard.view", "warehouse.manage", "receiving.manage", "inventory.manage", "purchasing.view", "reports.inventory"],
-    "FINANCE": ["dashboard.view", "finance.manage", "ap.manage", "supplier_invoice.manage", "payment.manage", "journal.manage", "coa.manage", "reports.finance", "purchasing.view"],
-    "DEPARTMENT": ["dashboard.view", "pr.own.manage", "reports.own"],
-    "AUDITOR": ["dashboard.view", "audit.read", "reports.view", "purchasing.view", "inventory.view", "finance.view"],
+    "GENERAL_MANAGER": ["dashboard.view", "approval.view", "approval.manage", "pr.view", "pr.approve", "market_list.view", "market_list.approve", "po.view", "po.approve", "receiving.view", "inventory.view", "finance.view", "reports.view"],
+    "PURCHASING": ["dashboard.view", "approval.view", "products.view", "suppliers.manage", "pr.view", "pr.convert", "market_list.view", "market_list.convert", "po.manage", "receiving.manage", "inventory.view", "reports.purchasing"],
+    "WAREHOUSE": ["dashboard.view", "approval.view", "warehouse.manage", "po.view", "receiving.manage", "inventory.manage", "store_request.manage", "stock_opname.manage", "reports.inventory"],
+    "FINANCE": ["dashboard.view", "approval.view", "finance.manage", "ap.manage", "supplier_invoice.manage", "payment.manage", "journal.manage", "coa.manage", "reports.finance", "pr.view", "market_list.view", "po.view", "receiving.view"],
+    "DEPARTMENT": ["dashboard.view", "approval.view", "pr.view", "pr.create", "pr.edit", "pr.submit", "market_list.view", "market_list.create", "market_list.edit", "market_list.submit", "store_request.manage", "reports.own"],
+    "AUDITOR": ["dashboard.view", "approval.view", "audit.read", "reports.view", "pr.view", "market_list.view", "po.view", "receiving.view", "inventory.view", "finance.view"],
     "VIEWER": ["dashboard.view", "reports.view"],
 }
 
@@ -57,18 +83,18 @@ def _ensure_permission(db: Session, code: str) -> Permission:
 
 
 def _ensure_core_roles(db: Session) -> None:
-    """Bootstrap missing core roles only; never overwrite administrator changes."""
-    changed = False
+    """Bootstrap catalog and missing core roles; never overwrite role mappings."""
+    for code in sorted(PERMISSION_CATALOG):
+        _ensure_permission(db, code)
+    _ensure_permission(db, "*")
     for name, codes in CORE_ROLE_PERMISSIONS.items():
         role = db.query(Role).options(selectinload(Role.permissions)).filter(Role.name == name).first()
         if not role:
             role = Role(name=name, description=CORE_ROLE_DESCRIPTIONS[name])
             role.permissions = [_ensure_permission(db, code) for code in codes]
             db.add(role)
-            changed = True
             continue
-    if changed:
-        db.commit()
+    db.commit()
 
 
 def _resolve_permissions(db: Session, codes: list[str]) -> list[Permission]:
