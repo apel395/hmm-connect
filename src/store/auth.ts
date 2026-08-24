@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import api from "@/api/interceptor";
-import { isSuperuser } from "@/lib/access";
+import { hasPermission as userHasPermission } from "@/lib/access";
 import useWorkspaceTabs from "@/store/workspaceTabs";
 
 export interface LoginRequest {
@@ -82,12 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   authenticated: false,
 
-  hasPermission: (permission: string) => {
-    const user = get().user;
-    if (!user?.roles) return false;
-    if (isSuperuser(user)) return true;
-    return user.roles.some((role) => role.permissions?.some((item) => item.code === permission));
-  },
+  hasPermission: (permission: string) => userHasPermission(get().user, permission),
 
   initialize: async () => {
     const accessToken = localStorage.getItem("access_token");
