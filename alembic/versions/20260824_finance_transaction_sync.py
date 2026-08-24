@@ -19,26 +19,29 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE supplier_invoices AS invoice
-        SET location_id = COALESCE(
-            receipt.location_id,
-            warehouse.location_id,
-            purchase_order.location_id
-        )
-        FROM goods_receipts AS receipt
-        LEFT JOIN warehouses AS warehouse
-            ON warehouse.id = receipt.warehouse_id
-        LEFT JOIN purchase_orders AS purchase_order
-            ON purchase_order.id = COALESCE(
-                receipt.purchase_order_id,
-                invoice.purchase_order_id
-            )
-        WHERE invoice.goods_receipt_id = receipt.id
+        SET location_id = source.location_id
+        FROM (
+            SELECT
+                current_invoice.id AS invoice_id,
+                COALESCE(
+                    receipt.location_id,
+                    warehouse.location_id,
+                    purchase_order.location_id
+                ) AS location_id
+            FROM supplier_invoices AS current_invoice
+            JOIN goods_receipts AS receipt
+                ON receipt.id = current_invoice.goods_receipt_id
+            LEFT JOIN warehouses AS warehouse
+                ON warehouse.id = receipt.warehouse_id
+            LEFT JOIN purchase_orders AS purchase_order
+                ON purchase_order.id = COALESCE(
+                    receipt.purchase_order_id,
+                    current_invoice.purchase_order_id
+                )
+        ) AS source
+        WHERE invoice.id = source.invoice_id
           AND invoice.location_id IS NULL
-          AND COALESCE(
-                receipt.location_id,
-                warehouse.location_id,
-                purchase_order.location_id
-          ) IS NOT NULL
+          AND source.location_id IS NOT NULL
         """
     )
 
