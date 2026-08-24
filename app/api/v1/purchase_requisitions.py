@@ -22,7 +22,7 @@ from app.services.activity_service import AuditService
 from app.services.approval import reset_approval
 from app.services.purchase_requisition_service import PurchaseRequisitionService
 from app.services.document_context import document_context, print_metadata
-from app.services.location_access import apply_location_scope, require_location_access
+from app.services.location_access import apply_location_scope, require_location_access, resolve_location_id
 
 
 router = APIRouter(prefix="/purchase-requisitions", tags=["Purchase Requisitions"])
@@ -252,6 +252,7 @@ def print_requisition(requisition_id: int, db: Session = Depends(get_db), user=D
 
 @router.post("", status_code=201)
 def create_requisition(data: PurchaseRequisitionCreate, db: Session = Depends(get_db), user=Depends(pr_create_user)):
+    data.location_id = resolve_location_id(user, data.location_id)
     requisition = PurchaseRequisitionService.create(db=db, data=data, current_user=user)
     return _apply_tax(db, requisition, data)
 
