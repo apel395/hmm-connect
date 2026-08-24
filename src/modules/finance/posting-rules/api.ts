@@ -3,6 +3,10 @@ import api from "@/api/client";
 export type PostingRule={
   id:number;
   event_type:string;
+  business_unit_id?:number|null;
+  business_unit_name?:string|null;
+  location_id?:number|null;
+  location_name?:string|null;
   debit_account_id:number;
   debit_account_code:string;
   debit_account_name:string;
@@ -18,6 +22,8 @@ export type PostingRule={
 
 export type PostingRulePayload={
   event_type:string;
+  business_unit_id?:number|null;
+  location_id?:number|null;
   debit_account_id:number;
   credit_account_id:number;
   input_vat_account_id?:number|null;
