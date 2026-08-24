@@ -99,6 +99,15 @@ class SupplierInvoiceService:
         ).all()
         return invoice
 
+    @staticmethod
+    def _source_location_id(receipt, purchase_order):
+        """Resolve legacy receipt gaps through warehouse/PO location context."""
+        return (
+            receipt.location_id
+            or (receipt.warehouse.location_id if getattr(receipt, "warehouse", None) else None)
+            or (purchase_order.location_id if purchase_order else None)
+        )
+
     def _inherit_source_context(self, data: SupplierInvoiceInput):
         receipt = self.db.get(GoodsReceipt, data.goods_receipt_id) if data.goods_receipt_id else None
         purchase_order = self.db.get(PurchaseOrder, data.purchase_order_id) if data.purchase_order_id else None
@@ -111,8 +120,8 @@ class SupplierInvoiceService:
             data.purchase_order_id = receipt.purchase_order_id
             data.business_unit_id = receipt.business_unit_id
             data.department_id = receipt.department_id
-            data.location_id = receipt.location_id
             purchase_order = receipt.purchase_order
+            data.location_id = self._source_location_id(receipt, purchase_order)
         elif purchase_order:
             data.supplier_id = purchase_order.supplier_id
             data.business_unit_id = purchase_order.business_unit_id
