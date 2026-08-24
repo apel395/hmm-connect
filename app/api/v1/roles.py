@@ -40,12 +40,12 @@ PERMISSION_CATALOG = {
 
 CORE_ROLE_PERMISSIONS = {
     "SYSTEM_ADMINISTRATOR": ["*"],
-    "GENERAL_MANAGER": ["dashboard.view", "approval.manage", "pr.view", "pr.approve", "market_list.view", "market_list.approve", "po.view", "po.approve", "receiving.view", "inventory.view", "finance.view", "reports.view"],
-    "PURCHASING": ["dashboard.view", "products.view", "suppliers.manage", "pr.view", "pr.convert", "market_list.view", "market_list.convert", "po.manage", "receiving.manage", "inventory.view", "reports.purchasing"],
-    "WAREHOUSE": ["dashboard.view", "warehouse.manage", "po.view", "receiving.manage", "inventory.manage", "store_request.manage", "stock_opname.manage", "reports.inventory"],
-    "FINANCE": ["dashboard.view", "finance.manage", "ap.manage", "supplier_invoice.manage", "payment.manage", "journal.manage", "coa.manage", "reports.finance", "pr.view", "market_list.view", "po.view", "receiving.view"],
-    "DEPARTMENT": ["dashboard.view", "pr.view", "pr.create", "pr.edit", "pr.submit", "market_list.view", "market_list.create", "market_list.edit", "market_list.submit", "store_request.manage", "reports.own"],
-    "AUDITOR": ["dashboard.view", "audit.read", "reports.view", "pr.view", "market_list.view", "po.view", "receiving.view", "inventory.view", "finance.view"],
+    "GENERAL_MANAGER": ["dashboard.view", "approval.view", "approval.manage", "pr.view", "pr.approve", "market_list.view", "market_list.approve", "po.view", "po.approve", "receiving.view", "inventory.view", "finance.view", "reports.view"],
+    "PURCHASING": ["dashboard.view", "approval.view", "products.view", "suppliers.manage", "pr.view", "pr.convert", "market_list.view", "market_list.convert", "po.manage", "receiving.manage", "inventory.view", "reports.purchasing"],
+    "WAREHOUSE": ["dashboard.view", "approval.view", "warehouse.manage", "po.view", "receiving.manage", "inventory.manage", "store_request.manage", "stock_opname.manage", "reports.inventory"],
+    "FINANCE": ["dashboard.view", "approval.view", "finance.manage", "ap.manage", "supplier_invoice.manage", "payment.manage", "journal.manage", "coa.manage", "reports.finance", "pr.view", "market_list.view", "po.view", "receiving.view"],
+    "DEPARTMENT": ["dashboard.view", "approval.view", "pr.view", "pr.create", "pr.edit", "pr.submit", "market_list.view", "market_list.create", "market_list.edit", "market_list.submit", "store_request.manage", "reports.own"],
+    "AUDITOR": ["dashboard.view", "approval.view", "audit.read", "reports.view", "pr.view", "market_list.view", "po.view", "receiving.view", "inventory.view", "finance.view"],
     "VIEWER": ["dashboard.view", "reports.view"],
 }
 
