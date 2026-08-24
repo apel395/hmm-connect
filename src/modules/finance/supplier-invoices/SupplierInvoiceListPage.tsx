@@ -65,8 +65,8 @@ export default function SupplierInvoiceListPage() {
   const purchaseOrders = useQuery({ queryKey: ["invoice-pos"], queryFn: async () => (await purchaseOrderApi.list({ scope: "all", page_size: 100 })).data.items });
   const receipts = useQuery({ queryKey: ["invoice-receipts"], queryFn: listEligibleReceiptSources });
   const businessUnits = useQuery({ queryKey: ["business-units", "invoice", "active"], queryFn: () => filterBusinessUnits({ is_active: true }) });
-  const departments = useQuery({ queryKey: ["invoice-departments", "active"], queryFn: () => listDepartments({ is_active: true }) });
-  const locations = useQuery({ queryKey: ["invoice-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
+  const departments = useQuery({ queryKey: ["invoice-departments", form.business_unit_id], queryFn: () => listDepartments({ business_unit_id: Number(form.business_unit_id), is_active: true }), enabled: Boolean(form.business_unit_id) });
+  const locations = useQuery({ queryKey: ["invoice-locations", form.business_unit_id], queryFn: () => listLocations({ business_unit_id: Number(form.business_unit_id), is_active: true }), enabled: Boolean(form.business_unit_id) });
 
   useEffect(() => {
     if (open && !sourceLocked && !form.business_unit_id && businessUnits.data?.length === 1) setForm((current: any) => ({ ...current, business_unit_id: businessUnits.data![0].id }));
