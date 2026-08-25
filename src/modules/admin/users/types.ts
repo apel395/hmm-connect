@@ -55,6 +55,7 @@ export interface UserCreatePayload {
 }
 
 export interface UserDetailsUpdate {
+  password?: string;
   username?: string;
   email?: string;
   full_name?: string;
