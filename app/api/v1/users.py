@@ -176,6 +176,7 @@ def get_user(user_id: int, db: Session = Depends(get_db), _: User = Depends(requ
 def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
     user = get_editable_user(db, user_id)
     changes = data.model_dump(exclude_unset=True)
+    new_password = changes.pop("password", None)
     for field in ("username", "email", "full_name", "is_active"):
         if field in changes and changes[field] is None:
             raise HTTPException(status_code=422, detail=f"{field} must not be null")
@@ -207,8 +208,12 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), c
     before_data = {field: getattr(user, field) for field in changes}
     for field, value in changes.items():
         setattr(user, field, value)
+    if new_password is not None:
+        user.password_hash = hash_password(new_password)
     after_data = {field: getattr(user, field) for field in changes}
-    if changes:
+    if new_password is not None:
+        after_data["password_changed"] = True
+    if changes or new_password is not None:
         record_audit(db, current_user, "USER_UPDATED", "USER", f"Updated user {user.username}", entity_id=user.id, before_data=before_data, after_data=after_data)
     try:
         db.commit()
