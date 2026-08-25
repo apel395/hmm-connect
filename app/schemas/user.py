@@ -76,6 +76,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    password: str | None = Field(default=None, min_length=8, max_length=128)
     username: str | None = Field(default=None, min_length=1, max_length=50)
     email: str | None = Field(
         default=None,
