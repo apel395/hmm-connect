@@ -10,9 +10,11 @@ import ProductTable from "../components/ProductTable";
 import ProductForm from "../components/ProductForm";
 import type { Product } from "../types";
 import { productApi } from "../api/productApi";
+import { exportApi } from "../api/exportApi";
 import { useProducts, useCreateProduct, useUpdateProduct } from "../hooks/useProducts";
 
 const PAGE_SIZE = 25;
+const EXPORT_POLL_INTERVAL_MS = 2000;
 
 export default function ProductPage() {
   const [formOpen, setFormOpen] = useState(false);
@@ -20,6 +22,10 @@ export default function ProductPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [exportJobId, setExportJobId] = useState<string | null>(null);
+  const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
+  const [exportError, setExportError] = useState<string | null>(null);
+
   const query = useProducts({ page, page_size: PAGE_SIZE, search: debouncedSearch || undefined });
   const classification = useQuery({
     queryKey: ["product-classification-master"],
@@ -52,6 +58,45 @@ export default function ProductPage() {
     if (!query.isFetching && data.total_pages != null && page > pages) setPage(pages);
   }, [data.total_pages, page, pages, query.isFetching]);
 
+  useEffect(() => {
+    if (!exportJobId) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const response = await exportApi.getExport(exportJobId);
+        const job = response.data;
+        if (cancelled) return;
+
+        if (job.status === "READY" && job.download_url) {
+          setExportStatus("idle");
+          setExportJobId(null);
+          setExportError(null);
+          window.location.assign(job.download_url);
+          return;
+        }
+
+        if (job.status === "FAILED") {
+          setExportStatus("failed");
+          setExportJobId(null);
+          setExportError(job.error_message || "Export failed");
+          return;
+        }
+
+        setExportStatus("processing");
+        window.setTimeout(poll, EXPORT_POLL_INTERVAL_MS);
+      } catch (error: any) {
+        if (cancelled) return;
+        setExportStatus("failed");
+        setExportJobId(null);
+        setExportError(error?.response?.data?.detail || "Unable to check export status");
+      }
+    };
+
+    poll();
+    return () => { cancelled = true; };
+  }, [exportJobId]);
+
   const handleCreate = () => { setSelected(null); setFormOpen(true); };
   const handleEdit = (product: Product) => { setSelected(product); setFormOpen(true); };
   const handleSubmit = async (payload: any) => {
@@ -61,9 +106,41 @@ export default function ProductPage() {
     setSelected(null);
   };
 
+  const handleExport = async () => {
+    setExportError(null);
+    setExportStatus("starting");
+    try {
+      const response = await exportApi.createProductsExport();
+      setExportJobId(response.data.job_id);
+      setExportStatus("processing");
+    } catch (error: any) {
+      setExportStatus("failed");
+      setExportError(error?.response?.data?.detail || "Unable to start export");
+    }
+  };
+
+  const exportBusy = exportStatus === "starting" || exportStatus === "processing";
+  const exportLabel = exportStatus === "starting"
+    ? "Starting export..."
+    : exportStatus === "processing"
+      ? "Preparing XLS..."
+      : "Download XLS";
+
   return <>
     <div className="space-y-6">
-      <PageHeader title="Products" description="Product Master" actions={<Button onClick={handleCreate}>New Product</Button>}/>
+      <PageHeader
+        title="Products"
+        description="Product Master"
+        actions={<div className="flex items-center gap-2">
+          <Button onClick={handleExport} disabled={exportBusy}>{exportLabel}</Button>
+          <Button onClick={handleCreate}>New Product</Button>
+        </div>}
+      />
+      {exportError && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {exportError}
+        </div>
+      )}
       <Card>
         <div className="mb-4 max-w-md">
           <SearchBox value={search} onChange={setSearch} placeholder="Search item code or name..." />
