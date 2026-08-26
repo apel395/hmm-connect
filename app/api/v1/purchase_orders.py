@@ -17,6 +17,12 @@ from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.purchase_order import PurchaseOrderCreate
 from app.services.purchase_order_service import PurchaseOrderService
 from app.services.document_context import document_context, print_metadata
+from app.services.location_access import (
+    apply_location_scope,
+    assigned_location_id,
+    require_location_access,
+    resolve_location_id,
+)
 
 
 router = APIRouter(prefix="/purchase-orders", tags=["Purchase Orders"])
@@ -24,6 +30,14 @@ purchasing_user = require_roles("PURCHASING")
 
 ACTIVE_STATUSES = {"DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED"}
 HISTORY_STATUSES = {"RECEIVED", "CLOSED", "REJECTED", "CANCELLED", "EXPIRED"}
+
+
+def _scoped_purchase_order(db: Session, purchase_order_id: int, user) -> PurchaseOrder:
+    purchase_order = db.get(PurchaseOrder, purchase_order_id)
+    if not purchase_order:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    require_location_access(purchase_order.location_id, user)
+    return purchase_order
 
 
 def approval_state(db: Session, purchase_order: PurchaseOrder):
@@ -184,9 +198,13 @@ def list_purchase_orders(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    base_query = db.query(PurchaseOrder).outerjoin(Supplier, Supplier.id == PurchaseOrder.supplier_id)
+    base_query = apply_location_scope(
+        db.query(PurchaseOrder).outerjoin(Supplier, Supplier.id == PurchaseOrder.supplier_id),
+        PurchaseOrder.location_id,
+        user,
+    )
     if scope == "active":
         base_query = base_query.filter(PurchaseOrder.status.in_(ACTIVE_STATUSES))
     elif scope == "history":
@@ -238,16 +256,21 @@ def list_purchase_orders(
 
 
 @router.get("/form-options")
-def purchase_order_form_options(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def purchase_order_form_options(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    location_query = db.query(Location).filter(Location.is_active.is_(True))
+    location_id = assigned_location_id(user)
+    if location_id is not None:
+        location_query = location_query.filter(Location.id == location_id)
     return {
         "departments": [{"id": row.id, "code": row.code, "name": row.name} for row in db.query(Department).filter(Department.is_active.is_(True)).order_by(Department.name)],
-        "locations": [{"id": row.id, "code": row.code, "name": row.name} for row in db.query(Location).filter(Location.is_active.is_(True)).order_by(Location.name)],
+        "locations": [{"id": row.id, "code": row.code, "name": row.name} for row in location_query.order_by(Location.name)],
         "products": [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom} for row in db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name)],
     }
 
 
 @router.post("", status_code=201)
 def create_purchase_order(data: PurchaseOrderCreate, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+    data.location_id = resolve_location_id(user, data.location_id)
     purchase_order = PurchaseOrderService.create(db=db, data=data, user=user)
     purchase_order = _apply_tax(db, purchase_order, data)
     return purchase_order_result(db, purchase_order, user)
@@ -256,6 +279,8 @@ def create_purchase_order(data: PurchaseOrderCreate, db: Session = Depends(get_d
 @router.put("/{purchase_order_id}")
 @router.patch("/{purchase_order_id}")
 def update_purchase_order(purchase_order_id: int, data: PurchaseOrderCreate, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+    _scoped_purchase_order(db, purchase_order_id, user)
+    data.location_id = resolve_location_id(user, data.location_id)
     purchase_order = PurchaseOrderService.update(db=db, purchase_order_id=purchase_order_id, data=data, user=user)
     purchase_order = _apply_tax(db, purchase_order, data)
     return purchase_order_result(db, purchase_order, user)
@@ -263,9 +288,7 @@ def update_purchase_order(purchase_order_id: int, data: PurchaseOrderCreate, db:
 
 @router.get("/{purchase_order_id}")
 def get_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    purchase_order = db.get(PurchaseOrder, purchase_order_id)
-    if not purchase_order:
-        raise HTTPException(status_code=404, detail="Purchase order not found")
+    purchase_order = _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, purchase_order, user)
 
 
@@ -276,24 +299,29 @@ def print_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), 
 
 @router.post("/{purchase_order_id}/reopen")
 def reopen_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.reopen(db=db, purchase_order_id=purchase_order_id, user=user), user)
 
 
 @router.post("/{purchase_order_id}/submit")
 def submit_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+    _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.submit(db=db, purchase_order_id=purchase_order_id, user=user), user)
 
 
 @router.post("/{purchase_order_id}/approve")
 def approve_purchase_order(purchase_order_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.approve(db=db, purchase_order_id=purchase_order_id, data=data, user=user), user)
 
 
 @router.post("/{purchase_order_id}/reject")
 def reject_purchase_order(purchase_order_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.reject(db=db, purchase_order_id=purchase_order_id, data=data, user=user), user)
 
 
 @router.post("/{purchase_order_id}/cancel")
 def cancel_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+    _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.cancel(db=db, purchase_order_id=purchase_order_id, user=user), user)

@@ -61,3 +61,35 @@ def test_user_without_assigned_location_keeps_compatibility():
     current = user(role("DEPARTMENT", "pr.view"))
     assert assigned_location_id(current) is None
     require_location_access(20, current)
+
+
+def test_purchase_order_and_receiving_details_hide_cross_location_documents():
+    from app.api.v1.goods_receipts import get_receipt
+    from app.api.v1.purchase_orders import get_purchase_order
+
+    class FakeDb:
+        def get(self, _model, _document_id):
+            return SimpleNamespace(location_id=20)
+
+    current = user(role("PURCHASING", "po.manage", "receiving.manage"), location_id=10)
+    with pytest.raises(HTTPException) as purchase_order_hidden:
+        get_purchase_order(1, FakeDb(), current)
+    assert purchase_order_hidden.value.status_code == 404
+
+    with pytest.raises(HTTPException) as receipt_hidden:
+        get_receipt(1, FakeDb(), current)
+    assert receipt_hidden.value.status_code == 404
+
+
+def test_operational_lists_apply_location_scope():
+    import inspect
+
+    from app.api.v1.goods_receipts import (
+        list_receipts,
+        list_receivable_purchase_orders,
+    )
+    from app.api.v1.purchase_orders import list_purchase_orders
+
+    assert "apply_location_scope" in inspect.getsource(list_purchase_orders)
+    assert "apply_location_scope" in inspect.getsource(list_receipts)
+    assert "apply_location_scope" in inspect.getsource(list_receivable_purchase_orders)
