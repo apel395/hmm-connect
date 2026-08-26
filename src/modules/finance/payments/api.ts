@@ -27,8 +27,19 @@ export type Payment = {
   activity_history?: any[];
 };
 
+export type EligiblePaymentSupplier = {
+  id: number;
+  code: string;
+  name: string;
+  is_active: boolean;
+};
+
 export const listPayments = async (params: any = {}) => (await api.get("/payments", { params })).data;
 export const getPayment = async (id: number) => (await api.get<Payment>(`/payments/${id}`)).data;
+export const eligibleSuppliers = async (currency = "IDR", include_supplier_id?: number) =>
+  (await api.get<EligiblePaymentSupplier[]>("/payments/eligible-suppliers", {
+    params: { currency, include_supplier_id: include_supplier_id || undefined },
+  })).data;
 export const eligibleInvoices = async (supplier_id: number, currency = "IDR") => (await api.get("/payments/eligible-invoices", { params: { supplier_id, currency } })).data;
 export const createPayment = async (payload: any) => (await api.post<Payment>("/payments", payload)).data;
 export const updatePayment = async (id: number, payload: any) => (await api.patch<Payment>(`/payments/${id}`, payload)).data;
