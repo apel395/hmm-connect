@@ -28,8 +28,22 @@ from app.services.approval import (
 )
 from app.services.document_context import document_context, print_metadata
 from app.services.goods_receipt_service import GoodsReceiptService
+from app.services.location_access import (
+    apply_location_scope,
+    enforce_warehouse_access,
+    require_location_access,
+    resolve_location_id,
+)
 
 router = APIRouter(prefix="/goods-receipts", tags=["Goods Receipts"])
+
+
+def _scoped_receipt(db: Session, receipt_id: int, user) -> GoodsReceipt:
+    receipt = db.get(GoodsReceipt, receipt_id)
+    if not receipt:
+        raise HTTPException(404, "Goods receipt not found")
+    require_location_access(receipt.location_id, user)
+    return receipt
 
 
 def receipt_actions(receipt: GoodsReceipt, user, db: Session):
@@ -183,9 +197,13 @@ def list_receipts(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    query = db.query(GoodsReceipt).options(
+    query = apply_location_scope(
+        db.query(GoodsReceipt),
+        GoodsReceipt.location_id,
+        user,
+    ).options(
         selectinload(GoodsReceipt.purchase_order).selectinload(PurchaseOrder.supplier),
         selectinload(GoodsReceipt.supplier),
         selectinload(GoodsReceipt.received_by),
@@ -233,15 +251,20 @@ def list_receipts(
     )
     approval_map = {approval.entity_id: approval for approval in approvals}
     total_pages = ceil(total / page_size) if total else 0
-    waiting = db.query(GoodsReceipt).join(
+    scoped_summary = apply_location_scope(
+        db.query(GoodsReceipt),
+        GoodsReceipt.location_id,
+        user,
+    )
+    waiting = scoped_summary.join(
         ApprovalRequest,
         (ApprovalRequest.entity_type == "GOODS_RECEIPT") & (ApprovalRequest.entity_id == GoodsReceipt.id),
     ).filter(ApprovalRequest.status == "PENDING").count()
-    ready = db.query(GoodsReceipt).join(
+    ready = scoped_summary.join(
         ApprovalRequest,
         (ApprovalRequest.entity_type == "GOODS_RECEIPT") & (ApprovalRequest.entity_id == GoodsReceipt.id),
     ).filter(GoodsReceipt.status == "DRAFT", ApprovalRequest.status == "APPROVED").count()
-    posted = db.query(GoodsReceipt).filter(GoodsReceipt.status == "POSTED").count()
+    posted = scoped_summary.filter(GoodsReceipt.status == "POSTED").count()
     return {
         "items": [serialize_receipt_summary(item, approval_map.get(item.id)) for item in rows],
         "page": page,
@@ -255,8 +278,13 @@ def list_receipts(
 
 
 @router.get("/receivable-purchase-orders")
-def list_receivable_purchase_orders(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    orders = db.query(PurchaseOrder).filter(PurchaseOrder.status.in_({"APPROVED", "PARTIALLY_RECEIVED"})).order_by(PurchaseOrder.id.desc()).all()
+def list_receivable_purchase_orders(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    orders = (
+        apply_location_scope(db.query(PurchaseOrder), PurchaseOrder.location_id, user)
+        .filter(PurchaseOrder.status.in_({"APPROVED", "PARTIALLY_RECEIVED"}))
+        .order_by(PurchaseOrder.id.desc())
+        .all()
+    )
     return [
         {
             "id": order.id,
@@ -280,10 +308,11 @@ def list_receivable_purchase_orders(db: Session = Depends(get_db), _=Depends(get
 
 
 @router.get("/receivable-purchase-orders/{purchase_order_id}/items")
-def get_remaining_purchase_order_items(purchase_order_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_remaining_purchase_order_items(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     order = db.get(PurchaseOrder, purchase_order_id)
     if not order:
         raise HTTPException(404, "Purchase order not found")
+    require_location_access(order.location_id, user)
     if order.status not in {"APPROVED", "PARTIALLY_RECEIVED"}:
         raise HTTPException(409, "Purchase order is not receivable")
     return remaining_items(order)
@@ -295,15 +324,21 @@ def create_receipt(data: GoodsReceiptCreate, db: Session = Depends(get_db), user
         order = db.get(PurchaseOrder, data.purchase_order_id)
         if not order:
             raise HTTPException(404, "Purchase order not found")
+        require_location_access(order.location_id, user)
         inherit_purchase_order_dimensions(order, data, db)
+    else:
+        data.location_id = resolve_location_id(user, data.location_id)
+    if data.warehouse_id:
+        warehouse = db.get(Warehouse, data.warehouse_id)
+        if not warehouse:
+            raise HTTPException(404, "Warehouse not found")
+        enforce_warehouse_access(user, warehouse)
     return serialize_receipt(GoodsReceiptService.create(db=db, data=data, user=user), db)
 
 
 @router.get("/{receipt_id}")
 def get_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    receipt = db.get(GoodsReceipt, receipt_id)
-    if not receipt:
-        raise HTTPException(404, "Goods receipt not found")
+    receipt = _scoped_receipt(db, receipt_id, user)
     result = serialize_receipt(receipt, db)
     result.update(document_context(db, "GOODS_RECEIPT", receipt.id, receipt.status, user))
     result["allowed_actions"] = receipt_actions(receipt, user, db)
@@ -312,9 +347,7 @@ def get_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get
 
 @router.post("/{receipt_id}/submit")
 def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    receipt = db.get(GoodsReceipt, receipt_id)
-    if not receipt:
-        raise HTTPException(404, "Goods receipt not found")
+    receipt = _scoped_receipt(db, receipt_id, user)
     if receipt.status != "DRAFT":
         raise HTTPException(409, "Only draft receiving reports can be submitted")
     start_approval(
@@ -331,9 +364,7 @@ def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(
 
 @router.post("/{receipt_id}/approve")
 def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    receipt = db.get(GoodsReceipt, receipt_id)
-    if not receipt:
-        raise HTTPException(404, "Goods receipt not found")
+    receipt = _scoped_receipt(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "PENDING":
         raise HTTPException(409, "Receiving report does not have pending approval")
@@ -345,9 +376,7 @@ def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None
 
 @router.post("/{receipt_id}/reject")
 def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    receipt = db.get(GoodsReceipt, receipt_id)
-    if not receipt:
-        raise HTTPException(404, "Goods receipt not found")
+    receipt = _scoped_receipt(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "PENDING":
         raise HTTPException(409, "Receiving report does not have pending approval")
@@ -359,9 +388,7 @@ def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session =
 
 @router.post("/{receipt_id}/post")
 def post_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    receipt = db.get(GoodsReceipt, receipt_id)
-    if not receipt:
-        raise HTTPException(404, "Goods receipt not found")
+    receipt = _scoped_receipt(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "APPROVED":
         raise HTTPException(409, "Receiving report must complete approval before posting")
@@ -370,19 +397,19 @@ def post_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(ge
 
 @router.patch("/{receipt_id}/costs")
 def correct_receipt_costs(receipt_id: int, data: GoodsReceiptCostCorrection, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _scoped_receipt(db, receipt_id, user)
     return serialize_receipt(GoodsReceiptService.correct_costs(db=db, receipt_id=receipt_id, data=data, user=user), db)
 
 
 @router.post("/{receipt_id}/return")
 def return_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _scoped_receipt(db, receipt_id, user)
     return serialize_receipt(GoodsReceiptService.return_receipt(db=db, receipt_id=receipt_id, user=user), db)
 
 
 @router.get("/{receipt_id}/allowed-actions")
 def get_allowed_actions(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    receipt = db.get(GoodsReceipt, receipt_id)
-    if not receipt:
-        raise HTTPException(404, "Goods receipt not found")
+    receipt = _scoped_receipt(db, receipt_id, user)
     return receipt_actions(receipt, user, db)
 
 
