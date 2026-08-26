@@ -1,0 +1,11 @@
+{
+  "Rules": [
+    {
+      "ID": "ExpireHmmConnectExports",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "exports/"},
+      "Expiration": {"Days": 1},
+      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}
+    }
+  ]
+}

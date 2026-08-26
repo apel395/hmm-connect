@@ -1,0 +1,11 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UploadGeneratedExports",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:AbortMultipartUpload"],
+      "Resource": "arn:aws:s3:::${EXPORT_S3_BUCKET}/${EXPORT_S3_PREFIX}/*"
+    }
+  ]
+}

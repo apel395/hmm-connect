@@ -39,6 +39,16 @@ class Settings(BaseSettings):
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
+    AWS_REGION: str | None = None
+    EXPORT_EC2_INSTANCE_ID: str | None = None
+    EXPORT_WORKDIR: str = "/opt/hmm-connect"
+    EXPORT_PYTHON_BIN: str = ".venv/bin/python"
+    EXPORT_COMMAND_TIMEOUT_SECONDS: int = Field(default=900, ge=30, le=3600)
+    EXPORT_S3_BUCKET: str | None = None
+    EXPORT_S3_PREFIX: str = "exports"
+    EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS: int = Field(default=300, ge=60, le=3600)
+    EXPORT_TMP_DIR: str = "/tmp/hmm-connect-exports"
+
     @property
     def allowed_document_mime_types(self) -> set[str]:
         return {

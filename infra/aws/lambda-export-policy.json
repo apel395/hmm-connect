@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RunExportWorkerOnManagedEc2",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": [
+        "arn:aws:ssm:${AWS_REGION}::document/AWS-RunShellScript",
+        "arn:aws:ec2:${AWS_REGION}:${AWS_ACCOUNT_ID}:instance/${EXPORT_EC2_INSTANCE_ID}"
+      ]
+    },
+    {
+      "Sid": "ReadExportObjectsForPresignedDownload",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::${EXPORT_S3_BUCKET}/${EXPORT_S3_PREFIX}/*"
+    }
+  ]
+}
