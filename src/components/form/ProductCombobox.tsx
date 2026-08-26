@@ -28,6 +28,7 @@ interface Props {
   remote?: boolean;
   marketOnly?: boolean;
   excludeMarket?: boolean;
+  requireTaxReady?: boolean;
   onChange: (productId: number) => void;
   onSelect?: (product: ProductComboboxOption) => void;
 }
@@ -42,6 +43,10 @@ function labelFor(product: ProductComboboxOption): string {
   const code = product.code ?? product.product_code ?? "";
   const name = product.name ?? product.product_name ?? "";
   return code ? `${code} - ${name}` : name;
+}
+
+function taxProfileIncomplete(product: ProductComboboxOption): boolean {
+  return product.tax_category === "REVIEW_REQUIRED";
 }
 
 function priceFor(value?: number | string | null): string | null {
@@ -73,6 +78,7 @@ export default function ProductCombobox({
   remote = false,
   marketOnly = false,
   excludeMarket = false,
+  requireTaxReady = false,
   onChange,
   onSelect,
 }: Props) {
@@ -167,12 +173,13 @@ export default function ProductCombobox({
   }, [activeIndex]);
 
   const selectProduct = useCallback((product: ProductComboboxOption) => {
+    if (requireTaxReady && taxProfileIncomplete(product)) return;
     onChange(product.id);
     onSelect?.(product);
     setQuery(labelFor(product));
     setOpen(false);
     setActiveIndex(-1);
-  }, [onChange, onSelect]);
+  }, [onChange, onSelect, requireTaxReady]);
 
   const moveActive = (direction: 1 | -1) => {
     if (visibleOptions.length === 0) return;
@@ -200,14 +207,17 @@ export default function ProductCombobox({
           ) : (
             visibleOptions.map((product, index) => {
               const lastPrice = priceFor(product.last_purchase_price);
+              const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
               return (
                 <button
                   key={product.id}
                   ref={(element) => { optionRefs.current[index] = element; }}
                   type="button"
                   role="option"
+                  disabled={taxIncomplete}
+                  aria-disabled={taxIncomplete}
                   aria-selected={index === activeIndex}
-                  className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
+                  className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "cursor-not-allowed bg-amber-50 text-slate-500" : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
                   onMouseEnter={() => setActiveIndex(index)}
                   onPointerDown={(event) => {
                     event.preventDefault();
@@ -220,12 +230,13 @@ export default function ProductCombobox({
                     selectProduct(product);
                   }}
                 >
-                  <div className="text-[13px] font-medium text-slate-800">{labelFor(product)}</div>
+                  <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Tax profile incomplete</span>}</div>
                   {(product.uom || product.usage_uom) && (
                     <div className="mt-0.5 text-xs text-slate-500">
                       UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}
                     </div>
                   )}
+                  {taxIncomplete && <div className="mt-1 text-xs text-amber-800">Complete the tax profile in Item Master before using this product.</div>}
                   {lastPrice && (
                     <div className="mt-0.5 text-xs font-medium text-emerald-700">
                       Last purchase: Rp {lastPrice}{product.last_purchase_po_number ? ` · ${product.last_purchase_po_number}` : ""}

@@ -25,6 +25,7 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
   const [expiryDate, setExpiryDate] = useState("");
   const [requestDate, setRequestDate] = useState("");
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<PurchaseRequisitionItemRow[]>([{ product_id: 0, quantity: 1, estimated_price: 0 }]);
 
@@ -78,12 +79,24 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const validItems = items.filter((item) => item.product_id > 0 && item.quantity > 0 && item.estimated_price >= 0);
-    if (!businessUnitId) return alert("Business Unit is required.");
-    if (!departmentId) return alert("Department is required.");
-    if (!locationId) return alert("Location is required.");
-    if (!editing && (!requestDate || isBeforeToday(requestDate))) return alert("Request Date cannot be before today.");
-    if (!editing && expiryDate && isBeforeDate(expiryDate, requestDate || todayLocal())) return alert("Valid Until cannot be before Request Date.");
-    if (!validItems.length) return alert("Please add valid products.");
+    const validation = !businessUnitId ? { message: "Business Unit is required.", field: "business-unit" }
+      : !departmentId ? { message: "Department is required.", field: "department" }
+      : !locationId ? { message: "Location is required.", field: "location" }
+      : !editing && (!requestDate || isBeforeToday(requestDate)) ? { message: "Request Date cannot be before today.", field: "request-date" }
+      : !editing && expiryDate && isBeforeDate(expiryDate, requestDate || todayLocal()) ? { message: "Valid Until cannot be before Request Date.", field: "expiry-date" }
+      : !validItems.length ? { message: "Please add valid products.", field: "items" }
+      : null;
+    if (validation) {
+      setFormError(validation.message);
+      window.requestAnimationFrame(() => {
+        const container = document.querySelector(`[data-pr-field="${validation.field}"]`);
+        (container?.querySelector("input,button") as HTMLElement | null)?.focus();
+        container?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+      return;
+    }
+    if (saving) return;
+    setFormError("");
     try {
       setSaving(true);
       await onSubmit({
@@ -105,15 +118,16 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
       <div className="shrink-0 border-b border-slate-200 px-6 py-5"><h2 className="text-xl font-semibold">{editing ? "Edit Purchase Requisition" : "Create Purchase Requisition"}</h2><p className="mt-1 text-sm text-slate-500">{editing ? "Update all requisition details except the PR number." : "Create a purchasing request before approval and purchase order creation."}</p></div>
       <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6">
+        {formError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{formError}</div>}
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          <label className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" value={businessUnitId} options={businessUnits.data ?? []} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} /></label>
-          <label className="text-sm font-medium">Department<SearchableSelect className="mt-1" value={departmentId} options={activeDepartments} disabled={!businessUnitId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} /></label>
-          <label className="text-sm font-medium">Location<SearchableSelect className="mt-1" value={locationId} options={activeLocations} disabled={!businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => setLocationId(id || undefined)} /></label>
-          <label className="text-sm font-medium">Request Date<input type="date" min={createMinimum} value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/></label>
-          <label className="text-sm font-medium">Valid Until<input type="date" min={editing ? undefined : (requestDate || todayLocal())} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/></label>
+          <label data-pr-field="business-unit" className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" value={businessUnitId} options={businessUnits.data ?? []} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} /></label>
+          <label data-pr-field="department" className="text-sm font-medium">Department<SearchableSelect className="mt-1" value={departmentId} options={activeDepartments} disabled={!businessUnitId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} /></label>
+          <label data-pr-field="location" className="text-sm font-medium">Location<SearchableSelect className="mt-1" value={locationId} options={activeLocations} disabled={!businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => setLocationId(id || undefined)} /></label>
+          <label data-pr-field="request-date" className="text-sm font-medium">Request Date<input type="date" min={createMinimum} value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/></label>
+          <label data-pr-field="expiry-date" className="text-sm font-medium">Valid Until<input type="date" min={editing ? undefined : (requestDate || todayLocal())} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/></label>
         </div>
         <div><label className="mb-2 block text-sm font-medium">Purpose / Notes</label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}/></div>
-        <PurchaseRequisitionItems items={items} products={products} onChange={setItems} onProductLoaded={rememberProduct}/>
+        <div data-pr-field="items"><PurchaseRequisitionItems items={items} products={products} onChange={setItems} onProductLoaded={rememberProduct}/></div>
       </div>
       <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 px-6 py-4"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" loading={saving}>{editing ? "Save Changes" : "Create Purchase Requisition"}</Button></div>
     </form>

@@ -49,7 +49,7 @@ export default function PurchaseRequisitionItems({items, products, loadingProduc
         const tax = subtotal * rate / 100;
         const reviewRequired = product?.tax_category === "REVIEW_REQUIRED";
         return <tr key={index} className={reviewRequired ? "border-t bg-amber-50/60" : "border-t"}>
-          <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} remote excludeMarket disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)} onSelect={(selected)=>selectProduct(index, selected as Product)}/></td>
+          <td className="p-2"><ProductCombobox value={row.product_id || undefined} products={products} remote excludeMarket requireTaxReady disabled={loadingProducts} onChange={(productId) => updateRow(index,"product_id",productId)} onSelect={(selected)=>selectProduct(index, selected as Product)}/></td>
           <td className="p-3 text-sm text-slate-700">{product?.uom ?? product?.usage_uom ?? "—"}</td>
           <td className="p-2"><QuantityInput value={row.quantity} min={0.01} onValueChange={(value) => updateRow(index,"quantity",value)}/></td>
           <td className="p-2"><CurrencyInput value={row.estimated_price} onValueChange={(value) => updateRow(index,"estimated_price",value)}/>{product?.last_purchase_price !== null && product?.last_purchase_price !== undefined ? <div className="mt-1 text-[11px] text-slate-500">Last PO: Rp {money(Number(product.last_purchase_price))}</div> : null}</td>
