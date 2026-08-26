@@ -9,6 +9,7 @@ APP_DIR = Path(__file__).resolve().parents[1] / "app"
 BLOCKED_MODULES = {"openpyxl", "pandas", "xlsxwriter", "xlrd", "xlwt", "pyarrow", "polars", "numpy"}
 WORKER_ONLY_FILES = {
     Path("scripts/create_historical_import_samples.py"),
+    Path("scripts/export_worker.py"),
     Path("services/historical_import_service.py"),
 }
 
