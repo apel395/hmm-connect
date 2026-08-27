@@ -1,5 +1,5 @@
 import boto3
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -8,7 +8,6 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.export_job import ExportJob
 from app.models.user import User
-from app.services.export_jobs import trigger_export_job
 
 
 router = APIRouter(prefix="/exports", tags=["Exports"])
@@ -50,10 +49,15 @@ def _serialize(job: ExportJob) -> dict:
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 def create_export(
     data: ExportRequest,
-    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Queue an export and return immediately.
+
+    The API/Lambda intentionally does not contact EC2, SSM, or generate XLS files.
+    The persistent EC2 export worker polls the shared PostgreSQL export_jobs table
+    and processes PENDING jobs asynchronously.
+    """
     export_type = data.export_type.strip().lower()
     if export_type not in SUPPORTED_EXPORTS:
         raise HTTPException(status_code=400, detail=f"Unsupported export type: {export_type}")
@@ -62,19 +66,6 @@ def create_export(
     db.add(job)
     db.commit()
     db.refresh(job)
-
-    try:
-        command_id = trigger_export_job(job.id)
-    except Exception as exc:
-        job.status = "FAILED"
-        job.error_message = f"Unable to trigger export worker: {exc}"
-        db.commit()
-        raise HTTPException(status_code=503, detail="Export worker could not be triggered") from exc
-
-    job.trigger_command_id = command_id
-    db.commit()
-    db.refresh(job)
-    response.status_code = status.HTTP_202_ACCEPTED
     return _serialize(job)
 
 
