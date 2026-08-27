@@ -40,6 +40,17 @@ export const productApi = {
   update: (id: number, payload: ProductUpdateRequest) =>
     api.patch(`/products/${id}`, payload),
 
+  updateTaxProfile: (
+    id: number,
+    payload: {
+      tax_category: "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL";
+      is_taxable: boolean;
+      tax_rate: number;
+      tax_reason?: string | null;
+      tax_reference?: string | null;
+    },
+  ) => api.patch(`/products/${id}/tax-profile`, payload),
+
   remove: (id: number) =>
     api.delete(`/products/${id}`),
 };
