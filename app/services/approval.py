@@ -273,9 +273,11 @@ def can_user_decide_step(step: ApprovalRequestStep, user) -> bool:
     normalized_user_roles = {_normalized_role_name(name) for name in role_names(user)}
     if _normalized_role_name(step.approver_role_name) not in normalized_user_roles:
         return False
-    if step.department_name and (not user.department or user.department.name != step.department_name):
+    effective_department = user.default_department or user.department
+    effective_location = user.default_location or user.location
+    if step.department_name and (not effective_department or effective_department.name != step.department_name):
         return False
-    if step.location_name and (not user.location or user.location.name != step.location_name):
+    if step.location_name and (not effective_location or effective_location.name != step.location_name):
         return False
     return True
 
