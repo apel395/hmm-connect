@@ -95,3 +95,12 @@ def test_operational_lists_apply_location_scope():
     assert "apply_location_scope" in inspect.getsource(list_purchase_orders)
     assert "apply_location_scope" in inspect.getsource(list_receipts)
     assert "apply_location_scope" in inspect.getsource(list_receivable_purchase_orders)
+
+
+def test_supplier_invoice_validation_enforces_inherited_source_location():
+    import inspect
+
+    from app.services.supplier_invoice_service import SupplierInvoiceService
+
+    source = inspect.getsource(SupplierInvoiceService.validate)
+    assert "enforce_location_access(user, data.location_id)" in source

@@ -58,3 +58,23 @@ class ProductUpdate(BaseModel):
     minimum_stock: Decimal | None = Field(default=None, ge=0)
     is_market_item: bool | None = None
     is_active: bool | None = None
+
+
+class ProductTaxProfileUpdate(BaseModel):
+    tax_category: TaxCategory
+    is_taxable: bool = False
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    tax_reason: str | None = Field(default=None, max_length=255)
+    tax_reference: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def validate_tax_profile(self):
+        if self.tax_category in {"EXEMPT", "NON_VAT", "REVIEW_REQUIRED"}:
+            self.is_taxable = False
+            self.tax_rate = Decimal("0")
+            return self
+        if not self.is_taxable:
+            raise ValueError("STANDARD or SPECIAL tax profile must be taxable")
+        if self.tax_rate <= 0:
+            raise ValueError("Tax rate must be greater than zero for a taxable product")
+        return self

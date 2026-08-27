@@ -6,11 +6,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import require_permission
 from app.models.item_group import ItemGroup
 from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
-from app.schemas.product import ProductCreate, ProductUpdate
+from app.schemas.product import ProductCreate, ProductTaxProfileUpdate, ProductUpdate
 
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -103,6 +104,26 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), _=Depends
     payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
     product = Product(**payload)
     db.add(product)
+    db.commit()
+    db.refresh(product)
+    return product
+
+
+@router.patch("/{product_id}/tax-profile")
+def update_product_tax_profile(
+    product_id: int,
+    data: ProductTaxProfileUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission("products.manage")),
+):
+    product = db.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product.tax_category = data.tax_category
+    product.is_taxable = data.is_taxable
+    product.tax_rate = data.tax_rate
+    product.tax_reason = data.tax_reason
+    product.tax_reference = data.tax_reference
     db.commit()
     db.refresh(product)
     return product
