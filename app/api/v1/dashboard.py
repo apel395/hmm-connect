@@ -14,6 +14,7 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_requisition import PurchaseRequisition
 from app.services.ap_metrics import ap_metrics
 from app.services.finance_dashboard_service import FinanceDashboardService
+from app.services.location_access import resolve_location_id
 
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -68,6 +69,7 @@ def finance_dashboard(
     end = date_to or as_of_date or date.today()
     start = date_from or end.replace(day=1)
     effective_as_of = as_of_date or end
+    location_id = resolve_location_id(user, location_id)
     try:
         result = FinanceDashboardService(db, user).build(
             as_of_date=effective_as_of,
