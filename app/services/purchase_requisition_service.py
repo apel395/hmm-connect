@@ -64,6 +64,7 @@ class PurchaseRequisitionService:
             requisition.items.append(PurchaseRequisitionItem(
                 product_id=incoming.product_id, quantity=incoming.quantity,
                 estimated_price=incoming.estimated_price, total_price=line_total,
+                is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
             ))
             total += line_total
         requisition.total_amount = total
@@ -149,6 +150,8 @@ class PurchaseRequisitionService:
                     quantity=item_data.quantity,
                     estimated_price=item_data.estimated_price,
                     total_price=total_price,
+                    is_taxable=bool(item_data.is_taxable),
+                    tax_rate=Decimal(item_data.tax_rate or 0),
                 )
             )
 
