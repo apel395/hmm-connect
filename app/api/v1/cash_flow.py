@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
+from app.models.journal_line import JournalLine
 from app.services.cash_flow_service import CASH_TYPES,CashFlowService,ZERO
+from app.services.location_access import resolve_location_id, require_location_access
 
 router=APIRouter(prefix="/cash-flow",tags=["Cash Flow"])
 def access(user):
@@ -18,22 +20,23 @@ def legacy(posting_date_from:date|None=None,posting_date_to:date|None=None,db:Se
 
 @router.get("/accounts")
 def accounts(date_from:date|None=None,date_to:date|None=None,location_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    access(user);return CashFlowService(db).accounts_summary(date_from,date_to,location_id)
+    access(user);location_id=resolve_location_id(user,location_id);return CashFlowService(db).accounts_summary(date_from,date_to,location_id)
 
 @router.get("/accounts/{account_id}/activity")
 def activity(account_id:int,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),date_from:date|None=None,date_to:date|None=None,search:str|None=None,direction:str|None=None,reference_type:str|None=None,cash_flow_category:str|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
     access(user)
-    try:return CashFlowService(db).activity(account_id,page,page_size,date_from,date_to,search,direction,reference_type,cash_flow_category)
+    location_id=resolve_location_id(user,None)
+    try:return CashFlowService(db).activity(account_id,page,page_size,date_from,date_to,search,direction,reference_type,cash_flow_category,location_id=location_id)
     except ValueError as exc:raise HTTPException(404,str(exc)) from exc
 
 @router.get("/summary")
 def summary(date_from:date|None=None,date_to:date|None=None,account_id:int|None=None,account_subtype:str|None=None,location_id:int|None=None,department_id:int|None=None,business_unit_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    access(user);return CashFlowService(db).summary(date_from,date_to,account_id,subtypes(account_subtype),location_id,department_id,business_unit_id)
+    access(user);location_id=resolve_location_id(user,location_id);return CashFlowService(db).summary(date_from,date_to,account_id,subtypes(account_subtype),location_id,department_id,business_unit_id)
 
 @router.get("/timeline")
 def timeline(date_from:date|None=None,date_to:date|None=None,interval:str=Query("DAILY",pattern="^(DAILY|WEEKLY|MONTHLY)$"),account_id:int|None=None,category:str|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    access(user);svc=CashFlowService(db);opening=svc.opening(date_from,account_id);groups=defaultdict(lambda:{"inflow":ZERO,"outflow":ZERO})
-    for m in svc.movements(date_from,date_to,account_id):
+    access(user);location_id=resolve_location_id(user,None);svc=CashFlowService(db);opening=svc.opening(date_from,account_id,location_id=location_id);groups=defaultdict(lambda:{"inflow":ZERO,"outflow":ZERO})
+    for m in svc.movements(date_from,date_to,account_id,location_id=location_id):
         if m["direction"]=="TRANSFER" or category and m["category"]!=category:continue
         d=m["date"];period=d.isoformat() if interval=="DAILY" else f"{d.isocalendar().year}-W{d.isocalendar().week:02d}" if interval=="WEEKLY" else d.strftime("%Y-%m");groups[period]["inflow"]+=m["inflow"];groups[period]["outflow"]+=m["outflow"]
     balance=opening;points=[]
@@ -42,7 +45,7 @@ def timeline(date_from:date|None=None,date_to:date|None=None,interval:str=Query(
 
 @router.get("/statement")
 def statement(date_from:date|None=None,date_to:date|None=None,account_id:int|None=None,location_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    access(user);svc=CashFlowService(db);summary_data=svc.summary(date_from,date_to,account_id,location_id=location_id);sections={key:defaultdict(lambda:{"inflow":ZERO,"outflow":ZERO}) for key in ("OPERATING","INVESTING","FINANCING","UNCLASSIFIED")}
+    access(user);location_id=resolve_location_id(user,location_id);svc=CashFlowService(db);summary_data=svc.summary(date_from,date_to,account_id,location_id=location_id);sections={key:defaultdict(lambda:{"inflow":ZERO,"outflow":ZERO}) for key in ("OPERATING","INVESTING","FINANCING","UNCLASSIFIED")}
     for m in svc.movements(date_from,date_to,account_id,location_id=location_id):
         if m["direction"]=="TRANSFER":continue
         key=m["category"] if m["category"] in sections else "UNCLASSIFIED";label=m["journal"].reference_type or "OTHER";sections[key][label]["inflow"]+=m["inflow"];sections[key][label]["outflow"]+=m["outflow"]
@@ -53,5 +56,9 @@ def statement(date_from:date|None=None,date_to:date|None=None,account_id:int|Non
 @router.get("/movements/{journal_line_id}/trace")
 def trace(journal_line_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
     access(user)
+    line=db.get(JournalLine,journal_line_id)
+    if not line:
+        raise HTTPException(404,"Cash movement not found")
+    require_location_access(line.location_id,user)
     try:return CashFlowService(db).trace(journal_line_id)
     except ValueError as exc:raise HTTPException(404,str(exc)) from exc

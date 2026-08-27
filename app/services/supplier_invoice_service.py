@@ -124,12 +124,64 @@ class SupplierInvoiceService:
 
     @staticmethod
     def _source_location_id(receipt, purchase_order):
-        """Resolve legacy receipt gaps through warehouse/PO location context."""
-        return (
-            receipt.location_id
-            or (receipt.warehouse.location_id if getattr(receipt, "warehouse", None) else None)
-            or (purchase_order.location_id if purchase_order else None)
-        )
+        """Resolve the authoritative work location for an invoice source.
+
+        Warehouse receipts are anchored to the warehouse location. Direct-use
+        receipts are anchored to the receipt location. PO location is only a
+        legacy fallback when no receipt-specific location can be resolved.
+        """
+        if receipt:
+            destination = str(getattr(receipt, "destination_type", "") or "").upper()
+            warehouse = getattr(receipt, "warehouse", None)
+            warehouse_location_id = getattr(warehouse, "location_id", None) if warehouse else None
+            receipt_location_id = getattr(receipt, "location_id", None)
+
+            if destination == "WAREHOUSE":
+                if warehouse_location_id is None:
+                    raise HTTPException(
+                        409,
+                        "Warehouse receipt has no warehouse work location and cannot be invoiced",
+                    )
+                if receipt_location_id is not None and receipt_location_id != warehouse_location_id:
+                    raise HTTPException(
+                        409,
+                        "Goods receipt location does not match its warehouse location",
+                    )
+                return warehouse_location_id
+
+            # Legacy records/fixtures may predate destination_type. Preserve the
+            # established resolution order: receipt, warehouse, then PO.
+            if receipt_location_id is not None:
+                return receipt_location_id
+            if warehouse_location_id is not None:
+                return warehouse_location_id
+
+        return purchase_order.location_id if purchase_order else None
+
+    def _ensure_invoice_location(self, invoice: SupplierInvoice) -> int:
+        """Repair a uniquely resolvable legacy location, otherwise block finance actions."""
+        purchase_order = invoice.purchase_order
+        receipt = invoice.goods_receipt
+        resolved = self._source_location_id(receipt, purchase_order)
+
+        if resolved is None:
+            raise HTTPException(
+                409,
+                "Supplier invoice has no resolvable work location. Repair its source transaction before finance processing.",
+            )
+
+        if invoice.location_id is not None and invoice.location_id != resolved:
+            raise HTTPException(
+                409,
+                "Supplier invoice location does not match its source transaction",
+            )
+
+        invoice.location_id = resolved
+        if receipt and receipt.location_id is None:
+            receipt.location_id = resolved
+        if purchase_order and purchase_order.location_id is None:
+            purchase_order.location_id = resolved
+        return resolved
 
     def _inherit_source_context(self, data: SupplierInvoiceInput):
         receipt = self.db.get(GoodsReceipt, data.goods_receipt_id) if data.goods_receipt_id else None
@@ -150,6 +202,12 @@ class SupplierInvoiceService:
             data.business_unit_id = purchase_order.business_unit_id
             data.department_id = purchase_order.department_id
             data.location_id = purchase_order.location_id
+
+        if data.location_id is None:
+            raise HTTPException(
+                409,
+                "Supplier invoice requires a work location inherited from its source transaction",
+            )
         return purchase_order, receipt
 
     def validate(self, data: SupplierInvoiceInput, exclude_id=None):
@@ -372,6 +430,7 @@ class SupplierInvoiceService:
     def verify(self, invoice, user):
         if invoice.status != "DRAFT":
             raise HTTPException(409, "Only draft invoices can be verified")
+        self._ensure_invoice_location(invoice)
         match = self.assert_match(invoice)
 
         if Decimal(invoice.tax_amount or 0) > ZERO:
@@ -408,6 +467,7 @@ class SupplierInvoiceService:
     def generate_journal(self, invoice, user):
         if invoice.status != "VERIFIED":
             raise HTTPException(409, "Invoice must be verified before journal generation")
+        self._ensure_invoice_location(invoice)
         existing = self.db.query(JournalEntry).filter(
             JournalEntry.reference_type == "SUPPLIER_INVOICE",
             JournalEntry.reference_id == invoice.id,

@@ -13,6 +13,7 @@ from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier_invoice import SupplierInvoice
 from app.services.ap_metrics import ZERO, ap_metrics
 from app.services.document_context import print_metadata
+from app.services.location_access import resolve_location_id
 
 router = APIRouter(prefix="/ap-aging", tags=["Accounts Payable"])
 BUCKETS = ("current", "1_30", "31_60", "61_90", "over_90")
@@ -42,7 +43,7 @@ def _print_bucket(days_overdue: int) -> str:
     return "over_120"
 
 
-def _posted_payment_facts(db: Session) -> dict[int, dict]:
+def _posted_payment_facts(db: Session, location_id: int | None = None) -> dict[int, dict]:
     rows = (
         db.query(
             PaymentAllocation.supplier_invoice_id,
@@ -50,7 +51,9 @@ def _posted_payment_facts(db: Session) -> dict[int, dict]:
             func.max(Payment.payment_date),
         )
         .join(Payment, Payment.id == PaymentAllocation.payment_id)
+        .join(SupplierInvoice, SupplierInvoice.id == PaymentAllocation.supplier_invoice_id)
         .filter(Payment.status == "POSTED")
+        .filter(SupplierInvoice.location_id == location_id if location_id is not None else True)
         .group_by(PaymentAllocation.supplier_invoice_id)
         .all()
     )
@@ -63,10 +66,10 @@ def _posted_payment_facts(db: Session) -> dict[int, dict]:
     }
 
 
-def _aging_data(db: Session):
+def _aging_data(db: Session, location_id: int | None = None):
     today = date.today()
-    metrics, invoices = ap_metrics(db, as_of_date=today)
-    posted_payment_facts = _posted_payment_facts(db)
+    metrics, invoices = ap_metrics(db, as_of_date=today, location_id=location_id)
+    posted_payment_facts = _posted_payment_facts(db, location_id)
 
     totals = {key: ZERO for key in BUCKETS}
     counts = {key: 0 for key in BUCKETS}
@@ -147,6 +150,7 @@ def _aging_data(db: Session):
         .join(PaymentAllocation, PaymentAllocation.supplier_invoice_id == SupplierInvoice.id)
         .join(Payment, Payment.id == PaymentAllocation.payment_id)
         .filter(Payment.status == "POSTED")
+        .filter(SupplierInvoice.location_id == location_id if location_id is not None else True)
         .distinct()
         .order_by(SupplierInvoice.id.desc())
         .all()
@@ -204,7 +208,8 @@ def _aging_data(db: Session):
 def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if not has_permission(current_user, "finance.view"):
         raise HTTPException(status_code=403, detail="Finance access required")
-    data, _ = _aging_data(db)
+    location_id = resolve_location_id(current_user, None)
+    data, _ = _aging_data(db, location_id)
     return data
 
 
@@ -214,7 +219,8 @@ def print_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_curre
         raise HTTPException(status_code=403, detail="Finance access required")
 
     today = date.today()
-    data, invoices = _aging_data(db)
+    location_id = resolve_location_id(current_user, None)
+    data, invoices = _aging_data(db, location_id)
     supplier_rows: dict[int, dict] = {}
     bucket_keys = ("0_30", "31_60", "61_90", "91_120", "over_120")
 

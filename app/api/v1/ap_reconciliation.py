@@ -6,6 +6,7 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
 from app.models.supplier_invoice import SupplierInvoice
 from app.services.supplier_invoice_accounting import accounting_state
+from app.services.location_access import apply_location_scope
 
 router = APIRouter(prefix="/ap-reconciliation", tags=["Accounts Payable"])
 
@@ -21,7 +22,9 @@ def exceptions(
     user=Depends(get_current_user),
 ):
     access(user)
-    invoices = db.query(SupplierInvoice).order_by(SupplierInvoice.id.desc()).all()
+    invoices = apply_location_scope(
+        db.query(SupplierInvoice), SupplierInvoice, user
+    ).order_by(SupplierInvoice.id.desc()).all()
     rows = []
     for invoice in invoices:
         state = accounting_state(db, invoice)
