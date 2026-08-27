@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.models.inventory import Inventory
 from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
@@ -63,7 +63,7 @@ def finance_dashboard(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    if not has_any_role(user, "FINANCE"):
+    if not has_permission(user, "finance.view"):
         raise HTTPException(403, "Finance dashboard access required")
     end = date_to or as_of_date or date.today()
     start = date_from or end.replace(day=1)
