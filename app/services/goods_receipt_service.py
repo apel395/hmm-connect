@@ -77,6 +77,56 @@ class GoodsReceiptService:
         return resolved["business_unit_id"], resolved["location_id"], resolved["department_id"]
 
     @staticmethod
+    def _inventory_for_update(db: Session, product_id: int, warehouse_id: int) -> Inventory:
+        inventory = (
+            db.query(Inventory)
+            .filter(
+                Inventory.product_id == product_id,
+                Inventory.warehouse_id == warehouse_id,
+            )
+            .with_for_update()
+            .first()
+        )
+        if inventory:
+            return inventory
+
+        if db.get_bind().dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert
+
+            db.execute(
+                insert(Inventory)
+                .values(
+                    product_id=product_id,
+                    warehouse_id=warehouse_id,
+                    quantity=ZERO,
+                    average_cost=ZERO,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[Inventory.product_id, Inventory.warehouse_id]
+                )
+            )
+            db.flush()
+            return (
+                db.query(Inventory)
+                .filter(
+                    Inventory.product_id == product_id,
+                    Inventory.warehouse_id == warehouse_id,
+                )
+                .with_for_update()
+                .one()
+            )
+
+        inventory = Inventory(
+            product_id=product_id,
+            warehouse_id=warehouse_id,
+            quantity=ZERO,
+            average_cost=ZERO,
+        )
+        db.add(inventory)
+        db.flush()
+        return inventory
+
+    @staticmethod
     def _movement(receipt: GoodsReceipt, receipt_item: GoodsReceiptItem, movement_type: str, reference_type: str):
         return StockMovement(
             product_id=receipt_item.product_id, warehouse_id=receipt.warehouse_id,
@@ -222,10 +272,11 @@ class GoodsReceiptService:
                 po_item.received_quantity = Decimal(po_item.received_quantity or 0) + quantity
                 receipt_item.product_id = po_item.product_id
             if receipt.destination_type == "WAREHOUSE":
-                inventory = db.query(Inventory).filter(Inventory.product_id == receipt_item.product_id, Inventory.warehouse_id == receipt.warehouse_id).with_for_update().first()
-                if not inventory:
-                    inventory = Inventory(product_id=receipt_item.product_id, warehouse_id=receipt.warehouse_id, quantity=ZERO, average_cost=ZERO)
-                    db.add(inventory); db.flush()
+                inventory = cls._inventory_for_update(
+                    db,
+                    receipt_item.product_id,
+                    receipt.warehouse_id,
+                )
                 old_qty, old_avg = Decimal(inventory.quantity or 0), Decimal(inventory.average_cost or 0)
                 new_qty = old_qty + quantity
                 inventory.average_cost = ((old_qty * old_avg) + (quantity * Decimal(receipt_item.unit_cost))) / new_qty
