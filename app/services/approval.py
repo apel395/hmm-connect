@@ -139,11 +139,8 @@ def _ensure_default_workflow(db: Session, *, workflow_code: str, user=None) -> A
         return workflow
 
     chain = WORKFLOW_CHAINS[workflow_code]
-    must_reconcile_market_list = (
-        workflow_code == "ML_APPROVAL"
-        and not _workflow_matches_chain(workflow, chain)
-    )
-    if not workflow.steps or _is_legacy_generated_default(workflow) or must_reconcile_market_list:
+    must_reconcile_default_chain = not _workflow_matches_chain(workflow, chain)
+    if not workflow.steps or _is_legacy_generated_default(workflow) or must_reconcile_default_chain:
         configured_roles = []
         missing_roles = []
         for order, step_name, role_name in chain:
