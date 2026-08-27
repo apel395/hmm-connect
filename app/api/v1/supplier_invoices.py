@@ -18,13 +18,13 @@ from app.services.location_access import apply_location_scope, enforce_location_
 
 router = APIRouter(prefix="/supplier-invoices", tags=["Supplier Invoices"])
 
-invoice_view_user = require_permission("supplier_invoice.view", "FINANCE")
-invoice_create_user = require_permission("supplier_invoice.create", "FINANCE")
-invoice_edit_user = require_permission("supplier_invoice.edit", "FINANCE")
-invoice_verify_user = require_permission("supplier_invoice.verify", "FINANCE")
-invoice_reject_user = require_permission("supplier_invoice.reject", "FINANCE")
-invoice_post_user = require_permission("supplier_invoice.post", "FINANCE")
-invoice_void_user = require_permission("supplier_invoice.void", "FINANCE")
+invoice_view_user = require_permission("supplier_invoice.view")
+invoice_create_user = require_permission("supplier_invoice.create")
+invoice_edit_user = require_permission("supplier_invoice.edit")
+invoice_verify_user = require_permission("supplier_invoice.verify")
+invoice_reject_user = require_permission("supplier_invoice.reject")
+invoice_post_user = require_permission("supplier_invoice.post")
+invoice_void_user = require_permission("supplier_invoice.void")
 
 
 def get(db, invoice_id, user):
