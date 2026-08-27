@@ -131,24 +131,30 @@ class SupplierInvoiceService:
         legacy fallback when no receipt-specific location can be resolved.
         """
         if receipt:
-            destination = str(receipt.destination_type or "").upper()
+            destination = str(getattr(receipt, "destination_type", "") or "").upper()
+            warehouse = getattr(receipt, "warehouse", None)
+            warehouse_location_id = getattr(warehouse, "location_id", None) if warehouse else None
+            receipt_location_id = getattr(receipt, "location_id", None)
+
             if destination == "WAREHOUSE":
-                warehouse = getattr(receipt, "warehouse", None)
-                warehouse_location_id = warehouse.location_id if warehouse else None
                 if warehouse_location_id is None:
                     raise HTTPException(
                         409,
                         "Warehouse receipt has no warehouse work location and cannot be invoiced",
                     )
-                if receipt.location_id is not None and receipt.location_id != warehouse_location_id:
+                if receipt_location_id is not None and receipt_location_id != warehouse_location_id:
                     raise HTTPException(
                         409,
                         "Goods receipt location does not match its warehouse location",
                     )
                 return warehouse_location_id
 
-            if receipt.location_id is not None:
-                return receipt.location_id
+            # Legacy records/fixtures may predate destination_type. Preserve the
+            # established resolution order: receipt, warehouse, then PO.
+            if receipt_location_id is not None:
+                return receipt_location_id
+            if warehouse_location_id is not None:
+                return warehouse_location_id
 
         return purchase_order.location_id if purchase_order else None
 
