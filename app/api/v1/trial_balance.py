@@ -23,7 +23,11 @@ MONEY_FIELDS = (
 
 
 def access(user):
-    if not has_permission(user, "reports.view"):
+    if not (
+        has_permission(user, "reports.view")
+        or has_permission(user, "reports.finance")
+        or has_permission(user, "journal.view")
+    ):
         raise HTTPException(403, "Finance report access required")
 
 
