@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.models.journal_entry import JournalEntry
 from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier_invoice import SupplierInvoice
@@ -202,7 +202,7 @@ def _aging_data(db: Session):
 
 @router.get("")
 def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    if not has_any_role(current_user, "FINANCE", "AUDITOR"):
+    if not has_permission(current_user, "finance.view"):
         raise HTTPException(status_code=403, detail="Finance access required")
     data, _ = _aging_data(db)
     return data
@@ -210,7 +210,7 @@ def get_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current
 
 @router.get("/print")
 def print_ap_aging(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    if not has_any_role(current_user, "FINANCE", "AUDITOR"):
+    if not has_permission(current_user, "finance.view"):
         raise HTTPException(status_code=403, detail="Finance access required")
 
     today = date.today()
