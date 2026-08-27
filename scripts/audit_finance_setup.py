@@ -193,6 +193,72 @@ def audit_location_candidates(db) -> None:
             print("  Nearby AP review list: " + ", ".join(account_label(x) for x in all_ap[:40]))
 
 
+def audit_location_setup_coverage(db) -> None:
+    print("\n=== LOCATION SETUP COVERAGE ===")
+    locations = db.execute(
+        __import__("sqlalchemy").text(
+            """
+            SELECT l.id, l.code, l.name, bu.id AS business_unit_id, bu.name AS business_unit_name
+            FROM locations l
+            LEFT JOIN business_units bu ON bu.id = l.business_unit_id
+            WHERE l.is_active = true
+            ORDER BY bu.name NULLS LAST, l.name, l.id
+            """
+        )
+    ).mappings().all()
+
+    for location in locations:
+        bu_id = location["business_unit_id"]
+        loc_id = location["id"]
+
+        def selected_rule(event: str):
+            return AccountingPostingRuleService(db).select_rule(event, bu_id, loc_id)
+
+        inv = selected_rule("SUPPLIER_INVOICE_INVENTORY")
+        direct = selected_rule("SUPPLIER_INVOICE_DIRECT_USE")
+        payment = selected_rule("SUPPLIER_PAYMENT")
+
+        local_accounts = (
+            db.query(BankAccount)
+            .filter(
+                BankAccount.is_active.is_(True),
+                BankAccount.business_unit_id == bu_id,
+                BankAccount.location_id == loc_id,
+            )
+            .count()
+            if bu_id is not None
+            else 0
+        )
+        global_accounts = (
+            db.query(BankAccount)
+            .filter(
+                BankAccount.is_active.is_(True),
+                BankAccount.business_unit_id == bu_id,
+                BankAccount.location_id.is_(None),
+            )
+            .count()
+            if bu_id is not None
+            else 0
+        )
+
+        def rule_state(rule, event: str) -> str:
+            if not rule:
+                return "MISSING"
+            exact = rule.business_unit_id == bu_id and rule.location_id == loc_id
+            bu_fallback = rule.business_unit_id == bu_id and rule.location_id is None
+            global_fallback = rule.business_unit_id is None and rule.location_id is None
+            scope = "EXACT" if exact else "BU-FALLBACK" if bu_fallback else "GLOBAL-FALLBACK" if global_fallback else "OTHER-FALLBACK"
+            return f"{scope}#{rule.id}"
+
+        print(
+            f"{location['name']} ({location['code']}, id={loc_id}, BU={location['business_unit_name'] or '—'}): "
+            f"Inventory={rule_state(inv, 'SUPPLIER_INVOICE_INVENTORY')} | "
+            f"DirectUse={rule_state(direct, 'SUPPLIER_INVOICE_DIRECT_USE')} | "
+            f"Payment={rule_state(payment, 'SUPPLIER_PAYMENT')} | "
+            f"FundingLocal={local_accounts} | FundingGlobalBU={global_accounts}"
+        )
+
+
 def apply_safe(db) -> None:
     vat = db.query(ChartOfAccount).filter(ChartOfAccount.account_number == VAT_CODE).first()
     if not vat or not vat.is_active or not vat.is_posting or vat.account_type != "ASSET" or vat.normal_balance != "DEBIT":
@@ -263,6 +329,7 @@ def main() -> int:
         bank_issues = audit_bank_accounts(db)
         rule_issues = audit_rules(db)
         audit_location_candidates(db)
+        audit_location_setup_coverage(db)
         if args.apply_safe:
             apply_safe(db)
             print("\n=== AFTER REPAIR ===")
