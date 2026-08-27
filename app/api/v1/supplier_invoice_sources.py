@@ -6,6 +6,7 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
 from app.models.goods_receipt import GoodsReceipt
 from app.models.supplier_invoice import SupplierInvoice
+from app.services.location_access import apply_location_scope
 
 router = APIRouter(prefix="/supplier-invoice-sources", tags=["Supplier Invoices"])
 
@@ -36,7 +37,7 @@ def eligible_receipts(
     }
 
     receipts = (
-        db.query(GoodsReceipt)
+        apply_location_scope(db.query(GoodsReceipt), GoodsReceipt.location_id, user)
         .filter(GoodsReceipt.status == "POSTED")
         .order_by(GoodsReceipt.received_at.desc(), GoodsReceipt.id.desc())
         .all()
