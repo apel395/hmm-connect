@@ -8,19 +8,6 @@ from app.models.user import User
 # SYSTEM_ADMINISTRATOR is the single canonical unrestricted administrator role.
 SUPERUSER_ROLES = frozenset({"SYSTEM_ADMINISTRATOR"})
 
-# Legacy role implications remain available while endpoints migrate to
-# permission dependencies. They are only used when a user has no persisted
-# permission mapping, so removing a checkbox from a configured role is enforced.
-ROLE_IMPLICATIONS = {
-    "PURCHASING": {"PURCHASING", "REQUESTER"},
-    "WAREHOUSE": {"WAREHOUSE"},
-    "FINANCE": {"FINANCE"},
-    "DEPARTMENT": {"DEPARTMENT", "REQUESTER"},
-    "GENERAL MANAGER": {"GENERAL MANAGER"},
-    "AUDITOR": {"AUDITOR"},
-    "VIEWER": {"VIEWER"},
-}
-
 
 def normalize_role_name(value: str) -> str:
     return " ".join(value.strip().upper().replace("_", "-").replace("-", " ").split())
@@ -35,11 +22,8 @@ def role_names(user: User) -> set[str]:
 
 
 def effective_role_names(user: User) -> set[str]:
-    names = role_names(user)
-    effective = set(names)
-    for role in names:
-        effective.update(ROLE_IMPLICATIONS.get(role, set()))
-    return {normalize_role_name(role) for role in effective}
+    """Return explicit workflow identities only; authorization comes from permissions."""
+    return role_names(user)
 
 
 def is_superuser(user: User) -> bool:
@@ -49,8 +33,9 @@ def is_superuser(user: User) -> bool:
 
 
 def has_any_role(user: User, *allowed_roles: str) -> bool:
+    """Role checks are reserved for workflow identity, never API authorization."""
     allowed = {normalize_role_name(role) for role in allowed_roles}
-    return is_superuser(user) or bool(effective_role_names(user).intersection(allowed))
+    return is_superuser(user) or bool(role_names(user).intersection(allowed))
 
 
 def permission_codes(user: User) -> set[str]:
@@ -67,7 +52,6 @@ def _permission_grants(granted: str, required: str) -> bool:
         return True
     if granted.endswith(".*"):
         return required.startswith(granted[:-1])
-    # A module-level manage permission grants its view and action permissions.
     if granted.endswith(".manage"):
         module = granted.removesuffix(".manage")
         return required == f"{module}.view" or required.startswith(f"{module}.")
@@ -82,18 +66,17 @@ def has_permission(user: User, permission_code: str) -> bool:
 
 
 def require_permission(permission_code: str, *legacy_roles: str) -> Callable:
-    """Require a persisted permission, with role fallback for unmigrated users.
+    """Require a persisted Administrator > Roles permission.
 
-    Once any permission is mapped to a user's roles, the persisted mappings are
-    authoritative. Legacy fixed-role fallback applies only to users whose roles
-    have no permissions yet.
+    ``legacy_roles`` remains accepted temporarily so already-migrated endpoint
+    declarations do not break, but it no longer grants access. This removes the
+    old hard-coded role fallback: persisted permission mappings are the sole
+    authorization source, except for SYSTEM_ADMINISTRATOR.
     """
     required = normalize_permission_code(permission_code)
 
     def dependency(current_user: User = Depends(get_current_user)) -> User:
         if has_permission(current_user, required):
-            return current_user
-        if not permission_codes(current_user) and legacy_roles and has_any_role(current_user, *legacy_roles):
             return current_user
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -108,6 +91,10 @@ def require_permission(permission_code: str, *legacy_roles: str) -> Callable:
 
 
 def require_roles(*allowed_roles: str) -> Callable:
+    """Workflow-identity dependency retained for approval/business identity only.
+
+    Operational API endpoints must use ``require_permission`` instead.
+    """
     allowed = {normalize_role_name(role) for role in allowed_roles}
 
     def dependency(current_user: User = Depends(get_current_user)) -> User:
@@ -115,8 +102,8 @@ def require_roles(*allowed_roles: str) -> Callable:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
-                    "code": "INSUFFICIENT_PERMISSION",
-                    "message": "You are not authorized to perform this action.",
+                    "code": "INSUFFICIENT_WORKFLOW_ROLE",
+                    "message": "You are not authorized for this workflow stage.",
                     "required_roles": sorted(allowed),
                 },
             )
