@@ -38,15 +38,15 @@ PERMISSION_CATALOG = {
     "admin.users.manage", "admin.roles.manage", "admin.settings.manage",
 }
 
-CORE_ROLE_PERMISSIONS = {
-    "SYSTEM_ADMINISTRATOR": ["*"],
-    "GENERAL_MANAGER": ["dashboard.view", "approval.view", "approval.manage", "pr.view", "pr.approve", "market_list.view", "market_list.approve", "po.view", "po.approve", "receiving.view", "inventory.view", "finance.view", "reports.view"],
-    "PURCHASING": ["dashboard.view", "approval.view", "products.view", "suppliers.manage", "pr.view", "pr.convert", "market_list.view", "market_list.convert", "po.manage", "receiving.manage", "inventory.view", "reports.purchasing"],
-    "WAREHOUSE": ["dashboard.view", "approval.view", "warehouse.manage", "po.view", "receiving.manage", "inventory.manage", "store_request.manage", "stock_opname.manage", "reports.inventory"],
-    "FINANCE": ["dashboard.view", "approval.view", "finance.manage", "ap.manage", "supplier_invoice.manage", "payment.manage", "journal.manage", "coa.manage", "reports.finance", "pr.view", "market_list.view", "po.view", "receiving.view"],
-    "DEPARTMENT": ["dashboard.view", "approval.view", "pr.view", "pr.create", "pr.edit", "pr.submit", "market_list.view", "market_list.create", "market_list.edit", "market_list.submit", "store_request.manage", "reports.own"],
-    "AUDITOR": ["dashboard.view", "approval.view", "audit.read", "reports.view", "pr.view", "market_list.view", "po.view", "receiving.view", "inventory.view", "finance.view"],
-    "VIEWER": ["dashboard.view", "reports.view"],
+CORE_ROLE_NAMES = {
+    "SYSTEM_ADMINISTRATOR",
+    "GENERAL_MANAGER",
+    "PURCHASING",
+    "WAREHOUSE",
+    "FINANCE",
+    "DEPARTMENT",
+    "AUDITOR",
+    "VIEWER",
 }
 
 CORE_ROLE_DESCRIPTIONS = {
@@ -86,14 +86,10 @@ def _ensure_core_roles(db: Session) -> None:
     """Bootstrap catalog and missing core roles; never overwrite role mappings."""
     for code in sorted(PERMISSION_CATALOG):
         _ensure_permission(db, code)
-    _ensure_permission(db, "*")
-    for name, codes in CORE_ROLE_PERMISSIONS.items():
-        role = db.query(Role).options(selectinload(Role.permissions)).filter(Role.name == name).first()
+    for name in sorted(CORE_ROLE_NAMES):
+        role = db.query(Role).filter(Role.name == name).first()
         if not role:
-            role = Role(name=name, description=CORE_ROLE_DESCRIPTIONS[name])
-            role.permissions = [_ensure_permission(db, code) for code in codes]
-            db.add(role)
-            continue
+            db.add(Role(name=name, description=CORE_ROLE_DESCRIPTIONS[name]))
     db.commit()
 
 
@@ -154,7 +150,7 @@ def update_role(role_id: int, data: RoleInput, db: Session = Depends(get_db), us
         raise HTTPException(404, "Role not found")
     original_name = role.name
     name = data.name.strip().upper().replace(" ", "_")
-    if original_name in CORE_ROLE_PERMISSIONS and name != original_name:
+    if original_name in CORE_ROLE_NAMES and name != original_name:
         raise HTTPException(409, "Core role names cannot be changed")
     duplicate = db.query(Role).filter(Role.name == name, Role.id != role_id).first()
     if duplicate:
@@ -174,7 +170,7 @@ def delete_role(role_id: int, db: Session = Depends(get_db), user: User = Depend
     role = db.query(Role).options(selectinload(Role.users)).filter(Role.id == role_id).first()
     if not role:
         raise HTTPException(404, "Role not found")
-    if role.name in CORE_ROLE_PERMISSIONS:
+    if role.name in CORE_ROLE_NAMES:
         raise HTTPException(409, "Core roles cannot be deleted")
     if role.users:
         raise HTTPException(409, "Role is assigned to users and cannot be deleted")
