@@ -33,14 +33,25 @@ class PurchaseRequisitionService:
     @staticmethod
     def update(db: Session, *, purchase_requisition_id: int,
                data: PurchaseRequisitionCreate, current_user: User) -> PurchaseRequisition:
-        requisition = db.get(PurchaseRequisition, purchase_requisition_id)
+        requisition = (
+            db.query(PurchaseRequisition)
+            .filter(PurchaseRequisition.id == purchase_requisition_id)
+            .with_for_update()
+            .first()
+        )
         if not requisition:
             raise HTTPException(status_code=404, detail="Purchase requisition not found")
         from app.services.document_context import document_context
-        if not document_context(db, "PURCHASE_REQUISITION", requisition.id, requisition.status, current_user)["allowed_actions"]["can_edit"]:
+        context = document_context(db, "PURCHASE_REQUISITION", requisition.id, requisition.status, current_user)
+        if not context["allowed_actions"]["can_edit"]:
             raise HTTPException(status_code=409, detail="Purchase requisition is locked for editing")
         if not data.items:
             raise HTTPException(status_code=400, detail="Purchase requisition must have items")
+        before_total = str(requisition.total_amount or 0)
+        before_items = [
+            {"product_id": item.product_id, "quantity": str(item.quantity), "estimated_price": str(item.estimated_price)}
+            for item in requisition.items
+        ]
         requisition.request_date = data.request_date or requisition.request_date
         requisition.expiry_date = data.expiry_date
         requisition.notes = data.notes
@@ -59,7 +70,14 @@ class PurchaseRequisitionService:
         AuditService.log(db=db, user=current_user, action="UPDATE", entity_type="PURCHASE_REQUISITION",
             entity_id=requisition.id, summary=f"Updated {requisition.pr_number}", document_type="PR",
             document_number=requisition.pr_number, document_status=requisition.status,
-            details={"edited_during_approval": requisition.status == "PENDING_APPROVAL"})
+            details={
+                "edited_during_approval": requisition.status == "PENDING_APPROVAL",
+                "current_approval_level": context.get("current_approval_level"),
+                "actor_approval_level": context.get("actor_approval_level"),
+                "before_total": before_total,
+                "after_total": str(requisition.total_amount or 0),
+                "before_items": before_items,
+            })
         db.commit(); db.refresh(requisition)
         return requisition
 
@@ -178,12 +196,20 @@ class PurchaseRequisitionService:
         current_user: User,
     ) -> PurchaseRequisition:
 
+    def submit(
+        db: Session,
+        *,
+        purchase_requisition_id: int,
+        current_user: User,
+    ) -> PurchaseRequisition:
+
         purchase_requisition = (
             db.query(PurchaseRequisition)
             .filter(
                 PurchaseRequisition.id
                 == purchase_requisition_id
             )
+            .with_for_update()
             .first()
         )
 
@@ -217,12 +243,8 @@ class PurchaseRequisitionService:
 
         if purchase_requisition.status != "DRAFT":
             raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Only draft purchase "
-                    "requisitions can be "
-                    "submitted"
-                ),
+                status_code=409,
+                detail="Purchase requisition has already been submitted or is no longer draft",
             )
 
         if not purchase_requisition.items:
@@ -278,12 +300,21 @@ class PurchaseRequisitionService:
         current_user: User,
     ) -> PurchaseRequisition:
 
+    def approve(
+        db: Session,
+        *,
+        purchase_requisition_id: int,
+        data: ApprovalDecisionRequest | None,
+        current_user: User,
+    ) -> PurchaseRequisition:
+
         purchase_requisition = (
             db.query(PurchaseRequisition)
             .filter(
                 PurchaseRequisition.id
                 == purchase_requisition_id
             )
+            .with_for_update()
             .first()
         )
 
@@ -383,12 +414,21 @@ class PurchaseRequisitionService:
         current_user: User,
     ) -> PurchaseRequisition:
 
+    def reject(
+        db: Session,
+        *,
+        purchase_requisition_id: int,
+        data: ApprovalDecisionRequest | None,
+        current_user: User,
+    ) -> PurchaseRequisition:
+
         purchase_requisition = (
             db.query(PurchaseRequisition)
             .filter(
                 PurchaseRequisition.id
                 == purchase_requisition_id
             )
+            .with_for_update()
             .first()
         )
 
