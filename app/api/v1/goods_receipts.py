@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission, require_permission
 from app.models.approval_request import ApprovalRequest
 from app.models.department import Department
 from app.models.goods_receipt import GoodsReceipt
@@ -36,6 +36,8 @@ from app.services.location_access import (
 )
 
 router = APIRouter(prefix="/goods-receipts", tags=["Goods Receipts"])
+receiving_view_user = require_permission("receiving.view")
+receiving_manage_user = require_permission("receiving.manage")
 
 
 def _scoped_receipt(db: Session, receipt_id: int, user) -> GoodsReceipt:
@@ -47,7 +49,7 @@ def _scoped_receipt(db: Session, receipt_id: int, user) -> GoodsReceipt:
 
 
 def receipt_actions(receipt: GoodsReceipt, user, db: Session):
-    receiving_role = has_any_role(user, "WAREHOUSE", "PURCHASING")
+    receiving_manage = has_permission(user, "receiving.manage")
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     approval_status = approval.status if approval else None
     can_decide = bool(
@@ -57,11 +59,11 @@ def receipt_actions(receipt: GoodsReceipt, user, db: Session):
     )
     return {
         "can_edit": False,
-        "can_submit": receipt.status == "DRAFT" and approval is None and receiving_role,
+        "can_submit": receipt.status == "DRAFT" and approval is None and receiving_manage,
         "can_approve": can_decide,
         "can_reject": can_decide,
-        "can_post": receipt.status == "DRAFT" and approval_status == "APPROVED" and receiving_role,
-        "can_return": receipt.status == "POSTED" and receiving_role,
+        "can_post": receipt.status == "DRAFT" and approval_status == "APPROVED" and receiving_manage,
+        "can_return": receipt.status == "POSTED" and receiving_manage,
         "can_correct_cost": receipt.status in {"DRAFT", "POSTED"} and GoodsReceiptService.can_correct_cost(user),
         "can_print": True,
         "can_view_history": True,
@@ -197,7 +199,7 @@ def list_receipts(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(receiving_view_user),
 ):
     query = apply_location_scope(
         db.query(GoodsReceipt),
@@ -278,7 +280,7 @@ def list_receipts(
 
 
 @router.get("/receivable-purchase-orders")
-def list_receivable_purchase_orders(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def list_receivable_purchase_orders(db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     orders = (
         apply_location_scope(db.query(PurchaseOrder), PurchaseOrder.location_id, user)
         .filter(PurchaseOrder.status.in_({"APPROVED", "PARTIALLY_RECEIVED"}))
@@ -308,7 +310,7 @@ def list_receivable_purchase_orders(db: Session = Depends(get_db), user=Depends(
 
 
 @router.get("/receivable-purchase-orders/{purchase_order_id}/items")
-def get_remaining_purchase_order_items(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_remaining_purchase_order_items(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     order = db.get(PurchaseOrder, purchase_order_id)
     if not order:
         raise HTTPException(404, "Purchase order not found")
@@ -319,7 +321,7 @@ def get_remaining_purchase_order_items(purchase_order_id: int, db: Session = Dep
 
 
 @router.post("", status_code=201)
-def create_receipt(data: GoodsReceiptCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def create_receipt(data: GoodsReceiptCreate, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     if data.purchase_order_id:
         order = db.get(PurchaseOrder, data.purchase_order_id)
         if not order:
@@ -337,7 +339,7 @@ def create_receipt(data: GoodsReceiptCreate, db: Session = Depends(get_db), user
 
 
 @router.get("/{receipt_id}")
-def get_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_view_user)):
     receipt = _scoped_receipt(db, receipt_id, user)
     result = serialize_receipt(receipt, db)
     result.update(document_context(db, "GOODS_RECEIPT", receipt.id, receipt.status, user))
@@ -346,7 +348,7 @@ def get_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get
 
 
 @router.post("/{receipt_id}/submit")
-def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     receipt = _scoped_receipt(db, receipt_id, user)
     if receipt.status != "DRAFT":
         raise HTTPException(409, "Only draft receiving reports can be submitted")
@@ -363,7 +365,7 @@ def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(
 
 
 @router.post("/{receipt_id}/approve")
-def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     receipt = _scoped_receipt(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "PENDING":
@@ -375,7 +377,7 @@ def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None
 
 
 @router.post("/{receipt_id}/reject")
-def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     receipt = _scoped_receipt(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "PENDING":
@@ -387,7 +389,7 @@ def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session =
 
 
 @router.post("/{receipt_id}/post")
-def post_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def post_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     receipt = _scoped_receipt(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "APPROVED":
@@ -396,23 +398,23 @@ def post_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(ge
 
 
 @router.patch("/{receipt_id}/costs")
-def correct_receipt_costs(receipt_id: int, data: GoodsReceiptCostCorrection, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def correct_receipt_costs(receipt_id: int, data: GoodsReceiptCostCorrection, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     _scoped_receipt(db, receipt_id, user)
     return serialize_receipt(GoodsReceiptService.correct_costs(db=db, receipt_id=receipt_id, data=data, user=user), db)
 
 
 @router.post("/{receipt_id}/return")
-def return_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def return_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     _scoped_receipt(db, receipt_id, user)
     return serialize_receipt(GoodsReceiptService.return_receipt(db=db, receipt_id=receipt_id, user=user), db)
 
 
 @router.get("/{receipt_id}/allowed-actions")
-def get_allowed_actions(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_allowed_actions(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_view_user)):
     receipt = _scoped_receipt(db, receipt_id, user)
     return receipt_actions(receipt, user, db)
 
 
 @router.get("/{receipt_id}/print")
-def print_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def print_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_view_user)):
     return {**get_receipt(receipt_id, db, user), "document_type": "Receiving Report", **print_metadata(user)}

@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
 from app.models.inventory import Inventory
 from app.models.product import Product
@@ -28,13 +28,13 @@ class GoodsReceiptService:
         return next_document_number(db, "GR", digits=5, day=True)
 
     @staticmethod
-    def _check_access(user, *roles):
-        if not has_any_role(user, *roles):
-            raise HTTPException(status_code=403, detail="Receiving access required")
+    def _check_access(user, *_legacy_roles):
+        if not has_permission(user, "receiving.manage"):
+            raise HTTPException(status_code=403, detail="Receiving manage permission required")
 
     @staticmethod
     def can_correct_cost(user) -> bool:
-        return has_any_role(user, "GENERAL MANAGER", "FINANCE", "FINANCE MANAGER", "PURCHASING MANAGER", "PROCUREMENT MANAGER")
+        return has_permission(user, "receiving.manage")
 
     @staticmethod
     def _validate_destination(db: Session, data: GoodsReceiptCreate, location_id: int | None):

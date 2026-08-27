@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.models.accounting_posting_rule import AccountingPostingRule
 from app.schemas.accounting_posting_rule import PostingRuleCreate, PostingRuleUpdate
 from app.services.accounting_posting_rule_service import AccountingPostingRuleService
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/accounting/posting-rules", tags=["Accounting Posting
 
 
 def access(user):
-    if not has_any_role(user, "FINANCE"):
+    if not has_permission(user, "finance.manage"):
         raise HTTPException(403, "Finance access required")
 
 

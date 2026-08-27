@@ -26,12 +26,12 @@ from app.services.location_access import apply_location_scope, require_location_
 
 
 router = APIRouter(prefix="/purchase-requisitions", tags=["Purchase Requisitions"])
-pr_view_user = require_permission("pr.view", "REQUESTER", "PURCHASING", "GENERAL_MANAGER", "AUDITOR")
-pr_create_user = require_permission("pr.create", "REQUESTER")
-pr_edit_user = require_permission("pr.edit", "REQUESTER")
-pr_submit_user = require_permission("pr.submit", "REQUESTER")
-pr_approve_user = require_permission("pr.approve", "GENERAL_MANAGER", "PURCHASING")
-pr_convert_user = require_permission("pr.convert", "PURCHASING")
+pr_view_user = require_permission("pr.view")
+pr_create_user = require_permission("pr.create")
+pr_edit_user = require_permission("pr.edit")
+pr_submit_user = require_permission("pr.submit")
+pr_approve_user = require_permission("pr.approve")
+pr_convert_user = require_permission("pr.convert")
 
 ACTIVE_STATUSES = {"DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_CONVERTED"}
 HISTORY_STATUSES = {"CONVERTED", "REJECTED", "CANCELLED", "EXPIRED"}

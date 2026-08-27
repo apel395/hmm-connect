@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import require_permission
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.supplier_product import SupplierProduct
@@ -50,7 +50,7 @@ def to_response(row: SupplierProduct) -> SupplierProductResponse:
 def get_supplier_products(
     supplier_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("ADMIN", "PURCHASING")),
+    current_user=Depends(require_permission("suppliers.manage")),
 ):
     supplier = db.get(Supplier, supplier_id)
     if not supplier:
@@ -76,7 +76,7 @@ def create_supplier_product(
     supplier_id: int,
     data: SupplierProductCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("ADMIN", "PURCHASING")),
+    current_user=Depends(require_permission("suppliers.manage")),
 ):
     supplier = db.get(Supplier, supplier_id)
     product = db.get(Product, data.product_id)
@@ -158,7 +158,7 @@ def delete_supplier_product(
     supplier_id: int,
     supplier_product_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("ADMIN", "PURCHASING")),
+    current_user=Depends(require_permission("suppliers.manage")),
 ):
     row = (
         db.query(SupplierProduct)
@@ -194,7 +194,7 @@ def delete_supplier_product(
 def get_supplier_matches(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("ADMIN", "PURCHASING")),
+    current_user=Depends(require_permission("suppliers.manage")),
 ):
     product = db.get(Product, product_id)
     if not product:

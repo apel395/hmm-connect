@@ -31,9 +31,11 @@ def test_persisted_permission_mapping_is_authoritative():
     assert denied.value.status_code == 403
 
 
-def test_legacy_role_fallback_only_for_unmigrated_role():
+def test_unmapped_role_does_not_bypass_permission_requirement():
     current = user(role("REQUESTER"))
-    assert require_permission("pr.create", "REQUESTER")(current_user=current) is current
+    with pytest.raises(HTTPException) as denied:
+        require_permission("pr.create", "REQUESTER")(current_user=current)
+    assert denied.value.status_code == 403
 
 
 def test_manage_permission_grants_module_actions():

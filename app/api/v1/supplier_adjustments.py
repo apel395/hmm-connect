@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
@@ -24,7 +24,7 @@ ZERO = Decimal("0")
 
 
 def access(user):
-    if not has_any_role(user, "FINANCE"):
+    if not has_permission(user, "finance.manage"):
         raise HTTPException(403, "Finance access required")
 
 

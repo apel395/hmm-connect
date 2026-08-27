@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import require_permission
 
 from app.models.account_receivable import AccountReceivable
 from app.models.customer_payment import CustomerPayment
@@ -33,10 +33,7 @@ def create_customer_payment(
     data: CustomerPaymentCreate,
     db: Session = Depends(get_db),
     current_user=Depends(
-        require_roles(
-            "FINANCE",
-            "ADMIN",
-        )
+        require_permission("finance.manage")
     ),
 ):
 

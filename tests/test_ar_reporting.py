@@ -140,12 +140,13 @@ def test_filters_pagination_and_search(ar_db):
 
 @pytest.mark.parametrize("role", ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"])
 def test_authorized_roles(role):
-    _require_access(SimpleNamespace(roles=[SimpleNamespace(name=role)]))
+    permissions = [] if role == "SYSTEM_ADMINISTRATOR" else [SimpleNamespace(code="finance.view")]
+    _require_access(SimpleNamespace(roles=[SimpleNamespace(name=role, permissions=permissions)]))
 
 
 def test_unauthorized_and_get_only():
     with pytest.raises(HTTPException) as denied:
-        _require_access(SimpleNamespace(roles=[SimpleNamespace(name="WAREHOUSE")]))
+        _require_access(SimpleNamespace(roles=[SimpleNamespace(name="WAREHOUSE", permissions=[])]))
     assert denied.value.status_code == 403
     assert all(route.methods == {"GET"} for route in router.routes)
 

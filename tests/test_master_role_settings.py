@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.products import classification_master
 from app.api.v1.roles import (
-    CORE_ROLE_PERMISSIONS,
+    CORE_ROLE_NAMES,
     RoleInput,
     create_role,
     delete_role,
@@ -140,8 +140,8 @@ def test_role_guards_validation_and_custom_lifecycle(master_db):
         update_role(purchasing.id, RoleInput(name="BUYER", permission_codes=[]), db=db, user=admin)
     assert renamed.value.status_code == 409
     list_roles(db=db, _=admin)
-    core_roles = db.query(Role).filter(Role.name.in_(CORE_ROLE_PERMISSIONS)).all()
-    assert {role.name for role in core_roles} == set(CORE_ROLE_PERMISSIONS)
+    core_roles = db.query(Role).filter(Role.name.in_(CORE_ROLE_NAMES)).all()
+    assert {role.name for role in core_roles} == set(CORE_ROLE_NAMES)
     for role in core_roles:
         with pytest.raises(HTTPException) as deleted:
             delete_role(role.id, db=db, user=admin)
@@ -186,4 +186,4 @@ def test_role_guards_validation_and_custom_lifecycle(master_db):
     with pytest.raises(HTTPException) as forbidden:
         require_admin(non_admin)
     assert forbidden.value.status_code == 403
-    assert set(CORE_ROLE_PERMISSIONS) >= {"SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE"}
+    assert set(CORE_ROLE_NAMES) >= {"SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE"}

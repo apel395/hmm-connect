@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.models.bank_reconciliation import BankReconciliation, BankStatementLine, BankReconciliationMatch
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
@@ -19,7 +19,7 @@ from app.services.document_number import next_document_number
 
 router=APIRouter(prefix="/bank-reconciliations",tags=["Bank Reconciliation"])
 def access(user):
-    if not has_any_role(user,"FINANCE"):raise HTTPException(403,"Finance access required")
+    if not has_permission(user, "finance.manage"):raise HTTPException(403,"Finance access required")
 def fail(e):raise HTTPException(400,str(e))
 def audit(db,user,action,r,text):record_audit(db,user,action,"BANK_RECONCILIATION",text,entity_id=r.id,reference_document=r.reconciliation_number)
 

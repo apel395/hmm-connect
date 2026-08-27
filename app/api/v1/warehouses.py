@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import is_superuser
+from app.dependencies.authorization import has_permission
 from app.models.warehouse import Warehouse
 from app.models.location import Location
 from app.schemas.warehouse import WarehouseCreate, WarehouseUpdate
@@ -42,7 +42,7 @@ def list_warehouses(response: Response, active_only: bool = True, search: str | 
 
 @router.post("", status_code=201)
 def create_warehouse(data: WarehouseCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    if not is_superuser(user): raise HTTPException(status_code=403, detail="Administrator access required")
+    if not has_permission(user, "warehouse.manage"): raise HTTPException(status_code=403, detail="Warehouse manage permission required")
     code = data.code.strip().upper()
     if db.query(Warehouse).filter(Warehouse.code == code).first(): raise HTTPException(status_code=409, detail="Warehouse code already exists")
     location = _active_location(db, data.location_id)
@@ -53,7 +53,7 @@ def create_warehouse(data: WarehouseCreate, db: Session = Depends(get_db), user=
 
 @router.patch("/{warehouse_id}")
 def update_warehouse(warehouse_id: int, data: WarehouseUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    if not is_superuser(user): raise HTTPException(status_code=403, detail="Administrator access required")
+    if not has_permission(user, "warehouse.manage"): raise HTTPException(status_code=403, detail="Warehouse manage permission required")
     warehouse = db.get(Warehouse, warehouse_id)
     if not warehouse: raise HTTPException(status_code=404, detail="Warehouse not found")
     changes = {}

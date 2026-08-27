@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import require_permission
 
 from app.services.year_end_service import YearEndService
 
@@ -21,10 +21,7 @@ def close_year(
     year: int,
     db: Session = Depends(get_db),
     current_user=Depends(
-        require_roles(
-            "ADMIN",
-            "FINANCE",
-        )
+        require_permission("finance.manage")
     ),
 ):
 

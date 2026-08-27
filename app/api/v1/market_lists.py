@@ -24,12 +24,12 @@ from app.services.market_list_service import MarketListService
 
 
 router = APIRouter(prefix="/market-lists", tags=["Market Lists"])
-market_list_view_user = require_permission("market_list.view", "REQUESTER", "PURCHASING", "GENERAL_MANAGER", "AUDITOR")
-market_list_create_user = require_permission("market_list.create", "REQUESTER")
-market_list_edit_user = require_permission("market_list.edit", "REQUESTER")
-market_list_submit_user = require_permission("market_list.submit", "REQUESTER")
-market_list_approve_user = require_permission("market_list.approve", "GENERAL_MANAGER", "PURCHASING")
-market_list_convert_user = require_permission("market_list.convert", "PURCHASING")
+market_list_view_user = require_permission("market_list.view")
+market_list_create_user = require_permission("market_list.create")
+market_list_edit_user = require_permission("market_list.edit")
+market_list_submit_user = require_permission("market_list.submit")
+market_list_approve_user = require_permission("market_list.approve")
+market_list_convert_user = require_permission("market_list.convert")
 
 ACTIVE_STATUSES = {"DRAFT", "PENDING_APPROVAL", "APPROVED"}
 HISTORY_STATUSES = {"CONVERTED", "REJECTED", "CANCELLED", "EXPIRED"}
