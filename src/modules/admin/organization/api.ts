@@ -56,8 +56,13 @@ export const updateDepartment = async (id: number, payload: Partial<Organization
 export const deactivateDepartment = async (id: number) =>
   (await api.delete<Department>(`/departments/${id}`)).data;
 
-export const listLocations = async (filtersOrBusinessUnit: OrganizationFilters | number = {}) =>
-  (await api.get<Location[]>("/locations", { params: typeof filtersOrBusinessUnit === "number" ? { business_unit_id: filtersOrBusinessUnit } : filtersOrBusinessUnit })).data;
+export const listLocations = async (filtersOrBusinessUnit: OrganizationFilters | number = {}) => {
+  const params =
+    typeof filtersOrBusinessUnit === "number"
+      ? { business_unit_id: filtersOrBusinessUnit, assigned_only: true }
+      : { assigned_only: true, ...filtersOrBusinessUnit };
+  return (await api.get<Location[]>("/locations", { params })).data;
+};
 export const createLocation = async (payload: OrganizationPayload) =>
   (await api.post<Location>("/locations", payload)).data;
 export const updateLocation = async (id: number, payload: Partial<OrganizationPayload>) =>
