@@ -20,10 +20,15 @@ import { createInvoice, getInvoice, InvoiceLine, listEligibleReceiptSources, lis
 import useAuthorization from "@/hooks/useAuthorization";
 
 const today = () => new Date().toISOString().slice(0, 10);
+const addDays = (value: string, days: number) => {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 const blankLine = (): InvoiceLine => ({ description: "", quantity: 0, uom: "", unit_price: 0, account_id: null, is_taxable: false, tax_rate: 0, tax_amount: 0 });
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const emptyForm = (): any => ({ supplier_id: 0, supplier_invoice_number: "", invoice_date: today(), received_date: today(), due_date: "", purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, withholding_tax_amount: 0, tax_invoice_number: "", tax_invoice_date: "", notes: "", source_type: "LIVE", lines: [blankLine()] });
+const emptyForm = (): any => ({ supplier_id: 0, supplier_invoice_number: "", invoice_date: today(), received_date: today(), due_date: addDays(today(), 30), purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, withholding_tax_amount: 0, tax_invoice_number: "", tax_invoice_date: "", notes: "", source_type: "LIVE", lines: [blankLine()] });
 const invoiceErrorMessage = (error: unknown) => {
   if (!axios.isAxiosError(error)) return "Invoice could not be saved";
   const detail = error.response?.data?.detail;
@@ -194,7 +199,7 @@ export default function SupplierInvoiceListPage() {
         <label className="text-sm">Department *<select disabled={sourceLocked || !form.business_unit_id} required className={input} value={form.department_id ?? ""} onChange={(event) => setForm({ ...form, department_id: Number(event.target.value) })}><option value="">Select Department</option>{departments.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
         <label className="text-sm">Location *<select disabled={sourceLocked || !form.business_unit_id} required className={input} value={form.location_id ?? ""} onChange={(event) => setForm({ ...form, location_id: Number(event.target.value) })}><option value="">Select Location</option>{locations.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
         <label className="text-sm">Supplier Invoice Number *<input required className={input} value={form.supplier_invoice_number} onChange={(event) => setForm({ ...form, supplier_invoice_number: event.target.value })} /></label>
-        <label className="text-sm">Invoice Date *<input required type="date" className={input} value={form.invoice_date} onChange={(event) => setForm({ ...form, invoice_date: event.target.value })} /></label>
+        <label className="text-sm">Invoice Date *<input required type="date" className={input} value={form.invoice_date} onChange={(event) => setForm({ ...form, invoice_date: event.target.value, due_date: addDays(event.target.value, 30) })} /></label>
         <label className="text-sm">Due Date<input type="date" className={input} value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} /></label>
       </div>
       {sourceLocked && <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Business Unit, Department, Location, and item PPN treatment are inherited from the selected PO/Receiving document.</div>}
