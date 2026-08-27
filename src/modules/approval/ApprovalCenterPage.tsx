@@ -21,26 +21,6 @@ const views = [
 
 const entityLabel = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-function detailQueryKey(row: ApprovalRequestRow): readonly unknown[] | null {
-  if (row.entity_type === "PURCHASE_REQUISITION") return ["purchase-requisition", row.entity_id];
-  if (row.entity_type === "MARKET_LIST") return ["market-list", row.entity_id];
-  if (row.entity_type === "PURCHASE_ORDER") return ["purchase-order", row.entity_id];
-  if (row.entity_type === "GOODS_RECEIPT") return ["goods-receipt", row.entity_id];
-  if (row.entity_type === "STORE_REQUEST") return ["store-request", row.entity_id];
-  if (row.entity_type === "STOCK_OPNAME") return ["stock-opname", row.entity_id];
-  return null;
-}
-
-function listQueryKey(row: ApprovalRequestRow): readonly unknown[] | null {
-  if (row.entity_type === "PURCHASE_REQUISITION") return ["purchase-requisitions"];
-  if (row.entity_type === "MARKET_LIST") return ["market-lists"];
-  if (row.entity_type === "PURCHASE_ORDER") return ["purchase-orders"];
-  if (row.entity_type === "GOODS_RECEIPT") return ["goods-receipts"];
-  if (row.entity_type === "STORE_REQUEST") return ["store-requests"];
-  if (row.entity_type === "STOCK_OPNAME") return ["stock-opnames"];
-  return null;
-}
-
 export default function ApprovalCenterPage() {
   const qc = useQueryClient();
   const [view, setView] = useState<(typeof views)[number]["key"]>("pending");
@@ -79,21 +59,10 @@ export default function ApprovalCenterPage() {
         } : current);
       }
 
+      // Approval Center owns only its inbox cache. Do not invalidate document
+      // detail/list queries here: hidden multi-tabs still render and a source
+      // document transition can crash the whole application shell.
       void qc.invalidateQueries({ queryKey: ["approval-inbox"] });
-      void qc.invalidateQueries({
-        queryKey: ["approval", completedDecision.row.entity_type, completedDecision.row.entity_id],
-        exact: true,
-      });
-
-      const detailKey = detailQueryKey(completedDecision.row);
-      if (detailKey) {
-        void qc.invalidateQueries({ queryKey: detailKey, exact: true });
-      }
-
-      const listKey = listQueryKey(completedDecision.row);
-      if (listKey) {
-        void qc.invalidateQueries({ queryKey: listKey });
-      }
 
       toast.success(completedDecision.action === "APPROVE" ? "Approval recorded." : "Document rejected.");
     },
