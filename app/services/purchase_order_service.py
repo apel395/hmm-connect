@@ -82,19 +82,82 @@ class PurchaseOrderService:
 
     @staticmethod
     def update(db: Session, *, purchase_order_id: int, data: PurchaseOrderCreate, user):
-        purchase_order = db.get(PurchaseOrder, purchase_order_id)
+        purchase_order = (
+            db.query(PurchaseOrder)
+            .filter(PurchaseOrder.id == purchase_order_id)
+            .with_for_update()
+            .first()
+        )
         if not purchase_order:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         from app.services.document_context import document_context
-        if not document_context(db, "PURCHASE_ORDER", purchase_order.id, purchase_order.status, user)["allowed_actions"]["can_edit"]:
+        context = document_context(db, "PURCHASE_ORDER", purchase_order.id, purchase_order.status, user)
+        if not context["allowed_actions"]["can_edit"]:
             raise HTTPException(status_code=409, detail="Purchase order is locked for editing. Reopen it first if you are an administrator.")
         supplier = db.get(Supplier, data.supplier_id)
         if not supplier or not supplier.is_active:
             raise HTTPException(status_code=404, detail="Active supplier not found")
 
-        business_unit_id, department_id, location_id = PurchaseOrderService._resolve_dimensions(
-            db, data, list(purchase_order.purchase_requisitions)
+        source_ids = purchase_order.purchase_requisition_ids
+        requisitions = (
+            db.query(PurchaseRequisition)
+            .filter(PurchaseRequisition.id.in_(source_ids))
+            .with_for_update()
+            .all()
+            if source_ids
+            else []
         )
+        if len(requisitions) != len(set(source_ids)):
+            raise HTTPException(status_code=409, detail="Purchase order source requisition no longer exists")
+
+        business_unit_id, department_id, location_id = PurchaseOrderService._resolve_dimensions(
+            db, data, requisitions
+        )
+
+        source_items = {
+            item.id: item
+            for requisition in requisitions
+            for item in requisition.items
+        }
+        remaining_by_item = {}
+        if requisitions:
+            seen_source_ids = set()
+            for incoming in data.items:
+                source_id = incoming.purchase_requisition_item_id
+                if source_id is None or source_id not in source_items:
+                    raise HTTPException(status_code=400, detail="Every PO item must belong to its source purchase requisition")
+                if source_id in seen_source_ids:
+                    raise HTTPException(status_code=400, detail=f"Purchase requisition item {source_id} may appear only once in a PO")
+                seen_source_ids.add(source_id)
+
+            for source_id, source_item in source_items.items():
+                already_ordered_elsewhere = (
+                    db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0))
+                    .join(PurchaseOrder)
+                    .filter(
+                        PurchaseOrderItem.purchase_requisition_item_id == source_id,
+                        PurchaseOrderItem.purchase_order_id != purchase_order.id,
+                        PurchaseOrder.status != "CANCELLED",
+                    )
+                    .scalar()
+                    or Decimal("0")
+                )
+                remaining_by_item[source_id] = (
+                    source_item,
+                    Decimal(source_item.quantity) - Decimal(already_ordered_elsewhere),
+                )
+
+        before_total = str(purchase_order.total_amount or 0)
+        before_items = [
+            {
+                "product_id": item.product_id,
+                "purchase_requisition_item_id": item.purchase_requisition_item_id,
+                "quantity": str(item.quantity),
+                "unit_price": str(item.unit_price),
+            }
+            for item in purchase_order.items
+        ]
+
         purchase_order.supplier_id = data.supplier_id
         purchase_order.order_date = data.order_date or purchase_order.order_date
         purchase_order.expected_date = data.expected_date
@@ -104,23 +167,55 @@ class PurchaseOrderService:
         purchase_order.location_id = location_id
         purchase_order.notes = data.notes
         purchase_order.items.clear()
-        total = Decimal("0")
+
         for incoming in data.items:
-            line_total = incoming.quantity * incoming.unit_price
+            product_id = incoming.product_id
+            description = incoming.description
+            uom = incoming.uom
+            unit_price = incoming.unit_price
+            is_taxable = bool(incoming.is_taxable)
+            tax_rate = Decimal(incoming.tax_rate or 0)
+
+            if requisitions:
+                source_item, remaining = remaining_by_item[incoming.purchase_requisition_item_id]
+                if Decimal(incoming.quantity) > remaining:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Quantity exceeds remaining requested quantity for PR item {incoming.purchase_requisition_item_id}",
+                    )
+                product_id = source_item.product_id
+                description = source_item.product.description
+                uom = source_item.product.uom
+                unit_price = source_item.estimated_price
+                is_taxable = bool(source_item.is_taxable)
+                tax_rate = Decimal(source_item.tax_rate or 0)
+
             purchase_order.items.append(PurchaseOrderItem(
                 purchase_requisition_item_id=incoming.purchase_requisition_item_id,
-                product_id=incoming.product_id, quantity=incoming.quantity,
-                description=incoming.description, uom=incoming.uom,
-                received_quantity=Decimal("0"), unit_price=incoming.unit_price, total_price=line_total,
+                product_id=product_id,
+                quantity=incoming.quantity,
+                description=description,
+                uom=uom,
+                received_quantity=Decimal("0"),
+                unit_price=unit_price,
+                total_price=Decimal("0"),
+                is_taxable=is_taxable,
+                tax_rate=tax_rate,
+                tax_amount=Decimal("0"),
             ))
-            total += line_total
-        purchase_order.total_amount = total
+
+        PurchaseOrderService._recalculate_totals(purchase_order)
         PurchaseOrderService._audit(
             db,
             user,
             purchase_order,
             "UPDATE",
             edited_during_approval=purchase_order.status == "PENDING_APPROVAL",
+            current_approval_level=context.get("current_approval_level"),
+            actor_approval_level=context.get("actor_approval_level"),
+            before_total=before_total,
+            after_total=str(purchase_order.total_amount or 0),
+            before_items=before_items,
             business_unit_id=business_unit_id,
             department_id=department_id,
             location_id=location_id,
