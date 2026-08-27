@@ -41,7 +41,12 @@ export default function WorkflowActionBar({
   onApprove,
   onReject,
 }: Props) {
-  const currentRole = approval?.current_approver_role;
+  const pendingStep = approval?.steps?.find((step: any) => step.status === "PENDING");
+  const currentRole =
+    approval?.current_approver_role ??
+    pendingStep?.approver_role_name ??
+    pendingStep?.name ??
+    "-";
   const defaultNumber = document.pr_number ?? document.ml_number ?? "";
   const resolvedPrintSrc = printSrc ?? `/purchase-requisitions/${document.id}/print`;
   const resolvedPrintTitle = printTitle ?? `Purchase Requisition ${defaultNumber}`;
@@ -56,7 +61,7 @@ export default function WorkflowActionBar({
         {canReject && <Button variant="danger" loading={rejecting} onClick={onReject}>Reject</Button>}
         {canApprove && <Button variant="success" loading={approving} onClick={onApprove}>Approve</Button>}
         <div className="ml-auto flex items-center rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-          Current Approver <span className="ml-2 font-semibold text-slate-900">{currentRole ?? "-"}</span>
+          Current Approver <span className="ml-2 font-semibold text-slate-900">{currentRole}</span>
         </div>
       </div>
     </div>
