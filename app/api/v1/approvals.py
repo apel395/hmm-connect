@@ -142,8 +142,10 @@ def _decidable_step_predicate(user):
     if not names:
         return and_(ApprovalRequestStep.id == -1)
 
-    department_name = user.department.name if user.department else None
-    location_name = user.location.name if user.location else None
+    effective_department = user.default_department or user.department
+    effective_location = user.default_location or user.location
+    department_name = effective_department.name if effective_department else None
+    location_name = effective_location.name if effective_location else None
     department_match = ApprovalRequestStep.department_name.is_(None)
     location_match = ApprovalRequestStep.location_name.is_(None)
     if department_name:
