@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.models.fixed_asset import FixedAsset, FixedAssetCategory, FixedAssetDepreciationRun, FixedAssetDepreciationSchedule
 from app.schemas.fixed_asset import AssetInput, AssetUpdate, CapitalizeInput, CategoryInput, DisposalInput, RunInput, TransferInput, WriteOffInput
 from app.services.document_number import next_document_number
@@ -20,7 +20,7 @@ reports_router = APIRouter(prefix="/reports", tags=["Fixed Asset Reports"])
 
 
 def access(user):
-    if not has_any_role(user, "FINANCE"):
+    if not has_permission(user, "finance.manage"):
         raise HTTPException(403, "Finance access required")
 
 
