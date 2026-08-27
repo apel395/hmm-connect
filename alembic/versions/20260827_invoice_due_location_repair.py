@@ -25,17 +25,22 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE supplier_invoices AS si
-        SET location_id = COALESCE(
-            gr.location_id,
-            wh.location_id,
-            po.location_id
-        )
+        SET location_id = gr.location_id
         FROM goods_receipts AS gr
-        LEFT JOIN warehouses AS wh ON wh.id = gr.warehouse_id
-        LEFT JOIN purchase_orders AS po ON po.id = COALESCE(si.purchase_order_id, gr.purchase_order_id)
         WHERE si.goods_receipt_id = gr.id
           AND si.location_id IS NULL
-          AND COALESCE(gr.location_id, wh.location_id, po.location_id) IS NOT NULL
+          AND gr.location_id IS NOT NULL
+        """
+    )
+    op.execute(
+        """
+        UPDATE supplier_invoices AS si
+        SET location_id = wh.location_id
+        FROM goods_receipts AS gr, warehouses AS wh
+        WHERE si.goods_receipt_id = gr.id
+          AND gr.warehouse_id = wh.id
+          AND si.location_id IS NULL
+          AND wh.location_id IS NOT NULL
         """
     )
     op.execute(
@@ -44,6 +49,17 @@ def upgrade() -> None:
         SET location_id = po.location_id
         FROM purchase_orders AS po
         WHERE si.purchase_order_id = po.id
+          AND si.location_id IS NULL
+          AND po.location_id IS NOT NULL
+        """
+    )
+    op.execute(
+        """
+        UPDATE supplier_invoices AS si
+        SET location_id = po.location_id
+        FROM goods_receipts AS gr, purchase_orders AS po
+        WHERE si.goods_receipt_id = gr.id
+          AND gr.purchase_order_id = po.id
           AND si.location_id IS NULL
           AND po.location_id IS NOT NULL
         """
