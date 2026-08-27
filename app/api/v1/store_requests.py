@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import require_permission
 from app.models.inventory import Inventory
 from app.models.store_request import StoreIssue, StoreRequest
 from app.models.user import User
@@ -20,8 +20,8 @@ from app.services.location_access import apply_location_scope, enforce_location_
 
 
 router = APIRouter(prefix="/store-requests", tags=["Store Requests"])
-requester_user = require_roles("REQUESTER")
-warehouse_user = require_roles("WAREHOUSE")
+requester_user = require_permission("store_request.manage")
+warehouse_user = require_permission("store_request.manage")
 
 
 def _row(request: StoreRequest, requester_name: str | None = None) -> dict:
