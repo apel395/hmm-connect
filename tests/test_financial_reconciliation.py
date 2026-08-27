@@ -257,11 +257,12 @@ def test_not_configured_status_preserves_observed_difference():
     "SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR",
 ])
 def test_financial_reconciliation_access_roles(role):
-    _access(SimpleNamespace(roles=[SimpleNamespace(name=role)]))
+    permissions = [] if role == "SYSTEM_ADMINISTRATOR" else [SimpleNamespace(code="finance.view")]
+    _access(SimpleNamespace(roles=[SimpleNamespace(name=role, permissions=permissions)]))
 
 
 def test_operational_role_is_denied_and_router_is_get_only():
     with pytest.raises(HTTPException) as denied:
-        _access(SimpleNamespace(roles=[SimpleNamespace(name="WAREHOUSE")]))
+        _access(SimpleNamespace(roles=[SimpleNamespace(name="WAREHOUSE", permissions=[])]))
     assert denied.value.status_code == 403
     assert [route.methods for route in router.routes] == [{"GET"}]
