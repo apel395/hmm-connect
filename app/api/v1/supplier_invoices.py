@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import require_permission
 from app.models.journal_entry import JournalEntry
+from app.models.location import Location
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.services.audit import record_audit
@@ -35,9 +36,18 @@ def get(db, invoice_id, user):
     return invoice
 
 
+def _hydrate_location_name(db: Session, invoice: SupplierInvoice, data: dict) -> dict:
+    if not data.get("location_name") and invoice.location_id:
+        location = db.get(Location, invoice.location_id)
+        if location:
+            data["location_id"] = location.id
+            data["location_name"] = location.name
+    return data
+
+
 def result(db, invoice, user):
     service = SupplierInvoiceService(db)
-    data = service.serialize(service.attach_journal(invoice))
+    data = _hydrate_location_name(db, invoice, service.serialize(service.attach_journal(invoice)))
     match = service.match_summary(invoice)
     data["three_way_match"] = match
     data.update(document_context(db, "SUPPLIER_INVOICE", invoice.id, invoice.status, user))
@@ -96,7 +106,10 @@ def listing(
     rows = query.order_by(SupplierInvoice.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     service = SupplierInvoiceService(db)
     return {
-        "items": [service.serialize(service.attach_journal(item)) for item in rows],
+        "items": [
+            _hydrate_location_name(db, item, service.serialize(service.attach_journal(item)))
+            for item in rows
+        ],
         "page": page,
         "page_size": page_size,
         "total_items": total,
