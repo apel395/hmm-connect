@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.services.trial_balance_service import TrialBalanceService
 from app.services.location_access import resolve_location_id
 
@@ -23,7 +23,7 @@ MONEY_FIELDS = (
 
 
 def access(user):
-    if not has_any_role(user, "FINANCE", "GENERAL_MANAGER", "AUDITOR", "VIEWER"):
+    if not has_permission(user, "reports.view"):
         raise HTTPException(403, "Finance report access required")
 
 
