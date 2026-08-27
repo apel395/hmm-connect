@@ -21,6 +21,26 @@ const views = [
 
 const entityLabel = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+function detailQueryKey(row: ApprovalRequestRow): readonly unknown[] | null {
+  if (row.entity_type === "PURCHASE_REQUISITION") return ["purchase-requisition", row.entity_id];
+  if (row.entity_type === "MARKET_LIST") return ["market-list", row.entity_id];
+  if (row.entity_type === "PURCHASE_ORDER") return ["purchase-order", row.entity_id];
+  if (row.entity_type === "GOODS_RECEIPT") return ["goods-receipt", row.entity_id];
+  if (row.entity_type === "STORE_REQUEST") return ["store-request", row.entity_id];
+  if (row.entity_type === "STOCK_OPNAME") return ["stock-opname", row.entity_id];
+  return null;
+}
+
+function listQueryKey(row: ApprovalRequestRow): readonly unknown[] | null {
+  if (row.entity_type === "PURCHASE_REQUISITION") return ["purchase-requisitions"];
+  if (row.entity_type === "MARKET_LIST") return ["market-lists"];
+  if (row.entity_type === "PURCHASE_ORDER") return ["purchase-orders"];
+  if (row.entity_type === "GOODS_RECEIPT") return ["goods-receipts"];
+  if (row.entity_type === "STORE_REQUEST") return ["store-requests"];
+  if (row.entity_type === "STOCK_OPNAME") return ["stock-opnames"];
+  return null;
+}
+
 export default function ApprovalCenterPage() {
   const qc = useQueryClient();
   const [view, setView] = useState<(typeof views)[number]["key"]>("pending");
@@ -44,31 +64,38 @@ export default function ApprovalCenterPage() {
         ? approvalApi.approveDocument(decision.row, comment.trim() || undefined)
         : approvalApi.rejectDocument(decision.row, comment.trim());
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       const completedDecision = decision;
       setDecision(null);
       setComment("");
-      if (completedDecision && view === "pending") {
+
+      if (!completedDecision) return;
+
+      if (view === "pending") {
         qc.setQueryData<any>(["approval-inbox", view, page], (current: any) => current ? {
           ...current,
           items: (current.items ?? []).filter((row: ApprovalRequestRow) => row.id !== completedDecision.row.id),
           total_items: Math.max(0, Number(current.total_items ?? 0) - 1),
         } : current);
       }
-      await Promise.all([
-        qc.refetchQueries({ queryKey: ["approval-inbox"], type: "active" }),
-        qc.refetchQueries({ queryKey: ["approval", completedDecision?.row.entity_type, completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.refetchQueries({ queryKey: ["purchase-requisition", completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.refetchQueries({ queryKey: ["market-list", completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.invalidateQueries({ queryKey: ["market-lists"] }),
-        qc.refetchQueries({ queryKey: ["purchase-order", completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.refetchQueries({ queryKey: ["goods-receipt", completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.refetchQueries({ queryKey: ["store-request", completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.invalidateQueries({ queryKey: ["store-requests"] }),
-        qc.refetchQueries({ queryKey: ["stock-opname", completedDecision?.row.entity_id], exact: true, type: "active" }),
-        qc.invalidateQueries({ queryKey: ["stock-opnames"] }),
-      ]);
-      toast.success(completedDecision?.action === "APPROVE" ? "Approval recorded." : "Document rejected.");
+
+      void qc.invalidateQueries({ queryKey: ["approval-inbox"] });
+      void qc.invalidateQueries({
+        queryKey: ["approval", completedDecision.row.entity_type, completedDecision.row.entity_id],
+        exact: true,
+      });
+
+      const detailKey = detailQueryKey(completedDecision.row);
+      if (detailKey) {
+        void qc.invalidateQueries({ queryKey: detailKey, exact: true });
+      }
+
+      const listKey = listQueryKey(completedDecision.row);
+      if (listKey) {
+        void qc.invalidateQueries({ queryKey: listKey });
+      }
+
+      toast.success(completedDecision.action === "APPROVE" ? "Approval recorded." : "Document rejected.");
     },
     onError: (error: any) => toast.error(error?.response?.data?.detail || error?.message || "Approval action failed."),
   });
@@ -84,7 +111,8 @@ export default function ApprovalCenterPage() {
       <div className="flex min-w-max gap-6 overflow-x-auto border-b px-4 pt-3">
         {views.map((item) => { const Icon = item.icon; const active = item.key === view; return <button key={item.key} onClick={() => changeView(item.key)} className={`relative flex items-center gap-2 px-1 pb-3 text-sm font-medium ${active ? "text-[#086B5A]" : "text-slate-500 hover:text-slate-900"}`}><Icon className="h-4 w-4"/>{item.label}{item.key === "pending" && pendingCount > 0 && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">{pendingCount}</span>}{active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[#086B5A]"/>}</button> })}
       </div>
-      {inbox.isLoading ? <div className="p-10 text-center text-sm text-slate-500">Loading approvals…</div> : inbox.isError ? <div className="p-10 text-center text-sm text-red-600">Approval inbox could not be loaded.</div> : !rows.length ? <div className="p-10 text-center text-sm text-slate-500">No approval items in this view.</div> : <Table className="min-w-[850px]" containerClassName="rounded-none border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Document</TH><TH>Approval Progress</TH><TH>Submitted By</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{rows.map((row) => { const path = approvalDocumentPath(row); const canDecide = row.status === "PENDING" && row.can_decide && row.current_stage.length > 0; return <TR key={row.id}><TD><TableCellStack primary={`${entityLabel(row.entity_type)} #${row.entity_id}`} secondary={path ? <Link to={path} className="text-emerald-700 hover:underline">Open document</Link> : undefined}/></TD><TD><TableCellStack primary={row.workflow_name} secondary={row.current_stage.length ? row.current_stage.join(" + ") : undefined}/></TD><TD>{row.created_by_name || "—"}</TD><TD><Badge variant={row.status === "APPROVED" ? "success" : row.status === "REJECTED" ? "danger" : "warning"}>{row.status}</Badge></TD><TD><div className="flex justify-end gap-2">{canDecide && <><Button size="sm" onClick={() => { setDecision({ row, action: "APPROVE" }); setComment(""); }}>Approve</Button><Button size="sm" variant="danger" onClick={() => { setDecision({ row, action: "REJECT" }); setComment(""); }}>Reject</Button></>}</div></TD></TR> })}</TBody></Table>}
+      {inbox.isLoading ? <div className="p-10 text-center text-sm text-slate-500">Loading approvals…</div> : inbox.isError ? <div className="p-10 text-center text-sm text-red-600">Approval inbox could not be loaded.</div> : !rows.length ? <div className="p-10 text-center text-sm text-slate-500">No approval items in this view.</div> : <Table className="min-w-[850px]" containerClassName="rounded-none border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Document</TH><TH>Approval Progress</TH><TH>Submitted By</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{rows.map((row) => { const path = approvalDocumentPath(row); const currentStage = Array.isArray(row.current_stage) ? row.current_stage : [];
+          const canDecide = row.status === "PENDING" && row.can_decide && currentStage.length > 0; return <TR key={row.id}><TD><TableCellStack primary={`${entityLabel(row.entity_type)} #${row.entity_id}`} secondary={path ? <Link to={path} className="text-emerald-700 hover:underline">Open document</Link> : undefined}/></TD><TD><TableCellStack primary={row.workflow_name} secondary={currentStage.length ? currentStage.join(" + ") : undefined}/></TD><TD>{row.created_by_name || "—"}</TD><TD><Badge variant={row.status === "APPROVED" ? "success" : row.status === "REJECTED" ? "danger" : "warning"}>{row.status}</Badge></TD><TD><div className="flex justify-end gap-2">{canDecide && <><Button size="sm" onClick={() => { setDecision({ row, action: "APPROVE" }); setComment(""); }}>Approve</Button><Button size="sm" variant="danger" onClick={() => { setDecision({ row, action: "REJECT" }); setComment(""); }}>Reject</Button></>}</div></TD></TR> })}</TBody></Table>}
       {!inbox.isLoading && !inbox.isError && (inbox.data?.total_pages ?? 0) > 1 && <div className="flex items-center justify-between border-t px-4 py-3"><span className="text-sm text-slate-500">{inbox.data?.total_items ?? 0} approval item{(inbox.data?.total_items ?? 0) === 1 ? "" : "s"}</span><div className="flex items-center gap-3"><Button size="sm" variant="outline" disabled={!inbox.data?.has_previous} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button><span className="text-sm">Page {inbox.data?.page} of {inbox.data?.total_pages}</span><Button size="sm" variant="outline" disabled={!inbox.data?.has_next} onClick={() => setPage((value) => value + 1)}>Next</Button></div></div>}
     </Card>
 
