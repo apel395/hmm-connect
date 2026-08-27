@@ -18,6 +18,7 @@ from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.services.accounting_posting_rule_service import AccountingPostingRuleService
 from app.services.audit import record_audit
 from app.services.document_number import next_document_number
+from app.services.location_access import enforce_location_access
 from app.services.payable_balance import sync_account_payable, sync_invoice_balance
 
 ZERO = Decimal("0")
@@ -211,10 +212,12 @@ class SupplierInvoiceService:
             )
         return purchase_order, receipt
 
-    def validate(self, data: SupplierInvoiceInput, exclude_id=None):
+    def validate(self, data: SupplierInvoiceInput, exclude_id=None, user=None):
         from app.services.organization_dimensions import validate_dimensions
 
         purchase_order, receipt = self._inherit_source_context(data)
+        if user is not None:
+            enforce_location_access(user, data.location_id)
         validate_dimensions(self.db, data.business_unit_id, data.location_id, data.department_id, True)
         supplier = self.db.get(Supplier, data.supplier_id)
         if not supplier:
@@ -374,7 +377,7 @@ class SupplierInvoiceService:
         return summary
 
     def create(self, data, user):
-        subtotal, total = self.validate(data)
+        subtotal, total = self.validate(data, user=user)
         invoice = SupplierInvoice(
             internal_invoice_number=next_document_number(self.db, "INV"),
             supplier_invoice_number=data.supplier_invoice_number.strip(),
@@ -422,7 +425,7 @@ class SupplierInvoiceService:
     def update(self, invoice, data, user):
         if invoice.status != "DRAFT":
             raise HTTPException(409, "Only draft invoices can be edited")
-        subtotal, total = self.validate(data, invoice.id)
+        subtotal, total = self.validate(data, invoice.id, user=user)
         for key, value in data.model_dump(exclude={"lines", "total_amount"}).items():
             setattr(invoice, key, value)
         invoice.subtotal = subtotal
