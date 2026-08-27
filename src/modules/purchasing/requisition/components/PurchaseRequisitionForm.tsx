@@ -31,7 +31,7 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
 
   const businessUnits = useQuery({ queryKey: ["business-units", "pr-form"], queryFn: () => filterBusinessUnits({ is_active: true }) });
   const departments = useQuery({ queryKey: ["departments", "pr-form", businessUnitId], queryFn: () => listDepartments({ business_unit_id: businessUnitId, is_active: true }), enabled: Boolean(businessUnitId) });
-  const locations = useQuery({ queryKey: ["locations", "pr-form", businessUnitId], queryFn: () => listLocations({ business_unit_id: businessUnitId, is_active: true }), enabled: Boolean(businessUnitId) });
+  const locations = useQuery({ queryKey: ["locations", "pr-form", businessUnitId], queryFn: () => listLocations({ business_unit_id: businessUnitId, is_active: true, assigned_only: true }), enabled: Boolean(businessUnitId) });
   const activeDepartments = useMemo(() => departments.data ?? [], [departments.data]);
   const activeLocations = useMemo(() => locations.data ?? [], [locations.data]);
 
