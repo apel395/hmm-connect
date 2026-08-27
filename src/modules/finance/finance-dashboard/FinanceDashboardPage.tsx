@@ -20,7 +20,7 @@ export default function FinanceDashboardPage() {
   const [filters, setFilters] = useState(initial);
   const query = useQuery({ queryKey: ["finance-dashboard", filters], queryFn: () => getFinanceDashboard(filters) });
   const businessUnits = useQuery({ queryKey: ["business-units"], queryFn: listBusinessUnits });
-  const locations = useQuery({ queryKey: ["organization-locations", draft.business_unit_id], queryFn: () => listLocations(draft.business_unit_id ? Number(draft.business_unit_id) : undefined) });
+  const locations = useQuery({ queryKey: ["organization-locations", draft.business_unit_id, "assigned"], queryFn: () => listLocations({ business_unit_id: draft.business_unit_id ? Number(draft.business_unit_id) : undefined, is_active: true, assigned_only: true }) });
   const departments = useQuery({ queryKey: ["organization-departments", draft.business_unit_id], queryFn: () => listDepartments(draft.business_unit_id ? Number(draft.business_unit_id) : undefined) });
   const data = query.data;
   const set = (key: keyof FinanceDashboardFilters, value: string) => setDraft((current) => ({ ...current, [key]: value }));
