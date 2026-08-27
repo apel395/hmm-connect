@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role, is_superuser
+from app.dependencies.authorization import is_superuser, require_permission
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
@@ -33,9 +33,8 @@ ZERO = Decimal("0")
 STANDARD_UNPOSTABLE_SOURCES = {"MANUAL", "SUPPLIER_INVOICE"}
 
 
-def access(user):
-    if not has_any_role(user, "FINANCE"):
-        raise HTTPException(403, "Finance access required")
+journal_view_user = require_permission("journal.view")
+journal_manage_user = require_permission("journal.manage")
 
 
 def get(db, id, user):
@@ -120,7 +119,6 @@ def serialize(x, user=None):
 
 
 def require_admin(user) -> None:
-    access(user)
     if not is_superuser(user):
         raise HTTPException(403, "Administrator access required for bulk or recreate journal operations")
 
@@ -184,9 +182,8 @@ def listing(
     reference_type: str | None = None,
     account_id: int | None = None,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(journal_view_user),
 ):
-    access(user)
     q = apply_location_scope(db.query(JournalEntry), JournalEntry, user)
     if search:
         q = q.filter(or_(
@@ -218,8 +215,7 @@ def listing(
 
 
 @router.post("", status_code=201)
-def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
     debit, credit = validate(db, data.lines)
     if debit != credit:
         raise HTTPException(422, "Journal debit and credit must be balanced")
@@ -347,13 +343,12 @@ def recreate_current_period(
 
 
 @router.get("/{journal_id}")
-def detail(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def detail(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_view_user)):
     return serialize(get(db, journal_id, user), user)
 
 
 @router.patch("/{journal_id}")
-def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
     x = get(db, journal_id, user)
     if x.status != "DRAFT":
         raise HTTPException(409, "Unpost the journal before editing it")
@@ -375,8 +370,7 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
 
 
 @router.post("/{journal_id}/post")
-def post(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def post(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
     x = db.query(JournalEntry).filter(JournalEntry.id == journal_id).with_for_update().first()
     if not x:
         raise HTTPException(404, "Journal entry not found")
@@ -409,8 +403,7 @@ def recreate(
 
 
 @router.post("/{journal_id}/unpost")
-def unpost(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def unpost(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
     x = db.query(JournalEntry).filter(JournalEntry.id == journal_id).with_for_update().first()
     if not x:
         raise HTTPException(404, "Journal entry not found")
@@ -422,8 +415,7 @@ def unpost(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curr
 
 
 @router.post("/{journal_id}/void")
-def void(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user)
+def void(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
     x = get(db, journal_id, user)
     if x.status != "DRAFT":
         raise HTTPException(409, "Only draft journals can be voided without reversal")
@@ -436,5 +428,5 @@ def void(journal_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 
 
 @router.get("/{journal_id}/print")
-def printable(journal_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def printable(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_view_user)):
     return {**serialize(get(db, journal_id, user), user), "document_type": "Journal Entry", **print_metadata(user)}
