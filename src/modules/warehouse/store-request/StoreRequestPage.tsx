@@ -16,8 +16,8 @@ const PAGE_SIZE = 25;
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
 export default function StoreRequestPage() {
-  const { isSuperuser, canAccess } = useAuthorization();
-  const canCreate = isSuperuser() || canAccess(["REQUESTER", "DEPARTMENT", "PURCHASING"]);
+  const { isSuperuser, hasPermission } = useAuthorization();
+  const canCreate = isSuperuser() || hasPermission("store_request.manage");
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
