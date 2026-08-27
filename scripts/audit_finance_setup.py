@@ -119,6 +119,58 @@ def audit_rules(db) -> int:
     return invalid
 
 
+def audit_location_candidates(db) -> None:
+    print("\n=== LOCATION POSTING CANDIDATES ===")
+    locations = db.execute(
+        __import__("sqlalchemy").text(
+            """
+            SELECT l.id, l.code, l.name, bu.name AS business_unit_name
+            FROM locations l
+            LEFT JOIN business_units bu ON bu.id = l.business_unit_id
+            WHERE l.is_active = true
+            ORDER BY bu.name NULLS LAST, l.name
+            """
+        )
+    ).mappings().all()
+    accounts = db.query(ChartOfAccount).filter(
+        ChartOfAccount.is_active.is_(True),
+        ChartOfAccount.is_posting.is_(True),
+    ).all()
+
+    for location in locations:
+        if str(location["business_unit_name"] or "").lower() != "project catering":
+            continue
+        tokens = {
+            token.lower()
+            for token in str(location["name"] or "").replace("-", " ").split()
+            if len(token) >= 3
+        } | {
+            token.lower()
+            for token in str(location["code"] or "").replace("-", " ").split()
+            if len(token) >= 3
+        }
+        ap = [
+            account for account in accounts
+            if account.account_type == "LIABILITY"
+            and account.normal_balance == "CREDIT"
+            and (
+                "hutang usaha" in str(account.account_name or "").lower()
+                or "payable" in str(account.account_name or "").lower()
+            )
+            and any(token in str(account.account_name or "").lower() for token in tokens)
+        ]
+        inventory = [
+            account for account in accounts
+            if account.account_type == "ASSET"
+            and account.normal_balance == "DEBIT"
+            and str(account.account_subtype or "").upper() not in FUNDING_SUBTYPES
+            and any(token in str(account.account_name or "").lower() for token in tokens)
+        ]
+        print(f"{location['name']} ({location['code']}):")
+        print("  AP candidates: " + (", ".join(account_label(x) for x in ap) if ap else "NONE"))
+        print("  Inventory candidates: " + (", ".join(account_label(x) for x in inventory[:10]) if inventory else "NONE"))
+
+
 def apply_safe(db) -> None:
     vat = db.query(ChartOfAccount).filter(ChartOfAccount.account_number == VAT_CODE).first()
     if not vat or not vat.is_active or not vat.is_posting or vat.account_type != "ASSET" or vat.normal_balance != "DEBIT":
@@ -188,6 +240,7 @@ def main() -> int:
     try:
         bank_issues = audit_bank_accounts(db)
         rule_issues = audit_rules(db)
+        audit_location_candidates(db)
         if args.apply_safe:
             apply_safe(db)
             print("\n=== AFTER REPAIR ===")
