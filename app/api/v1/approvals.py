@@ -77,6 +77,10 @@ def _serialize_request(request: ApprovalRequest, user=None) -> dict:
         "status": request.status,
         "current_step_order": request.current_step_order,
         "current_stage": [step.name for step in pending],
+        "current_approver_role": (
+            " + ".join(dict.fromkeys(step.approver_role_name for step in pending if step.approver_role_name))
+            or None
+        ),
         "created_by_id": request.created_by_id,
         "created_by_name": request.created_by.full_name if request.created_by else None,
         "created_at": request.created_at,
@@ -111,6 +115,10 @@ def _serialize_request_summary(request: ApprovalRequest, user=None) -> dict:
         "status": request.status,
         "current_step_order": request.current_step_order,
         "current_stage": [step.name for step in pending],
+        "current_approver_role": (
+            " + ".join(dict.fromkeys(step.approver_role_name for step in pending if step.approver_role_name))
+            or None
+        ),
         "created_by_id": request.created_by_id,
         "created_by_name": request.created_by.full_name if request.created_by else None,
         "created_at": request.created_at,
