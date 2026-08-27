@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import require_permission
 from app.models.user import User
 from app.schemas.purchasing_document import (
     PurchasingDocumentCreate,
@@ -20,7 +20,7 @@ router = APIRouter(
     prefix="/purchasing-documents",
     tags=["Purchasing Documents"],
 )
-authorized_user = require_roles("ADMIN", "PURCHASING", "FINANCE")
+authorized_user = require_permission("po.view")
 
 
 def filter_values(
