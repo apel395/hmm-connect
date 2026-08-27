@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import require_permission
 from app.models.fiscal_period import FiscalPeriod
 from app.schemas.fiscal_period import (
     FiscalPeriodCreate,
@@ -17,7 +17,7 @@ from app.schemas.fiscal_period import (
 from app.services.audit import record_audit
 
 router = APIRouter(prefix="/fiscal-periods", tags=["Fiscal Period"])
-manage_access = require_roles("ADMIN", "FINANCE")
+manage_access = require_permission("finance.manage")
 
 
 @router.get("", response_model=list[FiscalPeriodResponse])
