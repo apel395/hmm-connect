@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -37,8 +37,15 @@ def get(db, invoice_id, user):
 
 
 def _hydrate_location_name(db: Session, invoice: SupplierInvoice, data: dict) -> dict:
-    if not data.get("location_name") and invoice.location_id:
-        location = db.get(Location, invoice.location_id)
+    location_id = invoice.location_id
+    if not location_id and invoice.goods_receipt:
+        location_id = invoice.goods_receipt.location_id
+        if not location_id and invoice.goods_receipt.warehouse:
+            location_id = invoice.goods_receipt.warehouse.location_id
+    if not location_id and invoice.purchase_order:
+        location_id = invoice.purchase_order.location_id
+    if not data.get("location_name") and location_id:
+        location = db.get(Location, location_id)
         if location:
             data["location_id"] = location.id
             data["location_name"] = location.name
@@ -127,12 +134,16 @@ def detail(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_
 @router.post("", status_code=201)
 def create(data: SupplierInvoiceInput, db: Session = Depends(get_db), user=Depends(invoice_create_user)):
     data.location_id = resolve_location_id(user, data.location_id)
+    if data.due_date is None:
+        data.due_date = data.invoice_date + timedelta(days=30)
     return result(db, SupplierInvoiceService(db).create(data, user), user)
 
 
 @router.patch("/{invoice_id}")
 def update(invoice_id: int, data: SupplierInvoiceInput, db: Session = Depends(get_db), user=Depends(invoice_edit_user)):
     data.location_id = resolve_location_id(user, data.location_id)
+    if data.due_date is None:
+        data.due_date = data.invoice_date + timedelta(days=30)
     return result(db, SupplierInvoiceService(db).update(get(db, invoice_id, user), data, user), user)
 
 

@@ -104,3 +104,21 @@ def test_supplier_invoice_validation_enforces_inherited_source_location():
 
     source = inspect.getsource(SupplierInvoiceService.validate)
     assert "enforce_location_access(user, data.location_id)" in source
+
+
+def test_supplier_invoice_source_receipts_apply_location_scope():
+    import inspect
+
+    from app.api.v1.supplier_invoice_sources import eligible_receipts
+
+    assert "apply_location_scope" in inspect.getsource(eligible_receipts)
+
+
+def test_bank_account_listing_includes_global_accounts_for_scoped_finance():
+    import inspect
+
+    from app.api.v1.bank_accounts import listing
+
+    source = inspect.getsource(listing)
+    assert "BankAccount.location_id.is_(None)" in source
+    assert "assigned_location_id" in source
