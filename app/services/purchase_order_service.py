@@ -283,9 +283,16 @@ class PurchaseOrderService:
                 if remaining > 0:
                     remaining_by_item[requisition_item.id] = (requisition_item, remaining)
 
+        seen_pr_item_ids = set()
         for incoming in data.items:
             if incoming.purchase_requisition_item_id is None:
                 continue
+            if incoming.purchase_requisition_item_id in seen_pr_item_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Purchase requisition item {incoming.purchase_requisition_item_id} may appear only once in a PO",
+                )
+            seen_pr_item_ids.add(incoming.purchase_requisition_item_id)
             remaining_entry = remaining_by_item.get(incoming.purchase_requisition_item_id)
             if remaining_entry is None:
                 raise HTTPException(
@@ -412,7 +419,12 @@ class PurchaseOrderService:
 
     @staticmethod
     def submit(db: Session, *, purchase_order_id: int, user):
-        purchase_order = db.get(PurchaseOrder, purchase_order_id)
+        purchase_order = (
+            db.query(PurchaseOrder)
+            .filter(PurchaseOrder.id == purchase_order_id)
+            .with_for_update()
+            .first()
+        )
         if not purchase_order:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         if purchase_order.status != "DRAFT":
@@ -438,7 +450,12 @@ class PurchaseOrderService:
 
     @staticmethod
     def approve(db: Session, *, purchase_order_id: int, data: ApprovalDecisionRequest | None, user):
-        purchase_order = db.get(PurchaseOrder, purchase_order_id)
+        purchase_order = (
+            db.query(PurchaseOrder)
+            .filter(PurchaseOrder.id == purchase_order_id)
+            .with_for_update()
+            .first()
+        )
         if not purchase_order:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         if purchase_order.status != "PENDING_APPROVAL":
@@ -473,7 +490,12 @@ class PurchaseOrderService:
 
     @staticmethod
     def reject(db: Session, *, purchase_order_id: int, data: ApprovalDecisionRequest | None, user):
-        purchase_order = db.get(PurchaseOrder, purchase_order_id)
+        purchase_order = (
+            db.query(PurchaseOrder)
+            .filter(PurchaseOrder.id == purchase_order_id)
+            .with_for_update()
+            .first()
+        )
         if not purchase_order:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         if purchase_order.status != "PENDING_APPROVAL":
@@ -502,7 +524,12 @@ class PurchaseOrderService:
 
     @staticmethod
     def cancel(db: Session, *, purchase_order_id: int, user):
-        purchase_order = db.get(PurchaseOrder, purchase_order_id)
+        purchase_order = (
+            db.query(PurchaseOrder)
+            .filter(PurchaseOrder.id == purchase_order_id)
+            .with_for_update()
+            .first()
+        )
         if not purchase_order:
             raise HTTPException(status_code=404, detail="Purchase order not found")
         if purchase_order.status in {"RECEIVED", "CLOSED", "CANCELLED"}:
