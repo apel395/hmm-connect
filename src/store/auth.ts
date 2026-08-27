@@ -2,6 +2,7 @@ import { create } from "zustand";
 import api from "@/api/interceptor";
 import { hasPermission as userHasPermission } from "@/lib/access";
 import useWorkspaceTabs from "@/store/workspaceTabs";
+import queryClient from "@/lib/query";
 
 export interface LoginRequest {
   username: string;
@@ -64,6 +65,7 @@ const adoptWorkspaceOwner = (user: User) => {
   const previousIdentity = localStorage.getItem(WORKSPACE_OWNER_KEY);
   if (previousIdentity && previousIdentity !== nextIdentity) {
     useWorkspaceTabs.getState().resetTabs();
+    queryClient.clear();
   }
   localStorage.setItem(WORKSPACE_OWNER_KEY, nextIdentity);
 };
@@ -146,6 +148,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: () => {
     const finish = () => {
+      queryClient.clear();
+      useWorkspaceTabs.getState().resetTabs();
       clearLocalSession();
       set({ accessToken: null, refreshToken: null, user: null, authenticated: false, loading: false });
       window.location.replace("/login");

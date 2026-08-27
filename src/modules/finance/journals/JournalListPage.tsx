@@ -54,9 +54,20 @@ export default function JournalListPage() {
 
   const refreshFinance = () => {
     client.invalidateQueries({ queryKey: ["journal-entries"] });
+    client.invalidateQueries({ queryKey: ["journal-entry"] });
     client.invalidateQueries({ queryKey: ["general-ledger"] });
     client.invalidateQueries({ queryKey: ["trial-balance"] });
     client.invalidateQueries({ queryKey: ["accounts-payable-aging"] });
+    client.invalidateQueries({ queryKey: ["ap-reporting"] });
+    client.invalidateQueries({ queryKey: ["supplier-invoices"] });
+    client.invalidateQueries({ queryKey: ["supplier-invoice"] });
+    client.invalidateQueries({ queryKey: ["eligible-payment-invoices"] });
+    client.invalidateQueries({ queryKey: ["eligible-payment-suppliers"] });
+    client.invalidateQueries({ queryKey: ["payments"] });
+    client.invalidateQueries({ queryKey: ["payment"] });
+    client.invalidateQueries({ queryKey: ["finance-dashboard"] });
+    client.invalidateQueries({ queryKey: ["balance-sheet"] });
+    client.invalidateQueries({ queryKey: ["profit-loss"] });
   };
 
   const lifecycle = useMutation({

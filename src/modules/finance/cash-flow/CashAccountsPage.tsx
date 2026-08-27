@@ -58,7 +58,7 @@ export default function CashAccountsPage() {
     <PageHeader title="Cash & Bank Accounts" description="Register real bank accounts, link each account to its posting COA, and review posted cash activity." />
 
     <Card className="space-y-4">
-      <div><h2 className="text-lg font-semibold">Bank Account Master</h2><p className="text-sm text-slate-500">Each physical bank account must link to a unique cash/bank COA. Fields marked * are required.</p></div>
+      <div><h2 className="text-lg font-semibold">Bank Account Master</h2><p className="text-sm text-slate-500">Each physical bank account must link to a unique cash/bank COA. Leave Location as Global / all locations for a corporate funding account usable by every location in the Business Unit.</p></div>
       <div className="grid gap-3 md:grid-cols-3">
         <label className="text-sm">Bank Name *<input className={input} value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} /></label>
         <label className="text-sm">Account Name *<input className={input} value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} /></label>
@@ -66,7 +66,7 @@ export default function CashAccountsPage() {
         <label className="text-sm">Account Holder<input className={input} value={form.account_holder ?? ""} onChange={(e) => setForm({ ...form, account_holder: e.target.value })} /></label>
         <label className="text-sm">Currency<input className={input} maxLength={3} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></label>
         <label className="text-sm">Business Unit *<select required className={input} value={form.business_unit_id || ""} onChange={(e) => setForm({ ...form, business_unit_id: Number(e.target.value), location_id: null })}><option value="">Select Business Unit</option>{businessUnits.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
-        <label className="text-sm">Location<select disabled={!form.business_unit_id} className={input} value={form.location_id ?? ""} onChange={(e) => setForm({ ...form, location_id: Number(e.target.value) || null })}><option value="">Optional</option>{locations.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
+        <label className="text-sm">Location<select disabled={!form.business_unit_id} className={input} value={form.location_id ?? ""} onChange={(e) => setForm({ ...form, location_id: Number(e.target.value) || null })}><option value="">Global / all locations</option>{locations.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
         <label className="text-sm md:col-span-2">Linked COA *<select required className={input} value={form.coa_account_id || ""} onChange={(e) => setForm({ ...form, coa_account_id: Number(e.target.value) })}><option value="">Select bank/cash posting account</option>{coa.data?.map((row: any) => <option key={row.id} value={row.id}>{row.account_code} — {row.account_name}</option>)}</select></label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />Active</label>
       </div>
