@@ -1,4 +1,5 @@
 import argparse
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -125,10 +126,49 @@ def run_job(job_id: str) -> None:
         db.close()
 
 
+def next_pending_job_id() -> str | None:
+    """Return the oldest pending job.
+
+    HMM currently runs one export-worker service on the EC2 host, so one consumer
+    is sufficient and keeps the queue semantics intentionally simple.
+    """
+    with SessionLocal() as db:
+        job = (
+            db.query(ExportJob)
+            .filter(ExportJob.status == "PENDING")
+            .order_by(ExportJob.created_at.asc(), ExportJob.id.asc())
+            .first()
+        )
+        return job.id if job else None
+
+
+def poll(interval: float) -> None:
+    print(f"HMM export worker polling every {interval:g}s", flush=True)
+    while True:
+        job_id = next_pending_job_id()
+        if not job_id:
+            time.sleep(interval)
+            continue
+        try:
+            print(f"Processing export job {job_id}", flush=True)
+            run_job(job_id)
+            print(f"Export job {job_id} ready", flush=True)
+        except Exception as exc:
+            print(f"Export job {job_id} failed: {exc}", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="HMM Connect XLS export worker")
-    parser.add_argument("--job-id", required=True)
+    parser.add_argument("--job-id")
+    parser.add_argument("--poll", action="store_true")
+    parser.add_argument("--interval", type=float, default=2.0)
     args = parser.parse_args()
+
+    if args.poll:
+        poll(max(0.5, args.interval))
+        return
+    if not args.job_id:
+        parser.error("either --job-id or --poll is required")
     run_job(args.job_id)
 
 
