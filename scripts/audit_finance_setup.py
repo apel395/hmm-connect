@@ -149,6 +149,24 @@ def audit_location_candidates(db) -> None:
             for token in str(location["code"] or "").replace("-", " ").split()
             if len(token) >= 3
         }
+        inventory = [
+            account for account in accounts
+            if account.account_type == "ASSET"
+            and account.normal_balance == "DEBIT"
+            and str(account.account_subtype or "").upper() not in FUNDING_SUBTYPES
+            and any(token in str(account.account_name or "").lower() for token in tokens)
+        ]
+        alias_tokens = set(tokens)
+        for account in inventory:
+            words = {
+                word.lower().strip(".,()/")
+                for word in str(account.account_name or "").replace("-", " ").split()
+                if len(word.strip(".,()/")) >= 3
+            }
+            alias_tokens.update(
+                word for word in words
+                if word not in {"inv", "makanan", "minuman", "material", "cash", "sales", "clearance"}
+            )
         ap = [
             account for account in accounts
             if account.account_type == "LIABILITY"
@@ -157,18 +175,22 @@ def audit_location_candidates(db) -> None:
                 "hutang usaha" in str(account.account_name or "").lower()
                 or "payable" in str(account.account_name or "").lower()
             )
-            and any(token in str(account.account_name or "").lower() for token in tokens)
-        ]
-        inventory = [
-            account for account in accounts
-            if account.account_type == "ASSET"
-            and account.normal_balance == "DEBIT"
-            and str(account.account_subtype or "").upper() not in FUNDING_SUBTYPES
-            and any(token in str(account.account_name or "").lower() for token in tokens)
+            and any(token in str(account.account_name or "").lower() for token in alias_tokens)
         ]
         print(f"{location['name']} ({location['code']}):")
         print("  AP candidates: " + (", ".join(account_label(x) for x in ap) if ap else "NONE"))
         print("  Inventory candidates: " + (", ".join(account_label(x) for x in inventory[:10]) if inventory else "NONE"))
+        if not ap:
+            all_ap = [
+                account for account in accounts
+                if account.account_type == "LIABILITY"
+                and account.normal_balance == "CREDIT"
+                and (
+                    "hutang usaha" in str(account.account_name or "").lower()
+                    or "payable" in str(account.account_name or "").lower()
+                )
+            ]
+            print("  Nearby AP review list: " + ", ".join(account_label(x) for x in all_ap[:40]))
 
 
 def apply_safe(db) -> None:
