@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { productApi } from "@/modules/master/products/api/productApi";
 import { FORM_UI } from "@/config/formUi";
+import useAuthorization from "@/hooks/useAuthorization";
 
 export interface ProductComboboxOption {
   id: number;
@@ -37,6 +38,14 @@ type DropdownPosition = {
   left: number;
   top: number;
   width: number;
+};
+
+type TaxEditorState = {
+  product: ProductComboboxOption;
+  category: "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL";
+  rate: number;
+  reason: string;
+  reference: string;
 };
 
 function labelFor(product: ProductComboboxOption): string {
@@ -87,14 +96,24 @@ export default function ProductCombobox({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const requestIdRef = useRef(0);
+  const { hasPermission } = useAuthorization();
+  const canManageTax = hasPermission("products.manage");
   const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
+  const [taxOverrides, setTaxOverrides] = useState<Record<number, ProductComboboxOption>>({});
+  const [taxEditor, setTaxEditor] = useState<TaxEditorState | null>(null);
+  const [taxSaving, setTaxSaving] = useState(false);
+  const [taxError, setTaxError] = useState("");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const options = remote ? remoteProducts : products;
-  const selected = [...products, ...remoteProducts].find((product) => product.id === value);
+  const withTaxOverride = useCallback(
+    (product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }),
+    [taxOverrides],
+  );
+  const options = (remote ? remoteProducts : products).map(withTaxOverride);
+  const selected = [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value);
   const [query, setQuery] = useState(selected ? labelFor(selected) : "");
 
   const updatePosition = useCallback(() => {
@@ -172,14 +191,73 @@ export default function ProductCombobox({
     optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
+  const openTaxEditor = useCallback((product: ProductComboboxOption) => {
+    const currentCategory =
+      product.tax_category && product.tax_category !== "REVIEW_REQUIRED"
+        ? product.tax_category
+        : "STANDARD";
+    setTaxError("");
+    setTaxEditor({
+      product,
+      category: currentCategory as TaxEditorState["category"],
+      rate: Number(product.tax_rate || 0),
+      reason: "",
+      reference: "",
+    });
+  }, []);
+
   const selectProduct = useCallback((product: ProductComboboxOption) => {
-    if (requireTaxReady && taxProfileIncomplete(product)) return;
+    if (requireTaxReady && taxProfileIncomplete(product)) {
+      if (canManageTax) openTaxEditor(product);
+      return;
+    }
     onChange(product.id);
     onSelect?.(product);
     setQuery(labelFor(product));
     setOpen(false);
     setActiveIndex(-1);
-  }, [onChange, onSelect, requireTaxReady]);
+  }, [onChange, onSelect, requireTaxReady, canManageTax, openTaxEditor]);
+
+  const saveTaxProfile = useCallback(async () => {
+    if (!taxEditor) return;
+    const taxable = taxEditor.category === "STANDARD" || taxEditor.category === "SPECIAL";
+    if (taxable && (!Number.isFinite(taxEditor.rate) || taxEditor.rate <= 0)) {
+      setTaxError("PPN rate must be greater than zero.");
+      return;
+    }
+    setTaxSaving(true);
+    setTaxError("");
+    try {
+      const response = await productApi.updateTaxProfile(taxEditor.product.id, {
+        tax_category: taxEditor.category,
+        is_taxable: taxable,
+        tax_rate: taxable ? taxEditor.rate : 0,
+        tax_reason: taxEditor.reason.trim() || null,
+        tax_reference: taxEditor.reference.trim() || null,
+      });
+      const updated = {
+        ...taxEditor.product,
+        ...response.data,
+        tax_category: response.data.tax_category,
+        is_taxable: response.data.is_taxable,
+        tax_rate: response.data.tax_rate,
+      } as ProductComboboxOption;
+      setTaxOverrides((current) => ({ ...current, [updated.id]: updated }));
+      setRemoteProducts((current) =>
+        current.map((product) => (product.id === updated.id ? { ...product, ...updated } : product)),
+      );
+      onChange(updated.id);
+      onSelect?.(updated);
+      setQuery(labelFor(updated));
+      setTaxEditor(null);
+      setOpen(false);
+      setActiveIndex(-1);
+    } catch {
+      setTaxError("Tax profile could not be saved. Check your permission and try again.");
+    } finally {
+      setTaxSaving(false);
+    }
+  }, [taxEditor, onChange, onSelect]);
 
   const moveActive = (direction: 1 | -1) => {
     if (visibleOptions.length === 0) return;
@@ -214,10 +292,10 @@ export default function ProductCombobox({
                   ref={(element) => { optionRefs.current[index] = element; }}
                   type="button"
                   role="option"
-                  disabled={taxIncomplete}
-                  aria-disabled={taxIncomplete}
+                  disabled={taxIncomplete && !canManageTax}
+                  aria-disabled={taxIncomplete && !canManageTax}
                   aria-selected={index === activeIndex}
-                  className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "cursor-not-allowed bg-amber-50 text-slate-500" : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
+                  className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? (canManageTax ? "cursor-pointer bg-amber-50 text-slate-700 hover:bg-amber-100" : "cursor-not-allowed bg-amber-50 text-slate-500") : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
                   onMouseEnter={() => setActiveIndex(index)}
                   onPointerDown={(event) => {
                     event.preventDefault();
@@ -230,13 +308,17 @@ export default function ProductCombobox({
                     selectProduct(product);
                   }}
                 >
-                  <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Tax profile incomplete</span>}</div>
+                  <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{canManageTax ? "Set PPN" : "Tax profile incomplete"}</span>}</div>
                   {(product.uom || product.usage_uom) && (
                     <div className="mt-0.5 text-xs text-slate-500">
                       UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}
                     </div>
                   )}
-                  {taxIncomplete && <div className="mt-1 text-xs text-amber-800">Complete the tax profile in Item Master before using this product.</div>}
+                  {taxIncomplete && (
+                    <div className="mt-1 text-xs text-amber-800">
+                      {canManageTax ? "Set PPN here to use this item." : "PPN profile must be completed by an authorized Item Master user."}
+                    </div>
+                  )}
                   {lastPrice && (
                     <div className="mt-0.5 text-xs font-medium text-emerald-700">
                       Last purchase: Rp {lastPrice}{product.last_purchase_po_number ? ` · ${product.last_purchase_po_number}` : ""}
@@ -246,6 +328,100 @@ export default function ProductCombobox({
               );
             })
           )}
+        </div>,
+        document.body,
+      )
+    : null;
+
+  const taxEditorModal = taxEditor && typeof document !== "undefined"
+    ? createPortal(
+        <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-4 shadow-2xl">
+            <div className="mb-3">
+              <div className="text-sm font-semibold text-slate-900">Set PPN · {labelFor(taxEditor.product)}</div>
+              <div className="mt-1 text-xs text-slate-500">Update the item tax profile without leaving this transaction.</div>
+            </div>
+            <div className="space-y-3">
+              <label className="block text-xs font-medium text-slate-700">
+                Tax Treatment
+                <select
+                  className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
+                  value={taxEditor.category}
+                  onChange={(event) =>
+                    setTaxEditor((current) =>
+                      current ? { ...current, category: event.target.value as TaxEditorState["category"] } : current,
+                    )
+                  }
+                >
+                  <option value="STANDARD">Standard PPN</option>
+                  <option value="SPECIAL">Special PPN</option>
+                  <option value="NON_VAT">Non VAT</option>
+                  <option value="EXEMPT">Exempt</option>
+                </select>
+              </label>
+              {(taxEditor.category === "STANDARD" || taxEditor.category === "SPECIAL") && (
+                <label className="block text-xs font-medium text-slate-700">
+                  PPN Rate (%)
+                  <input
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
+                    value={taxEditor.rate}
+                    onChange={(event) =>
+                      setTaxEditor((current) =>
+                        current ? { ...current, rate: Number(event.target.value) } : current,
+                      )
+                    }
+                  />
+                </label>
+              )}
+              <label className="block text-xs font-medium text-slate-700">
+                Tax Reason / Notes
+                <input
+                  className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
+                  value={taxEditor.reason}
+                  onChange={(event) =>
+                    setTaxEditor((current) =>
+                      current ? { ...current, reason: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+              <label className="block text-xs font-medium text-slate-700">
+                Tax Reference
+                <input
+                  className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
+                  value={taxEditor.reference}
+                  onChange={(event) =>
+                    setTaxEditor((current) =>
+                      current ? { ...current, reference: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+              {taxError && <div className="text-xs font-medium text-red-600">{taxError}</div>}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="h-9 rounded-md border border-slate-300 px-4 text-sm"
+                disabled={taxSaving}
+                onClick={() => setTaxEditor(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="h-9 rounded-md bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-60"
+                disabled={taxSaving}
+                onClick={() => void saveTaxProfile()}
+              >
+                {taxSaving ? "Saving..." : "Save PPN"}
+              </button>
+            </div>
+          </div>
         </div>,
         document.body,
       )
@@ -313,6 +489,7 @@ export default function ProductCombobox({
         }}
       />
       {dropdown}
+      {taxEditorModal}
     </div>
   );
 }
