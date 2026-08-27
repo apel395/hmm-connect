@@ -36,7 +36,7 @@ export interface OrganizationPayload {
   location_type?: string; address?: string | null; city?: string | null; province?: string | null;
   postal_code?: string | null; is_active?: boolean;
 }
-export interface OrganizationFilters { business_unit_id?: number; location_type?: string; is_active?: boolean; search?: string }
+export interface OrganizationFilters { business_unit_id?: number; location_type?: string; is_active?: boolean; search?: string; assigned_only?: boolean }
 
 export const listBusinessUnits = async () =>
   (await api.get<BusinessUnit[]>("/business-units")).data;
