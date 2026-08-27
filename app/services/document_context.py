@@ -6,6 +6,7 @@ from app.models.approval_request import ApprovalRequest
 from app.models.document_attachment import DocumentAttachment
 from app.models.audit_log import AuditLog
 from app.dependencies.authorization import has_permission, is_superuser, role_names
+from app.services.approval import can_user_decide_step
 from app.services.print_signatures import add_private_print_signatures
 
 
@@ -74,17 +75,26 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
     ).order_by(ApprovalRequest.id.desc()).first()
     current = next((step for step in request.steps if step.step_order == request.current_step_order), None) if request else None
     admin = is_superuser(user)
-    roles = role_names(user)
-    effective_department = user.default_department or user.department
-    effective_location = user.default_location or user.location
-    can_decide = bool(current and (
-        admin or (
-            current.approver_role_name.strip().upper() in roles
-            and (not current.department_name or (effective_department and effective_department.name == current.department_name))
-            and (not current.location_name or (effective_location and effective_location.name == current.location_name))
-        )
-    ))
+    can_decide = bool(current and can_user_decide_step(current, user))
     pending = status == "PENDING_APPROVAL"
+    editable_approval_steps = (
+        [
+            step
+            for step in request.steps
+            if request.current_step_order is not None
+            and step.step_order >= request.current_step_order
+            and step.status in {"PENDING", "WAITING"}
+            and can_user_decide_step(step, user)
+        ]
+        if request and pending
+        else []
+    )
+    can_edit_approval = bool(editable_approval_steps)
+    actor_approval_level = (
+        min(step.step_order for step in editable_approval_steps)
+        if editable_approval_steps
+        else None
+    )
     can_receive = (
         entity_type == "PURCHASE_ORDER"
         and status in {"APPROVED", "PARTIALLY_RECEIVED"}
@@ -109,7 +119,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         "is_admin": admin,
         "location_name": _entity_location_name(db, entity_type, entity_id),
         "allowed_actions": {
-            "can_edit": (status == "DRAFT" or (pending and can_decide)) and _can(user, entity_type, "edit"),
+            "can_edit": (status == "DRAFT" or (pending and can_edit_approval)) and _can(user, entity_type, "edit"),
             "can_submit": status == "DRAFT" and _can(user, entity_type, "submit"),
             "can_approve": pending and can_decide and _can(user, entity_type, "approve"),
             "can_reject": pending and can_decide and _can(user, entity_type, "approve"),
@@ -132,6 +142,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
             "comment": step.decision_comment,
         } for step in request.steps] if request else [],
         "current_approval_level": request.current_step_order if request else None,
+        "actor_approval_level": actor_approval_level,
         "attachment_count": db.query(DocumentAttachment).filter(
             DocumentAttachment.entity_type == entity_type,
             DocumentAttachment.entity_id == entity_id,
