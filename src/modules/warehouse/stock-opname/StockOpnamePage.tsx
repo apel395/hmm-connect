@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
@@ -28,6 +28,11 @@ export default function StockOpnamePage() {
     queryKey: ["organization-locations", "active"],
     queryFn: () => listLocations({ is_active: true }),
   });
+  useEffect(() => {
+    if (show && locations.data?.length === 1 && !locationId) {
+      setLocationId(locations.data[0].id);
+    }
+  }, [show, locations.data, locationId]);
   const query = useQuery({
     queryKey: ["stock-opnames", page, search, status],
     queryFn: async () =>
