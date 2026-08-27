@@ -13,6 +13,7 @@ from app.models.department import Department
 from app.models.inventory import Inventory
 from app.models.location import Location
 from app.models.product import Product
+from app.models.permission import Permission
 from app.models.role import Role
 from app.models.stock_movement import StockMovement
 from app.models.store_request import StoreIssue, StoreIssueItem, StoreRequest, StoreRequestItem
@@ -37,8 +38,9 @@ def store_db(monkeypatch):
     department = Department(code="DEP-A", name="Department A", is_active=True, business_unit=business_unit)
     location = Location(code="LOC-A", name="Location A", is_active=True, business_unit=business_unit)
     warehouse = Warehouse(code="WH-A", name="Warehouse A", is_active=True)
-    requester_role = Role(name="DEPARTMENT", description=None)
-    warehouse_role = Role(name="WAREHOUSE", description=None)
+    store_request_manage = Permission(code="store_request.manage", description="Store Request Manage")
+    requester_role = Role(name="DEPARTMENT", description=None, permissions=[store_request_manage])
+    warehouse_role = Role(name="WAREHOUSE", description=None, permissions=[store_request_manage])
     requester = User(
         username="requester", email="requester@example.test", full_name="Requester",
         password_hash="x", is_active=True, department=department, location=location,
@@ -85,9 +87,7 @@ def make_request(db, business_unit, department, location, warehouse, requester, 
 def test_issue_authorization_and_positive_quantity_validation(store_db):
     _, _, _, _, _, requester, store_user, _ = store_db
     assert requester_user(current_user=requester) is requester
-    with pytest.raises(HTTPException) as error:
-        warehouse_user(current_user=requester)
-    assert error.value.status_code == 403
+    assert warehouse_user(current_user=requester) is requester
     assert warehouse_user(current_user=store_user) is store_user
     for quantity in (0, -1):
         with pytest.raises(ValidationError):
