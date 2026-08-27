@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
+from app.models.journal_line import JournalLine
 from app.services.cash_flow_service import CASH_TYPES,CashFlowService,ZERO
 from app.services.location_access import resolve_location_id, require_location_access
 
@@ -55,8 +56,9 @@ def statement(date_from:date|None=None,date_to:date|None=None,account_id:int|Non
 @router.get("/movements/{journal_line_id}/trace")
 def trace(journal_line_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
     access(user)
-    svc=CashFlowService(db)
-    traced=svc.trace(journal_line_id)
-    line=svc.db.get(__import__("app.models.journal_line",fromlist=["JournalLine"]).JournalLine,journal_line_id)
-    require_location_access(line.location_id if line else None,user)
-    return traced
+    line=db.get(JournalLine,journal_line_id)
+    if not line:
+        raise HTTPException(404,"Cash movement not found")
+    require_location_access(line.location_id,user)
+    try:return CashFlowService(db).trace(journal_line_id)
+    except ValueError as exc:raise HTTPException(404,str(exc)) from exc
