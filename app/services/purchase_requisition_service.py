@@ -31,16 +31,42 @@ from app.services.approval import (
 class PurchaseRequisitionService:
 
     @staticmethod
+    def _recalculate_totals(requisition: PurchaseRequisition) -> None:
+        subtotal = Decimal("0")
+        tax_total = Decimal("0")
+        for item in requisition.items:
+            line_total = Decimal(item.quantity or 0) * Decimal(item.estimated_price or 0)
+            rate = Decimal(item.tax_rate or 0) if item.is_taxable else Decimal("0")
+            item.total_price = line_total
+            item.tax_amount = line_total * rate / Decimal("100")
+            subtotal += line_total
+            tax_total += Decimal(item.tax_amount or 0)
+        requisition.subtotal = subtotal
+        requisition.tax_amount = tax_total
+        requisition.total_amount = subtotal + tax_total
+
+    @staticmethod
     def update(db: Session, *, purchase_requisition_id: int,
                data: PurchaseRequisitionCreate, current_user: User) -> PurchaseRequisition:
-        requisition = db.get(PurchaseRequisition, purchase_requisition_id)
+        requisition = (
+            db.query(PurchaseRequisition)
+            .filter(PurchaseRequisition.id == purchase_requisition_id)
+            .with_for_update()
+            .first()
+        )
         if not requisition:
             raise HTTPException(status_code=404, detail="Purchase requisition not found")
         from app.services.document_context import document_context
-        if not document_context(db, "PURCHASE_REQUISITION", requisition.id, requisition.status, current_user)["allowed_actions"]["can_edit"]:
+        context = document_context(db, "PURCHASE_REQUISITION", requisition.id, requisition.status, current_user)
+        if not context["allowed_actions"]["can_edit"]:
             raise HTTPException(status_code=409, detail="Purchase requisition is locked for editing")
         if not data.items:
             raise HTTPException(status_code=400, detail="Purchase requisition must have items")
+        before_total = str(requisition.total_amount or 0)
+        before_items = [
+            {"product_id": item.product_id, "quantity": str(item.quantity), "estimated_price": str(item.estimated_price)}
+            for item in requisition.items
+        ]
         requisition.request_date = data.request_date or requisition.request_date
         requisition.expiry_date = data.expiry_date
         requisition.notes = data.notes
@@ -53,13 +79,21 @@ class PurchaseRequisitionService:
             requisition.items.append(PurchaseRequisitionItem(
                 product_id=incoming.product_id, quantity=incoming.quantity,
                 estimated_price=incoming.estimated_price, total_price=line_total,
+                is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
             ))
             total += line_total
-        requisition.total_amount = total
+        PurchaseRequisitionService._recalculate_totals(requisition)
         AuditService.log(db=db, user=current_user, action="UPDATE", entity_type="PURCHASE_REQUISITION",
             entity_id=requisition.id, summary=f"Updated {requisition.pr_number}", document_type="PR",
             document_number=requisition.pr_number, document_status=requisition.status,
-            details={"edited_during_approval": requisition.status == "PENDING_APPROVAL"})
+            details={
+                "edited_during_approval": requisition.status == "PENDING_APPROVAL",
+                "current_approval_level": context.get("current_approval_level"),
+                "actor_approval_level": context.get("actor_approval_level"),
+                "before_total": before_total,
+                "after_total": str(requisition.total_amount or 0),
+                "before_items": before_items,
+            })
         db.commit(); db.refresh(requisition)
         return requisition
 
@@ -131,12 +165,14 @@ class PurchaseRequisitionService:
                     quantity=item_data.quantity,
                     estimated_price=item_data.estimated_price,
                     total_price=total_price,
+                    is_taxable=bool(item_data.is_taxable),
+                    tax_rate=Decimal(item_data.tax_rate or 0),
                 )
             )
 
             total_amount += total_price
 
-        purchase_requisition.total_amount = total_amount
+        PurchaseRequisitionService._recalculate_totals(purchase_requisition)
 
         db.add(
             purchase_requisition
@@ -184,6 +220,7 @@ class PurchaseRequisitionService:
                 PurchaseRequisition.id
                 == purchase_requisition_id
             )
+            .with_for_update()
             .first()
         )
 
@@ -217,12 +254,8 @@ class PurchaseRequisitionService:
 
         if purchase_requisition.status != "DRAFT":
             raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Only draft purchase "
-                    "requisitions can be "
-                    "submitted"
-                ),
+                status_code=409,
+                detail="Purchase requisition has already been submitted or is no longer draft",
             )
 
         if not purchase_requisition.items:
@@ -284,6 +317,7 @@ class PurchaseRequisitionService:
                 PurchaseRequisition.id
                 == purchase_requisition_id
             )
+            .with_for_update()
             .first()
         )
 
@@ -389,6 +423,7 @@ class PurchaseRequisitionService:
                 PurchaseRequisition.id
                 == purchase_requisition_id
             )
+            .with_for_update()
             .first()
         )
 
@@ -487,115 +522,79 @@ class PurchaseRequisitionService:
         data: PurchaseRequisitionConvertCreate,
         current_user: User,
     ):
+        """Compatibility wrapper around the canonical PurchaseOrderService.
+
+        The legacy endpoint intentionally owns no conversion rules. It builds a
+        PO from the currently remaining PR quantities and delegates validation,
+        locking, tax propagation, status updates, and persistence to the same
+        service used by the normal PO creation flow.
+        """
+        from sqlalchemy import func
+
+        from app.schemas.purchase_order import PurchaseOrderCreate, PurchaseOrderItemCreate
+        from app.services.purchase_order_service import PurchaseOrderService
 
         purchase_requisition = (
             db.query(PurchaseRequisition)
-            .filter(
-                PurchaseRequisition.id
-                == purchase_requisition_id
-            )
+            .filter(PurchaseRequisition.id == purchase_requisition_id)
+            .with_for_update()
             .first()
         )
-
         if not purchase_requisition:
+            raise HTTPException(status_code=404, detail="Purchase requisition not found")
+        if purchase_requisition.status not in {"APPROVED", "PARTIALLY_CONVERTED"}:
             raise HTTPException(
-                status_code=404,
-                detail=(
-                    "Purchase requisition "
-                    "not found"
-                ),
+                status_code=409,
+                detail="Purchase requisition is not eligible for conversion",
             )
 
-        if purchase_requisition.status != "APPROVED":
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Only approved purchase "
-                    "requisitions can be "
-                    "converted to purchase orders"
-                ),
-            )
-
-        supplier = (
-            db.query(Supplier)
-            .filter(
-                Supplier.id
-                == data.supplier_id
-            )
-            .first()
-        )
-
-        if not supplier:
-            raise HTTPException(
-                status_code=404,
-                detail="Supplier not found",
-            )
-
-        if not purchase_requisition.items:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Purchase requisition "
-                    "must have at least one item"
-                ),
-            )
-
-        purchase_order = PurchaseOrder(
-            po_number=(
-                PurchaseRequisitionService.generate_po_number(
-                    db
-                )
-            ),
-            supplier_id=data.supplier_id,
-            status="DRAFT",
-            total_amount=Decimal("0"),
-            notes=(
-                f"Created from "
-                f"{purchase_requisition.pr_number}"
-            ),
-            business_unit_id=purchase_requisition.business_unit_id,
-            location_id=purchase_requisition.location_id,
-            department_id=purchase_requisition.department_id,
-            purchase_requisitions=[
-                purchase_requisition
-            ],
-        )
-
-        total_amount = Decimal("0")
-
+        items = []
         for item in purchase_requisition.items:
-
-            total_price = (
-                item.quantity
-                * item.estimated_price
+            already_ordered = (
+                db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0))
+                .join(PurchaseOrder)
+                .filter(
+                    PurchaseOrderItem.purchase_requisition_item_id == item.id,
+                    PurchaseOrder.status != "CANCELLED",
+                )
+                .scalar()
+                or Decimal("0")
             )
-
-            purchase_order.items.append(
-                PurchaseOrderItem(
-                    purchase_requisition_item_id=item.id,
+            remaining = Decimal(item.quantity) - Decimal(already_ordered)
+            if remaining <= 0:
+                continue
+            items.append(
+                PurchaseOrderItemCreate(
                     product_id=item.product_id,
-                    quantity=item.quantity,
-                    received_quantity=Decimal("0"),
+                    description=item.product.description,
+                    uom=item.product.uom,
+                    quantity=remaining,
                     unit_price=item.estimated_price,
-                    total_price=total_price,
+                    purchase_requisition_item_id=item.id,
+                    is_taxable=bool(item.is_taxable),
+                    tax_rate=Decimal(item.tax_rate or 0),
                 )
             )
 
-            total_amount += total_price
+        if not items:
+            raise HTTPException(
+                status_code=409,
+                detail="Purchase requisition has no remaining quantity to convert",
+            )
 
-        purchase_order.total_amount = (
-            total_amount
+        purchase_order = PurchaseOrderService.create(
+            db=db,
+            data=PurchaseOrderCreate(
+                supplier_id=data.supplier_id,
+                business_unit_id=purchase_requisition.business_unit_id,
+                department_id=purchase_requisition.department_id,
+                location_id=purchase_requisition.location_id,
+                purchase_requisition_ids=[purchase_requisition.id],
+                notes=f"Created from {purchase_requisition.pr_number}",
+                items=items,
+            ),
+            user=current_user,
         )
-
-        purchase_requisition.status = (
-            "CONVERTED"
-        )
-
-        db.add(
-            purchase_order
-        )
-
-        db.flush()
 
         AuditService.log(
             db=db,
@@ -603,73 +602,20 @@ class PurchaseRequisitionService:
             action="CONVERT",
             entity_type="PURCHASE_REQUISITION",
             entity_id=purchase_requisition.id,
-            summary=(
-                f"Converted "
-                f"{purchase_requisition.pr_number} "
-                f"to "
-                f"{purchase_order.po_number}"
-            ),
+            summary=f"Converted remaining quantity of {purchase_requisition.pr_number} to {purchase_order.po_number}",
             document_type="PR",
-            document_number=(
-                purchase_requisition.pr_number
-            ),
-            document_status="CONVERTED",
-            reference_document=(
-                purchase_order.po_number
-            ),
-            details={
-                "purchase_order_id":
-                    purchase_order.id,
-            },
+            document_number=purchase_requisition.pr_number,
+            document_status=purchase_requisition.status,
+            reference_document=purchase_order.po_number,
+            details={"purchase_order_id": purchase_order.id},
         )
-
-        AuditService.log(
-            db=db,
-            user=current_user,
-            action="CREATE",
-            entity_type="PURCHASE_ORDER",
-            entity_id=purchase_order.id,
-            summary=(
-                f"Created Purchase Order "
-                f"{purchase_order.po_number}"
-            ),
-            document_type="PO",
-            document_number=(
-                purchase_order.po_number
-            ),
-            document_status=(
-                purchase_order.status
-            ),
-            reference_document=(
-                purchase_requisition.pr_number
-            ),
-            details={
-                "supplier_id":
-                    purchase_order.supplier_id,
-                "total_amount":
-                    str(
-                        purchase_order.total_amount
-                    ),
-            },
-        )
-
         db.commit()
 
-        db.refresh(
-            purchase_order
-        )
-
         return {
-            "message": (
-                "Purchase requisition "
-                "converted to purchase order"
-            ),
-            "purchase_requisition_id":
-                purchase_requisition.id,
-            "purchase_order_id":
-                purchase_order.id,
-            "po_number":
-                purchase_order.po_number,
-            "status":
-                purchase_order.status,
+            "message": "Purchase requisition converted to purchase order",
+            "purchase_requisition_id": purchase_requisition.id,
+            "purchase_order_id": purchase_order.id,
+            "po_number": purchase_order.po_number,
+            "status": purchase_order.status,
         }
+

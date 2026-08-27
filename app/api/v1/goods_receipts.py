@@ -48,6 +48,19 @@ def _scoped_receipt(db: Session, receipt_id: int, user) -> GoodsReceipt:
     return receipt
 
 
+def _scoped_receipt_for_update(db: Session, receipt_id: int, user) -> GoodsReceipt:
+    receipt = (
+        db.query(GoodsReceipt)
+        .filter(GoodsReceipt.id == receipt_id)
+        .with_for_update()
+        .first()
+    )
+    if not receipt:
+        raise HTTPException(404, "Goods receipt not found")
+    require_location_access(receipt.location_id, user)
+    return receipt
+
+
 def receipt_actions(receipt: GoodsReceipt, user, db: Session):
     receiving_manage = has_permission(user, "receiving.manage")
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
@@ -349,7 +362,7 @@ def get_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(rec
 
 @router.post("/{receipt_id}/submit")
 def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
-    receipt = _scoped_receipt(db, receipt_id, user)
+    receipt = _scoped_receipt_for_update(db, receipt_id, user)
     if receipt.status != "DRAFT":
         raise HTTPException(409, "Only draft receiving reports can be submitted")
     start_approval(
@@ -366,7 +379,7 @@ def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(
 
 @router.post("/{receipt_id}/approve")
 def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
-    receipt = _scoped_receipt(db, receipt_id, user)
+    receipt = _scoped_receipt_for_update(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "PENDING":
         raise HTTPException(409, "Receiving report does not have pending approval")
@@ -378,7 +391,7 @@ def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None
 
 @router.post("/{receipt_id}/reject")
 def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
-    receipt = _scoped_receipt(db, receipt_id, user)
+    receipt = _scoped_receipt_for_update(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "PENDING":
         raise HTTPException(409, "Receiving report does not have pending approval")

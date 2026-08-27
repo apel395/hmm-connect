@@ -16,6 +16,7 @@ from app.schemas.organization_dimensions import (
     LocationCreate, LocationUpdate,
 )
 from app.services.audit import record_audit
+from app.services.location_access import assigned_location_id
 
 
 router = APIRouter(tags=["Organization Dimensions"])
@@ -178,13 +179,31 @@ def deactivate_department(department_id:int,db:Session=Depends(get_db),user=Depe
 
 
 @router.get("/locations")
-def list_locations(business_unit_id:int|None=None,location_type:str|None=None,is_active:bool|None=None,search:Search=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user); query=db.query(Location).options(joinedload(Location.business_unit))
-    if business_unit_id is not None: validate_business_unit(db,business_unit_id,required=True); query=query.filter(Location.business_unit_id==business_unit_id)
-    if location_type: query=query.filter(Location.location_type==normalize_location_type(location_type))
-    if is_active is not None: query=query.filter(Location.is_active.is_(is_active))
+def list_locations(
+    business_unit_id:int|None=None,
+    location_type:str|None=None,
+    is_active:bool|None=None,
+    search:Search=None,
+    assigned_only:bool=False,
+    db:Session=Depends(get_db),
+    user=Depends(get_current_user),
+):
+    require_access(user)
+    query=db.query(Location).options(joinedload(Location.business_unit))
+    if business_unit_id is not None:
+        validate_business_unit(db,business_unit_id,required=True)
+        query=query.filter(Location.business_unit_id==business_unit_id)
+    if assigned_only:
+        location_id=assigned_location_id(user)
+        if location_id is not None:
+            query=query.filter(Location.id==location_id)
+    if location_type:
+        query=query.filter(Location.location_type==normalize_location_type(location_type))
+    if is_active is not None:
+        query=query.filter(Location.is_active.is_(is_active))
     if search:
-        term=f"%{search.strip()}%"; query=query.filter(or_(Location.code.ilike(term),Location.name.ilike(term)))
+        term=f"%{search.strip()}%"
+        query=query.filter(or_(Location.code.ilike(term),Location.name.ilike(term)))
     return [location_row(value) for value in query.order_by(Location.code)]
 
 
