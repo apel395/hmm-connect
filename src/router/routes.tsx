@@ -86,10 +86,30 @@ import InternalServerErrorPage from "@/pages/errors/InternalServerErrorPage";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
 
+const LANDING_CANDIDATES = [
+  { path: "/dashboard", permission: "dashboard.view" },
+  { path: "/approval-center", permission: "approval.view" },
+  { path: "/purchase-requisitions", permission: "pr.view" },
+  { path: "/market-lists", permission: "market_list.view" },
+  { path: "/purchase-orders", permission: "po.view" },
+  { path: "/receiving", permission: "receiving.view" },
+  { path: "/inventory", permission: "inventory.view" },
+  { path: "/store-requests", permission: "store_request.view" },
+  { path: "/products", permission: "products.view" },
+  { path: "/finance-dashboard", permission: "finance.view" },
+  { path: "/accounts-payable", permission: "ap.view" },
+  { path: "/journal", permission: "journal.view" },
+  { path: "/cash-flow-statement", permission: "reports.view" },
+] as const;
+
 // eslint-disable-next-line react-refresh/only-export-components
 function RoleLanding() {
-  const roles = useAuthStore((state) => state.user?.roles ?? []);
-  return <Navigate to={canAccess({ roles }, ["FINANCE"]) ? "/finance-dashboard" : "/dashboard"} replace />;
+  const user = useAuthStore((state) => state.user);
+  const target =
+    LANDING_CANDIDATES.find((candidate) =>
+      canAccess(user, undefined, candidate.permission),
+    )?.path ?? "/profile";
+  return <Navigate to={target} replace />;
 }
 
 const router = createBrowserRouter([
