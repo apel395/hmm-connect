@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ export default function CashAccountsPage() {
   const queryClient = useQueryClient();
   const [dates, setDates] = useState({ date_from: "", date_to: "" });
   const [form, setForm] = useState<any>(empty);
+  const formRef = useRef<HTMLDivElement | null>(null);
   const activity = useQuery({ queryKey: ["cash-accounts", dates], queryFn: () => getCashAccounts(dates) });
   const bankAccounts = useQuery({ queryKey: ["bank-accounts"], queryFn: () => listBankAccounts(false) });
   const businessUnits = useQuery({ queryKey: ["business-units", "bank-account", "active"], queryFn: () => filterBusinessUnits({ is_active: true }) });
@@ -51,14 +52,20 @@ export default function CashAccountsPage() {
     save.mutate();
   };
 
-  const edit = (row: BankAccount) => setForm({ ...row, location_id: row.location_id ?? null });
+  const edit = (row: BankAccount) => {
+    setForm({ ...row, location_id: row.location_id ?? null });
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
   const canSave = Boolean(form.bank_name?.trim() && form.account_name?.trim() && form.account_number?.trim() && form.business_unit_id && form.coa_account_id);
 
   return <div className="space-y-6">
     <PageHeader title="Cash & Bank Accounts" description="Register real bank accounts, link each account to its posting COA, and review posted cash activity." />
 
     <Card className="space-y-4">
-      <div><h2 className="text-lg font-semibold">Bank Account Master</h2><p className="text-sm text-slate-500">Each physical bank account must link to a unique cash/bank COA. Leave Location as Global / all locations for a corporate funding account usable by every location in the Business Unit.</p></div>
+      <div ref={formRef} className="scroll-mt-28" />
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">Bank Account Master</h2><p className="text-sm text-slate-500">Each physical bank account must link to a unique cash/bank COA. Leave Location as Global / all locations for a corporate funding account usable by every location in the Business Unit.</p></div>{form.id && <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800">Editing: {form.bank_name} — {form.account_name}</div>}</div>
       <div className="grid gap-3 md:grid-cols-3">
         <label className="text-sm">Bank Name *<input className={input} value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} /></label>
         <label className="text-sm">Account Name *<input className={input} value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} /></label>
