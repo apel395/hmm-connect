@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.accounting_posting_rule import AccountingPostingRule
@@ -406,7 +407,15 @@ class SupplierInvoiceService:
         self.db.add(invoice)
         self.db.flush()
         record_audit(self.db, user, "SUPPLIER_INVOICE_CREATED", "SUPPLIER_INVOICE", f"Created {invoice.internal_invoice_number}", entity_id=invoice.id)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            constraint = getattr(getattr(exc, "orig", None), "diag", None)
+            constraint_name = getattr(constraint, "constraint_name", "") or ""
+            if constraint_name == "uq_supplier_invoice_supplier_number_ci":
+                raise HTTPException(409, "Supplier invoice number already exists for this supplier") from exc
+            raise
         self.db.refresh(invoice)
         return self.attach_journal(invoice)
 
@@ -423,11 +432,26 @@ class SupplierInvoiceService:
             invoice.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=Decimal(line.quantity) * Decimal(line.unit_price)))
         sync_invoice_balance(invoice)
         record_audit(self.db, user, "SUPPLIER_INVOICE_UPDATED", "SUPPLIER_INVOICE", f"Updated {invoice.internal_invoice_number}", entity_id=invoice.id)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            constraint = getattr(getattr(exc, "orig", None), "diag", None)
+            constraint_name = getattr(constraint, "constraint_name", "") or ""
+            if constraint_name == "uq_supplier_invoice_supplier_number_ci":
+                raise HTTPException(409, "Supplier invoice number already exists for this supplier") from exc
+            raise
         self.db.refresh(invoice)
         return self.attach_journal(invoice)
 
     def verify(self, invoice, user):
+        invoice = (
+            self.db.query(SupplierInvoice)
+            .filter(SupplierInvoice.id == invoice.id)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )
         if invoice.status != "DRAFT":
             raise HTTPException(409, "Only draft invoices can be verified")
         self._ensure_invoice_location(invoice)
@@ -465,6 +489,13 @@ class SupplierInvoiceService:
         return self.attach_journal(invoice)
 
     def generate_journal(self, invoice, user):
+        invoice = (
+            self.db.query(SupplierInvoice)
+            .filter(SupplierInvoice.id == invoice.id)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )
         if invoice.status != "VERIFIED":
             raise HTTPException(409, "Invoice must be verified before journal generation")
         self._ensure_invoice_location(invoice)
