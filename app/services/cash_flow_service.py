@@ -105,10 +105,10 @@ class CashFlowService:
             opening=self.opening(date_from,account.id,location_id=location_id,business_unit_id=business_unit_id);items=self.movements(date_from,date_to,account.id,location_id=location_id,business_unit_id=business_unit_id);inflow=sum((m["inflow"] for m in items),ZERO);outflow=sum((m["outflow"] for m in items),ZERO)
             result.append({"account_id":account.id,"account_code":account.account_number,"account_name":account.account_name,"account_subtype":account.account_subtype,"opening_balance":opening,"total_inflow":inflow,"total_outflow":outflow,"closing_balance":opening+inflow-outflow,"last_transaction_date":max((m["date"] for m in items),default=None)})
         return result
-    def activity(self,account_id,page=1,page_size=20,date_from=None,date_to=None,search=None,direction=None,reference_type=None,category=None):
+    def activity(self,account_id,page=1,page_size=20,date_from=None,date_to=None,search=None,direction=None,reference_type=None,category=None,location_id=None,department_id=None,business_unit_id=None):
         account=self.db.get(ChartOfAccount,account_id)
         if not self.is_cash_account(account):raise ValueError("Cash account not found")
-        opening=self.opening(date_from,account_id);items=self.movements(date_from,date_to,account_id);balance=opening;rows=[]
+        opening=self.opening(date_from,account_id,location_id=location_id,department_id=department_id,business_unit_id=business_unit_id);items=self.movements(date_from,date_to,account_id,location_id=location_id,department_id=department_id,business_unit_id=business_unit_id);balance=opening;rows=[]
         for m in items:
             j=m["journal"];balance+=m["delta"]
             row={"journal_line_id":m["line"].id,"date":m["date"],"journal_id":j.id,"journal_number":j.journal_number,"transaction_type":j.reference_type,"reference_type":j.reference_type,"reference_id":j.reference_id,"reference_number":j.document_number,"description":m["line"].description or j.description,"counterparty":m["counterparty"],"debit":m["debit"],"credit":m["credit"],"cash_inflow":m["inflow"],"cash_outflow":m["outflow"],"running_balance":balance,"direction":m["direction"],"cash_flow_category":m["category"],"source_route":self.source_route(j)}
