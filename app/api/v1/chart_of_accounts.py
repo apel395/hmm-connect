@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.schemas.chart_of_account import (
     AccountType, ChartOfAccountCreate, ChartOfAccountLookup, ChartOfAccountPage,
     ChartOfAccountRead, ChartOfAccountTree, ChartOfAccountUpdate,
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/chart-of-accounts", tags=["Chart of Accounts"])
 
 
 def require_finance_access(user):
-    if not has_any_role(user, "FINANCE"):
+    if not has_permission(user, "coa.manage"):
         raise HTTPException(status_code=403, detail="Finance access required")
 
 
