@@ -50,6 +50,22 @@ def invoice_balance(invoice: SupplierInvoice) -> Decimal:
     )
 
 
+def _lock_allocated_invoices(db: Session, payment: Payment) -> dict[int, SupplierInvoice]:
+    invoice_ids = sorted({row.supplier_invoice_id for row in payment.allocations})
+    if not invoice_ids:
+        return {}
+    rows = (
+        db.query(SupplierInvoice)
+        .filter(SupplierInvoice.id.in_(invoice_ids))
+        .order_by(SupplierInvoice.id)
+        .with_for_update()
+        .all()
+    )
+    if len(rows) != len(invoice_ids):
+        raise HTTPException(409, "One or more allocated supplier invoices no longer exist")
+    return {row.id: row for row in rows}
+
+
 def reserved_amount(db: Session, invoice_id: int, exclude_payment_id: int | None = None) -> Decimal:
     query = db.query(PaymentAllocation).join(Payment).filter(
         PaymentAllocation.supplier_invoice_id == invoice_id,
@@ -462,9 +478,10 @@ def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(payment
         raise HTTPException(409, "Only draft payments can be approved")
     enforce_location_access(user, payment.location_id)
 
-    # Re-check every invoice at approval time so another approved payment cannot reserve it first.
+    # Lock invoice rows in one deterministic ID order to avoid payment/payment deadlocks.
+    locked_invoices = _lock_allocated_invoices(db, payment)
     for allocation in payment.allocations:
-        invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == allocation.supplier_invoice_id).with_for_update().one()
+        invoice = locked_invoices[allocation.supplier_invoice_id]
         if invoice.status not in OPEN_INVOICE_STATUSES:
             raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} is not posted and cannot be paid")
         available = invoice_balance(invoice) - reserved_amount(db, invoice.id, payment.id)
@@ -486,11 +503,30 @@ def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(payment
 
 @router.post("/{payment_id}/generate-journal")
 def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
-    payment = get(db, payment_id, user)
+    payment = (
+        db.query(Payment)
+        .filter(Payment.id == payment_id)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+    if not payment:
+        raise HTTPException(404, "Payment not found")
+    enforce_location_access(user, payment.location_id)
     if payment.status != "APPROVED":
         raise HTTPException(409, "Payment must be approved")
     if payment.journal_entry_id:
         raise HTTPException(409, "Payment already has a journal")
+    existing = db.query(JournalEntry).filter(
+        JournalEntry.reference_type == "SUPPLIER_PAYMENT",
+        JournalEntry.reference_id == payment.id,
+        JournalEntry.status != "VOID",
+    ).first()
+    if existing:
+        payment.journal_entry_id = existing.id
+        db.commit()
+        db.refresh(payment)
+        return result(db, payment, user)
     for allocation in payment.allocations:
         if allocation.supplier_invoice.status not in OPEN_INVOICE_STATUSES:
             raise HTTPException(409, f"Invoice {allocation.supplier_invoice.internal_invoice_number} is not posted")
@@ -582,8 +618,9 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_ma
     if debit != credit or debit != Decimal(payment.amount):
         raise HTTPException(409, "Payment journal is not balanced")
 
+    locked_invoices = _lock_allocated_invoices(db, payment)
     for allocation in payment.allocations:
-        invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == allocation.supplier_invoice_id).with_for_update().one()
+        invoice = locked_invoices[allocation.supplier_invoice_id]
         if invoice.status not in OPEN_INVOICE_STATUSES:
             raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} is not posted and payment cannot be posted")
         amount = Decimal(allocation.allocated_amount)
