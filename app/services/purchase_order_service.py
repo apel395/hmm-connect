@@ -205,6 +205,29 @@ class PurchaseOrderService:
             ))
 
         PurchaseOrderService._recalculate_totals(purchase_order)
+        db.flush()
+
+        for requisition in requisitions:
+            ordered_quantities = []
+            for requisition_item in requisition.items:
+                ordered = (
+                    db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0))
+                    .join(PurchaseOrder)
+                    .filter(
+                        PurchaseOrderItem.purchase_requisition_item_id == requisition_item.id,
+                        PurchaseOrder.status != "CANCELLED",
+                    )
+                    .scalar()
+                    or Decimal("0")
+                )
+                ordered_quantities.append((Decimal(ordered), Decimal(requisition_item.quantity)))
+            if ordered_quantities and all(ordered >= requested for ordered, requested in ordered_quantities):
+                requisition.status = "CONVERTED"
+            elif any(ordered > 0 for ordered, _ in ordered_quantities):
+                requisition.status = "PARTIALLY_CONVERTED"
+            else:
+                requisition.status = "APPROVED"
+
         PurchaseOrderService._audit(
             db,
             user,
