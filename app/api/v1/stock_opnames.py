@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import require_permission
 from app.models.stock_opname import StockOpname
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.stock_opname import StockOpnameCountUpdate, StockOpnameCreate
@@ -16,7 +16,7 @@ from app.services.location_access import apply_location_scope, enforce_location_
 from app.services.stock_opname_service import StockOpnameService
 
 router = APIRouter(prefix="/stock-opnames", tags=["Stock Opname"])
-warehouse_user = require_roles("WAREHOUSE")
+warehouse_user = require_permission("stock_opname.manage")
 
 
 def _row(opname: StockOpname):
