@@ -196,13 +196,6 @@ class PurchaseRequisitionService:
         current_user: User,
     ) -> PurchaseRequisition:
 
-    def submit(
-        db: Session,
-        *,
-        purchase_requisition_id: int,
-        current_user: User,
-    ) -> PurchaseRequisition:
-
         purchase_requisition = (
             db.query(PurchaseRequisition)
             .filter(
@@ -292,14 +285,6 @@ class PurchaseRequisitionService:
         return purchase_requisition
 
     @staticmethod
-    def approve(
-        db: Session,
-        *,
-        purchase_requisition_id: int,
-        data: ApprovalDecisionRequest | None,
-        current_user: User,
-    ) -> PurchaseRequisition:
-
     def approve(
         db: Session,
         *,
@@ -406,14 +391,6 @@ class PurchaseRequisitionService:
         return purchase_requisition
 
     @staticmethod
-    def reject(
-        db: Session,
-        *,
-        purchase_requisition_id: int,
-        data: ApprovalDecisionRequest | None,
-        current_user: User,
-    ) -> PurchaseRequisition:
-
     def reject(
         db: Session,
         *,
@@ -534,6 +511,7 @@ class PurchaseRequisitionService:
                 PurchaseRequisition.id
                 == purchase_requisition_id
             )
+            .with_for_update()
             .first()
         )
 
