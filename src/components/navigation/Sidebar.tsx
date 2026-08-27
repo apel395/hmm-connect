@@ -53,6 +53,7 @@ const groups: Group[] = [
   { title: "Administration", icon: Settings, roles: ["SYSTEM_ADMINISTRATOR"], children: [
     { title: "Users", url: "/users", permission: "admin.users.manage" },
     { title: "Roles", url: "/roles", permission: "admin.roles.manage" },
+    { title: "Finance Setup", url: "/finance-setup", permission: "finance.manage" },
     { title: "System Settings", url: "/settings", permission: "admin.settings.manage" },
   ] },
 ];

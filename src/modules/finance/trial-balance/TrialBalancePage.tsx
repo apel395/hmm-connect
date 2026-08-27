@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { exportTrialBalanceCsv, getTrialBalance, TrialBalanceFilters } from "./api";
+import { listLocations } from "@/modules/admin/organization/api";
 
 const today = new Date().toISOString().slice(0, 10);
 const monthStart = `${today.slice(0, 8)}01`;
@@ -15,15 +16,27 @@ const input = "h-10 rounded-md border border-slate-300 bg-white px-3 text-sm";
 export default function TrialBalancePage() {
   const [draft, setDraft] = useState<TrialBalanceFilters>({ date_from: monthStart, date_to: today, page: 1, page_size: 50, search: "", include_zero_balance: false });
   const [filters, setFilters] = useState<TrialBalanceFilters>(draft);
+  const locations = useQuery({
+    queryKey: ["trial-balance-locations"],
+    queryFn: () => listLocations({ is_active: true }),
+  });
+  useEffect(() => {
+    if (locations.data?.length === 1 && !draft.location_id) {
+      const location_id = locations.data[0].id;
+      setDraft((current) => ({ ...current, location_id }));
+      setFilters((current) => ({ ...current, location_id, page: 1 }));
+    }
+  }, [locations.data, draft.location_id]);
   const query = useQuery({ queryKey: ["trial-balance", filters], queryFn: () => getTrialBalance(filters) });
   const data = query.data;
 
   return <div className="space-y-5">
     <PageHeader title="Trial Balance" description="Opening balance, period movements, total movement, and closing balance by COA." actions={<Button variant="outline" disabled={!data} onClick={() => exportTrialBalanceCsv(filters)}>Export CSV</Button>} />
-    <Card><form className="grid gap-3 md:grid-cols-4" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft, page: 1 }); }}>
+    <Card><form className="grid gap-3 md:grid-cols-5" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft, page: 1 }); }}>
       <label className="text-sm">From<input className={`${input} mt-1 w-full`} type="date" value={draft.date_from} onChange={(e) => setDraft({ ...draft, date_from: e.target.value })}/></label>
       <label className="text-sm">To<input className={`${input} mt-1 w-full`} type="date" value={draft.date_to} onChange={(e) => setDraft({ ...draft, date_to: e.target.value })}/></label>
       <label className="text-sm">Search<input className={`${input} mt-1 w-full`} placeholder="Account code or name" value={draft.search || ""} onChange={(e) => setDraft({ ...draft, search: e.target.value })}/></label>
+      <label className="text-sm">Location<select className={`${input} mt-1 w-full`} value={draft.location_id ?? ""} disabled={(locations.data?.length ?? 0) <= 1} onChange={(e) => setDraft({ ...draft, location_id: Number(e.target.value) || undefined })}><option value="">All accessible locations</option>{locations.data?.map((row:any)=><option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
       <div className="flex items-end gap-2"><Button type="submit">Apply</Button><label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={Boolean(draft.include_zero_balance)} onChange={(e) => setDraft({ ...draft, include_zero_balance: e.target.checked })}/>Include zero balance</label></div>
     </form></Card>
 

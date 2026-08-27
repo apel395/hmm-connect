@@ -2,13 +2,15 @@ import ModuleWorkspaceHeader from "@/components/workspace/ModuleWorkspaceHeader"
 import ChartOfAccountPage from "@/modules/master/chart-of-accounts/pages/ChartOfAccountPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
 import FiscalPeriodsPage from "@/modules/finance/fiscal-periods/FiscalPeriodsPage";
+import BankAccountsSetupPage from "./BankAccountsSetupPage";
 
-type Section = "coa" | "posting-rules" | "fiscal-periods";
+type Section = "coa" | "posting-rules" | "fiscal-periods" | "bank-accounts";
 
 const tabs = [
   { label: "Chart of Accounts", to: "/finance-setup", exact: true },
   { label: "Posting Rules", to: "/finance-setup/posting-rules" },
   { label: "Fiscal Periods", to: "/finance-setup/fiscal-periods" },
+  { label: "Bank Accounts", to: "/finance-setup/bank-accounts" },
 ];
 
 export default function FinanceSetupWorkspacePage({ section }: { section: Section }) {
@@ -22,6 +24,7 @@ export default function FinanceSetupWorkspacePage({ section }: { section: Sectio
       {section === "coa" && <ChartOfAccountPage />}
       {section === "posting-rules" && <PostingRulesPage />}
       {section === "fiscal-periods" && <FiscalPeriodsPage />}
+      {section === "bank-accounts" && <BankAccountsSetupPage />}
     </div>
   );
 }

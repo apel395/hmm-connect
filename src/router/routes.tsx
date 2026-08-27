@@ -57,6 +57,7 @@ import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationR
 import AmortizationPage from "@/modules/finance/fixed-assets/AmortizationPage";
 import FixedAssetsWorkspacePage from "@/modules/finance/fixed-assets/FixedAssetsWorkspacePage";
 import FinanceSetupWorkspacePage from "@/modules/finance/setup/FinanceSetupWorkspacePage";
+import BankAccountFormPage from "@/modules/finance/setup/BankAccountFormPage";
 import ApprovalCenterPage from "@/modules/approval/ApprovalCenterPage";
 import ApprovalConfigurationPage from "@/modules/approval/ApprovalConfigurationPage";
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
@@ -156,7 +157,7 @@ const router = createBrowserRouter([
       { path: "payments/:id/print", element: <AccountingPrintPage kind="payments" /> },
 
       { path: "cash-bank", element: <CashBankWorkspacePage section="overview" /> },
-      { path: "cash-bank/accounts", element: <CashBankWorkspacePage section="accounts" /> },
+      { path: "cash-bank/accounts", element: <Navigate to="/finance-setup/bank-accounts" replace /> },
       { path: "cash-bank/transfers", element: <CashBankWorkspacePage section="transfers" /> },
       { path: "cash-bank/reconciliation", element: <CashBankWorkspacePage section="reconciliation" /> },
       { path: "cash-bank/cash-flow", element: <CashBankWorkspacePage section="cash-flow" /> },
@@ -195,6 +196,9 @@ const router = createBrowserRouter([
       { path: "finance-setup", element: <FinanceSetupWorkspacePage section="coa" /> },
       { path: "finance-setup/posting-rules", element: <FinanceSetupWorkspacePage section="posting-rules" /> },
       { path: "finance-setup/fiscal-periods", element: <FinanceSetupWorkspacePage section="fiscal-periods" /> },
+      { path: "finance-setup/bank-accounts", element: <FinanceSetupWorkspacePage section="bank-accounts" /> },
+      { path: "finance-setup/bank-accounts/new", element: <BankAccountFormPage /> },
+      { path: "finance-setup/bank-accounts/:id/edit", element: <BankAccountFormPage /> },
       { path: "chart-of-accounts", element: <ChartOfAccountPage /> },
       { path: "posting-rules", element: <PostingRulesPage /> },
       { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
