@@ -10,7 +10,6 @@ from app.models.chart_of_account import ChartOfAccount
 from app.models.goods_receipt import GoodsReceipt
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
-from app.models.location import Location
 from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
@@ -28,7 +27,8 @@ class SupplierInvoiceService:
     def __init__(self, db: Session):
         self.db = db
 
-    def serialize(self, x):
+    @staticmethod
+    def serialize(x):
         journal = next((j for j in getattr(x, "_journals", []) if j.reference_type == "SUPPLIER_INVOICE"), None)
         receipt = x.goods_receipt
         purchase_order = x.purchase_order or (receipt.purchase_order if receipt else None)
@@ -44,7 +44,6 @@ class SupplierInvoiceService:
             )
         location = (
             x.location
-            or (self.db.get(Location, x.location_id) if x.location_id else None)
             or (receipt.location if receipt else None)
             or (
                 receipt.warehouse.location
