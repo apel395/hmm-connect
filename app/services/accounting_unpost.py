@@ -35,6 +35,22 @@ def _invoice_balance(invoice: SupplierInvoice) -> Decimal:
     )
 
 
+def _lock_payment_invoices(db: Session, payment: Payment) -> dict[int, SupplierInvoice]:
+    invoice_ids = sorted({row.supplier_invoice_id for row in payment.allocations})
+    if not invoice_ids:
+        return {}
+    rows = (
+        db.query(SupplierInvoice)
+        .filter(SupplierInvoice.id.in_(invoice_ids))
+        .order_by(SupplierInvoice.id)
+        .with_for_update()
+        .all()
+    )
+    if len(rows) != len(invoice_ids):
+        raise HTTPException(409, "One or more supplier invoices linked to the payment no longer exist")
+    return {row.id: row for row in rows}
+
+
 def _sync_invoice_payable(db: Session, invoice: SupplierInvoice) -> None:
     balance = _invoice_balance(invoice)
     invoice.balance_amount = balance
@@ -110,10 +126,9 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
             raise HTTPException(409, "Supplier payment linked to this journal was not found")
         if payment.status != "APPROVED":
             raise HTTPException(409, "Supplier payment must be approved before its journal can be posted")
+        locked_invoices = _lock_payment_invoices(db, payment)
         for allocation in payment.allocations:
-            invoice = db.query(SupplierInvoice).filter(
-                SupplierInvoice.id == allocation.supplier_invoice_id,
-            ).with_for_update().one()
+            invoice = locked_invoices[allocation.supplier_invoice_id]
             if invoice.status != "POSTED":
                 raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} must remain posted")
             amount = Decimal(allocation.allocated_amount or 0)
@@ -186,10 +201,9 @@ def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
             raise HTTPException(status_code=409, detail="Supplier payment linked to this journal was not found")
         if payment.status != "POSTED":
             raise HTTPException(status_code=409, detail="Linked supplier payment is not posted")
+        locked_invoices = _lock_payment_invoices(db, payment)
         for allocation in payment.allocations:
-            invoice = db.query(SupplierInvoice).filter(
-                SupplierInvoice.id == allocation.supplier_invoice_id,
-            ).with_for_update().one()
+            invoice = locked_invoices[allocation.supplier_invoice_id]
             invoice.paid_amount = max(
                 ZERO,
                 Decimal(invoice.paid_amount or 0) - Decimal(allocation.allocated_amount or 0),
