@@ -9,6 +9,7 @@ from app.dependencies.authorization import is_superuser
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.purchase_requisition import PurchaseRequisition
+from app.models.purchase_requisition_item import PurchaseRequisitionItem
 from app.models.supplier import Supplier
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.purchase_order import PurchaseOrderCreate
@@ -25,6 +26,21 @@ from app.services.approval import (
 
 
 class PurchaseOrderService:
+    @staticmethod
+    def _recalculate_totals(purchase_order: PurchaseOrder) -> None:
+        subtotal = Decimal("0")
+        tax_total = Decimal("0")
+        for item in purchase_order.items:
+            line_total = Decimal(item.quantity or 0) * Decimal(item.unit_price or 0)
+            item.total_price = line_total
+            rate = Decimal(item.tax_rate or 0) if item.is_taxable else Decimal("0")
+            item.tax_amount = line_total * rate / Decimal("100")
+            subtotal += line_total
+            tax_total += Decimal(item.tax_amount or 0)
+        purchase_order.subtotal = subtotal
+        purchase_order.tax_amount = tax_total
+        purchase_order.total_amount = subtotal - Decimal(purchase_order.discount_amount or 0) + tax_total
+
     @staticmethod
     def _validate_positive_costs(purchase_order: PurchaseOrder):
         invalid = [item for item in purchase_order.items if Decimal(item.unit_price or 0) <= 0]
@@ -140,14 +156,15 @@ class PurchaseOrderService:
         requisitions = (
             db.query(PurchaseRequisition)
             .filter(PurchaseRequisition.id.in_(data.purchase_requisition_ids))
+            .with_for_update()
             .all()
         )
         if len(requisitions) != len(set(data.purchase_requisition_ids)):
             raise HTTPException(status_code=404, detail="Purchase requisition not found")
-        if any(item.status != "APPROVED" for item in requisitions):
+        if any(item.status not in {"APPROVED", "PARTIALLY_CONVERTED"} for item in requisitions):
             raise HTTPException(
                 status_code=409,
-                detail="Only approved, unused purchase requisitions can be selected",
+                detail="Only approved purchase requisitions with remaining quantity can be selected",
             )
 
         business_unit_id, department_id, location_id = PurchaseOrderService._resolve_dimensions(db, data, requisitions)
@@ -174,7 +191,13 @@ class PurchaseOrderService:
         for incoming in data.items:
             if incoming.purchase_requisition_item_id is None:
                 continue
-            requisition_item, remaining = remaining_by_item[incoming.purchase_requisition_item_id]
+            remaining_entry = remaining_by_item.get(incoming.purchase_requisition_item_id)
+            if remaining_entry is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Purchase requisition item {incoming.purchase_requisition_item_id} has no remaining quantity",
+                )
+            requisition_item, remaining = remaining_entry
             if incoming.quantity > remaining:
                 raise HTTPException(status_code=409, detail=f"Quantity exceeds the remaining requested quantity for PR item {incoming.purchase_requisition_item_id}")
             if incoming.product_id is not None and incoming.product_id != requisition_item.product_id:
@@ -195,19 +218,21 @@ class PurchaseOrderService:
             notes=data.notes,
             purchase_requisitions=requisitions,
         )
-        total = Decimal("0")
         for item in data.items:
             product_id = item.product_id
             description = item.description
             uom = item.uom
             unit_price = item.unit_price
+            is_taxable = bool(item.is_taxable)
+            tax_rate = Decimal(item.tax_rate or 0)
             if item.purchase_requisition_item_id is not None:
                 source_item = remaining_by_item[item.purchase_requisition_item_id][0]
                 product_id = source_item.product_id
                 description = source_item.product.description
                 uom = source_item.product.uom
                 unit_price = source_item.estimated_price
-            line_total = item.quantity * unit_price
+                is_taxable = bool(source_item.is_taxable)
+                tax_rate = Decimal(source_item.tax_rate or 0)
             purchase_order.items.append(
                 PurchaseOrderItem(
                     purchase_requisition_item_id=item.purchase_requisition_item_id,
@@ -217,11 +242,13 @@ class PurchaseOrderService:
                     quantity=item.quantity,
                     received_quantity=Decimal("0"),
                     unit_price=unit_price,
-                    total_price=line_total,
+                    total_price=Decimal("0"),
+                    is_taxable=is_taxable,
+                    tax_rate=tax_rate,
+                    tax_amount=Decimal("0"),
                 )
             )
-            total += line_total
-        purchase_order.total_amount = total
+        PurchaseOrderService._recalculate_totals(purchase_order)
         for requisition in requisitions:
             fully_converted = all(
                 (db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(
