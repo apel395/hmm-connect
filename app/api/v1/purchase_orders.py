@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_roles
+from app.dependencies.authorization import require_permission
 from app.models.approval_request import ApprovalRequest
 from app.models.purchase_order import PurchaseOrder
 from app.models.department import Department
@@ -26,7 +26,12 @@ from app.services.location_access import (
 
 
 router = APIRouter(prefix="/purchase-orders", tags=["Purchase Orders"])
-purchasing_user = require_roles("PURCHASING")
+po_view_user = require_permission("po.view")
+po_create_user = require_permission("po.create")
+po_edit_user = require_permission("po.edit")
+po_submit_user = require_permission("po.submit")
+po_approve_user = require_permission("po.approve")
+po_manage_user = require_permission("po.manage")
 
 ACTIVE_STATUSES = {"DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED"}
 HISTORY_STATUSES = {"RECEIVED", "CLOSED", "REJECTED", "CANCELLED", "EXPIRED"}
@@ -198,7 +203,7 @@ def list_purchase_orders(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(po_view_user),
 ):
     base_query = apply_location_scope(
         db.query(PurchaseOrder).outerjoin(Supplier, Supplier.id == PurchaseOrder.supplier_id),
@@ -256,7 +261,7 @@ def list_purchase_orders(
 
 
 @router.get("/form-options")
-def purchase_order_form_options(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def purchase_order_form_options(db: Session = Depends(get_db), user=Depends(po_create_user)):
     location_query = db.query(Location).filter(Location.is_active.is_(True))
     location_id = assigned_location_id(user)
     if location_id is not None:
@@ -269,7 +274,7 @@ def purchase_order_form_options(db: Session = Depends(get_db), user=Depends(get_
 
 
 @router.post("", status_code=201)
-def create_purchase_order(data: PurchaseOrderCreate, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+def create_purchase_order(data: PurchaseOrderCreate, db: Session = Depends(get_db), user=Depends(po_create_user)):
     data.location_id = resolve_location_id(user, data.location_id)
     purchase_order = PurchaseOrderService.create(db=db, data=data, user=user)
     purchase_order = _apply_tax(db, purchase_order, data)
@@ -278,7 +283,7 @@ def create_purchase_order(data: PurchaseOrderCreate, db: Session = Depends(get_d
 
 @router.put("/{purchase_order_id}")
 @router.patch("/{purchase_order_id}")
-def update_purchase_order(purchase_order_id: int, data: PurchaseOrderCreate, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+def update_purchase_order(purchase_order_id: int, data: PurchaseOrderCreate, db: Session = Depends(get_db), user=Depends(po_edit_user)):
     _scoped_purchase_order(db, purchase_order_id, user)
     data.location_id = resolve_location_id(user, data.location_id)
     purchase_order = PurchaseOrderService.update(db=db, purchase_order_id=purchase_order_id, data=data, user=user)
@@ -287,41 +292,41 @@ def update_purchase_order(purchase_order_id: int, data: PurchaseOrderCreate, db:
 
 
 @router.get("/{purchase_order_id}")
-def get_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(po_view_user)):
     purchase_order = _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, purchase_order, user)
 
 
 @router.get("/{purchase_order_id}/print")
-def print_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def print_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(po_view_user)):
     return {**get_purchase_order(purchase_order_id, db, user), "document_type": "Purchase Order", **print_metadata(user)}
 
 
 @router.post("/{purchase_order_id}/reopen")
-def reopen_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def reopen_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(po_manage_user)):
     _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.reopen(db=db, purchase_order_id=purchase_order_id, user=user), user)
 
 
 @router.post("/{purchase_order_id}/submit")
-def submit_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+def submit_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(po_submit_user)):
     _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.submit(db=db, purchase_order_id=purchase_order_id, user=user), user)
 
 
 @router.post("/{purchase_order_id}/approve")
-def approve_purchase_order(purchase_order_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def approve_purchase_order(purchase_order_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(po_approve_user)):
     _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.approve(db=db, purchase_order_id=purchase_order_id, data=data, user=user), user)
 
 
 @router.post("/{purchase_order_id}/reject")
-def reject_purchase_order(purchase_order_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def reject_purchase_order(purchase_order_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(po_approve_user)):
     _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.reject(db=db, purchase_order_id=purchase_order_id, data=data, user=user), user)
 
 
 @router.post("/{purchase_order_id}/cancel")
-def cancel_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(purchasing_user)):
+def cancel_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(po_manage_user)):
     _scoped_purchase_order(db, purchase_order_id, user)
     return purchase_order_result(db, PurchaseOrderService.cancel(db=db, purchase_order_id=purchase_order_id, user=user), user)
