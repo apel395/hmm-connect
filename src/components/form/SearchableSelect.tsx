@@ -67,6 +67,16 @@ export default function SearchableSelect({
     if (!open) setQuery(selectedLabel);
   }, [selectedLabel, open]);
 
+  useEffect(() => {
+    if (
+      label?.trim().toLowerCase() === "location" &&
+      options.length === 1 &&
+      value !== options[0].id
+    ) {
+      onChange(options[0].id);
+    }
+  }, [label, options, value, onChange]);
+
   const updatePosition = useCallback(() => {
     const input = inputRef.current;
     if (!input) return;

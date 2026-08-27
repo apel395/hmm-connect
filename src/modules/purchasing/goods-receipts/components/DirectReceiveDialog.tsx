@@ -75,7 +75,7 @@ export default function DirectReceiveDialog({
   const locations = useQuery({
     queryKey: ["locations", "direct-receipt", businessUnitId],
     queryFn: () =>
-      listLocations({ business_unit_id: businessUnitId, is_active: true }),
+      listLocations({ business_unit_id: businessUnitId, is_active: true, assigned_only: true }),
     enabled: open && !!businessUnitId,
   });
   const rememberProduct = (product: ProductComboboxOption) =>
