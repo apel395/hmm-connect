@@ -72,6 +72,9 @@ class ProductTaxProfileUpdate(BaseModel):
         if self.tax_category in {"EXEMPT", "NON_VAT", "REVIEW_REQUIRED"}:
             self.is_taxable = False
             self.tax_rate = Decimal("0")
-        elif not self.is_taxable:
-            self.tax_rate = Decimal("0")
+            return self
+        if not self.is_taxable:
+            raise ValueError("STANDARD or SPECIAL tax profile must be taxable")
+        if self.tax_rate <= 0:
+            raise ValueError("Tax rate must be greater than zero for a taxable product")
         return self
