@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_any_role
+from app.dependencies.authorization import has_permission
 from app.models.goods_receipt import GoodsReceipt
 from app.models.supplier_invoice import SupplierInvoice
 
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/supplier-invoice-sources", tags=["Supplier Invoices"
 
 
 def _access(user):
-    if not has_any_role(user, "FINANCE"):
+    if not has_permission(user, "supplier_invoice.view"):
         raise HTTPException(status_code=403, detail="Finance access required")
 
 
