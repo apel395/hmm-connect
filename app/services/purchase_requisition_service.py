@@ -31,6 +31,21 @@ from app.services.approval import (
 class PurchaseRequisitionService:
 
     @staticmethod
+    def _recalculate_totals(requisition: PurchaseRequisition) -> None:
+        subtotal = Decimal("0")
+        tax_total = Decimal("0")
+        for item in requisition.items:
+            line_total = Decimal(item.quantity or 0) * Decimal(item.estimated_price or 0)
+            rate = Decimal(item.tax_rate or 0) if item.is_taxable else Decimal("0")
+            item.total_price = line_total
+            item.tax_amount = line_total * rate / Decimal("100")
+            subtotal += line_total
+            tax_total += Decimal(item.tax_amount or 0)
+        requisition.subtotal = subtotal
+        requisition.tax_amount = tax_total
+        requisition.total_amount = subtotal + tax_total
+
+    @staticmethod
     def update(db: Session, *, purchase_requisition_id: int,
                data: PurchaseRequisitionCreate, current_user: User) -> PurchaseRequisition:
         requisition = (
@@ -67,7 +82,7 @@ class PurchaseRequisitionService:
                 is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
             ))
             total += line_total
-        requisition.total_amount = total
+        PurchaseRequisitionService._recalculate_totals(requisition)
         AuditService.log(db=db, user=current_user, action="UPDATE", entity_type="PURCHASE_REQUISITION",
             entity_id=requisition.id, summary=f"Updated {requisition.pr_number}", document_type="PR",
             document_number=requisition.pr_number, document_status=requisition.status,
@@ -157,7 +172,7 @@ class PurchaseRequisitionService:
 
             total_amount += total_price
 
-        purchase_requisition.total_amount = total_amount
+        PurchaseRequisitionService._recalculate_totals(purchase_requisition)
 
         db.add(
             purchase_requisition
