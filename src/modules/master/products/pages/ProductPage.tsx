@@ -14,7 +14,9 @@ import { exportApi } from "../api/exportApi";
 import { useProducts, useCreateProduct, useUpdateProduct } from "../hooks/useProducts";
 
 const PAGE_SIZE = 25;
-const EXPORT_POLL_INTERVAL_MS = 2000;
+const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
+const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
+const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function ProductPage() {
   const [formOpen, setFormOpen] = useState(false);
@@ -62,7 +64,30 @@ export default function ProductPage() {
     if (!exportJobId) return;
 
     let cancelled = false;
+    let timer: number | undefined;
+    let pollAttempt = 0;
+    const startedAt = Date.now();
+
+    const scheduleNextPoll = (poll: () => Promise<void>) => {
+      if (cancelled) return;
+      const foregroundDelay = EXPORT_POLL_DELAYS_MS[Math.min(pollAttempt, EXPORT_POLL_DELAYS_MS.length - 1)];
+      const delay = document.visibilityState === "hidden"
+        ? EXPORT_BACKGROUND_POLL_DELAY_MS
+        : foregroundDelay;
+      pollAttempt += 1;
+      timer = window.setTimeout(poll, delay);
+    };
+
     const poll = async () => {
+      if (cancelled) return;
+
+      if (Date.now() - startedAt >= EXPORT_POLL_TIMEOUT_MS) {
+        setExportStatus("failed");
+        setExportJobId(null);
+        setExportError("Export is taking longer than expected. Please try again later.");
+        return;
+      }
+
       try {
         const response = await exportApi.getExport(exportJobId);
         const job = response.data;
@@ -84,7 +109,7 @@ export default function ProductPage() {
         }
 
         setExportStatus("processing");
-        window.setTimeout(poll, EXPORT_POLL_INTERVAL_MS);
+        scheduleNextPoll(poll);
       } catch (error: any) {
         if (cancelled) return;
         setExportStatus("failed");
@@ -93,8 +118,11 @@ export default function ProductPage() {
       }
     };
 
-    poll();
-    return () => { cancelled = true; };
+    scheduleNextPoll(poll);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [exportJobId]);
 
   const handleCreate = () => { setSelected(null); setFormOpen(true); };
