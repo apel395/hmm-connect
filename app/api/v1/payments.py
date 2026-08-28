@@ -133,6 +133,8 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
         bank = db.get(BankAccount, funding.bank_account_id)
         if not bank or not bank.is_active:
             raise HTTPException(422, "Funding bank account must be active")
+        if not bank.is_payment_account:
+            raise HTTPException(422, "Selected bank account is not enabled for supplier payments")
         if bank.currency != data.currency.upper():
             raise HTTPException(422, "Funding bank account currency must match payment currency")
         linked_account = bank.coa_account
