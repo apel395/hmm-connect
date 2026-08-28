@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import require_permission
 
 from app.models.chart_of_account import ChartOfAccount
 from app.models.accounting_setting import AccountingSetting
@@ -148,13 +149,20 @@ def account_ledger(
 
 
 @router.get("/direct-coa-settings")
-def direct_coa_settings(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def direct_coa_settings(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_permission("finance.manage")),
+):
     row = db.query(AccountingSetting).filter(AccountingSetting.setting_key == "INPUT_VAT_ACCOUNT").first()
     return {"input_vat_account_id": row.account_id if row else None}
 
 
 @router.put("/direct-coa-settings")
-def update_direct_coa_settings(data: DirectCoaSettingsInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def update_direct_coa_settings(
+    data: DirectCoaSettingsInput,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_permission("finance.manage")),
+):
     account = db.get(ChartOfAccount, data.input_vat_account_id) if data.input_vat_account_id else None
     if not account or not account.is_active or not account.is_posting or account.account_type != "ASSET" or account.normal_balance != "DEBIT":
         raise HTTPException(422, "Input VAT COA must be an active debit-balance posting asset")
