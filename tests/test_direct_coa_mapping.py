@@ -192,3 +192,14 @@ def test_global_setting_policy_rejects_bank_as_grni():
             coa(25, "ASSET", "DEBIT", "BANK"),
         )
     assert error.value.status_code == 422
+
+
+def test_supplier_adjustment_uses_direct_payable_resolver():
+    import inspect
+
+    from app.api.v1.supplier_adjustments import generate_journal
+
+    source = inspect.getsource(generate_journal)
+    assert "DirectCoaService(db).payable_account" in source
+    assert "AccountingPostingRule" not in source
+    assert "SUPPLIER_PAYMENT" not in source

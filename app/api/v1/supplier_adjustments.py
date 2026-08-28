@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
-from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
@@ -18,6 +17,7 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_adjustment import SupplierAdjustmentCreate, SupplierAdjustmentUpdate
 from app.services.audit import record_audit
 from app.services.document_number import next_document_number
+from app.services.direct_coa_service import DirectCoaService
 from app.services.location_access import (
     apply_location_scope,
     require_location_access,
@@ -189,13 +189,11 @@ def generate_journal(adjustment_id: int, db: Session = Depends(get_db), user=Dep
     amount = Decimal(adjustment.amount)
     if amount <= ZERO or amount > Decimal(invoice.balance_amount):
         raise HTTPException(409, "Adjustment exceeds current invoice outstanding balance")
-    rule = db.query(AccountingPostingRule).filter(AccountingPostingRule.event_type == "SUPPLIER_PAYMENT", AccountingPostingRule.is_active.is_(True)).first()
-    if not rule:
-        raise HTTPException(409, "No active SUPPLIER_PAYMENT posting rule configured for Accounts Payable")
-    payable_account = db.get(ChartOfAccount, rule.debit_account_id)
+    payable_account = DirectCoaService(db).payable_account(
+        invoice.supplier,
+        adjustment.location_id,
+    )
     adjustment_account = validate_account(db, adjustment.adjustment_account_id)
-    if not payable_account or not payable_account.is_active or not payable_account.is_posting:
-        raise HTTPException(409, "Accounts Payable posting account is invalid")
     if payable_account.id == adjustment_account.id:
         raise HTTPException(422, "Adjustment account must differ from Accounts Payable")
     journal = JournalEntry(
