@@ -537,8 +537,8 @@ class SupplierInvoiceService:
             grouped[account.id] = grouped.get(account.id, ZERO) + Decimal(line.line_amount or 0)
             debit_accounts.append(account)
 
-        payable_account = resolver.payable_account(invoice.supplier)
-        input_vat_account = resolver.input_vat_account() if Decimal(invoice.tax_amount or 0) > ZERO else None
+        payable_account = resolver.payable_account(invoice.supplier, invoice.location_id)
+        input_vat_account = resolver.input_vat_account(invoice.location_id) if Decimal(invoice.tax_amount or 0) > ZERO else None
 
         journal = JournalEntry(
             journal_number=next_document_number(self.db, "JV", digits=4),
