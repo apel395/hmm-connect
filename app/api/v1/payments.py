@@ -186,7 +186,7 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
 
 
 def validate_payment_journal_integrity(db: Session, payment: Payment, journal: JournalEntry):
-    payable_account = DirectCoaService(db).payable_account(payment.supplier)
+    payable_account = DirectCoaService(db).payable_account(payment.supplier, payment.location_id)
 
     if (
         journal.reference_type != "SUPPLIER_PAYMENT"
@@ -516,7 +516,7 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(paymen
     for allocation in payment.allocations:
         if allocation.supplier_invoice.status not in OPEN_INVOICE_STATUSES:
             raise HTTPException(409, f"Invoice {allocation.supplier_invoice.internal_invoice_number} is not posted")
-    payable_account = DirectCoaService(db).payable_account(payment.supplier)
+    payable_account = DirectCoaService(db).payable_account(payment.supplier, payment.location_id)
     funding_accounts = [
         db.get(ChartOfAccount, funding.bank_account.coa_account_id)
         for funding in payment.funding_lines
