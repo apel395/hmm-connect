@@ -6,7 +6,6 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.chart_of_account import ChartOfAccount
 from app.models.goods_receipt import GoodsReceipt
 from app.models.journal_entry import JournalEntry
@@ -15,7 +14,7 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.schemas.supplier_invoice import SupplierInvoiceInput
-from app.services.accounting_posting_rule_service import AccountingPostingRuleService
+from app.services.direct_coa_service import DirectCoaService
 from app.services.audit import record_audit
 from app.services.document_number import next_document_number
 from app.services.location_access import enforce_location_access
@@ -409,6 +408,9 @@ class SupplierInvoiceService:
         sync_invoice_balance(invoice)
         self.db.add(invoice)
         self.db.flush()
+        resolver = DirectCoaService(self.db)
+        for invoice_line in invoice.lines:
+            resolver.snapshot_invoice_line(invoice, invoice_line)
         record_audit(self.db, user, "SUPPLIER_INVOICE_CREATED", "SUPPLIER_INVOICE", f"Created {invoice.internal_invoice_number}", entity_id=invoice.id)
         try:
             self.db.commit()
@@ -434,6 +436,10 @@ class SupplierInvoiceService:
         for line in data.lines:
             invoice.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=Decimal(line.quantity) * Decimal(line.unit_price)))
         sync_invoice_balance(invoice)
+        self.db.flush()
+        resolver = DirectCoaService(self.db)
+        for invoice_line in invoice.lines:
+            resolver.snapshot_invoice_line(invoice, invoice_line)
         record_audit(self.db, user, "SUPPLIER_INVOICE_UPDATED", "SUPPLIER_INVOICE", f"Updated {invoice.internal_invoice_number}", entity_id=invoice.id)
         try:
             self.db.commit()
@@ -513,34 +519,19 @@ class SupplierInvoiceService:
         if existing:
             return existing
 
-        event = "SUPPLIER_INVOICE_INVENTORY" if invoice.goods_receipt and invoice.goods_receipt.destination_type == "WAREHOUSE" else "SUPPLIER_INVOICE_DIRECT_USE"
-        rule = AccountingPostingRuleService(self.db).select_rule(
-            event,
-            invoice.business_unit_id,
-            invoice.location_id,
-        )
-        if not rule:
-            raise HTTPException(409, f"No active posting rule configured for {event}")
-
         if Decimal(invoice.discount_amount or 0) != ZERO or Decimal(invoice.withholding_tax_amount or 0) != ZERO:
-            raise HTTPException(409, "Discount and withholding-tax posting accounts are not configured yet")
+            raise HTTPException(409, "Discount and withholding-tax direct COA mappings are not configured yet")
 
+        resolver = DirectCoaService(self.db)
         grouped = {}
+        debit_accounts = []
         for line in invoice.lines:
-            account_id = line.account_id or rule.debit_account_id
-            account = self.db.get(ChartOfAccount, account_id)
-            if not account or not account.is_active or not account.is_posting:
-                raise HTTPException(409, "Invoice line requires a valid active posting account")
-            AccountingPostingRuleService.validate_invoice_debit_account(event, account)
-            grouped[account_id] = grouped.get(account_id, ZERO) + Decimal(line.line_amount or 0)
+            account = resolver.snapshot_invoice_line(invoice, line)
+            grouped[account.id] = grouped.get(account.id, ZERO) + Decimal(line.line_amount or 0)
+            debit_accounts.append(account)
 
-        if not rule.credit_account.is_active or not rule.credit_account.is_posting:
-            raise HTTPException(409, "Accounts Payable posting account is invalid")
-        if Decimal(invoice.tax_amount or 0) > ZERO:
-            if not rule.input_vat_account_id or not rule.input_vat_account:
-                raise HTTPException(409, "Input VAT account is required for supplier invoices containing PPN")
-            if not rule.input_vat_account.is_active or not rule.input_vat_account.is_posting:
-                raise HTTPException(409, "Input VAT posting account is invalid")
+        payable_account = resolver.payable_account(invoice.supplier)
+        input_vat_account = resolver.input_vat_account() if Decimal(invoice.tax_amount or 0) > ZERO else None
 
         journal = JournalEntry(
             journal_number=next_document_number(self.db, "JV", digits=4),
@@ -575,7 +566,7 @@ class SupplierInvoiceService:
         if Decimal(invoice.tax_amount or 0) > ZERO:
             journal.lines.append(JournalLine(
                 line_number=line_number,
-                account_id=rule.input_vat_account_id,
+                account_id=input_vat_account.id,
                 debit=invoice.tax_amount,
                 credit=0,
                 description=f"Input VAT {invoice.tax_invoice_number}",
@@ -588,7 +579,7 @@ class SupplierInvoiceService:
 
         journal.lines.append(JournalLine(
             line_number=line_number,
-            account_id=rule.credit_account_id,
+            account_id=payable_account.id,
             debit=0,
             credit=invoice.total_amount,
             description=f"Payable to {invoice.supplier.name}",
