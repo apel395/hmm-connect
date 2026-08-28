@@ -24,11 +24,47 @@ class DirectCoaService:
     def account(self, account_id: int | None, label: str) -> ChartOfAccount:
         account = self.db.get(ChartOfAccount, account_id) if account_id else None
         if not account or not account.is_active or not account.is_posting:
-            raise HTTPException(409, f"{label} requires an active posting COA mapping")
+            raise HTTPException(409, f"{label} requires an active direct COA mapping")
         return account
 
-    def inventory_account(self, product) -> ChartOfAccount:
-        account = self.account(getattr(product, "inventory_account_id", None), f"Item {product.code} inventory")
+    def location_account(self, location_id: int | None, role: str, label: str) -> ChartOfAccount | None:
+        if not location_id:
+            return None
+        setting = (
+            self.db.query(AccountingSetting)
+            .filter(AccountingSetting.setting_key == f"LOCATION_{location_id}_{role}")
+            .first()
+        )
+        if not setting:
+            return None
+        return self.account(setting.account_id, label)
+
+    @staticmethod
+    def inventory_role(product) -> str:
+        text = " ".join(
+            str(value or "")
+            for value in (
+                getattr(product, "group_code", None),
+                getattr(product, "group_name", None),
+                getattr(product, "subgroup_code", None),
+                getattr(product, "subgroup_name", None),
+                getattr(product, "name", None),
+            )
+        ).upper()
+        if any(token in text for token in ("BEVERAGE", "MINUM", "DRINK")):
+            return "INVENTORY_BEVERAGE"
+        if any(token in text for token in ("FOOD", "MAKAN", "GROC", "SPICE", "VEGETABLE", "MEAT", "SEAFOOD")):
+            return "INVENTORY_FOOD"
+        return "INVENTORY_MATERIAL"
+
+    def inventory_account(self, product, location_id: int | None = None) -> ChartOfAccount:
+        account = self.location_account(
+            location_id,
+            self.inventory_role(product),
+            f"Item {product.code} inventory for location {location_id}",
+        )
+        if account is None:
+            account = self.account(getattr(product, "inventory_account_id", None), f"Item {product.code} inventory")
         if account.account_type != "ASSET" or account.normal_balance != "DEBIT" or account.account_subtype in self.BANK_SUBTYPES:
             raise HTTPException(409, f"Item {product.code} inventory COA must be a debit-balance non-cash asset")
         return account
@@ -48,8 +84,14 @@ class DirectCoaService:
             raise HTTPException(409, f"Item {product.code} COGS COA must be a debit-balance expense")
         return account
 
-    def payable_account(self, supplier) -> ChartOfAccount:
-        account = self.account(getattr(supplier, "payable_account_id", None), f"Supplier {supplier.code} payable")
+    def payable_account(self, supplier, location_id: int | None = None) -> ChartOfAccount:
+        account = self.location_account(
+            location_id,
+            "AP",
+            f"Accounts Payable for location {location_id}",
+        )
+        if account is None:
+            account = self.account(getattr(supplier, "payable_account_id", None), f"Supplier {supplier.code} payable")
         if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
             raise HTTPException(409, f"Supplier {supplier.code} payable COA must be a credit-balance liability")
         return account
@@ -87,7 +129,7 @@ class DirectCoaService:
             except HTTPException as exc:
                 blockers.append({"code": code, "message": str(exc.detail)})
 
-        check("SUPPLIER_PAYABLE", lambda: self.payable_account(invoice.supplier))
+        check("SUPPLIER_PAYABLE", lambda: self.payable_account(invoice.supplier, invoice.location_id))
         if Decimal(invoice.tax_amount or 0) > 0:
             check("INPUT_VAT", self.input_vat_account)
 
@@ -101,7 +143,7 @@ class DirectCoaService:
                     account = self.account(current.account_id, f"Invoice line {index}")
                 elif current.product:
                     account = (
-                        self.inventory_account(current.product)
+                        self.inventory_account(current.product, invoice.location_id)
                         if inventory
                         else self.expense_account(current.product)
                     )
@@ -118,7 +160,7 @@ class DirectCoaService:
         if line.account_id:
             account = self.account(line.account_id, "Supplier invoice line")
         elif line.product:
-            account = self.inventory_account(line.product) if inventory else self.expense_account(line.product)
+            account = self.inventory_account(line.product, invoice.location_id) if inventory else self.expense_account(line.product)
             line.account_id = account.id
         else:
             raise HTTPException(409, "Manual supplier invoice line requires a direct COA")
