@@ -5,6 +5,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.inventory import Inventory
+from app.models.journal_entry import JournalEntry
+from app.models.journal_line import JournalLine
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
 from app.models.store_request import StoreIssue, StoreIssueItem, StoreRequest, StoreRequestItem
@@ -15,6 +17,7 @@ from app.schemas.store_request import StoreRequestCreate, StoreRequestIssueCreat
 from app.services.activity_service import AuditService
 from app.services.approval import approve_current_step, get_request, reject_current_step, start_approval
 from app.services.document_number import next_document_number
+from app.services.direct_coa_service import DirectCoaService
 from app.services.organization_dimensions import validate_dimensions
 from app.services.location_access import enforce_location_access, enforce_warehouse_access, resolve_location_id
 
@@ -289,9 +292,51 @@ class StoreRequestService:
                     detail=f"Insufficient stock for {source.product.name}: available {available}, requested {qty}",
                 )
             unit_cost = Decimal(inventory.average_cost or 0)
-            prepared_lines.append((source, inventory, qty, unit_cost))
+            if unit_cost <= 0:
+                raise HTTPException(status_code=409, detail=f"Item {source.product.name} has no positive inventory cost")
+            resolver = DirectCoaService(db)
+            inventory_account = resolver.inventory_account(source.product)
+            cogs_account = resolver.cogs_account(source.product)
+            prepared_lines.append((source, inventory, qty, unit_cost, inventory_account, cogs_account))
 
-        for source, inventory, qty, unit_cost in prepared_lines:
+        grouped = {}
+        for source, _inventory, qty, unit_cost, inventory_account, cogs_account in prepared_lines:
+            amount = qty * unit_cost
+            key = (inventory_account.id, cogs_account.id)
+            grouped[key] = grouped.get(key, Decimal("0")) + amount
+
+        journal = JournalEntry(
+            journal_number=next_document_number(db, "JV", digits=4),
+            posting_date=date.today(),
+            status="DRAFT",
+            document_type="STORE_ISSUE",
+            document_number=issue.issue_number,
+            reference_type="STORE_ISSUE",
+            reference_id=issue.id,
+            description=f"Inventory consumption {issue.issue_number}",
+            created_by_id=current_user.id,
+            business_unit_id=request.business_unit_id,
+            location_id=request.location_id,
+            department_id=request.department_id,
+        )
+        line_number = 1
+        for (inventory_account_id, cogs_account_id), amount in grouped.items():
+            journal.lines.append(JournalLine(
+                line_number=line_number, account_id=cogs_account_id, debit=amount, credit=0,
+                description=f"Consumption {issue.issue_number}", business_unit_id=request.business_unit_id,
+                location_id=request.location_id, department_id=request.department_id,
+            ))
+            line_number += 1
+            journal.lines.append(JournalLine(
+                line_number=line_number, account_id=inventory_account_id, debit=0, credit=amount,
+                description=f"Inventory issued {issue.issue_number}", business_unit_id=request.business_unit_id,
+                location_id=request.location_id, department_id=request.department_id,
+            ))
+            line_number += 1
+        db.add(journal)
+        db.flush()
+
+        for source, inventory, qty, unit_cost, inventory_account, cogs_account in prepared_lines:
             inventory.quantity = Decimal(inventory.quantity or 0) - qty
             source.issued_quantity = Decimal(source.issued_quantity or 0) + qty
             db.add(StockMovement(
@@ -306,6 +351,9 @@ class StoreRequestService:
                 reference_type="STORE_REQUEST",
                 reference_id=request.id,
                 notes=f"{request.sr_number} / {issue.issue_number}",
+                inventory_account_id=inventory_account.id,
+                offset_account_id=cogs_account.id,
+                journal_entry_id=journal.id,
             ))
 
         complete = all(Decimal(item.issued_quantity or 0) >= Decimal(item.requested_quantity) for item in request.items)
