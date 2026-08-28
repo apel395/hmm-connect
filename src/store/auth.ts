@@ -33,6 +33,12 @@ export interface User {
   username?: string;
   full_name?: string;
   email?: string;
+  business_unit_id?: number | null;
+  department_id?: number | null;
+  location_id?: number | null;
+  default_business_unit_id?: number | null;
+  default_department_id?: number | null;
+  default_location_id?: number | null;
   roles?: Role[];
 }
 
