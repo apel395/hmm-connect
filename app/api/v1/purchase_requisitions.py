@@ -250,9 +250,48 @@ def print_requisition(requisition_id: int, db: Session = Depends(get_db), user=D
     return {**get_requisition(requisition_id, db, user), "document_type": "Purchase Requisition", **print_metadata(user)}
 
 
+def _apply_login_organization_context(db: Session, data: PurchaseRequisitionCreate, user) -> None:
+    """Use the user's persisted organization identity for operational PR creation."""
+    if is_superuser(user):
+        data.location_id = resolve_location_id(user, data.location_id)
+        return
+
+    location_id = user.default_location_id or user.location_id
+    department_id = user.default_department_id or user.department_id
+    business_unit_id = user.default_business_unit_id
+
+    location = db.get(Location, location_id) if location_id else None
+    department = db.get(Department, department_id) if department_id else None
+
+    if location:
+        if not location.is_active:
+            raise HTTPException(409, "Assigned work location is inactive")
+        business_unit_id = business_unit_id or location.business_unit_id
+        data.location_id = location.id
+    else:
+        data.location_id = resolve_location_id(user, data.location_id)
+
+    if department:
+        if not department.is_active:
+            raise HTTPException(409, "Assigned department is inactive")
+        if business_unit_id is None:
+            business_unit_id = department.business_unit_id
+        elif department.business_unit_id not in {None, business_unit_id}:
+            raise HTTPException(409, "Assigned department does not belong to the user's Business Unit")
+        data.department_id = department.id
+
+    if business_unit_id is not None:
+        business_unit = db.get(BusinessUnit, business_unit_id)
+        if not business_unit or not business_unit.is_active:
+            raise HTTPException(409, "Assigned Business Unit is inactive or missing")
+        if location and location.business_unit_id != business_unit_id:
+            raise HTTPException(409, "Assigned location does not belong to the user's Business Unit")
+        data.business_unit_id = business_unit_id
+
+
 @router.post("", status_code=201)
 def create_requisition(data: PurchaseRequisitionCreate, db: Session = Depends(get_db), user=Depends(pr_create_user)):
-    data.location_id = resolve_location_id(user, data.location_id)
+    _apply_login_organization_context(db, data, user)
     requisition = PurchaseRequisitionService.create(db=db, data=data, current_user=user)
     return _apply_tax(db, requisition, data)
 
