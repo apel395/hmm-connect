@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -74,6 +76,42 @@ class DirectCoaService:
         if account.account_type != expected_type or account.normal_balance != "DEBIT":
             label = "inventory asset" if inventory else "expense"
             raise HTTPException(409, f"Supplier invoice line requires a debit-balance {label} COA")
+
+    def supplier_invoice_readiness(self, invoice: SupplierInvoice) -> dict:
+        """Return every accounting prerequisite without mutating the invoice."""
+        blockers: list[dict[str, str]] = []
+
+        def check(code: str, callback) -> None:
+            try:
+                callback()
+            except HTTPException as exc:
+                blockers.append({"code": code, "message": str(exc.detail)})
+
+        check("SUPPLIER_PAYABLE", lambda: self.payable_account(invoice.supplier))
+        if Decimal(invoice.tax_amount or 0) > 0:
+            check("INPUT_VAT", self.input_vat_account)
+
+        inventory = bool(
+            invoice.goods_receipt
+            and str(invoice.goods_receipt.destination_type or "").upper() == "WAREHOUSE"
+        )
+        for index, line in enumerate(invoice.lines, start=1):
+            def validate_line(current=line):
+                if current.account_id:
+                    account = self.account(current.account_id, f"Invoice line {index}")
+                elif current.product:
+                    account = (
+                        self.inventory_account(current.product)
+                        if inventory
+                        else self.expense_account(current.product)
+                    )
+                else:
+                    raise HTTPException(409, f"Invoice line {index} requires a direct COA")
+                self.validate_invoice_debit(account, inventory=inventory)
+
+            check(f"INVOICE_LINE_{index}", validate_line)
+
+        return {"is_ready": not blockers, "blockers": blockers}
 
     def snapshot_invoice_line(self, invoice: SupplierInvoice, line: SupplierInvoiceLine) -> ChartOfAccount:
         inventory = bool(invoice.goods_receipt and invoice.goods_receipt.destination_type == "WAREHOUSE")
