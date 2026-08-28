@@ -162,3 +162,33 @@ def test_global_control_accounts_resolve(method_name, account):
     )
 
     assert getattr(service, method_name)().id == account.id
+
+
+@pytest.mark.parametrize(
+    ("field_name", "account"),
+    [
+        ("input_vat_account_id", coa(20, "ASSET", "DEBIT")),
+        ("accounts_payable_account_id", coa(21, "LIABILITY", "CREDIT")),
+        ("grni_account_id", coa(22, "LIABILITY", "CREDIT")),
+        ("purchase_discount_account_id", coa(23, "INCOME", "CREDIT")),
+        (
+            "withholding_tax_payable_account_id",
+            coa(24, "LIABILITY", "CREDIT"),
+        ),
+    ],
+)
+def test_global_setting_policy_accepts_valid_control_accounts(field_name, account):
+    from app.api.v1.accounting import _validate_direct_setting_account
+
+    _validate_direct_setting_account(field_name, account)
+
+
+def test_global_setting_policy_rejects_bank_as_grni():
+    from app.api.v1.accounting import _validate_direct_setting_account
+
+    with pytest.raises(HTTPException) as error:
+        _validate_direct_setting_account(
+            "grni_account_id",
+            coa(25, "ASSET", "DEBIT", "BANK"),
+        )
+    assert error.value.status_code == 422
