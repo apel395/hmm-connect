@@ -11,3 +11,4 @@ class BankAccountInput(BaseModel):
     location_id: int | None = None
     coa_account_id: int
     is_active: bool = True
+    is_payment_account: bool = False
