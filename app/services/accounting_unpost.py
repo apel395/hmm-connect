@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.account_payable import AccountPayable
 from app.models.bank_transfer import BankTransfer
 from app.models.general_ledger import GeneralLedger
+from app.models.goods_receipt import GoodsReceipt
 from app.models.journal_entry import JournalEntry
 from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier_adjustment import SupplierAdjustment
@@ -23,6 +24,7 @@ SUPPORTED_SOURCE_TYPES = {
     "SUPPLIER_PAYMENT",
     "SUPPLIER_ADJUSTMENT",
     "BANK_TRANSFER",
+    "GOODS_RECEIPT",
 }
 
 
@@ -163,6 +165,14 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
         adjustment.posted_at = now
         return
 
+    if source == "GOODS_RECEIPT":
+        receipt = db.get(GoodsReceipt, journal.reference_id)
+        if not receipt:
+            raise HTTPException(409, "Goods receipt linked to this journal was not found")
+        if receipt.status != "POSTED":
+            raise HTTPException(409, "Goods receipt must remain posted before its journal can be posted")
+        return
+
     if source == "BANK_TRANSFER":
         transfer = db.get(BankTransfer, journal.reference_id)
         if not transfer:
@@ -231,6 +241,17 @@ def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
         adjustment.status = "DRAFT"
         adjustment.posted_by_id = None
         adjustment.posted_at = None
+        return
+
+    if source == "GOODS_RECEIPT":
+        receipt = db.get(GoodsReceipt, journal.reference_id)
+        if not receipt:
+            raise HTTPException(409, "Goods receipt linked to this journal was not found")
+        if receipt.status != "POSTED":
+            raise HTTPException(
+                409,
+                "Only a posted goods receipt can have its journal unposted",
+            )
         return
 
     if source == "BANK_TRANSFER":
