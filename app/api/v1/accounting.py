@@ -15,6 +15,27 @@ from app.models.general_ledger import GeneralLedger
 
 class DirectCoaSettingsInput(BaseModel):
     input_vat_account_id: int | None = None
+    accounts_payable_account_id: int | None = None
+    grni_account_id: int | None = None
+    purchase_discount_account_id: int | None = None
+    withholding_tax_payable_account_id: int | None = None
+
+
+DIRECT_COA_SETTING_FIELDS = {
+    "input_vat_account_id": "INPUT_VAT_ACCOUNT",
+    "accounts_payable_account_id": "ACCOUNTS_PAYABLE_ACCOUNT",
+    "grni_account_id": "GRNI_ACCOUNT",
+    "purchase_discount_account_id": "PURCHASE_DISCOUNT_ACCOUNT",
+    "withholding_tax_payable_account_id": "WITHHOLDING_TAX_PAYABLE_ACCOUNT",
+}
+
+DIRECT_COA_SETTING_DESCRIPTIONS = {
+    "INPUT_VAT_ACCOUNT": "Global direct COA for supplier-invoice input VAT",
+    "ACCOUNTS_PAYABLE_ACCOUNT": "Global direct COA for supplier accounts payable",
+    "GRNI_ACCOUNT": "Global direct COA for goods received not invoiced",
+    "PURCHASE_DISCOUNT_ACCOUNT": "Global direct COA for purchase discounts",
+    "WITHHOLDING_TAX_PAYABLE_ACCOUNT": "Global direct COA for withholding tax payable",
+}
 
 
 router = APIRouter(
@@ -148,13 +169,65 @@ def account_ledger(
     return result
 
 
+def _validate_direct_setting_account(field_name: str, account: ChartOfAccount) -> None:
+    if not account.is_active or not account.is_posting:
+        raise HTTPException(422, "Direct COA mapping must use an active posting account")
+
+    if field_name == "input_vat_account_id":
+        valid = account.account_type == "ASSET" and account.normal_balance == "DEBIT"
+        message = "Input VAT COA must be an active debit-balance posting asset"
+    elif field_name in {
+        "accounts_payable_account_id",
+        "grni_account_id",
+        "withholding_tax_payable_account_id",
+    }:
+        valid = account.account_type == "LIABILITY" and account.normal_balance == "CREDIT"
+        labels = {
+            "accounts_payable_account_id": "Accounts Payable",
+            "grni_account_id": "GRNI",
+            "withholding_tax_payable_account_id": "Withholding Tax Payable",
+        }
+        message = f"{labels[field_name]} COA must be an active credit-balance posting liability"
+    else:
+        valid = (
+            account.account_type in {"INCOME", "EXPENSE"}
+            and account.normal_balance == "CREDIT"
+        )
+        message = "Purchase Discount COA must be an active credit-balance posting income or contra-expense account"
+
+    if not valid:
+        raise HTTPException(422, message)
+
+
+def _serialize_direct_coa_settings(db: Session) -> dict:
+    rows = (
+        db.query(AccountingSetting)
+        .filter(AccountingSetting.setting_key.in_(DIRECT_COA_SETTING_FIELDS.values()))
+        .all()
+    )
+    by_key = {row.setting_key: row.account_id for row in rows}
+    result = {
+        field_name: by_key.get(setting_key)
+        for field_name, setting_key in DIRECT_COA_SETTING_FIELDS.items()
+    }
+    missing = [
+        field_name
+        for field_name, account_id in result.items()
+        if account_id is None
+    ]
+    return {
+        **result,
+        "is_complete": not missing,
+        "missing_settings": missing,
+    }
+
+
 @router.get("/direct-coa-settings")
 def direct_coa_settings(
     db: Session = Depends(get_db),
     current_user=Depends(require_permission("finance.manage")),
 ):
-    row = db.query(AccountingSetting).filter(AccountingSetting.setting_key == "INPUT_VAT_ACCOUNT").first()
-    return {"input_vat_account_id": row.account_id if row else None}
+    return _serialize_direct_coa_settings(db)
 
 
 @router.put("/direct-coa-settings")
@@ -163,15 +236,33 @@ def update_direct_coa_settings(
     db: Session = Depends(get_db),
     current_user=Depends(require_permission("finance.manage")),
 ):
-    account = db.get(ChartOfAccount, data.input_vat_account_id) if data.input_vat_account_id else None
-    if not account or not account.is_active or not account.is_posting or account.account_type != "ASSET" or account.normal_balance != "DEBIT":
-        raise HTTPException(422, "Input VAT COA must be an active debit-balance posting asset")
-    row = db.query(AccountingSetting).filter(AccountingSetting.setting_key == "INPUT_VAT_ACCOUNT").first()
-    if row:
-        row.account_id = account.id
-        row.description = "Direct COA for supplier-invoice input VAT"
-    else:
-        row = AccountingSetting(setting_key="INPUT_VAT_ACCOUNT", account_id=account.id, description="Direct COA for supplier-invoice input VAT")
-        db.add(row)
+    values = data.model_dump(exclude_none=True)
+    if not values:
+        raise HTTPException(422, "At least one direct COA setting is required")
+
+    for field_name, account_id in values.items():
+        account = db.get(ChartOfAccount, account_id)
+        if not account:
+            raise HTTPException(422, f"{field_name} references an unknown COA")
+        _validate_direct_setting_account(field_name, account)
+
+        setting_key = DIRECT_COA_SETTING_FIELDS[field_name]
+        row = (
+            db.query(AccountingSetting)
+            .filter(AccountingSetting.setting_key == setting_key)
+            .first()
+        )
+        if row:
+            row.account_id = account.id
+            row.description = DIRECT_COA_SETTING_DESCRIPTIONS[setting_key]
+        else:
+            db.add(
+                AccountingSetting(
+                    setting_key=setting_key,
+                    account_id=account.id,
+                    description=DIRECT_COA_SETTING_DESCRIPTIONS[setting_key],
+                )
+            )
+
     db.commit()
-    return {"input_vat_account_id": row.account_id}
+    return _serialize_direct_coa_settings(db)
