@@ -40,7 +40,6 @@ def list_rules(db: Session = Depends(get_db), user=Depends(get_current_user)):
 @router.get("/{rule_id}")
 def get_rule(rule_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    ensure_legacy_read_only()
     row = db.get(AccountingPostingRule, rule_id)
     if not row:
         raise HTTPException(404, "Posting rule not found")
@@ -73,6 +72,7 @@ def create_rule(data: PostingRuleCreate, db: Session = Depends(get_db), user=Dep
 @router.patch("/{rule_id}")
 def update_rule(rule_id: int, data: PostingRuleUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
+    ensure_legacy_read_only()
     row = db.get(AccountingPostingRule, rule_id)
     if not row:
         raise HTTPException(404, "Posting rule not found")
