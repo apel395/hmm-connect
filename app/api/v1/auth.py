@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.security import create_access_token, decode_access_token_claims, hash_password, verify_password
 from app.dependencies.auth import get_current_user, oauth2_scheme
 from app.models.user import User
+from app.models.location_department import LocationDepartment
 from app.schemas.auth import (
     RegistrationRequest,
     RegistrationResponse,
@@ -159,7 +160,7 @@ def logout(
 
 
 @router.get("/me", response_model=UserSummary)
-def current_user(user: User = Depends(get_current_user)):
+def current_user(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # Work location is the authoritative operational dimension.  A stale
     # default_business_unit_id must never override the Business Unit that owns
     # the assigned/default location, otherwise forms can load an impossible
@@ -175,14 +176,23 @@ def current_user(user: User = Depends(get_current_user)):
         resolved_business_unit_id = user.default_business_unit_id
 
     resolved_department_id = user.default_department_id or user.department_id
-    if (
-        resolved_department
-        and resolved_business_unit_id is not None
-        and resolved_department.business_unit_id not in {None, resolved_business_unit_id}
-    ):
-        # Let the UI choose the single valid department for the resolved BU
-        # instead of exposing an inconsistent stored default.
-        resolved_department_id = None
+    if resolved_department and resolved_business_unit_id is not None:
+        invalid_business_unit = resolved_department.business_unit_id not in {None, resolved_business_unit_id}
+        invalid_location = False
+        if resolved_location and not invalid_business_unit:
+            invalid_location = (
+                db.query(LocationDepartment)
+                .filter(
+                    LocationDepartment.location_id == resolved_location.id,
+                    LocationDepartment.department_id == resolved_department.id,
+                )
+                .first()
+                is None
+            )
+        if invalid_business_unit or invalid_location:
+            # Location is the pivot. Let the UI select a department that is
+            # actually mapped to this work location.
+            resolved_department_id = None
 
     return {
         "id": user.id,
