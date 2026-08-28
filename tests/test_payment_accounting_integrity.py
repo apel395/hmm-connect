@@ -5,7 +5,6 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1.payments import validate_payment_journal_integrity
-from app.services.accounting_posting_rule_service import AccountingPostingRuleService
 
 
 def account(
@@ -30,9 +29,9 @@ def account(
 def payment_fixture(bank_credit=Decimal("20000")):
     payable = account(10, "LIABILITY", "CREDIT", "ACCOUNTS_PAYABLE")
     bank = account(20, "ASSET", "DEBIT", "BANK")
-    rule = SimpleNamespace(debit_account_id=payable.id, debit_account=payable)
     payment = SimpleNamespace(
         id=9,
+        supplier=SimpleNamespace(code="SUP-TEST", payable_account_id=payable.id),
         payment_number="PAY-TEST",
         amount=Decimal("20000"),
         business_unit_id=2,
@@ -71,45 +70,31 @@ def payment_fixture(bank_credit=Decimal("20000")):
             ),
         ],
     )
-    return payment, journal, rule
+    db = SimpleNamespace(get=lambda _model, account_id: payable if account_id == payable.id else None)
+    return db, payment, journal, payable
 
 
-def test_payment_journal_matches_scoped_payable_and_selected_bank(monkeypatch):
-    payment, journal, rule = payment_fixture()
-    monkeypatch.setattr(
-        AccountingPostingRuleService,
-        "select_rule",
-        lambda self, event_type, business_unit_id, location_id: rule,
-    )
+def test_payment_journal_matches_direct_supplier_payable_and_selected_bank():
+    db, payment, journal, payable = payment_fixture()
 
-    assert validate_payment_journal_integrity(None, payment, journal) is rule
+    assert validate_payment_journal_integrity(db, payment, journal) is payable
 
 
-def test_payment_journal_rejects_credit_not_matching_funding(monkeypatch):
-    payment, journal, rule = payment_fixture(bank_credit=Decimal("19000"))
-    monkeypatch.setattr(
-        AccountingPostingRuleService,
-        "select_rule",
-        lambda self, event_type, business_unit_id, location_id: rule,
-    )
+def test_payment_journal_rejects_credit_not_matching_funding():
+    db, payment, journal, _ = payment_fixture(bank_credit=Decimal("19000"))
 
     with pytest.raises(HTTPException) as error:
-        validate_payment_journal_integrity(None, payment, journal)
+        validate_payment_journal_integrity(db, payment, journal)
 
     assert error.value.status_code == 409
     assert "selected funding accounts" in error.value.detail
 
 
-def test_payment_journal_rejects_wrong_location_dimension(monkeypatch):
-    payment, journal, rule = payment_fixture()
+def test_payment_journal_rejects_wrong_location_dimension():
+    db, payment, journal, _ = payment_fixture()
     journal.lines[1].location_id = 99
-    monkeypatch.setattr(
-        AccountingPostingRuleService,
-        "select_rule",
-        lambda self, event_type, business_unit_id, location_id: rule,
-    )
 
     with pytest.raises(HTTPException) as error:
-        validate_payment_journal_integrity(None, payment, journal)
+        validate_payment_journal_integrity(db, payment, journal)
 
     assert "dimensions" in error.value.detail

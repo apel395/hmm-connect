@@ -20,11 +20,13 @@ class Supplier(Base, TimestampMixin):
     nitku: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tax_registration_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
 
+    payable_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     rows = relationship("SupplierRow", back_populates="supplier", cascade="all, delete-orphan", order_by="SupplierRow.id")
     purchase_orders = relationship("PurchaseOrder", back_populates="supplier")
     products = relationship("SupplierProduct", back_populates="supplier", cascade="all, delete-orphan")
+    payable_account = relationship("ChartOfAccount")
 
 
 class SupplierRow(Base):
