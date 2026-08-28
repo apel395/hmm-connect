@@ -172,17 +172,18 @@ def update(invoice_id: int, data: SupplierInvoiceInput, db: Session = Depends(ge
 
 @router.post("/{invoice_id}/verify")
 def verify(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_verify_user)):
-    """Verify the invoice and prepare accounting, but never post the journal here."""
+    """Verify and prepare the invoice journal atomically."""
     service = SupplierInvoiceService(db)
-    invoice = service.verify(get(db, invoice_id, user), user)
+    invoice = get(db, invoice_id, user)
     try:
-        service.generate_journal(invoice, user)
-    except HTTPException as exc:
+        invoice = service.verify(invoice, user, commit=False)
+        service.generate_journal(invoice, user, commit=False)
+        db.commit()
+    except HTTPException:
         db.rollback()
-        data = result(db, get(db, invoice_id, user), user)
-        data["accounting_warning"] = exc.detail
-        return data
-    return result(db, get(db, invoice_id, user), user)
+        raise
+    db.refresh(invoice)
+    return result(db, invoice, user)
 
 
 @router.post("/{invoice_id}/reject")
