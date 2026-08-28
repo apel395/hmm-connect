@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.api.v1.store_requests import list_store_requests, requester_user, warehouse_user
 from app.models import Base
 from app.models.business_unit import BusinessUnit
+from app.models.chart_of_account import ChartOfAccount
 from app.models.department import Department
 from app.models.inventory import Inventory
 from app.models.location import Location
@@ -53,6 +54,16 @@ def store_db(monkeypatch):
         default_business_unit=business_unit, default_department_id=None, default_location_id=None,
         roles=[warehouse_role],
     )
+    inventory_account = ChartOfAccount(
+        account_number="100-300-TEST", account_name="Inventory Test", account_type="ASSET",
+        normal_balance="DEBIT", account_subtype="INVENTORY", is_posting=True, is_active=True,
+    )
+    cogs_account = ChartOfAccount(
+        account_number="500-100-TEST", account_name="COGS Test", account_type="EXPENSE",
+        normal_balance="DEBIT", account_subtype="COGS", is_posting=True, is_active=True,
+    )
+    db.add_all([inventory_account, cogs_account])
+    db.flush()
     products = [
         Product(
             code=f"ITEM-{index}", name=f"Item {index}", group_code="FIX", group_name="Fixture",
@@ -60,6 +71,7 @@ def store_db(monkeypatch):
             cost_price=0, selling_price=0, tax_category="NON_TAXABLE", is_taxable=False, tax_rate=0,
             minimum_stock=0, reorder_level=0, maximum_stock=0, lead_time_days=0,
             is_market_item=False, is_active=True,
+            inventory_account_id=inventory_account.id, cogs_account_id=cogs_account.id,
         )
         for index in (1, 2)
     ]
