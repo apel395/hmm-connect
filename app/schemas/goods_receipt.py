@@ -69,3 +69,36 @@ class GoodsReceiptCostCorrection(BaseModel):
         if len({item.item_id for item in self.items}) != len(self.items):
             raise ValueError("A receipt item may appear only once")
         return self
+
+
+class GoodsReceiptItemUpdate(BaseModel):
+    item_id: int
+    quantity: Decimal = Field(gt=0)
+    unit_cost: Decimal = Field(gt=0)
+    is_taxable: bool
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_tax(self):
+        if not self.is_taxable:
+            self.tax_rate = Decimal("0")
+        return self
+
+
+class GoodsReceiptUpdate(BaseModel):
+    received_at: datetime
+    external_reference: str | None = Field(default=None, max_length=100)
+    destination_type: Literal["WAREHOUSE", "DIRECT_USE"]
+    warehouse_id: int | None = None
+    notes: str | None = None
+    items: list[GoodsReceiptItemUpdate]
+
+    @model_validator(mode="after")
+    def validate_update(self):
+        if self.destination_type == "WAREHOUSE" and self.warehouse_id is None:
+            raise ValueError("Warehouse is required for warehouse receiving")
+        if not self.items:
+            raise ValueError("Receipt must contain items")
+        if len({item.item_id for item in self.items}) != len(self.items):
+            raise ValueError("A receipt item may appear only once")
+        return self
