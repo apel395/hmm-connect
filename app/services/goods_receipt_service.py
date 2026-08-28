@@ -28,9 +28,9 @@ class GoodsReceiptService:
         return next_document_number(db, "GR", digits=5, day=True)
 
     @staticmethod
-    def _check_access(user, *_legacy_roles):
-        if not has_permission(user, "receiving.manage"):
-            raise HTTPException(status_code=403, detail="Receiving manage permission required")
+    def _check_access(user, permission_code: str):
+        if not has_permission(user, permission_code):
+            raise HTTPException(status_code=403, detail=f"{permission_code} permission required")
 
     @staticmethod
     def can_correct_cost(user) -> bool:
@@ -160,7 +160,7 @@ class GoodsReceiptService:
 
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
-        cls._check_access(user, "WAREHOUSE", "PURCHASING")
+        cls._check_access(user, "receiving.create")
         from app.services.organization_dimensions import validate_dimensions
 
         purchase_order = db.get(PurchaseOrder, data.purchase_order_id) if data.purchase_order_id else None
@@ -351,7 +351,7 @@ class GoodsReceiptService:
 
     @classmethod
     def post(cls, db: Session, *, receipt_id: int, user):
-        cls._check_access(user, "WAREHOUSE", "PURCHASING")
+        cls._check_access(user, "receiving.post")
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
         if receipt.status != "DRAFT": raise HTTPException(status_code=409, detail="Only draft receipts can be posted")
@@ -428,7 +428,7 @@ class GoodsReceiptService:
 
     @classmethod
     def return_receipt(cls, db: Session, *, receipt_id: int, user):
-        cls._check_access(user, "WAREHOUSE", "PURCHASING")
+        cls._check_access(user, "receiving.return")
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
         if receipt.status != "POSTED": raise HTTPException(status_code=409, detail="Only posted receipts can be returned")
