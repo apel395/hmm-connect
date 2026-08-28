@@ -17,6 +17,19 @@ def access(user):
         raise HTTPException(403, "Finance access required")
 
 
+def ensure_legacy_read_only() -> None:
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "POSTING_RULES_READ_ONLY",
+            "message": (
+                "Posting Rules are legacy read-only configuration. "
+                "New transactions use Direct COA mappings."
+            ),
+        },
+    )
+
+
 @router.get("")
 def list_rules(db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
@@ -27,6 +40,7 @@ def list_rules(db: Session = Depends(get_db), user=Depends(get_current_user)):
 @router.get("/{rule_id}")
 def get_rule(rule_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
+    ensure_legacy_read_only()
     row = db.get(AccountingPostingRule, rule_id)
     if not row:
         raise HTTPException(404, "Posting rule not found")
@@ -36,6 +50,7 @@ def get_rule(rule_id: int, db: Session = Depends(get_db), user=Depends(get_curre
 @router.post("", status_code=201)
 def create_rule(data: PostingRuleCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
+    ensure_legacy_read_only()
     svc = AccountingPostingRuleService(db)
     svc.validate(
         data.debit_account_id,
@@ -89,6 +104,7 @@ def update_rule(rule_id: int, data: PostingRuleUpdate, db: Session = Depends(get
 
 def toggle(rule_id: int, active: bool, db, user):
     access(user)
+    ensure_legacy_read_only()
     row = db.get(AccountingPostingRule, rule_id)
     if not row:
         raise HTTPException(404, "Posting rule not found")
