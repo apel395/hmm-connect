@@ -12,6 +12,7 @@ class SupplierCreate(BaseModel):
     npwp: str | None = Field(default=None, max_length=32)
     nitku: str | None = Field(default=None, max_length=32)
     tax_registration_name: str | None = Field(default=None, max_length=150)
+    payable_account_id: int | None = None
     is_active: bool = True
 
 
@@ -25,4 +26,5 @@ class SupplierUpdate(BaseModel):
     npwp: str | None = Field(default=None, max_length=32)
     nitku: str | None = Field(default=None, max_length=32)
     tax_registration_name: str | None = Field(default=None, max_length=150)
+    payable_account_id: int | None = None
     is_active: bool | None = None
