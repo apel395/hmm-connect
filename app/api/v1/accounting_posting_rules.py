@@ -18,13 +18,15 @@ def access(user):
 
 
 @router.get("")
-def list_rules(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_rules(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user)
     svc = AccountingPostingRuleService(db)
     return [svc.serialize(x) for x in db.query(AccountingPostingRule).order_by(AccountingPostingRule.event_type).all()]
 
 
 @router.get("/{rule_id}")
-def get_rule(rule_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_rule(rule_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user)
     row = db.get(AccountingPostingRule, rule_id)
     if not row:
         raise HTTPException(404, "Posting rule not found")
