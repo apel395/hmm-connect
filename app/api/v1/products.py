@@ -12,6 +12,7 @@ from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.schemas.product import ProductCreate, ProductTaxProfileUpdate, ProductUpdate
+from app.services.direct_coa_service import DirectCoaService
 
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -36,6 +37,23 @@ def _apply_filters(query, *, active_only: bool, search: str | None, market_only:
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
     return query
+
+
+def _validate_coa_mappings(db: Session, payload: dict, product: Product | None = None) -> None:
+    resolver = DirectCoaService(db)
+    values = {
+        "inventory_account_id": payload.get("inventory_account_id", product.inventory_account_id if product else None),
+        "purchase_account_id": payload.get("purchase_account_id", product.purchase_account_id if product else None),
+        "cogs_account_id": payload.get("cogs_account_id", product.cogs_account_id if product else None),
+    }
+    if values["inventory_account_id"]:
+        probe = type("ProductProbe", (), {"code": payload.get("code") or (product.code if product else "new"), **values})()
+        resolver.inventory_account(probe)
+    for field, label in (("purchase_account_id", "consumption/expense"), ("cogs_account_id", "COGS")):
+        if values[field]:
+            account = resolver.account(values[field], f"Item {label}")
+            if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
+                raise HTTPException(422, f"Item {label} COA must be a debit-balance expense")
 
 
 def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict]:
@@ -102,6 +120,7 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), _=Depends
         raise HTTPException(status_code=409, detail="Product code already exists")
     payload = data.model_dump()
     payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
+    _validate_coa_mappings(db, payload)
     product = Product(**payload)
     db.add(product)
     db.commit()
@@ -134,7 +153,9 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    _validate_coa_mappings(db, payload, product)
+    for field, value in payload.items():
         if field != "is_market_item":
             setattr(product, field, value)
     product.is_market_item = _is_market_subgroup(product.subgroup_name)
