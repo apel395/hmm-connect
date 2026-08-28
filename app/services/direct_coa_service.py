@@ -27,6 +27,16 @@ class DirectCoaService:
             raise HTTPException(409, f"{label} requires an active direct COA mapping")
         return account
 
+    def setting_account(self, setting_key: str, label: str) -> ChartOfAccount | None:
+        setting = (
+            self.db.query(AccountingSetting)
+            .filter(AccountingSetting.setting_key == setting_key)
+            .first()
+        )
+        if not setting:
+            return None
+        return self.account(setting.account_id, label)
+
     def location_account(self, location_id: int | None, role: str, label: str) -> ChartOfAccount | None:
         if not location_id:
             return None
@@ -85,26 +95,73 @@ class DirectCoaService:
         return account
 
     def payable_account(self, supplier, location_id: int | None = None) -> ChartOfAccount:
-        account = self.location_account(
-            location_id,
-            "AP",
-            f"Accounts Payable for location {location_id}",
+        account = self.setting_account(
+            "ACCOUNTS_PAYABLE_ACCOUNT",
+            "Global Accounts Payable",
         )
         if account is None:
-            account = self.account(getattr(supplier, "payable_account_id", None), f"Supplier {supplier.code} payable")
+            account = self.location_account(
+                location_id,
+                "AP",
+                f"Accounts Payable for location {location_id}",
+            )
+        if account is None:
+            account = self.account(
+                getattr(supplier, "payable_account_id", None),
+                f"Supplier {supplier.code} payable",
+            )
         if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
             raise HTTPException(409, f"Supplier {supplier.code} payable COA must be a credit-balance liability")
         return account
 
     def input_vat_account(self) -> ChartOfAccount:
-        setting = (
-            self.db.query(AccountingSetting)
-            .filter(AccountingSetting.setting_key == "INPUT_VAT_ACCOUNT")
-            .first()
-        )
-        account = self.account(setting.account_id if setting else None, "Input VAT")
+        account = self.setting_account("INPUT_VAT_ACCOUNT", "Input VAT")
+        if account is None:
+            raise HTTPException(409, "Input VAT requires an active direct COA mapping")
         if account.account_type != "ASSET" or account.normal_balance != "DEBIT":
             raise HTTPException(409, "Input VAT COA must be a debit-balance asset")
+        return account
+
+    def grni_account(self) -> ChartOfAccount:
+        account = self.setting_account("GRNI_ACCOUNT", "GRNI")
+        if account is None:
+            raise HTTPException(409, "GRNI requires an active direct COA mapping")
+        if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
+            raise HTTPException(409, "GRNI COA must be a credit-balance liability")
+        return account
+
+    def purchase_discount_account(self) -> ChartOfAccount:
+        account = self.setting_account(
+            "PURCHASE_DISCOUNT_ACCOUNT",
+            "Purchase Discount",
+        )
+        if account is None:
+            raise HTTPException(409, "Purchase Discount requires an active direct COA mapping")
+        if (
+            account.account_type not in {"INCOME", "EXPENSE"}
+            or account.normal_balance != "CREDIT"
+        ):
+            raise HTTPException(
+                409,
+                "Purchase Discount COA must be a credit-balance income or contra-expense account",
+            )
+        return account
+
+    def withholding_tax_payable_account(self) -> ChartOfAccount:
+        account = self.setting_account(
+            "WITHHOLDING_TAX_PAYABLE_ACCOUNT",
+            "Withholding Tax Payable",
+        )
+        if account is None:
+            raise HTTPException(
+                409,
+                "Withholding Tax Payable requires an active direct COA mapping",
+            )
+        if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
+            raise HTTPException(
+                409,
+                "Withholding Tax Payable COA must be a credit-balance liability",
+            )
         return account
 
     def validate_invoice_debit(self, account: ChartOfAccount, *, inventory: bool) -> None:
