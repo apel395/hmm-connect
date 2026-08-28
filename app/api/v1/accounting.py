@@ -1,8 +1,5 @@
-from decimal import Decimal
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -11,7 +8,6 @@ from app.dependencies.authorization import require_permission
 
 from app.models.chart_of_account import ChartOfAccount
 from app.models.accounting_setting import AccountingSetting
-from app.models.general_ledger import GeneralLedger
 
 class DirectCoaSettingsInput(BaseModel):
     input_vat_account_id: int | None = None
