@@ -125,7 +125,7 @@ class AccountingPostingRuleService:
                     and account.account_type in {"ASSET", "EXPENSE"}
                 )
                 is_grni_clearing = (
-                    account.id in allowed_liability_debit_ids
+                    getattr(account, "id", None) in allowed_liability_debit_ids
                     and account.account_type == "LIABILITY"
                     and account.normal_balance == "CREDIT"
                 )
