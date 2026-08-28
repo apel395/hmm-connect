@@ -295,8 +295,8 @@ class StoreRequestService:
             if unit_cost <= 0:
                 raise HTTPException(status_code=409, detail=f"Item {source.product.name} has no positive inventory cost")
             resolver = DirectCoaService(db)
-            inventory_account = resolver.inventory_account(source.product)
-            cogs_account = resolver.cogs_account(source.product)
+            inventory_account = resolver.inventory_account(source.product, request.location_id)
+            cogs_account = resolver.cogs_account(source.product, request.location_id)
             prepared_lines.append((source, inventory, qty, unit_cost, inventory_account, cogs_account))
 
         grouped = {}
