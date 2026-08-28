@@ -11,6 +11,8 @@ import SupplierDetail from "../components/SupplierDetail";
 import SupplierForm from "../components/SupplierForm";
 import SupplierTable from "../components/SupplierTable";
 import type { Supplier, SupplierPayload } from "../types";
+import { useAuthStore } from "@/store/auth";
+import { hasPermission } from "@/lib/access";
 import {
   useCreateSupplier,
   useDeleteSupplier,
@@ -64,6 +66,8 @@ function supplierPayload(supplier: Supplier, isActive = supplier.is_active): Sup
 }
 
 export default function SupplierPage() {
+  const user = useAuthStore((state) => state.user);
+  const canCreateSupplier = hasPermission(user, "finance.manage");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -137,7 +141,7 @@ export default function SupplierPage() {
 
   return <>
     <div className="space-y-6">
-      <PageHeader title="Suppliers" description="Manage supplier profiles, contacts, banking details, and availability." actions={<Button onClick={openCreate}>Add Supplier</Button>}/>
+      <PageHeader title="Suppliers" description="Manage supplier profiles, contacts, banking details, and availability." actions={canCreateSupplier ? <Button onClick={openCreate}>Add Supplier</Button> : undefined}/>
       <Card>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row">
           <Input type="search" aria-label="Search suppliers" placeholder="Search supplier code or name..." value={search} className="sm:max-w-md" onChange={(event) => setSearch(event.target.value)}/>

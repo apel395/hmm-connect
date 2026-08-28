@@ -7,6 +7,7 @@ import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { isBeforeDate, isBeforeToday, todayLocal } from "@/utils/dateConstraints";
+import { useAuthStore } from "@/store/auth";
 
 import PurchaseRequisitionItems, { PurchaseRequisitionItemRow, Product } from "./PurchaseRequisitionItems";
 
@@ -18,6 +19,7 @@ interface Props {
 
 export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData }: Props) {
   const editing = Boolean(initialData);
+  const user = useAuthStore((state) => state.user);
   const [businessUnitId, setBusinessUnitId] = useState<number>();
   const [departmentId, setDepartmentId] = useState<number>();
   const [locationId, setLocationId] = useState<number>();
@@ -34,6 +36,18 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
   const locations = useQuery({ queryKey: ["locations", "pr-form", businessUnitId], queryFn: () => listLocations({ business_unit_id: businessUnitId, is_active: true, assigned_only: true }), enabled: Boolean(businessUnitId) });
   const activeDepartments = useMemo(() => departments.data ?? [], [departments.data]);
   const activeLocations = useMemo(() => locations.data ?? [], [locations.data]);
+
+  useEffect(() => {
+    if (!editing && !departmentId && activeDepartments.length === 1) {
+      setDepartmentId(activeDepartments[0].id);
+    }
+  }, [activeDepartments, departmentId, editing]);
+
+  useEffect(() => {
+    if (!editing && !locationId && activeLocations.length === 1) {
+      setLocationId(activeLocations[0].id);
+    }
+  }, [activeLocations, locationId, editing]);
 
   useEffect(() => {
     if (initialData) {
@@ -61,8 +75,11 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
       setProducts([]);
       setRequestDate(todayLocal());
       setExpiryDate("");
+      setBusinessUnitId(user?.business_unit_id ?? user?.default_business_unit_id ?? undefined);
+      setDepartmentId(user?.department_id ?? user?.default_department_id ?? undefined);
+      setLocationId(user?.location_id ?? user?.default_location_id ?? undefined);
     }
-  }, [initialData]);
+  }, [initialData, user]);
 
   function rememberProduct(product: Product) {
     setProducts((current) => current.some((item) => item.id === product.id)
@@ -112,6 +129,9 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
     } finally { setSaving(false); }
   }
 
+  const lockedBusinessUnit = !editing && Boolean(user?.business_unit_id ?? user?.default_business_unit_id);
+  const lockedDepartment = !editing && Boolean(user?.department_id ?? user?.default_department_id);
+  const lockedLocation = !editing && Boolean(user?.location_id ?? user?.default_location_id);
   const fieldClass = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
   const createMinimum = editing ? undefined : todayLocal();
   return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden p-0">
@@ -120,9 +140,9 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
       <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6">
         {formError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{formError}</div>}
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          <label data-pr-field="business-unit" className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" value={businessUnitId} options={businessUnits.data ?? []} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} /></label>
-          <label data-pr-field="department" className="text-sm font-medium">Department<SearchableSelect className="mt-1" value={departmentId} options={activeDepartments} disabled={!businessUnitId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} /></label>
-          <label data-pr-field="location" className="text-sm font-medium">Location<SearchableSelect className="mt-1" value={locationId} options={activeLocations} disabled={!businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => setLocationId(id || undefined)} /></label>
+          <label data-pr-field="business-unit" className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" value={businessUnitId} options={businessUnits.data ?? []} disabled={lockedBusinessUnit} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} /></label>
+          <label data-pr-field="department" className="text-sm font-medium">Department<SearchableSelect className="mt-1" value={departmentId} options={activeDepartments} disabled={lockedDepartment || !businessUnitId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} /></label>
+          <label data-pr-field="location" className="text-sm font-medium">Location<SearchableSelect className="mt-1" value={locationId} options={activeLocations} disabled={lockedLocation || !businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => setLocationId(id || undefined)} /></label>
           <label data-pr-field="request-date" className="text-sm font-medium">Request Date<input type="date" min={createMinimum} value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/></label>
           <label data-pr-field="expiry-date" className="text-sm font-medium">Valid Until<input type="date" min={editing ? undefined : (requestDate || todayLocal())} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/></label>
         </div>
