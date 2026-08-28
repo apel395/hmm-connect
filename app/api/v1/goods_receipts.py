@@ -378,7 +378,7 @@ def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(
 
 
 @router.post("/{receipt_id}/approve")
-def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
+def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     receipt = _scoped_receipt_for_update(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "PENDING":
@@ -390,7 +390,7 @@ def approve_receipt(receipt_id: int, data: ApprovalDecisionRequest | None = None
 
 
 @router.post("/{receipt_id}/reject")
-def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
+def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
     receipt = _scoped_receipt_for_update(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
     if not approval or approval.status != "PENDING":
