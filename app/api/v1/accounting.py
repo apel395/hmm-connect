@@ -1,6 +1,7 @@
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -8,7 +9,12 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 
 from app.models.chart_of_account import ChartOfAccount
+from app.models.accounting_setting import AccountingSetting
 from app.models.general_ledger import GeneralLedger
+
+class DirectCoaSettingsInput(BaseModel):
+    input_vat_account_id: int | None = None
+
 
 router = APIRouter(
     prefix="/accounting",
@@ -139,3 +145,25 @@ def account_ledger(
         )
 
     return result
+
+
+@router.get("/direct-coa-settings")
+def direct_coa_settings(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    row = db.query(AccountingSetting).filter(AccountingSetting.setting_key == "INPUT_VAT_ACCOUNT").first()
+    return {"input_vat_account_id": row.account_id if row else None}
+
+
+@router.put("/direct-coa-settings")
+def update_direct_coa_settings(data: DirectCoaSettingsInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    account = db.get(ChartOfAccount, data.input_vat_account_id) if data.input_vat_account_id else None
+    if not account or not account.is_active or not account.is_posting or account.account_type != "ASSET" or account.normal_balance != "DEBIT":
+        raise HTTPException(422, "Input VAT COA must be an active debit-balance posting asset")
+    row = db.query(AccountingSetting).filter(AccountingSetting.setting_key == "INPUT_VAT_ACCOUNT").first()
+    if row:
+        row.account_id = account.id
+        row.description = "Direct COA for supplier-invoice input VAT"
+    else:
+        row = AccountingSetting(setting_key="INPUT_VAT_ACCOUNT", account_id=account.id, description="Direct COA for supplier-invoice input VAT")
+        db.add(row)
+    db.commit()
+    return {"input_vat_account_id": row.account_id}
