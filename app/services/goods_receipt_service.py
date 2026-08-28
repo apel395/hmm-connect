@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.dependencies.authorization import has_permission
 from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
 from app.models.inventory import Inventory
+from app.models.journal_entry import JournalEntry
+from app.models.journal_line import JournalLine
 from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
@@ -17,6 +19,7 @@ from app.models.warehouse import Warehouse
 from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate, GoodsReceiptUpdate
 from app.services.activity_service import ActivityService
 from app.services.document_number import next_document_number
+from app.services.direct_coa_service import DirectCoaService
 
 ZERO = Decimal("0")
 MONEY = Decimal("0.01")
@@ -157,6 +160,122 @@ class GoodsReceiptService:
         receipt.subtotal = subtotal.quantize(MONEY, rounding=ROUND_HALF_UP)
         receipt.tax_amount = tax.quantize(MONEY, rounding=ROUND_HALF_UP)
         receipt.total_amount = (receipt.subtotal + receipt.tax_amount).quantize(MONEY, rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _accounting_journal(db: Session, receipt_id: int) -> JournalEntry | None:
+        return (
+            db.query(JournalEntry)
+            .filter(
+                JournalEntry.reference_type == "GOODS_RECEIPT",
+                JournalEntry.reference_id == receipt_id,
+                JournalEntry.status != "VOID",
+            )
+            .order_by(JournalEntry.id.desc())
+            .first()
+        )
+
+    @classmethod
+    def _sync_accounting_journal(
+        cls,
+        db: Session,
+        *,
+        receipt: GoodsReceipt,
+        user,
+    ) -> JournalEntry | None:
+        if receipt.destination_type != "WAREHOUSE":
+            return None
+
+        resolver = DirectCoaService(db)
+        grni = resolver.grni_account()
+        grouped: dict[int, Decimal] = {}
+        for item in receipt.items:
+            inventory_account = resolver.inventory_account(
+                item.product,
+                receipt.location_id,
+            )
+            amount = (
+                Decimal(item.quantity or 0) * Decimal(item.unit_cost or 0)
+            ).quantize(MONEY, rounding=ROUND_HALF_UP)
+            grouped[inventory_account.id] = (
+                grouped.get(inventory_account.id, ZERO) + amount
+            )
+
+        subtotal = sum(grouped.values(), ZERO).quantize(
+            MONEY,
+            rounding=ROUND_HALF_UP,
+        )
+        if subtotal != Decimal(receipt.subtotal or 0):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Goods receipt accounting value does not match its subtotal: "
+                    f"{subtotal} != {receipt.subtotal}"
+                ),
+            )
+
+        journal = cls._accounting_journal(db, receipt.id)
+        if journal and journal.status == "POSTED":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Journal {journal.journal_number} is already posted. "
+                    "Unpost it before correcting receipt accounting."
+                ),
+            )
+        if journal is None:
+            journal = JournalEntry(
+                journal_number=next_document_number(db, "JV", digits=4),
+                posting_date=receipt.received_at.date(),
+                status="DRAFT",
+                document_type="GOODS_RECEIPT",
+                document_number=receipt.receipt_number,
+                reference_type="GOODS_RECEIPT",
+                reference_id=receipt.id,
+                description=f"Goods receipt {receipt.receipt_number}",
+                created_by_id=user.id,
+                business_unit_id=receipt.business_unit_id,
+                location_id=receipt.location_id,
+                department_id=receipt.department_id,
+            )
+            db.add(journal)
+        else:
+            journal.posting_date = receipt.received_at.date()
+            journal.business_unit_id = receipt.business_unit_id
+            journal.location_id = receipt.location_id
+            journal.department_id = receipt.department_id
+            journal.lines.clear()
+
+        line_number = 1
+        for account_id, amount in sorted(grouped.items()):
+            journal.lines.append(
+                JournalLine(
+                    line_number=line_number,
+                    account_id=account_id,
+                    debit=amount,
+                    credit=ZERO,
+                    description=f"Inventory received via {receipt.receipt_number}",
+                    business_unit_id=receipt.business_unit_id,
+                    location_id=receipt.location_id,
+                    department_id=receipt.department_id,
+                    supplier_id=receipt.supplier_id,
+                )
+            )
+            line_number += 1
+
+        journal.lines.append(
+            JournalLine(
+                line_number=line_number,
+                account_id=grni.id,
+                debit=ZERO,
+                credit=subtotal,
+                description=f"GRNI for {receipt.receipt_number}",
+                business_unit_id=receipt.business_unit_id,
+                location_id=receipt.location_id,
+                department_id=receipt.department_id,
+                supplier_id=receipt.supplier_id,
+            )
+        )
+        return journal
 
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
@@ -389,6 +508,7 @@ class GoodsReceiptService:
                 inventory.average_cost = ((old_qty * old_avg) + (quantity * Decimal(receipt_item.unit_cost))) / new_qty
                 inventory.quantity = new_qty
                 db.add(cls._movement(receipt, receipt_item, "IN", "GOODS_RECEIPT"))
+        cls._sync_accounting_journal(db, receipt=receipt, user=user)
         if purchase_order:
             purchase_order.status = "RECEIVED" if all(Decimal(item.received_quantity or 0) >= Decimal(item.quantity) for item in purchase_order.items) else "PARTIALLY_RECEIVED"
         receipt.status = "POSTED"
@@ -423,6 +543,8 @@ class GoodsReceiptService:
             changes.append({"item_id": item.id, "product_id": item.product_id, "old_unit_cost": str(old_cost), "new_unit_cost": str(new_cost)})
         if not changes: raise HTTPException(status_code=400, detail="No receiving costs changed")
         cls._recalculate_totals(receipt)
+        if receipt.status == "POSTED":
+            cls._sync_accounting_journal(db, receipt=receipt, user=user)
         ActivityService.log(db=db, user=user, action="COST_CORRECTION", entity_type="GOODS_RECEIPT", entity_id=receipt.id, summary=f"Corrected receiving cost for {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number, document_status=receipt.status, reference_document=receipt.purchase_order.po_number if receipt.purchase_order else "DIRECT_RECEIPT", details={"reason": data.reason.strip(), "changes": changes, "subtotal": str(receipt.subtotal), "tax_amount": str(receipt.tax_amount), "total_amount": str(receipt.total_amount)})
         db.commit(); db.refresh(receipt); return receipt
 
@@ -432,6 +554,12 @@ class GoodsReceiptService:
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
         if receipt.status != "POSTED": raise HTTPException(status_code=409, detail="Only posted receipts can be returned")
+        accounting_journal = cls._accounting_journal(db, receipt.id)
+        if accounting_journal and accounting_journal.status == "POSTED":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Unpost journal {accounting_journal.journal_number} before returning this receipt",
+            )
         downstream_invoice = db.query(SupplierInvoice).filter(SupplierInvoice.goods_receipt_id == receipt.id, SupplierInvoice.status.notin_({"VOID", "REJECTED"})).first()
         if downstream_invoice: raise HTTPException(status_code=409, detail=f"Receipt cannot be returned after supplier invoice {downstream_invoice.internal_invoice_number} has been created")
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
@@ -455,5 +583,8 @@ class GoodsReceiptService:
         if purchase_order:
             purchase_order.status = "RECEIVED" if all(Decimal(item.received_quantity or 0) >= Decimal(item.quantity) for item in purchase_order.items) else "PARTIALLY_RECEIVED" if any(Decimal(item.received_quantity or 0) > 0 for item in purchase_order.items) else "APPROVED"
         receipt.status = "RETURNED"
+        if accounting_journal and accounting_journal.status == "DRAFT":
+            accounting_journal.status = "VOID"
+            accounting_journal.voided_at = datetime.now(timezone.utc)
         ActivityService.log(db=db, user=user, action="RETURN", entity_type="GOODS_RECEIPT", entity_id=receipt.id, summary=f"Returned {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number, document_status="RETURNED", reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT")
         db.commit(); db.refresh(receipt); return receipt
