@@ -12,6 +12,8 @@ import type { Product } from "../types";
 import { productApi } from "../api/productApi";
 import { exportApi } from "../api/exportApi";
 import { useProducts, useCreateProduct, useUpdateProduct } from "../hooks/useProducts";
+import { useAuthStore } from "@/store/auth";
+import { isSuperuser } from "@/lib/access";
 
 const PAGE_SIZE = 25;
 const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
@@ -19,6 +21,8 @@ const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
 const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function ProductPage() {
+  const user = useAuthStore((state) => state.user);
+  const canCreateProduct = isSuperuser(user);
   const [formOpen, setFormOpen] = useState(false);
   const [selected, setSelected] = useState<Product | null>(null);
   const [page, setPage] = useState(1);
@@ -161,7 +165,7 @@ export default function ProductPage() {
         description="Product Master"
         actions={<div className="flex items-center gap-2">
           <Button onClick={handleExport} disabled={exportBusy}>{exportLabel}</Button>
-          <Button onClick={handleCreate}>New Product</Button>
+          {canCreateProduct && <Button onClick={handleCreate}>New Product</Button>}
         </div>}
       />
       {exportError && (
