@@ -18,7 +18,7 @@ from app.models.journal_line import JournalLine
 from app.models.payment import Payment, PaymentAllocation, PaymentFundingLine
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.payment import PaymentCreate, PaymentUpdate
-from app.services.accounting_posting_rule_service import AccountingPostingRuleService
+from app.services.direct_coa_service import DirectCoaService
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
 from app.services.document_number import next_document_number
@@ -186,16 +186,7 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
 
 
 def validate_payment_journal_integrity(db: Session, payment: Payment, journal: JournalEntry):
-    rule = AccountingPostingRuleService(db).select_rule(
-        "SUPPLIER_PAYMENT",
-        payment.business_unit_id,
-        payment.location_id,
-    )
-    if not rule:
-        raise HTTPException(
-            409,
-            "No active SUPPLIER_PAYMENT posting rule configured for this Business Unit and Location",
-        )
+    payable_account = DirectCoaService(db).payable_account(payment.supplier)
 
     if (
         journal.reference_type != "SUPPLIER_PAYMENT"
@@ -207,7 +198,7 @@ def validate_payment_journal_integrity(db: Session, payment: Payment, journal: J
     ):
         raise HTTPException(409, "Payment journal context does not match its source payment")
 
-    expected_debits = {rule.debit_account_id: Decimal(payment.amount)}
+    expected_debits = {payable_account.id: Decimal(payment.amount)}
     expected_credits = defaultdict(Decimal)
     funding_accounts = []
     for funding in payment.funding_lines:
@@ -255,12 +246,7 @@ def validate_payment_journal_integrity(db: Session, payment: Payment, journal: J
             "Payment journal credit must match the selected funding accounts and amounts",
         )
 
-    AccountingPostingRuleService.validate_source_journal_accounts(
-        "SUPPLIER_PAYMENT",
-        [rule.debit_account],
-        funding_accounts,
-    )
-    return rule
+    return payable_account
 
 
 def serialize(payment: Payment):
@@ -530,27 +516,13 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(paymen
     for allocation in payment.allocations:
         if allocation.supplier_invoice.status not in OPEN_INVOICE_STATUSES:
             raise HTTPException(409, f"Invoice {allocation.supplier_invoice.internal_invoice_number} is not posted")
-    rule = AccountingPostingRuleService(db).select_rule(
-        "SUPPLIER_PAYMENT",
-        payment.business_unit_id,
-        payment.location_id,
-    )
-    if not rule:
-        raise HTTPException(
-            409,
-            "No active SUPPLIER_PAYMENT posting rule configured for this Business Unit and Location",
-        )
+    payable_account = DirectCoaService(db).payable_account(payment.supplier)
     funding_accounts = [
         db.get(ChartOfAccount, funding.bank_account.coa_account_id)
         for funding in payment.funding_lines
     ]
     if any(account is None for account in funding_accounts):
         raise HTTPException(409, "Payment funding bank account is missing its linked COA")
-    AccountingPostingRuleService.validate_source_journal_accounts(
-        "SUPPLIER_PAYMENT",
-        [rule.debit_account],
-        funding_accounts,
-    )
     journal = JournalEntry(
         journal_number=next_document_number(db, "JV"),
         posting_date=payment.payment_date,
@@ -565,10 +537,10 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(paymen
         location_id=payment.location_id,
         department_id=payment.department_id,
     )
-    category = rule.debit_account.cash_flow_category if rule.debit_account.cash_flow_category in {"OPERATING", "INVESTING", "FINANCING"} else "OPERATING"
+    category = payable_account.cash_flow_category if payable_account.cash_flow_category in {"OPERATING", "INVESTING", "FINANCING"} else "OPERATING"
     journal.lines.append(JournalLine(
         line_number=1,
-        account_id=rule.debit_account_id,
+        account_id=payable_account.id,
         debit=payment.amount,
         credit=0,
         description="Accounts Payable",
