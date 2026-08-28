@@ -184,6 +184,13 @@ class SupplierInvoiceService:
             purchase_order.location_id = resolved
         return resolved
 
+    def persist_source_location(self, invoice: SupplierInvoice) -> SupplierInvoice:
+        """Commit source-resolved location independently from accounting actions."""
+        self._ensure_invoice_location(invoice)
+        self.db.commit()
+        self.db.refresh(invoice)
+        return invoice
+
     def _inherit_source_context(self, data: SupplierInvoiceInput):
         receipt = self.db.get(GoodsReceipt, data.goods_receipt_id) if data.goods_receipt_id else None
         purchase_order = self.db.get(PurchaseOrder, data.purchase_order_id) if data.purchase_order_id else None
