@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.accounting_setting import AccountingSetting
 from app.models.chart_of_account import ChartOfAccount
+from app.models.journal_entry import JournalEntry
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 
 
@@ -176,6 +177,21 @@ class DirectCoaService:
             label = "inventory asset" if inventory else "expense"
             raise HTTPException(409, f"Supplier invoice line requires a debit-balance {label} COA")
 
+    def receipt_uses_grni(self, invoice: SupplierInvoice) -> bool:
+        receipt_id = getattr(invoice, "goods_receipt_id", None)
+        if not receipt_id:
+            return False
+        journal = (
+            self.db.query(JournalEntry)
+            .filter(
+                JournalEntry.reference_type == "GOODS_RECEIPT",
+                JournalEntry.reference_id == receipt_id,
+                JournalEntry.status != "VOID",
+            )
+            .first()
+        )
+        return journal is not None
+
     def supplier_invoice_readiness(self, invoice: SupplierInvoice) -> dict:
         """Return every accounting prerequisite without mutating the invoice."""
         blockers: list[dict[str, str]] = []
@@ -189,12 +205,23 @@ class DirectCoaService:
         check("SUPPLIER_PAYABLE", lambda: self.payable_account(invoice.supplier, invoice.location_id))
         if Decimal(invoice.tax_amount or 0) > 0:
             check("INPUT_VAT", self.input_vat_account)
+        if Decimal(getattr(invoice, "discount_amount", 0) or 0) > 0:
+            check("PURCHASE_DISCOUNT", self.purchase_discount_account)
+        if Decimal(getattr(invoice, "withholding_tax_amount", 0) or 0) > 0:
+            check("WITHHOLDING_TAX", self.withholding_tax_payable_account)
+
+        uses_grni = self.receipt_uses_grni(invoice)
+        if uses_grni:
+            check("GRNI", self.grni_account)
 
         inventory = bool(
             invoice.goods_receipt
             and str(invoice.goods_receipt.destination_type or "").upper() == "WAREHOUSE"
         )
         for index, line in enumerate(invoice.lines, start=1):
+            if uses_grni:
+                continue
+
             def validate_line(current=line):
                 if current.account_id:
                     account = self.account(current.account_id, f"Invoice line {index}")

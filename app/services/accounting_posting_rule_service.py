@@ -100,8 +100,9 @@ class AccountingPostingRuleService:
         return query.order_by(scope_rank.desc(), AccountingPostingRule.id.desc()).first()
 
     @classmethod
-    def validate_source_journal_accounts(cls, event_type, debit_accounts, credit_accounts):
+    def validate_source_journal_accounts(cls, event_type, debit_accounts, credit_accounts, allowed_liability_debit_ids=None):
         event_type = str(event_type or "").upper()
+        allowed_liability_debit_ids = set(allowed_liability_debit_ids or ())
         if event_type == "SUPPLIER_PAYMENT":
             for account in debit_accounts:
                 if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
@@ -119,13 +120,36 @@ class AccountingPostingRuleService:
                 code = str(account.account_number or "").strip()
                 if subtype in cls.RECEIVABLE_SUBTYPES or code.startswith(("100-200-", "100-210-")):
                     raise HTTPException(409, "Supplier invoice journal cannot debit an accounts receivable account")
-                if account.normal_balance != "DEBIT" or account.account_type not in {"ASSET", "EXPENSE"}:
-                    raise HTTPException(409, "Supplier invoice journal debits must use debit-balance asset or expense accounts")
+                is_standard_debit = (
+                    account.normal_balance == "DEBIT"
+                    and account.account_type in {"ASSET", "EXPENSE"}
+                )
+                is_grni_clearing = (
+                    getattr(account, "id", None) in allowed_liability_debit_ids
+                    and account.account_type == "LIABILITY"
+                    and account.normal_balance == "CREDIT"
+                )
+                if not (is_standard_debit or is_grni_clearing):
+                    raise HTTPException(
+                        409,
+                        "Supplier invoice journal debit is not an approved asset, expense, or GRNI clearing account",
+                    )
                 if subtype in cls.BANK_SUBTYPES:
                     raise HTTPException(409, "Supplier invoice journal cannot debit a cash or bank account")
             for account in credit_accounts:
-                if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
-                    raise HTTPException(409, "Supplier invoice journal must credit a credit-balance payable liability")
+                is_payable = (
+                    account.account_type == "LIABILITY"
+                    and account.normal_balance == "CREDIT"
+                )
+                is_discount = (
+                    account.account_type in {"INCOME", "EXPENSE"}
+                    and account.normal_balance == "CREDIT"
+                )
+                if not (is_payable or is_discount):
+                    raise HTTPException(
+                        409,
+                        "Supplier invoice journal credits must use payable, withholding, or purchase-discount accounts",
+                    )
 
     def validate(
         self,
