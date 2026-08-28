@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.accounting_setting import AccountingSetting
 from app.models.chart_of_account import ChartOfAccount
+from app.models.location_coa_mapping import ProductLocationCoaMapping, SupplierLocationCoaMapping, LocationTaxCoaMapping
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 
 
@@ -27,34 +28,60 @@ class DirectCoaService:
             raise HTTPException(409, f"{label} requires an active posting COA mapping")
         return account
 
-    def inventory_account(self, product) -> ChartOfAccount:
-        account = self.account(getattr(product, "inventory_account_id", None), f"Item {product.code} inventory")
+    def _product_account_id(self, product, location_id: int | None, field: str):
+        if location_id:
+            mapping = self.db.query(ProductLocationCoaMapping).filter(
+                ProductLocationCoaMapping.product_id == product.id,
+                ProductLocationCoaMapping.location_id == location_id,
+            ).first()
+            mapped = getattr(mapping, field, None) if mapping else None
+            if mapped:
+                return mapped
+        return getattr(product, field, None)
+
+    def inventory_account(self, product, location_id: int | None = None) -> ChartOfAccount:
+        account = self.account(self._product_account_id(product, location_id, "inventory_account_id"), f"Item {product.code} inventory at location {location_id}" if location_id else f"Item {product.code} inventory")
         if account.account_type != "ASSET" or account.normal_balance != "DEBIT" or account.account_subtype in self.BANK_SUBTYPES:
             raise HTTPException(409, f"Item {product.code} inventory COA must be a debit-balance non-cash asset")
         return account
 
-    def expense_account(self, product) -> ChartOfAccount:
+    def expense_account(self, product, location_id: int | None = None) -> ChartOfAccount:
         account = self.account(
-            getattr(product, "purchase_account_id", None),
+            self._product_account_id(product, location_id, "purchase_account_id"),
             f"Item {product.code} consumption/expense",
         )
         if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
             raise HTTPException(409, f"Item {product.code} consumption/expense COA must be a debit-balance expense")
         return account
 
-    def cogs_account(self, product) -> ChartOfAccount:
-        account = self.account(getattr(product, "cogs_account_id", None), f"Item {product.code} COGS")
+    def cogs_account(self, product, location_id: int | None = None) -> ChartOfAccount:
+        account = self.account(self._product_account_id(product, location_id, "cogs_account_id"), f"Item {product.code} COGS")
         if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
             raise HTTPException(409, f"Item {product.code} COGS COA must be a debit-balance expense")
         return account
 
-    def payable_account(self, supplier) -> ChartOfAccount:
-        account = self.account(getattr(supplier, "payable_account_id", None), f"Supplier {supplier.code} payable")
+    def payable_account(self, supplier, location_id: int | None = None) -> ChartOfAccount:
+        account_id = None
+        if location_id:
+            mapping = self.db.query(SupplierLocationCoaMapping).filter(
+                SupplierLocationCoaMapping.supplier_id == supplier.id,
+                SupplierLocationCoaMapping.location_id == location_id,
+            ).first()
+            account_id = mapping.payable_account_id if mapping else None
+        account = self.account(account_id or getattr(supplier, "payable_account_id", None), f"Supplier {supplier.code} payable at location {location_id}" if location_id else f"Supplier {supplier.code} payable")
         if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
             raise HTTPException(409, f"Supplier {supplier.code} payable COA must be a credit-balance liability")
         return account
 
-    def input_vat_account(self) -> ChartOfAccount:
+    def input_vat_account(self, location_id: int | None = None) -> ChartOfAccount:
+        location_mapping = self.db.query(LocationTaxCoaMapping).filter(
+            LocationTaxCoaMapping.location_id == location_id
+        ).first() if location_id else None
+        if location_mapping:
+            account = self.account(location_mapping.input_vat_account_id, f"Input VAT at location {location_id}")
+            if account.account_type != "ASSET" or account.normal_balance != "DEBIT":
+                raise HTTPException(409, "Input VAT COA must be a debit-balance asset")
+            return account
         setting = (
             self.db.query(AccountingSetting)
             .filter(AccountingSetting.setting_key == "INPUT_VAT_ACCOUNT")
@@ -87,9 +114,9 @@ class DirectCoaService:
             except HTTPException as exc:
                 blockers.append({"code": code, "message": str(exc.detail)})
 
-        check("SUPPLIER_PAYABLE", lambda: self.payable_account(invoice.supplier))
+        check("SUPPLIER_PAYABLE", lambda: self.payable_account(invoice.supplier, invoice.location_id))
         if Decimal(invoice.tax_amount or 0) > 0:
-            check("INPUT_VAT", self.input_vat_account)
+            check("INPUT_VAT", lambda: self.input_vat_account(invoice.location_id))
 
         inventory = bool(
             invoice.goods_receipt
@@ -101,9 +128,9 @@ class DirectCoaService:
                     account = self.account(current.account_id, f"Invoice line {index}")
                 elif current.product:
                     account = (
-                        self.inventory_account(current.product)
+                        self.inventory_account(current.product, invoice.location_id)
                         if inventory
-                        else self.expense_account(current.product)
+                        else self.expense_account(current.product, invoice.location_id)
                     )
                 else:
                     raise HTTPException(409, f"Invoice line {index} requires a direct COA")
@@ -118,7 +145,7 @@ class DirectCoaService:
         if line.account_id:
             account = self.account(line.account_id, "Supplier invoice line")
         elif line.product:
-            account = self.inventory_account(line.product) if inventory else self.expense_account(line.product)
+            account = self.inventory_account(line.product, invoice.location_id) if inventory else self.expense_account(line.product, invoice.location_id)
             line.account_id = account.id
         else:
             raise HTTPException(409, "Manual supplier invoice line requires a direct COA")
