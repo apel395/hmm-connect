@@ -72,3 +72,38 @@ def test_invoice_rejects_receivable_even_when_explicitly_selected():
             inventory=True,
         )
     assert "receivable" in error.value.detail
+
+
+def test_invoice_readiness_reports_supplier_payable_before_verify():
+    service = DirectCoaService(FakeDb({
+        1: coa(1, "ASSET", "DEBIT", "INVENTORY"),
+    }))
+    invoice = SimpleNamespace(
+        supplier=SimpleNamespace(code="SUP-1", payable_account_id=None),
+        tax_amount=0,
+        goods_receipt=SimpleNamespace(destination_type="WAREHOUSE"),
+        lines=[SimpleNamespace(account_id=1, product=None)],
+    )
+
+    readiness = service.supplier_invoice_readiness(invoice)
+
+    assert readiness["is_ready"] is False
+    assert readiness["blockers"][0]["code"] == "SUPPLIER_PAYABLE"
+
+
+def test_invoice_readiness_accepts_complete_direct_mappings():
+    service = DirectCoaService(FakeDb({
+        1: coa(1, "ASSET", "DEBIT", "INVENTORY"),
+        4: coa(4, "LIABILITY", "CREDIT", "ACCOUNTS_PAYABLE"),
+    }))
+    invoice = SimpleNamespace(
+        supplier=SimpleNamespace(code="SUP-1", payable_account_id=4),
+        tax_amount=0,
+        goods_receipt=SimpleNamespace(destination_type="WAREHOUSE"),
+        lines=[SimpleNamespace(account_id=1, product=None)],
+    )
+
+    assert service.supplier_invoice_readiness(invoice) == {
+        "is_ready": True,
+        "blockers": [],
+    }
