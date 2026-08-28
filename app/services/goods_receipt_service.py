@@ -14,7 +14,7 @@ from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice
 from app.models.warehouse import Warehouse
-from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate
+from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate, GoodsReceiptUpdate
 from app.services.activity_service import ActivityService
 from app.services.document_number import next_document_number
 
@@ -241,6 +241,113 @@ class GoodsReceiptService:
             details={"source": "PO" if purchase_order else "DIRECT", "cost_overrides": cost_overrides, "subtotal": str(receipt.subtotal), "tax_amount": str(receipt.tax_amount), "total_amount": str(receipt.total_amount)},
         )
         db.commit(); db.refresh(receipt); return receipt
+
+    @classmethod
+    def update(cls, db: Session, *, receipt: GoodsReceipt, data: GoodsReceiptUpdate, user):
+        if receipt.status != "DRAFT":
+            raise HTTPException(status_code=409, detail="Only unposted Receiving Reports can be edited")
+
+        purchase_order = receipt.purchase_order
+        destination_probe = GoodsReceiptCreate(
+            business_unit_id=receipt.business_unit_id,
+            location_id=receipt.location_id,
+            department_id=receipt.department_id,
+            purchase_order_id=receipt.purchase_order_id,
+            supplier_id=receipt.supplier_id,
+            received_at=data.received_at,
+            source_type=receipt.source_type,
+            external_reference=data.external_reference,
+            receipt_type=receipt.receipt_type,
+            warehouse_id=data.warehouse_id,
+            destination_type=data.destination_type,
+            notes=data.notes,
+            items=[
+                {
+                    "purchase_order_item_id": item.purchase_order_item_id,
+                    "product_id": item.product_id,
+                    "quantity": item.quantity,
+                    "unit_cost": item.unit_cost,
+                    "is_taxable": item.is_taxable,
+                    "tax_rate": item.tax_rate,
+                }
+                for item in receipt.items
+            ],
+        )
+        cls._validate_destination(db, destination_probe, receipt.location_id)
+
+        by_id = {item.id: item for item in receipt.items}
+        if set(by_id) != {item.item_id for item in data.items}:
+            raise HTTPException(
+                status_code=409,
+                detail="Receiving item identity cannot change during edit; edit quantities, costs and tax on the existing lines",
+            )
+
+        changes = []
+        for incoming in data.items:
+            item = by_id[incoming.item_id]
+            old = {
+                "quantity": str(item.quantity),
+                "unit_cost": str(item.unit_cost),
+                "is_taxable": bool(item.is_taxable),
+                "tax_rate": str(item.tax_rate or 0),
+            }
+            quantity = Decimal(incoming.quantity)
+            unit_cost = Decimal(incoming.unit_cost)
+
+            if purchase_order and item.purchase_order_item_id:
+                po_item = db.get(PurchaseOrderItem, item.purchase_order_item_id)
+                if not po_item or po_item.purchase_order_id != purchase_order.id:
+                    raise HTTPException(status_code=409, detail=f"PO item for receipt line {item.id} is invalid")
+                remaining = Decimal(po_item.quantity) - Decimal(po_item.received_quantity or 0)
+                if quantity > remaining:
+                    raise HTTPException(status_code=409, detail=f"Quantity exceeds remaining amount for PO item {po_item.id}")
+
+            item.quantity = quantity
+            item.unit_cost = unit_cost
+            item.is_taxable = bool(incoming.is_taxable)
+            item.tax_rate = Decimal(incoming.tax_rate or 0) if incoming.is_taxable else ZERO
+            new = {
+                "quantity": str(item.quantity),
+                "unit_cost": str(item.unit_cost),
+                "is_taxable": bool(item.is_taxable),
+                "tax_rate": str(item.tax_rate or 0),
+            }
+            if old != new:
+                changes.append({"item_id": item.id, "before": old, "after": new})
+
+        receipt.received_at = data.received_at
+        receipt.external_reference = data.external_reference
+        receipt.destination_type = data.destination_type
+        receipt.warehouse_id = data.warehouse_id if data.destination_type == "WAREHOUSE" else None
+        receipt.notes = data.notes
+        cls._recalculate_totals(receipt)
+
+        ActivityService.log(
+            db=db,
+            user=user,
+            action="UPDATE",
+            entity_type="GOODS_RECEIPT",
+            entity_id=receipt.id,
+            summary=f"Updated {receipt.receipt_number}",
+            document_type="GR",
+            document_number=receipt.receipt_number,
+            document_status=receipt.status,
+            reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT",
+            details={
+                "received_at": data.received_at.isoformat(),
+                "external_reference": data.external_reference,
+                "destination_type": data.destination_type,
+                "warehouse_id": receipt.warehouse_id,
+                "notes": data.notes,
+                "item_changes": changes,
+                "subtotal": str(receipt.subtotal),
+                "tax_amount": str(receipt.tax_amount),
+                "total_amount": str(receipt.total_amount),
+            },
+        )
+        db.commit()
+        db.refresh(receipt)
+        return receipt
 
     @classmethod
     def post(cls, db: Session, *, receipt_id: int, user):
