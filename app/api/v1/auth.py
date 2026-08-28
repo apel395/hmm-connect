@@ -160,4 +160,24 @@ def logout(
 
 @router.get("/me", response_model=UserSummary)
 def current_user(user: User = Depends(get_current_user)):
-    return user
+    resolved_location = user.default_location or user.location
+    resolved_department = user.default_department or user.department
+    resolved_business_unit_id = (
+        user.default_business_unit_id
+        or (resolved_location.business_unit_id if resolved_location else None)
+        or (resolved_department.business_unit_id if resolved_department else None)
+    )
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "full_name": user.full_name,
+        "is_active": user.is_active,
+        "business_unit_id": resolved_business_unit_id,
+        "department_id": user.default_department_id or user.department_id,
+        "location_id": user.default_location_id or user.location_id,
+        "default_business_unit_id": user.default_business_unit_id,
+        "default_department_id": user.default_department_id,
+        "default_location_id": user.default_location_id,
+        "roles": user.roles,
+    }

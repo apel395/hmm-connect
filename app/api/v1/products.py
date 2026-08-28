@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_permission
+from app.dependencies.authorization import is_superuser, require_permission
 from app.models.item_group import ItemGroup
 from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
@@ -115,9 +115,21 @@ def lookup_products(search: str = Query(default="", max_length=100), market_only
 
 
 @router.post("", status_code=201)
-def create_product(data: ProductCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    if db.query(Product).filter(Product.code == data.code).first():
+def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if not is_superuser(user):
+        raise HTTPException(status_code=403, detail="Only SYSTEM_ADMINISTRATOR can create new Item Master records")
+    normalized_code = data.code.strip().upper()
+    normalized_name = " ".join(data.name.strip().lower().split())
+    if db.query(Product).filter(func.upper(func.trim(Product.code)) == normalized_code).first():
         raise HTTPException(status_code=409, detail="Product code already exists")
+    duplicate_name = db.query(Product).filter(
+        func.lower(func.regexp_replace(func.trim(Product.name), r"\s+", " ", "g")) == normalized_name
+    ).first()
+    if duplicate_name:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Product name duplicates existing item {duplicate_name.code} — {duplicate_name.name}",
+        )
     payload = data.model_dump()
     payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
     _validate_coa_mappings(db, payload)

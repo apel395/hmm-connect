@@ -28,6 +28,12 @@ class UserSummary(BaseModel):
     email: str
     full_name: str
     is_active: bool
+    business_unit_id: int | None = None
+    department_id: int | None = None
+    location_id: int | None = None
+    default_business_unit_id: int | None = None
+    default_department_id: int | None = None
+    default_location_id: int | None = None
     roles: list[RoleSummary] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}

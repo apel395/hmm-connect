@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.authorization import require_permission
 from app.models.supplier import Supplier
 from app.schemas.supplier import SupplierCreate, SupplierUpdate
 from app.services.direct_coa_service import DirectCoaService
@@ -39,7 +40,7 @@ def lookup_suppliers(search: str = Query(default="", max_length=100), limit: int
 
 
 @router.post("", status_code=201)
-def create_supplier(data: SupplierCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_supplier(data: SupplierCreate, db: Session = Depends(get_db), _=Depends(require_permission("finance.manage"))):
     if db.query(Supplier).filter(Supplier.code == data.code).first():
         raise HTTPException(status_code=409, detail="Supplier code already exists")
     if data.payable_account_id:
