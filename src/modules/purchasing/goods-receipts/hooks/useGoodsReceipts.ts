@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import goodsReceiptApi, { type GoodsReceiptListParams } from "../api/goodsReceiptApi";
-import type { GoodsReceipt, GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload } from "../types";
+import type { GoodsReceipt, GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload, GoodsReceiptUpdatePayload } from "../types";
 
 export function useAllGoodsReceipts(params: GoodsReceiptListParams = {}) {
   return useQuery({ queryKey: ["goods-receipts", params], queryFn: async () => (await goodsReceiptApi.list(params)).data, placeholderData: (previous) => previous });
@@ -23,6 +23,7 @@ async function invalidateReceipt(qc:ReturnType<typeof useQueryClient>,id?:number
   ]);
 }
 export function useReceiveGoods(){const qc=useQueryClient();return useMutation({mutationFn:async({purchaseOrderId,payload}:{purchaseOrderId?:number;payload:GoodsReceiptCreatePayload})=>purchaseOrderId?goodsReceiptApi.receive(purchaseOrderId,payload):goodsReceiptApi.createDirect(payload),onSuccess:async(response,variables)=>{const id=response.data?.id;await invalidateReceipt(qc,id,response.data);if(variables.purchaseOrderId){await Promise.all([qc.invalidateQueries({queryKey:["remaining-purchase-order-items",variables.purchaseOrderId]}),qc.invalidateQueries({queryKey:["goods-receipts-by-po",variables.purchaseOrderId]})])}}})}
+export function useUpdateGoodsReceipt(){const qc=useQueryClient();return useMutation({mutationFn:({id,payload}:{id:number;payload:GoodsReceiptUpdatePayload})=>goodsReceiptApi.update(id,payload),onSuccess:(response,v)=>invalidateReceipt(qc,v.id,response.data)})}
 export function useSubmitGoodsReceipt(){const qc=useQueryClient();return useMutation({mutationFn:(id:number)=>goodsReceiptApi.submit(id),onSuccess:(response,id)=>invalidateReceipt(qc,id,response.data)})}
 export function useApproveGoodsReceipt(){const qc=useQueryClient();return useMutation({mutationFn:({id,comment}:{id:number;comment?:string})=>goodsReceiptApi.approve(id,comment),onSuccess:(response,v)=>invalidateReceipt(qc,v.id,response.data)})}
 export function useRejectGoodsReceipt(){const qc=useQueryClient();return useMutation({mutationFn:({id,comment}:{id:number;comment:string})=>goodsReceiptApi.reject(id,comment),onSuccess:(response,v)=>invalidateReceipt(qc,v.id,response.data)})}

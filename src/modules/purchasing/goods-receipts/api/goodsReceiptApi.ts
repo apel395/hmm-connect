@@ -1,5 +1,5 @@
 import api from "@/api/client";
-import type { GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload } from "../types";
+import type { GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload, GoodsReceiptUpdatePayload } from "../types";
 
 export type GoodsReceiptListParams = {
   page?: number;
@@ -19,6 +19,7 @@ export const goodsReceiptApi = {
   listByPurchaseOrder: (purchaseOrderId: number) => api.get("/goods-receipts", { params: { purchase_order_id: purchaseOrderId, page: 1, page_size: 100 } }),
   receive: (purchaseOrderId: number, payload: GoodsReceiptCreatePayload) => api.post("/goods-receipts", { ...payload, purchase_order_id: purchaseOrderId }),
   createDirect: (payload: GoodsReceiptCreatePayload) => api.post("/goods-receipts", { ...payload, purchase_order_id: null }),
+  update: (id: number, payload: GoodsReceiptUpdatePayload) => api.put(`/goods-receipts/${id}`, payload),
   submit: (id: number) => api.post(`/goods-receipts/${id}/submit`),
   approve: (id: number, comment?: string) => api.post(`/goods-receipts/${id}/approve`, comment ? { comment } : {}),
   reject: (id: number, comment: string) => api.post(`/goods-receipts/${id}/reject`, { comment }),
