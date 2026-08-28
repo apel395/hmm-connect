@@ -122,3 +122,47 @@ def test_bank_account_listing_includes_global_accounts_for_scoped_finance():
     source = inspect.getsource(listing)
     assert "BankAccount.location_id.is_(None)" in source
     assert "assigned_location_id" in source
+
+
+def test_posting_rule_reads_require_finance_permission():
+    import inspect
+
+    from app.api.v1.accounting_posting_rules import get_rule, list_rules
+
+    assert "access(user)" in inspect.getsource(list_rules)
+    assert "access(user)" in inspect.getsource(get_rule)
+
+
+def test_supplier_adjustment_endpoints_enforce_location_scope():
+    import inspect
+
+    from app.api.v1.supplier_adjustments import (
+        create,
+        detail,
+        generate_journal,
+        listing,
+        post_disabled,
+        update,
+        void,
+    )
+
+    assert "apply_location_scope" in inspect.getsource(listing)
+    assert "validate_payload(db, payload, user)" in inspect.getsource(create)
+    assert "get_adjustment(db, adjustment_id, user)" in inspect.getsource(detail)
+    assert "get_adjustment(db, adjustment_id, user)" in inspect.getsource(update)
+    assert "apply_location_scope" in inspect.getsource(generate_journal)
+    assert "get_adjustment(db, adjustment_id, user)" in inspect.getsource(post_disabled)
+    assert "get_adjustment(db, adjustment_id, user)" in inspect.getsource(void)
+
+
+def test_supplier_adjustment_detail_hides_cross_location_document():
+    from app.api.v1.supplier_adjustments import get_adjustment
+
+    class FakeDb:
+        def get(self, _model, _document_id):
+            return SimpleNamespace(location_id=20)
+
+    current = user(role("FINANCE", "finance.manage"), location_id=10)
+    with pytest.raises(HTTPException) as hidden:
+        get_adjustment(FakeDb(), 1, current)
+    assert hidden.value.status_code == 404
