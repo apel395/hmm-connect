@@ -6,12 +6,23 @@ from fastapi import HTTPException
 from app.services.direct_coa_service import DirectCoaService
 
 
+class EmptyQuery:
+    def filter(self, *_args):
+        return self
+
+    def first(self):
+        return None
+
+
 class FakeDb:
     def __init__(self, accounts):
         self.accounts = accounts
 
     def get(self, _model, account_id):
         return self.accounts.get(account_id)
+
+    def query(self, _model):
+        return EmptyQuery()
 
 
 def coa(account_id, account_type, normal_balance, subtype="OTHER", number=""):
@@ -79,6 +90,7 @@ def test_invoice_readiness_reports_supplier_payable_before_verify():
         1: coa(1, "ASSET", "DEBIT", "INVENTORY"),
     }))
     invoice = SimpleNamespace(
+        location_id=3,
         supplier=SimpleNamespace(code="SUP-1", payable_account_id=None),
         tax_amount=0,
         goods_receipt=SimpleNamespace(destination_type="WAREHOUSE"),
@@ -97,6 +109,7 @@ def test_invoice_readiness_accepts_complete_direct_mappings():
         4: coa(4, "LIABILITY", "CREDIT", "ACCOUNTS_PAYABLE"),
     }))
     invoice = SimpleNamespace(
+        location_id=3,
         supplier=SimpleNamespace(code="SUP-1", payable_account_id=4),
         tax_amount=0,
         goods_receipt=SimpleNamespace(destination_type="WAREHOUSE"),

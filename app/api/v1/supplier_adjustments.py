@@ -18,6 +18,10 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_adjustment import SupplierAdjustmentCreate, SupplierAdjustmentUpdate
 from app.services.audit import record_audit
 from app.services.document_number import next_document_number
+from app.services.location_access import (
+    apply_location_scope,
+    require_location_access,
+)
 
 router = APIRouter(prefix="/supplier-adjustments", tags=["Supplier Adjustments"])
 ZERO = Decimal("0")
@@ -28,10 +32,11 @@ def access(user):
         raise HTTPException(403, "Finance access required")
 
 
-def get_adjustment(db: Session, adjustment_id: int) -> SupplierAdjustment:
+def get_adjustment(db: Session, adjustment_id: int, user) -> SupplierAdjustment:
     adjustment = db.get(SupplierAdjustment, adjustment_id)
     if not adjustment:
         raise HTTPException(404, "Supplier adjustment not found")
+    require_location_access(adjustment.location_id, user)
     return adjustment
 
 
@@ -80,11 +85,12 @@ def serialize(adjustment: SupplierAdjustment):
     }
 
 
-def validate_payload(db: Session, payload, adjustment: SupplierAdjustment | None = None):
+def validate_payload(db: Session, payload, user, adjustment: SupplierAdjustment | None = None):
     invoice_id = payload.supplier_invoice_id if hasattr(payload, "supplier_invoice_id") else adjustment.supplier_invoice_id
     invoice = db.get(SupplierInvoice, invoice_id)
     if not invoice:
         raise HTTPException(404, "Supplier invoice not found")
+    require_location_access(invoice.location_id, user)
     if invoice.status != "POSTED":
         raise HTTPException(409, "Supplier adjustments require a posted supplier invoice")
     amount = payload.amount if payload.amount is not None else adjustment.amount
@@ -99,7 +105,7 @@ def validate_payload(db: Session, payload, adjustment: SupplierAdjustment | None
 @router.get("")
 def listing(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), search: str | None = None, adjustment_type: str | None = None, status: str | None = None, supplier_id: int | None = None, date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    query = db.query(SupplierAdjustment)
+    query = apply_location_scope(db.query(SupplierAdjustment), SupplierAdjustment.location_id, user)
     if search:
         query = query.filter(or_(SupplierAdjustment.adjustment_number.ilike(f"%{search}%"), SupplierAdjustment.reason.ilike(f"%{search}%")))
     if adjustment_type:
@@ -120,7 +126,7 @@ def listing(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
 @router.post("", status_code=201)
 def create(payload: SupplierAdjustmentCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    invoice = validate_payload(db, payload)
+    invoice = validate_payload(db, payload, user)
     prefix = "SCN" if payload.adjustment_type == "CREDIT_NOTE" else "SDN"
     adjustment = SupplierAdjustment(
         adjustment_number=next_document_number(db, prefix), adjustment_type=payload.adjustment_type,
@@ -141,16 +147,16 @@ def create(payload: SupplierAdjustmentCreate, db: Session = Depends(get_db), use
 @router.get("/{adjustment_id}")
 def detail(adjustment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    return serialize(get_adjustment(db, adjustment_id))
+    return serialize(get_adjustment(db, adjustment_id, user))
 
 
 @router.patch("/{adjustment_id}")
 def update(adjustment_id: int, payload: SupplierAdjustmentUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    adjustment = get_adjustment(db, adjustment_id)
+    adjustment = get_adjustment(db, adjustment_id, user)
     if adjustment.status != "DRAFT" or adjustment.journal_entry_id:
         raise HTTPException(409, "Only draft supplier adjustments without a journal can be edited")
-    validate_payload(db, payload, adjustment)
+    validate_payload(db, payload, user, adjustment)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(adjustment, key, value)
     record_audit(db, user, "SUPPLIER_ADJUSTMENT_UPDATED", "SUPPLIER_ADJUSTMENT", f"Updated {adjustment.adjustment_number}", entity_id=adjustment.id)
@@ -162,8 +168,18 @@ def update(adjustment_id: int, payload: SupplierAdjustmentUpdate, db: Session = 
 @router.post("/{adjustment_id}/generate-journal")
 def generate_journal(adjustment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    adjustment = db.query(SupplierAdjustment).filter(SupplierAdjustment.id == adjustment_id).with_for_update().first()
-    if not adjustment or adjustment.status != "DRAFT":
+    adjustment = (
+        apply_location_scope(
+            db.query(SupplierAdjustment).filter(SupplierAdjustment.id == adjustment_id),
+            SupplierAdjustment.location_id,
+            user,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not adjustment:
+        raise HTTPException(404, "Supplier adjustment not found")
+    if adjustment.status != "DRAFT":
         raise HTTPException(409, "Only draft supplier adjustments can generate a journal")
     if adjustment.journal_entry_id:
         raise HTTPException(409, "Supplier adjustment already has a journal")
@@ -212,14 +228,14 @@ def generate_journal(adjustment_id: int, db: Session = Depends(get_db), user=Dep
 @router.post("/{adjustment_id}/post")
 def post_disabled(adjustment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    get_adjustment(db, adjustment_id)
+    get_adjustment(db, adjustment_id, user)
     raise HTTPException(409, "Post the related journal from the Journal page")
 
 
 @router.post("/{adjustment_id}/void")
 def void(adjustment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    adjustment = get_adjustment(db, adjustment_id)
+    adjustment = get_adjustment(db, adjustment_id, user)
     if adjustment.status != "DRAFT":
         raise HTTPException(409, "Posted supplier adjustments require reversal and cannot be voided")
     adjustment.status = "VOID"

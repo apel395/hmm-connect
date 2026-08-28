@@ -26,6 +26,14 @@ def account(
     )
 
 
+class EmptyQuery:
+    def filter(self, *_args):
+        return self
+
+    def first(self):
+        return None
+
+
 def payment_fixture(bank_credit=Decimal("20000")):
     payable = account(10, "LIABILITY", "CREDIT", "ACCOUNTS_PAYABLE")
     bank = account(20, "ASSET", "DEBIT", "BANK")
@@ -70,7 +78,10 @@ def payment_fixture(bank_credit=Decimal("20000")):
             ),
         ],
     )
-    db = SimpleNamespace(get=lambda _model, account_id: payable if account_id == payable.id else None)
+    db = SimpleNamespace(
+        get=lambda _model, account_id: payable if account_id == payable.id else None,
+        query=lambda _model: EmptyQuery(),
+    )
     return db, payment, journal, payable
 
 
