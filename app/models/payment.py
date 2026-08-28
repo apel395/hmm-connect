@@ -48,6 +48,9 @@ class Payment(Base):
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     posted_by = relationship("User", foreign_keys=[posted_by_id])
     journal_entry = relationship("JournalEntry")
+    business_unit = relationship("BusinessUnit")
+    location = relationship("Location")
+    department = relationship("Department")
     allocations = relationship("PaymentAllocation", back_populates="payment", cascade="all, delete-orphan")
     funding_lines = relationship("PaymentFundingLine", back_populates="payment", cascade="all, delete-orphan")
 

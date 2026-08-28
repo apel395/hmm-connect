@@ -24,6 +24,7 @@ from app.services.document_context import document_context, print_metadata
 from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
 from app.services.location_access import apply_location_scope, enforce_location_access
+from app.services.supplier_invoice_service import SupplierInvoiceService
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 ZERO = Decimal("0")
@@ -112,6 +113,7 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
         invoice = db.get(SupplierInvoice, allocation.supplier_invoice_id)
         if not invoice or invoice.supplier_id != data.supplier_id:
             raise HTTPException(400, "Allocated invoice does not belong to selected supplier")
+        SupplierInvoiceService(db).ensure_location(invoice)
         enforce_location_access(user, invoice.location_id)
         if invoice.status not in OPEN_INVOICE_STATUSES or invoice.payment_status == "PAID":
             raise HTTPException(409, "Only posted unpaid invoices can be allocated")
@@ -266,8 +268,11 @@ def serialize(payment: Payment):
         "allocated_amount": allocated,
         "funded_amount": funded,
         "business_unit_id": payment.business_unit_id,
+        "business_unit_name": payment.business_unit.name if payment.business_unit else None,
         "location_id": payment.location_id,
+        "location_name": payment.location.name if payment.location else None,
         "department_id": payment.department_id,
+        "department_name": payment.department.name if payment.department else None,
         "reference_number": payment.reference_number,
         "cheque_number": payment.cheque_number,
         "status": payment.status,

@@ -184,6 +184,10 @@ class SupplierInvoiceService:
             purchase_order.location_id = resolved
         return resolved
 
+    def ensure_location(self, invoice: SupplierInvoice) -> int:
+        """Resolve a source-backed invoice location in the caller transaction."""
+        return self._ensure_invoice_location(invoice)
+
     def persist_source_location(self, invoice: SupplierInvoice) -> SupplierInvoice:
         """Commit source-resolved location independently from accounting actions."""
         self._ensure_invoice_location(invoice)
