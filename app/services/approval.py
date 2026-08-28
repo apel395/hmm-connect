@@ -279,6 +279,19 @@ def can_user_decide_step(step: ApprovalRequestStep, user) -> bool:
     return True
 
 
+def can_user_edit_pending_approval(request: ApprovalRequest, user) -> bool:
+    if is_superuser(user):
+        return True
+    if request.status != "PENDING" or request.current_step_order is None:
+        return False
+    return any(
+        step.step_order >= request.current_step_order
+        and step.status in {"PENDING", "WAITING"}
+        and can_user_decide_step(step, user)
+        for step in request.steps
+    )
+
+
 def _select_current_step(request: ApprovalRequest, user) -> ApprovalRequestStep:
     pending = current_steps(request)
     for step in pending:

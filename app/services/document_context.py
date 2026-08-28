@@ -24,8 +24,8 @@ ACTION_PERMISSIONS = {
         "view": "po.view", "edit": "po.edit", "submit": "po.submit", "approve": "po.approve", "manage": "po.manage",
     },
     "GOODS_RECEIPT": {
-        "view": "receiving.view", "edit": "receiving.manage", "submit": "receiving.manage",
-        "approve": "receiving.manage", "manage": "receiving.manage",
+        "view": "receiving.view", "edit": "receiving.edit", "submit": "receiving.submit",
+        "approve": "receiving.approve", "manage": "receiving.manage",
     },
     "STORE_REQUEST": {
         "view": "store_request.view", "edit": "store_request.manage", "submit": "store_request.manage",
