@@ -21,7 +21,7 @@ PERMISSION_CATALOG = {
     "pr.view", "pr.create", "pr.edit", "pr.submit", "pr.approve", "pr.convert", "pr.manage",
     "market_list.view", "market_list.create", "market_list.edit", "market_list.submit", "market_list.approve", "market_list.convert", "market_list.manage",
     "po.view", "po.create", "po.edit", "po.submit", "po.approve", "po.manage",
-    "receiving.view", "receiving.manage",
+    "receiving.view", "receiving.create", "receiving.edit", "receiving.submit", "receiving.approve", "receiving.post", "receiving.return", "receiving.manage",
     "inventory.view", "inventory.manage",
     "store_request.view", "store_request.manage",
     "stock_opname.view", "stock_opname.manage",
