@@ -9,6 +9,9 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import require_permission
 from app.models.journal_entry import JournalEntry
+from app.models.goods_receipt import GoodsReceipt
+from app.models.purchase_order import PurchaseOrder
+from app.models.warehouse import Warehouse
 from app.models.location import Location
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
@@ -32,23 +35,43 @@ def get(db, invoice_id, user):
     invoice = db.get(SupplierInvoice, invoice_id)
     if not invoice:
         raise HTTPException(404, "Supplier invoice not found")
-    enforce_location_access(user, invoice.location_id)
+    enforce_location_access(user, _resolved_invoice_location_id(db, invoice))
     return invoice
 
 
+def _resolved_invoice_location_id(db: Session, invoice: SupplierInvoice) -> int | None:
+    """Resolve invoice location from persisted source IDs, without relying on ORM cache."""
+    if invoice.location_id:
+        return invoice.location_id
+
+    if invoice.goods_receipt_id:
+        row = (
+            db.query(GoodsReceipt.location_id, Warehouse.location_id, PurchaseOrder.location_id)
+            .outerjoin(Warehouse, Warehouse.id == GoodsReceipt.warehouse_id)
+            .outerjoin(PurchaseOrder, PurchaseOrder.id == GoodsReceipt.purchase_order_id)
+            .filter(GoodsReceipt.id == invoice.goods_receipt_id)
+            .first()
+        )
+        if row:
+            receipt_location_id, warehouse_location_id, po_location_id = row
+            return receipt_location_id or warehouse_location_id or po_location_id
+
+    if invoice.purchase_order_id:
+        return (
+            db.query(PurchaseOrder.location_id)
+            .filter(PurchaseOrder.id == invoice.purchase_order_id)
+            .scalar()
+        )
+
+    return None
+
+
 def _hydrate_location_name(db: Session, invoice: SupplierInvoice, data: dict) -> dict:
-    location_id = invoice.location_id
-    if not location_id and invoice.goods_receipt:
-        location_id = invoice.goods_receipt.location_id
-        if not location_id and invoice.goods_receipt.warehouse:
-            location_id = invoice.goods_receipt.warehouse.location_id
-    if not location_id and invoice.purchase_order:
-        location_id = invoice.purchase_order.location_id
-    if not data.get("location_name") and location_id:
+    location_id = _resolved_invoice_location_id(db, invoice)
+    if location_id:
         location = db.get(Location, location_id)
-        if location:
-            data["location_id"] = location.id
-            data["location_name"] = location.name
+        data["location_id"] = location_id
+        data["location_name"] = location.name if location else None
     return data
 
 
@@ -149,17 +172,18 @@ def update(invoice_id: int, data: SupplierInvoiceInput, db: Session = Depends(ge
 
 @router.post("/{invoice_id}/verify")
 def verify(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_verify_user)):
-    """Verify the invoice and prepare accounting, but never post the journal here."""
+    """Verify and prepare the invoice journal atomically."""
     service = SupplierInvoiceService(db)
-    invoice = service.verify(get(db, invoice_id, user), user)
+    invoice = get(db, invoice_id, user)
     try:
-        service.generate_journal(invoice, user)
-    except HTTPException as exc:
+        invoice = service.verify(invoice, user, commit=False)
+        service.generate_journal(invoice, user, commit=False)
+        db.commit()
+    except HTTPException:
         db.rollback()
-        data = result(db, get(db, invoice_id, user), user)
-        data["accounting_warning"] = exc.detail
-        return data
-    return result(db, get(db, invoice_id, user), user)
+        raise
+    db.refresh(invoice)
+    return result(db, invoice, user)
 
 
 @router.post("/{invoice_id}/reject")
