@@ -44,129 +44,35 @@ router = APIRouter(
 )
 
 
-@router.get("/trial-balance")
-def trial_balance(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-
-    rows = (
-        db.query(
-            ChartOfAccount.id,
-            ChartOfAccount.account_number,
-            ChartOfAccount.account_name,
-            func.coalesce(func.sum(GeneralLedger.debit), 0).label("debit"),
-            func.coalesce(func.sum(GeneralLedger.credit), 0).label("credit"),
-        )
-        .outerjoin(
-            GeneralLedger,
-            GeneralLedger.account_id == ChartOfAccount.id,
-        )
-        .group_by(
-            ChartOfAccount.id,
-            ChartOfAccount.account_number,
-            ChartOfAccount.account_name,
-        )
-        .order_by(
-            ChartOfAccount.account_number,
-        )
-        .all()
+def _retired_legacy_read() -> None:
+    raise HTTPException(
+        410,
+        "This unscoped legacy accounting endpoint is retired. "
+        "Use /trial-balance or /general-ledger, which read posted journal lines "
+        "and enforce organization-location access.",
     )
 
-    result = []
 
-    total_debit = Decimal("0")
-    total_credit = Decimal("0")
-
-    for row in rows:
-
-        balance = Decimal(row.debit) - Decimal(row.credit)
-
-        result.append(
-            {
-                "account_id": row.id,
-                "account_number": row.account_number,
-                "account_name": row.account_name,
-                "debit": row.debit,
-                "credit": row.credit,
-                "balance": balance,
-            }
-        )
-
-        total_debit += Decimal(row.debit)
-        total_credit += Decimal(row.credit)
-
-    return {
-        "accounts": result,
-        "total_debit": total_debit,
-        "total_credit": total_credit,
-        "balanced": total_debit == total_credit,
-    }
-
-@router.get("/general-ledger")
-def general_ledger(
-    account_id: int | None = None,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+@router.get("/trial-balance", include_in_schema=False)
+def legacy_trial_balance(
+    current_user=Depends(require_permission("journal.view")),
 ):
+    _retired_legacy_read()
 
-    query = db.query(GeneralLedger)
 
-    if account_id:
-        query = query.filter(
-            GeneralLedger.account_id == account_id
-        )
+@router.get("/general-ledger", include_in_schema=False)
+def legacy_general_ledger(
+    current_user=Depends(require_permission("journal.view")),
+):
+    _retired_legacy_read()
 
-    entries = (
-        query.order_by(
-            GeneralLedger.posting_date,
-            GeneralLedger.id,
-        )
-        .all()
-    )
 
-    return entries
-
-@router.get("/account-ledger/{account_id}")
-def account_ledger(
+@router.get("/account-ledger/{account_id}", include_in_schema=False)
+def legacy_account_ledger(
     account_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_permission("journal.view")),
 ):
-
-    entries = (
-        db.query(GeneralLedger)
-        .filter(
-            GeneralLedger.account_id == account_id
-        )
-        .order_by(
-            GeneralLedger.posting_date,
-            GeneralLedger.id,
-        )
-        .all()
-    )
-
-    running = Decimal("0")
-
-    result = []
-
-    for e in entries:
-
-        running += Decimal(e.debit)
-        running -= Decimal(e.credit)
-
-        result.append(
-            {
-                "date": e.posting_date,
-                "description": e.description,
-                "debit": e.debit,
-                "credit": e.credit,
-                "balance": running,
-                "reference": e.reference_number,
-            }
-        )
-
-    return result
+    _retired_legacy_read()
 
 
 def _validate_direct_setting_account(field_name: str, account: ChartOfAccount) -> None:
