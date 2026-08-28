@@ -526,19 +526,32 @@ class SupplierInvoiceService:
         if existing:
             return existing
 
-        if Decimal(invoice.discount_amount or 0) != ZERO or Decimal(invoice.withholding_tax_amount or 0) != ZERO:
-            raise HTTPException(409, "Discount and withholding-tax direct COA mappings are not configured yet")
-
         resolver = DirectCoaService(self.db)
+        uses_grni = resolver.receipt_uses_grni(invoice)
         grouped = {}
-        debit_accounts = []
-        for line in invoice.lines:
-            account = resolver.snapshot_invoice_line(invoice, line)
-            grouped[account.id] = grouped.get(account.id, ZERO) + Decimal(line.line_amount or 0)
-            debit_accounts.append(account)
+        if uses_grni:
+            grni_account = resolver.grni_account()
+            grouped[grni_account.id] = Decimal(invoice.subtotal or 0)
+        else:
+            for line in invoice.lines:
+                account = resolver.snapshot_invoice_line(invoice, line)
+                grouped[account.id] = (
+                    grouped.get(account.id, ZERO)
+                    + Decimal(line.line_amount or 0)
+                )
 
         payable_account = resolver.payable_account(invoice.supplier, invoice.location_id)
         input_vat_account = resolver.input_vat_account() if Decimal(invoice.tax_amount or 0) > ZERO else None
+        discount_account = (
+            resolver.purchase_discount_account()
+            if Decimal(invoice.discount_amount or 0) > ZERO
+            else None
+        )
+        withholding_account = (
+            resolver.withholding_tax_payable_account()
+            if Decimal(invoice.withholding_tax_amount or 0) > ZERO
+            else None
+        )
 
         journal = JournalEntry(
             journal_number=next_document_number(self.db, "JV", digits=4),
@@ -577,6 +590,34 @@ class SupplierInvoiceService:
                 debit=invoice.tax_amount,
                 credit=0,
                 description=f"Input VAT {invoice.tax_invoice_number}",
+                business_unit_id=invoice.business_unit_id,
+                department_id=invoice.department_id,
+                location_id=invoice.location_id,
+                supplier_id=invoice.supplier_id,
+            ))
+            line_number += 1
+
+        if Decimal(invoice.discount_amount or 0) > ZERO:
+            journal.lines.append(JournalLine(
+                line_number=line_number,
+                account_id=discount_account.id,
+                debit=0,
+                credit=invoice.discount_amount,
+                description=f"Purchase discount {invoice.supplier_invoice_number}",
+                business_unit_id=invoice.business_unit_id,
+                department_id=invoice.department_id,
+                location_id=invoice.location_id,
+                supplier_id=invoice.supplier_id,
+            ))
+            line_number += 1
+
+        if Decimal(invoice.withholding_tax_amount or 0) > ZERO:
+            journal.lines.append(JournalLine(
+                line_number=line_number,
+                account_id=withholding_account.id,
+                debit=0,
+                credit=invoice.withholding_tax_amount,
+                description=f"Withholding tax {invoice.supplier_invoice_number}",
                 business_unit_id=invoice.business_unit_id,
                 department_id=invoice.department_id,
                 location_id=invoice.location_id,
