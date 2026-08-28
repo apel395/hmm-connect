@@ -228,14 +228,14 @@ def generate_journal(adjustment_id: int, db: Session = Depends(get_db), user=Dep
 @router.post("/{adjustment_id}/post")
 def post_disabled(adjustment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    get_adjustment(db, adjustment_id)
+    get_adjustment(db, adjustment_id, user)
     raise HTTPException(409, "Post the related journal from the Journal page")
 
 
 @router.post("/{adjustment_id}/void")
 def void(adjustment_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    adjustment = get_adjustment(db, adjustment_id)
+    adjustment = get_adjustment(db, adjustment_id, user)
     if adjustment.status != "DRAFT":
         raise HTTPException(409, "Posted supplier adjustments require reversal and cannot be voided")
     adjustment.status = "VOID"
