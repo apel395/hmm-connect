@@ -32,7 +32,7 @@ def store_db(monkeypatch):
     sequence = iter(range(1, 100))
     monkeypatch.setattr(
         "app.services.store_request_service.next_document_number",
-        lambda _db, prefix: f"{prefix}-TEST-{next(sequence):04d}",
+        lambda _db, prefix, **_kwargs: f"{prefix}-TEST-{next(sequence):04d}",
     )
 
     business_unit = BusinessUnit(code="BU-A", name="Business Unit A", is_active=True)
