@@ -7,22 +7,31 @@ from app.services.direct_coa_service import DirectCoaService
 
 
 class EmptyQuery:
+    def __init__(self, row=None):
+        self.row = row
+
     def filter(self, *_args):
         return self
 
     def first(self):
-        return None
+        return self.row
 
 
 class FakeDb:
-    def __init__(self, accounts):
+    def __init__(self, accounts, setting_account_id=None):
         self.accounts = accounts
+        self.setting_account_id = setting_account_id
 
     def get(self, _model, account_id):
         return self.accounts.get(account_id)
 
     def query(self, _model):
-        return EmptyQuery()
+        row = (
+            SimpleNamespace(account_id=self.setting_account_id)
+            if self.setting_account_id is not None
+            else None
+        )
+        return EmptyQuery(row)
 
 
 def coa(account_id, account_type, normal_balance, subtype="OTHER", number=""):
@@ -120,3 +129,36 @@ def test_invoice_readiness_accepts_complete_direct_mappings():
         "is_ready": True,
         "blockers": [],
     }
+
+
+def test_global_payable_precedes_supplier_fallback():
+    global_payable = coa(8, "LIABILITY", "CREDIT", "ACCOUNTS_PAYABLE")
+    supplier_payable = coa(4, "LIABILITY", "CREDIT", "ACCOUNTS_PAYABLE")
+    service = DirectCoaService(
+        FakeDb(
+            {4: supplier_payable, 8: global_payable},
+            setting_account_id=8,
+        )
+    )
+    supplier = SimpleNamespace(code="SUP-1", payable_account_id=4)
+
+    assert service.payable_account(supplier, location_id=None).id == 8
+
+
+@pytest.mark.parametrize(
+    ("method_name", "account"),
+    [
+        ("grni_account", coa(9, "LIABILITY", "CREDIT", "OTHER")),
+        ("purchase_discount_account", coa(10, "INCOME", "CREDIT", "OTHER")),
+        (
+            "withholding_tax_payable_account",
+            coa(11, "LIABILITY", "CREDIT", "OTHER"),
+        ),
+    ],
+)
+def test_global_control_accounts_resolve(method_name, account):
+    service = DirectCoaService(
+        FakeDb({account.id: account}, setting_account_id=account.id)
+    )
+
+    assert getattr(service, method_name)().id == account.id
