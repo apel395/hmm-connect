@@ -95,6 +95,7 @@ export type SupplierInvoice = {
   source_type: string;
   lines: InvoiceLine[];
   three_way_match?: ThreeWayMatch;
+  accounting_readiness?: { is_ready: boolean; blockers: Array<{ code: string; message: string }> };
   related_journal?: { id: number; journal_number: string; status: string } | null;
   allowed_actions?: Record<string, boolean>;
   activity_history?: any[];
