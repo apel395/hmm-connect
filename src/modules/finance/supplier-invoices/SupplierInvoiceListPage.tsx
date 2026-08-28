@@ -138,8 +138,22 @@ export default function SupplierInvoiceListPage() {
     mutationFn: (payload: any) => editingId ? updateInvoice(editingId, payload) : createInvoice(payload),
     onSuccess: (invoice) => {
       setSubmitError("");
-      toast.success(editingId ? "Draft invoice updated" : "Invoice saved as draft"); setOpen(false); setEditingId(null); setForm(emptyForm());
-      queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] }); queryClient.invalidateQueries({ queryKey: ["invoice-receipts"] }); queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
+      toast.success(editingId ? "Draft invoice updated" : "Invoice saved as draft");
+      setOpen(false);
+      setEditingId(null);
+      setForm(emptyForm());
+
+      // The detail page may already be open in a workspace tab. Replace the
+      // stale pre-migration/detail response immediately, then refetch from the
+      // source-aware API so resolved Location/Department/accounting state are current.
+      queryClient.setQueryData(["supplier-invoice", String(invoice.id)], invoice);
+      queryClient.setQueryData(["supplier-invoice", invoice.id], invoice);
+      queryClient.invalidateQueries({ queryKey: ["supplier-invoice", String(invoice.id)], exact: true });
+      queryClient.invalidateQueries({ queryKey: ["supplier-invoice", invoice.id], exact: true });
+      queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] });
+      queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] });
       navigate(`/supplier-invoices/${invoice.id}`);
     },
     onError: (error) => {
