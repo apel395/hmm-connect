@@ -11,6 +11,7 @@ from app.dependencies.authorization import has_permission, is_superuser
 from app.models.business_unit import BusinessUnit
 from app.models.department import Department
 from app.models.location import Location
+from app.models.location_department import LocationDepartment
 from app.schemas.organization_dimensions import (
     BusinessUnitCreate, BusinessUnitUpdate, DepartmentCreate, DepartmentUpdate,
     LocationCreate, LocationUpdate,
@@ -133,8 +134,16 @@ def update_business_unit(business_unit_id: int, data: BusinessUnitUpdate, db: Se
 
 
 @router.get("/departments")
-def list_departments(business_unit_id: int | None = None, is_active: bool | None = None, include_shared: bool = True, search: Search = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def list_departments(business_unit_id: int | None = None, location_id: int | None = None, is_active: bool | None = None, include_shared: bool = True, search: Search = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     require_access(user); query = db.query(Department).options(joinedload(Department.business_unit))
+    if location_id is not None:
+        location = db.get(Location, location_id)
+        if not location:
+            raise HTTPException(422, "Location does not exist")
+        if business_unit_id is not None and location.business_unit_id != business_unit_id:
+            raise HTTPException(422, "Location does not belong to selected Business Unit")
+        business_unit_id = location.business_unit_id
+        query = query.join(LocationDepartment, LocationDepartment.department_id == Department.id).filter(LocationDepartment.location_id == location_id)
     if business_unit_id is not None:
         validate_business_unit(db, business_unit_id, required=True); dimension_filter = Department.business_unit_id == business_unit_id
         if include_shared: dimension_filter = or_(dimension_filter, Department.business_unit_id.is_(None))
