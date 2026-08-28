@@ -114,9 +114,10 @@ class DirectCoaService:
             except HTTPException as exc:
                 blockers.append({"code": code, "message": str(exc.detail)})
 
-        check("SUPPLIER_PAYABLE", lambda: self.payable_account(invoice.supplier, invoice.location_id))
+        location_id = getattr(invoice, "location_id", None)
+        check("SUPPLIER_PAYABLE", lambda: self.payable_account(invoice.supplier, location_id))
         if Decimal(invoice.tax_amount or 0) > 0:
-            check("INPUT_VAT", lambda: self.input_vat_account(invoice.location_id))
+            check("INPUT_VAT", lambda: self.input_vat_account(location_id))
 
         inventory = bool(
             invoice.goods_receipt
@@ -128,7 +129,7 @@ class DirectCoaService:
                     account = self.account(current.account_id, f"Invoice line {index}")
                 elif current.product:
                     account = (
-                        self.inventory_account(current.product, invoice.location_id)
+                        self.inventory_account(current.product, location_id)
                         if inventory
                         else self.expense_account(current.product, invoice.location_id)
                     )
