@@ -175,11 +175,9 @@ def test_direct_coa_settings_require_finance_manage_permission():
     )
 
     for endpoint in (direct_coa_settings, update_direct_coa_settings):
-        dependency = next(
-            parameter.default.dependency
-            for parameter in __import__("inspect").signature(endpoint).parameters.values()
-            if hasattr(parameter.default, "dependency")
-        )
+        dependency = __import__("inspect").signature(endpoint).parameters[
+            "current_user"
+        ].default.dependency
         denied = user(role("REQUESTER", "pr.view"))
         with pytest.raises(HTTPException) as error:
             dependency(current_user=denied)
