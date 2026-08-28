@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import is_superuser, require_permission
 from app.models.chart_of_account import ChartOfAccount
+from app.models.accounting_setting import AccountingSetting
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.fiscal_period import FiscalPeriod
@@ -134,10 +135,18 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
     if source_type in {"SUPPLIER_INVOICE", "SUPPLIER_PAYMENT"}:
         debit_accounts = [line.account for line in journal.lines if Decimal(line.debit) > ZERO]
         credit_accounts = [line.account for line in journal.lines if Decimal(line.credit) > ZERO]
+        allowed_liability_debit_ids = set()
+        if source_type == "SUPPLIER_INVOICE":
+            grni_setting = db.query(AccountingSetting).filter(
+                AccountingSetting.setting_key == "GRNI_ACCOUNT",
+            ).first()
+            if grni_setting:
+                allowed_liability_debit_ids.add(grni_setting.account_id)
         AccountingPostingRuleService.validate_source_journal_accounts(
             source_type,
             debit_accounts,
             credit_accounts,
+            allowed_liability_debit_ids=allowed_liability_debit_ids,
         )
 
     apply_source_post_state(db, journal=journal, user=user)
