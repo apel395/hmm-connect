@@ -141,3 +141,41 @@ def test_supplier_invoice_accepts_valid_scoped_default_account():
         "SUPPLIER_INVOICE_INVENTORY",
         coa("ASSET", "DEBIT", "INVENTORY", "100-300-100"),
     )
+
+
+def test_supplier_invoice_accepts_only_configured_grni_liability_debit():
+    grni = coa("LIABILITY", "CREDIT")
+    grni.id = 77
+    payable = coa("LIABILITY", "CREDIT")
+    payable.id = 88
+
+    with pytest.raises(HTTPException):
+        AccountingPostingRuleService.validate_source_journal_accounts(
+            "SUPPLIER_INVOICE",
+            [grni],
+            [payable],
+        )
+
+    AccountingPostingRuleService.validate_source_journal_accounts(
+        "SUPPLIER_INVOICE",
+        [grni],
+        [payable],
+        allowed_liability_debit_ids={77},
+    )
+
+
+def test_supplier_invoice_accepts_discount_and_withholding_credits():
+    expense = coa("EXPENSE", "DEBIT")
+    expense.id = 1
+    payable = coa("LIABILITY", "CREDIT")
+    payable.id = 2
+    withholding = coa("LIABILITY", "CREDIT")
+    withholding.id = 3
+    discount = coa("INCOME", "CREDIT")
+    discount.id = 4
+
+    AccountingPostingRuleService.validate_source_journal_accounts(
+        "SUPPLIER_INVOICE",
+        [expense],
+        [payable, withholding, discount],
+    )
