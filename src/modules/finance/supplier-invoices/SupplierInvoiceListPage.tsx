@@ -131,6 +131,20 @@ export default function SupplierInvoiceListPage() {
     return { subtotal, tax, total };
   }, [form.lines, form.discount_amount, form.withholding_tax_amount]);
 
+  const receiptOptions = useMemo(() => {
+    const rows = receipts.data ?? [];
+    if (!editingId || !form.goods_receipt_id || rows.some((row: any) => row.id === Number(form.goods_receipt_id))) return rows;
+    return [{
+      id: Number(form.goods_receipt_id),
+      receipt_number: form.receipt_number ?? `Receipt #${form.goods_receipt_id}`,
+      supplier_name: form.supplier_name ?? "Current supplier",
+      purchase_order_id: form.purchase_order_id,
+      supplier_id: form.supplier_id,
+      business_unit_id: form.business_unit_id,
+      department_id: form.department_id,
+      location_id: form.location_id,
+    }, ...rows];
+  }, [editingId, form.goods_receipt_id, form.receipt_number, form.supplier_name, form.purchase_order_id, form.supplier_id, form.business_unit_id, form.department_id, form.location_id, receipts.data]);
   const selectedSupplier: any = suppliers.find((supplier: any) => supplier.id === Number(form.supplier_id));
   const hasVat = calculation.tax > 0;
 
@@ -206,7 +220,7 @@ export default function SupplierInvoiceListPage() {
 
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditingId(null); }}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId ? "Edit Draft Supplier Invoice" : "Create Supplier Invoice"}</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
-        <label className="text-sm">Posted Receipt<select className={input} value={form.goods_receipt_id ?? ""} onChange={(event) => loadReceipt(Number(event.target.value))}><option value="">Direct / no receipt</option>{receipts.data?.map((row: any) => <option key={row.id} value={row.id}>{row.receipt_number} — {row.supplier_name}</option>)}</select></label>
+        <label className="text-sm">Posted Receipt<select className={input} value={form.goods_receipt_id ?? ""} onChange={(event) => loadReceipt(Number(event.target.value))}><option value="">Direct / no receipt</option>{receiptOptions.map((row: any) => <option key={row.id} value={row.id}>{row.receipt_number} — {row.supplier_name}</option>)}</select></label>
         <label className="text-sm">Purchase Order<select disabled={Boolean(form.goods_receipt_id)} className={input} value={form.purchase_order_id ?? ""} onChange={(event) => loadPo(Number(event.target.value))}><option value="">Direct / no PO</option>{purchaseOrders.data?.map((row: any) => <option key={row.id} value={row.id}>{row.po_number}</option>)}</select></label>
         <label className="text-sm">Supplier *<select disabled={sourceLocked} required className={input} value={form.supplier_id} onChange={(event) => setForm({ ...form, supplier_id: Number(event.target.value) })}><option value={0}>Select supplier</option>{suppliers.map((supplier: any) => <option key={supplier.id} value={supplier.id}>{supplier.code} — {supplier.name}</option>)}</select><span className="mt-1 flex items-center gap-2 text-xs text-slate-500">Tax status: {selectedSupplier ? <Badge variant={selectedSupplier.is_pkp ? "success" : "secondary"}>{selectedSupplier.is_pkp ? "PKP" : "Non-PKP"}</Badge> : "—"}</span></label>
         <label className="text-sm">Business Unit *<select disabled={sourceLocked} required className={input} value={form.business_unit_id ?? ""} onChange={(event) => setForm({ ...form, business_unit_id: Number(event.target.value), department_id: null, location_id: null })}><option value="">Select Business Unit</option>{businessUnits.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
