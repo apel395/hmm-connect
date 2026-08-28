@@ -58,6 +58,7 @@ function supplierPayload(supplier: Supplier, isActive = supplier.is_active): Sup
     nitku: supplier.nitku ?? "",
     tax_registration_name: supplier.tax_registration_name ?? "",
     is_active: isActive,
+    payable_account_id: supplier.payable_account_id ?? null,
     rows: supplier.rows?.map((row) => ({ id: row.id, pic_name: row.pic_name, phone: row.phone, unit: row.unit, item: row.item })) ?? [],
   };
 }
