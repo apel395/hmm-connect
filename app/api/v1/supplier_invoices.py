@@ -17,6 +17,7 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
+from app.services.direct_coa_service import DirectCoaService
 from app.services.supplier_invoice_runtime_service import SupplierInvoiceService
 from app.services.location_access import apply_location_scope, enforce_location_access, resolve_location_id
 
@@ -80,10 +81,12 @@ def result(db, invoice, user):
     data = _hydrate_location_name(db, invoice, service.serialize(service.attach_journal(invoice)))
     match = service.match_summary(invoice)
     data["three_way_match"] = match
+    readiness = DirectCoaService(db).supplier_invoice_readiness(invoice)
+    data["accounting_readiness"] = readiness
     data.update(document_context(db, "SUPPLIER_INVOICE", invoice.id, invoice.status, user))
     data["allowed_actions"] = {
         "can_edit": invoice.status == "DRAFT",
-        "can_verify": invoice.status == "DRAFT" and match["can_verify"],
+        "can_verify": invoice.status == "DRAFT" and match["can_verify"] and readiness["is_ready"],
         "can_reject": invoice.status in {"DRAFT", "VERIFIED"} and not data["related_journal"],
         "can_generate_journal": invoice.status == "VERIFIED" and not data["related_journal"],
         "can_void": invoice.status in {"DRAFT", "VERIFIED"},
@@ -175,6 +178,7 @@ def verify(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_
     """Verify and prepare the invoice journal atomically."""
     service = SupplierInvoiceService(db)
     invoice = get(db, invoice_id, user)
+    invoice = service.persist_source_location(invoice)
     try:
         invoice = service.verify(invoice, user, commit=False)
         service.generate_journal(invoice, user, commit=False)
@@ -220,7 +224,9 @@ def generate(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoic
     ).first()
     if existing:
         return {"id": existing.id, "journal_number": existing.journal_number, "status": existing.status}
-    journal = SupplierInvoiceService(db).generate_journal(invoice, user)
+    service = SupplierInvoiceService(db)
+    invoice = service.persist_source_location(invoice)
+    journal = service.generate_journal(invoice, user)
     return {"id": journal.id, "journal_number": journal.journal_number, "status": journal.status}
 
 
