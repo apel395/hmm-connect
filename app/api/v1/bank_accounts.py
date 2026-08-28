@@ -50,11 +50,12 @@ def serialize(row: BankAccount):
         "coa_account_code": row.coa_account.account_number if row.coa_account else None,
         "coa_account_name": row.coa_account.account_name if row.coa_account else None,
         "is_active": row.is_active,
+        "is_payment_account": row.is_payment_account,
     }
 
 
 @router.get("")
-def listing(active_only: bool = False, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def listing(active_only: bool = False, funding_only: bool = False, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
     query = db.query(BankAccount)
     assigned = assigned_location_id(user)
@@ -62,6 +63,8 @@ def listing(active_only: bool = False, db: Session = Depends(get_db), user=Depen
         query = query.filter((BankAccount.location_id == assigned) | BankAccount.location_id.is_(None))
     if active_only:
         query = query.filter(BankAccount.is_active.is_(True))
+    if funding_only:
+        query = query.filter(BankAccount.is_payment_account.is_(True))
     return [serialize(row) for row in query.order_by(BankAccount.bank_name, BankAccount.account_name).all()]
 
 
