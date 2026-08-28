@@ -179,3 +179,31 @@ def test_supplier_invoice_accepts_discount_and_withholding_credits():
         [expense],
         [payable, withholding, discount],
     )
+
+
+def test_legacy_posting_rules_are_read_only():
+    from app.api.v1.accounting_posting_rules import ensure_legacy_read_only
+
+    with pytest.raises(HTTPException) as error:
+        ensure_legacy_read_only()
+
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "POSTING_RULES_READ_ONLY"
+
+
+def test_posting_rule_reads_remain_available_while_mutations_are_frozen():
+    import inspect
+
+    from app.api.v1.accounting_posting_rules import (
+        create_rule,
+        get_rule,
+        list_rules,
+        toggle,
+        update_rule,
+    )
+
+    assert "ensure_legacy_read_only" not in inspect.getsource(list_rules)
+    assert "ensure_legacy_read_only" not in inspect.getsource(get_rule)
+    assert "ensure_legacy_read_only" in inspect.getsource(create_rule)
+    assert "ensure_legacy_read_only" in inspect.getsource(update_rule)
+    assert "ensure_legacy_read_only" in inspect.getsource(toggle)
