@@ -65,6 +65,25 @@ def validate(db, lines):
     return debit, credit
 
 
+def validate_journal_location_integrity(journal: JournalEntry) -> None:
+    if journal.location_id is None:
+        raise HTTPException(409, "Journal requires a work location before posting")
+    for line in journal.lines:
+        if line.location_id != journal.location_id:
+            raise HTTPException(
+                409,
+                "Every journal line location must match the journal header location",
+            )
+        if (
+            journal.business_unit_id is not None
+            and line.business_unit_id != journal.business_unit_id
+        ):
+            raise HTTPException(
+                409,
+                "Every journal line Business Unit must match the journal header",
+            )
+
+
 def serialize(x, user=None):
     debit = sum((Decimal(l.debit) for l in x.lines), ZERO)
     credit = sum((Decimal(l.credit) for l in x.lines), ZERO)
@@ -128,6 +147,7 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
     if journal.status != "DRAFT":
         raise HTTPException(409, f"Journal {journal.journal_number} is not draft")
     debit, credit = validate(db, journal.lines)
+    validate_journal_location_integrity(journal)
     if debit != credit:
         raise HTTPException(409, f"Journal {journal.journal_number} is not balanced")
 
@@ -246,6 +266,7 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(jour
     for i, line in enumerate(data.lines, 1):
         line_data = line.model_dump()
         line_data["location_id"] = location_id
+        line_data["business_unit_id"] = x.business_unit_id
         x.lines.append(JournalLine(line_number=i, **line_data))
     db.add(x)
     db.flush()
@@ -371,6 +392,7 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
         for i, l in enumerate(data.lines, 1):
             line_data = l.model_dump()
             line_data["location_id"] = x.location_id
+            line_data["business_unit_id"] = x.business_unit_id
             x.lines.append(JournalLine(line_number=i, **line_data))
     record_audit(db, user, "JOURNAL_UPDATED", "JOURNAL_ENTRY", f"Updated {x.journal_number}", entity_id=x.id)
     db.commit()
