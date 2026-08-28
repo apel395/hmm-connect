@@ -15,10 +15,11 @@ export interface BankAccount {
   coa_account_code?: string | null;
   coa_account_name?: string | null;
   is_active: boolean;
+  is_payment_account?: boolean;
 }
 
-export const listBankAccounts = async (activeOnly = false) =>
-  (await api.get<BankAccount[]>("/bank-accounts", { params: { active_only: activeOnly } })).data;
+export const listBankAccounts = async (activeOnly = false, fundingOnly = false) =>
+  (await api.get<BankAccount[]>("/bank-accounts", { params: { active_only: activeOnly, funding_only: fundingOnly } })).data;
 
 export const saveBankAccount = async (payload: Partial<BankAccount> & { id?: number }) => {
   const { id, ...data } = payload;
