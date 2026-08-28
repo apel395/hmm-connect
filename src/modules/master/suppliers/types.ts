@@ -18,6 +18,7 @@ export interface Supplier {
   npwp?: string | null;
   nitku?: string | null;
   tax_registration_name?: string | null;
+  payable_account_id?: number | null;
   is_active: boolean;
   rows?: SupplierPIC[];
   created_at?: string | null;
@@ -43,6 +44,7 @@ export interface SupplierPayload {
   npwp: string | null;
   nitku: string | null;
   tax_registration_name: string | null;
+  payable_account_id: number | null;
   is_active: boolean;
   rows: SupplierPICPayload[];
 }

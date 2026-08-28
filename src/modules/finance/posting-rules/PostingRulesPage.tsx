@@ -1,26 +1,66 @@
-import {useMemo,useState} from "react";import {useMutation,useQuery,useQueryClient} from "@tanstack/react-query";import axios from "axios";import {toast} from "sonner";
-import PageHeader from "@/components/common/PageHeader";import Card from "@/components/ui/Card";import Button from "@/components/ui/Button";import Dialog,{DialogBody,DialogContent,DialogFooter,DialogHeader,DialogTitle} from "@/components/ui/Dialog";import {getAccountLookup} from "@/modules/master/chart-of-accounts/api";import {filterBusinessUnits,listLocations} from "@/modules/admin/organization/api";import {createRule,listRules,PostingRule,toggleRule,updateRule} from "./api";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import api from "@/api/client";
+import PageHeader from "@/components/common/PageHeader";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
+import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 
-const events=[
- {value:"SUPPLIER_INVOICE_INVENTORY",label:"Supplier Invoice — Inventory",debit:"Inventory / received-goods clearing or the invoice line account",credit:"Accounts Payable",vat:true,help:"Used when a verified supplier invoice comes from warehouse receiving."},
- {value:"SUPPLIER_INVOICE_DIRECT_USE",label:"Supplier Invoice — Direct Use / Expense",debit:"Expense / direct-use account",credit:"Accounts Payable",vat:true,help:"Used for direct-use receiving or direct supplier invoices."},
- {value:"SUPPLIER_PAYMENT",label:"Supplier Payment",debit:"Accounts Payable",credit:"Selected Bank Account COA",vat:false,help:"The rule supplies the AP debit account. The credit account is taken from each selected bank account, so payments can use multiple banks."},
-];
-const empty={event_type:"SUPPLIER_INVOICE_INVENTORY",business_unit_id:null as number|null,location_id:null as number|null,debit_account_id:0,credit_account_id:0,input_vat_account_id:null as number|null,description:"",is_active:true};
-export default function PostingRulesPage(){
- const qc=useQueryClient(),rules=useQuery({queryKey:["posting-rules"],queryFn:listRules}),accounts=useQuery({queryKey:["coa-posting-lookup"],queryFn:()=>getAccountLookup({is_active:true,is_posting:true})}),businessUnits=useQuery({queryKey:["posting-rule-business-units"],queryFn:()=>filterBusinessUnits({is_active:true})});
- const[open,setOpen]=useState(false),[editing,setEditing]=useState<PostingRule|null>(null),[viewing,setViewing]=useState<PostingRule|null>(null),[form,setForm]=useState(empty),[submitError,setSubmitError]=useState("");
- const locations=useQuery({queryKey:["posting-rule-locations",form.business_unit_id],queryFn:()=>listLocations({business_unit_id:Number(form.business_unit_id),is_active:true}),enabled:Boolean(form.business_unit_id)});
- const configured=new Set((rules.data??[]).filter(r=>r.is_active).map(r=>r.event_type));const missing=events.filter(e=>!configured.has(e.value));const eventInfo=useMemo(()=>events.find(e=>e.value===form.event_type),[form.event_type]);
- const msg=(e:unknown)=>axios.isAxiosError(e)&&typeof e.response?.data?.detail==="string"?e.response.data.detail:e instanceof Error?e.message:"Posting rule could not be saved";
- const save=useMutation({mutationFn:()=>{if(!form.debit_account_id||!form.credit_account_id)throw new Error("Choose both posting accounts");if(form.debit_account_id===form.credit_account_id)throw new Error("Debit and credit accounts must be different");return editing?updateRule(editing.id,form):createRule(form)},onSuccess:()=>{setSubmitError("");toast.success("Posting rule saved");setOpen(false);qc.invalidateQueries({queryKey:["posting-rules"]})},onError:e=>{const message=msg(e);setSubmitError(message);toast.error(message)}});
- const toggle=useMutation({mutationFn:(r:PostingRule)=>toggleRule(r.id,!r.is_active),onSuccess:()=>qc.invalidateQueries({queryKey:["posting-rules"]}),onError:e=>toast.error(msg(e))});
- const edit=(r?:PostingRule,eventType?:string)=>{setSubmitError("");setEditing(r??null);setForm(r?{event_type:r.event_type,business_unit_id:r.business_unit_id??null,location_id:r.location_id??null,debit_account_id:r.debit_account_id,credit_account_id:r.credit_account_id,input_vat_account_id:r.input_vat_account_id??null,description:r.description??"",is_active:r.is_active}:{...empty,event_type:eventType??empty.event_type});setOpen(true)};const select="mt-1 h-10 w-full rounded border px-3";
- return <>
-  <PageHeader title="Posting Rules" description="Map business events to the Chart of Accounts. Supplier Invoice rules can also map PPN Masukan so tax-bearing invoices generate a balanced draft journal automatically." actions={<Button onClick={()=>edit(undefined,missing[0]?.value??events[0].value)}>{missing.length?"Configure Missing Rule":"Add Scoped Rule"}</Button>}/>
-  <div className="mt-6 grid gap-3 md:grid-cols-3">{events.map(event=><Card key={event.value} className="p-4"><div className="flex items-start justify-between gap-3"><div><div className="font-semibold">{event.label}</div><div className="mt-1 text-xs text-slate-500">{event.help}</div></div><div className={`rounded px-2 py-1 text-xs font-medium ${configured.has(event.value)?"bg-emerald-100 text-emerald-800":"bg-amber-100 text-amber-800"}`}>{configured.has(event.value)?"Configured":"Missing"}</div></div><div className="mt-3 text-xs"><div><span className="font-medium">Debit:</span> {event.debit}</div><div><span className="font-medium">Credit:</span> {event.credit}</div>{event.vat&&<div><span className="font-medium">PPN:</span> PPN Masukan account when invoice tax &gt; 0</div>}</div>{!configured.has(event.value)&&<Button className="mt-3" size="sm" variant="outline" onClick={()=>edit(undefined,event.value)}>Configure</Button>}</Card>)}</div>
-  <Card className="mt-6 overflow-x-auto"><table className="min-w-[1100px] w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">Event</th><th>Scope</th><th>Debit Account</th><th>PPN Masukan</th><th>Credit Account</th><th>Description</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rules.data?.map(r=>{const info=events.find(e=>e.value===r.event_type);return <tr key={r.id} className="border-b"><td className="p-3"><div className="font-medium">{info?.label??r.event_type}</div><div className="text-[10px] text-slate-500">{r.event_type}</div></td><td><div>{r.business_unit_name??"All Business Units"}</div><div className="text-xs text-slate-500">{r.location_name??"All Locations"}</div></td><td>{r.debit_account_code} — {r.debit_account_name}</td><td>{r.input_vat_account_id?`${r.input_vat_account_code} — ${r.input_vat_account_name}`:info?.vat?<span className="text-amber-700">Not configured</span>:"—"}</td><td>{r.credit_account_code} — {r.credit_account_name}</td><td>{r.description??"—"}</td><td>{r.is_active?"Active":"Archived"}</td><td className="space-x-1"><Button size="xs" variant="outline" onClick={()=>setViewing(r)}>View</Button><Button size="xs" variant="outline" onClick={()=>edit(r)}>Edit</Button><Button size="xs" variant="outline" onClick={()=>toggle.mutate(r)}>{r.is_active?"Archive":"Restore"}</Button></td></tr>})}</tbody></table></Card>
-  <Dialog open={open} onOpenChange={setOpen}><DialogContent><DialogHeader><DialogTitle>{editing?"Edit":"Configure"} Posting Rule</DialogTitle></DialogHeader><form onSubmit={e=>{e.preventDefault();if(!save.isPending)save.mutate()}}><DialogBody className="space-y-4"><label className="block text-sm">Business Event<select className={select} value={form.event_type} disabled={!!editing} onChange={e=>setForm({...form,event_type:e.target.value,input_vat_account_id:events.find(event=>event.value===e.target.value)?.vat?form.input_vat_account_id:null})}>{events.map(event=><option key={event.value} value={event.value}>{event.label}</option>)}</select></label><div className="grid gap-3 md:grid-cols-2"><label className="block text-sm">Business Unit<select className={select} value={form.business_unit_id??""} onChange={e=>setForm({...form,business_unit_id:e.target.value?Number(e.target.value):null,location_id:null})}><option value="">All Business Units</option>{businessUnits.data?.map(unit=><option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>)}</select></label><label className="block text-sm">Location<select className={select} value={form.location_id??""} disabled={!form.business_unit_id} onChange={e=>setForm({...form,location_id:e.target.value?Number(e.target.value):null})}><option value="">All Locations</option>{locations.data?.map(location=><option key={location.id} value={location.id}>{location.code} — {location.name}</option>)}</select><span className="mt-1 block text-xs text-slate-500">Resolution priority: exact BU/location, location, BU, then global.</span></label></div>{eventInfo&&<div className="rounded border bg-slate-50 p-3 text-xs text-slate-700"><div>{eventInfo.help}</div><div className="mt-2"><strong>Expected debit:</strong> {eventInfo.debit}</div><div><strong>Expected credit:</strong> {eventInfo.credit}</div>{eventInfo.vat&&<div><strong>Tax debit:</strong> PPN Masukan when PPN exists on the invoice.</div>}</div>}{[["Debit Account","debit_account_id"],["Credit Account","credit_account_id"]].map(([label,key])=><label key={key} className="block text-sm">{label} *<select className={select} required value={(form as any)[key]} onChange={e=>setForm({...form,[key]:Number(e.target.value)})}><option value={0}>Select posting account</option>{accounts.data?.map(a=><option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}</select></label>)}{eventInfo?.vat&&<label className="block text-sm">PPN Masukan Account<select className={select} value={form.input_vat_account_id??""} onChange={e=>setForm({...form,input_vat_account_id:e.target.value?Number(e.target.value):null})}><option value="">Not configured</option>{accounts.data?.map(a=><option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}</select><span className="mt-1 block text-xs text-slate-500">Required before a Supplier Invoice containing PPN can generate its accounting journal.</span></label>}{form.event_type==="SUPPLIER_PAYMENT"&&<p className="rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">For supplier payments the selected bank account's linked COA is used for the actual credit lines. Keep the rule credit account as the normal/default bank-clearing account for configuration consistency.</p>}<label className="block text-sm">Description<textarea className="mt-1 w-full rounded border p-2" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label className="flex gap-2"><input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/> Active</label>{submitError&&<div role="alert" className="mx-5 mb-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{submitError}</div>}</DialogBody><DialogFooter><Button type="button" variant="outline" onClick={()=>setOpen(false)}>Cancel</Button><Button type="submit" loading={save.isPending}>Save Mapping</Button></DialogFooter></form></DialogContent></Dialog>
-  <Dialog open={!!viewing} onOpenChange={()=>setViewing(null)}><DialogContent><DialogHeader><DialogTitle>Posting Rule</DialogTitle></DialogHeader><DialogBody>{viewing&&<div className="space-y-2"><p className="font-semibold">{events.find(e=>e.value===viewing.event_type)?.label??viewing.event_type}</p><p>Scope: {viewing.business_unit_name??"All Business Units"} / {viewing.location_name??"All Locations"}</p><p>Debit: {viewing.debit_account_code} — {viewing.debit_account_name}</p><p>PPN Masukan: {viewing.input_vat_account_id?`${viewing.input_vat_account_code} — ${viewing.input_vat_account_name}`:"Not configured"}</p><p>Credit: {viewing.credit_account_code} — {viewing.credit_account_name}</p><p className="text-sm text-slate-500">{viewing.description||"No description."}</p></div>}</DialogBody></DialogContent></Dialog>
- </>
+type Settings = { input_vat_account_id: number | null };
+
+export default function PostingRulesPage() {
+  const queryClient = useQueryClient();
+  const settings = useQuery({
+    queryKey:["direct-coa-settings"],
+    queryFn:async()=>(await api.get<Settings>("/accounting/direct-coa-settings")).data,
+  });
+  const accounts = useQuery({
+    queryKey:["direct-coa-settings","asset-lookup"],
+    queryFn:()=>getAccountLookup({account_type:"ASSET",is_active:true,is_posting:true}),
+  });
+  const [inputVatAccountId,setInputVatAccountId]=useState<number|null>(null);
+  const selected = inputVatAccountId ?? settings.data?.input_vat_account_id ?? null;
+  const save = useMutation({
+    mutationFn:async()=> {
+      if (!selected) throw new Error("Choose the Input VAT account");
+      return (await api.put<Settings>("/accounting/direct-coa-settings",{input_vat_account_id:selected})).data;
+    },
+    onSuccess:async(data)=>{
+      setInputVatAccountId(data.input_vat_account_id);
+      await queryClient.invalidateQueries({queryKey:["direct-coa-settings"]});
+      toast.success("Direct COA settings saved");
+    },
+    onError:(error:any)=>toast.error(error.response?.data?.detail || error.message || "Settings could not be saved"),
+  });
+
+  return <div className="space-y-6">
+    <PageHeader title="Direct COA Setup" description="COA mappings are maintained on the master records that own each accounting decision." />
+    <Card className="border-emerald-200 bg-emerald-50/40">
+      <h2 className="font-semibold text-emerald-950">Posting Rule transaction resolution is disabled</h2>
+      <p className="mt-2 text-sm text-emerald-900">New journals resolve accounts directly from Item, Supplier, Bank/Cash, and global tax mappings. Historical rules and posted journals remain available and unchanged during migration.</p>
+    </Card>
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card>
+        <h2 className="font-semibold">Global Tax Mapping</h2>
+        <p className="mt-1 text-sm text-slate-500">Used only for PPN Masukan on supplier invoices. No account number is hardcoded.</p>
+        <label className="mt-4 block text-sm font-medium">Input VAT COA
+          <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={selected ?? ""} onChange={(event)=>setInputVatAccountId(event.target.value?Number(event.target.value):null)}>
+            <option value="">Select Input VAT account</option>
+            {accounts.data?.map((account)=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}
+          </select>
+        </label>
+        <div className="mt-4 flex justify-end"><Button disabled={!selected} loading={save.isPending} onClick={()=>save.mutate()}>Save Tax Mapping</Button></div>
+      </Card>
+      <Card>
+        <h2 className="font-semibold">Mapping Ownership</h2>
+        <dl className="mt-3 space-y-3 text-sm">
+          <div><dt className="font-medium">Item Master</dt><dd className="text-slate-500">Inventory Asset, Consumption/Expense, and COGS/Issue COA.</dd></div>
+          <div><dt className="font-medium">Supplier Master</dt><dd className="text-slate-500">Accounts Payable COA.</dd></div>
+          <div><dt className="font-medium">Bank/Cash Setup</dt><dd className="text-slate-500">Funding COA for payment journal credits.</dd></div>
+          <div><dt className="font-medium">Journal Lines</dt><dd className="text-slate-500">Immutable account snapshots for posted history.</dd></div>
+        </dl>
+      </Card>
+    </div>
+  </div>;
 }

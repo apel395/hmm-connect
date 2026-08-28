@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import type { Product, TaxCategory } from "../types";
+import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 
 const UOMS = ["Kg", "Gram", "Liter", "Ml", "Bottle", "Pcs", "Pack", "Box", "Can", "Roll", "Meter", "Set"];
 const TAX_CATEGORIES: { value: TaxCategory; label: string; help: string }[] = [
@@ -36,10 +38,14 @@ const blank = () => ({
   tax_rate:0,
   tax_reason:"",
   tax_reference:"",
+  inventory_account_id:null as number|null,
+  purchase_account_id:null as number|null,
+  cogs_account_id:null as number|null,
 });
 
 export default function ProductForm({ open, product, products = [], loading, onClose, onSubmit }: Props) {
   const [form, setForm] = useState(blank());
+  const accounts = useQuery({queryKey:["product-coa-lookup"],queryFn:()=>getAccountLookup({is_active:true,is_posting:true})});
 
   const groups = useMemo(() => {
     const map = new Map<string, { code:string; name:string }>();
@@ -73,6 +79,9 @@ export default function ProductForm({ open, product, products = [], loading, onC
       tax_rate:Number(product.tax_rate ?? 0),
       tax_reason:product.tax_reason ?? "",
       tax_reference:product.tax_reference ?? "",
+      inventory_account_id:product.inventory_account_id ?? null,
+      purchase_account_id:product.purchase_account_id ?? null,
+      cogs_account_id:product.cogs_account_id ?? null,
     } : blank());
   }, [open, product]);
 
@@ -163,6 +172,26 @@ export default function ProductForm({ open, product, products = [], loading, onC
           <Input className="mt-1" type="number" min="0" step="0.01" value={form.minimum_stock} onChange={(event) => update("minimum_stock", Number(event.target.value))}/>
           <span className="mt-1 block text-xs font-normal text-slate-500">Dipakai sebagai batas notifikasi reorder. Tidak ditampilkan sebagai kolom min/max di Stock List.</span>
         </label>
+
+        <div className="col-span-2 mt-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+          <div className="mb-3">
+            <div className="font-semibold text-slate-900">Direct COA Mapping</div>
+            <div className="text-xs text-slate-500">COA is copied to transaction and journal snapshots. Existing posted journals never follow later master changes.</div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {[
+              ["Inventory Asset COA","inventory_account_id","Used when this item is received into a warehouse."],
+              ["Consumption / Expense COA","purchase_account_id","Used for direct-use supplier invoices."],
+              ["COGS / Issue COA","cogs_account_id","Used when warehouse stock is issued or consumed."],
+            ].map(([label,key,help])=><label key={key} className="text-sm font-medium">{label}
+              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={(form as any)[key] ?? ""} onChange={(event)=>update(key,event.target.value?Number(event.target.value):null)}>
+                <option value="">Not configured</option>
+                {accounts.data?.map((account)=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-slate-500">{help}</span>
+            </label>)}
+          </div>
+        </div>
 
         <div className="col-span-2 mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <div className="mb-3">
