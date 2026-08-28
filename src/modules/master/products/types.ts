@@ -17,6 +17,9 @@ export interface Product {
   tax_reason?: string | null;
   tax_reference?: string | null;
   minimum_stock: string | number;
+  inventory_account_id?: number | null;
+  purchase_account_id?: number | null;
+  cogs_account_id?: number | null;
   is_market_item: boolean;
   is_active: boolean;
 }
@@ -37,6 +40,9 @@ export interface ProductCreateRequest {
   tax_reason?: string | null;
   tax_reference?: string | null;
   minimum_stock: number;
+  inventory_account_id?: number | null;
+  purchase_account_id?: number | null;
+  cogs_account_id?: number | null;
   is_market_item: boolean;
 }
 
