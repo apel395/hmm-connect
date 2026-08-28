@@ -447,7 +447,7 @@ class SupplierInvoiceService:
         self.db.refresh(invoice)
         return self.attach_journal(invoice)
 
-    def verify(self, invoice, user):
+    def verify(self, invoice, user, *, commit: bool = True):
         invoice = (
             self.db.query(SupplierInvoice)
             .filter(SupplierInvoice.id == invoice.id)
@@ -487,11 +487,14 @@ class SupplierInvoiceService:
             entity_id=invoice.id,
             after_data={"match_status": match["status"], "tax_amount": str(invoice.tax_amount or 0)},
         )
-        self.db.commit()
-        self.db.refresh(invoice)
+        if commit:
+            self.db.commit()
+            self.db.refresh(invoice)
+        else:
+            self.db.flush()
         return self.attach_journal(invoice)
 
-    def generate_journal(self, invoice, user):
+    def generate_journal(self, invoice, user, *, commit: bool = True):
         invoice = (
             self.db.query(SupplierInvoice)
             .filter(SupplierInvoice.id == invoice.id)
@@ -611,6 +614,9 @@ class SupplierInvoiceService:
             entity_id=journal.id,
             reference_document=invoice.internal_invoice_number,
         )
-        self.db.commit()
-        self.db.refresh(journal)
+        if commit:
+            self.db.commit()
+            self.db.refresh(journal)
+        else:
+            self.db.flush()
         return journal
