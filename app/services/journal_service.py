@@ -37,6 +37,12 @@ class JournalService:
                 detail="Journal must contain at least one line.",
             )
 
+        if journal.location_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Journal requires a work location before posting.",
+            )
+
         total_debit = ZERO
         total_credit = ZERO
 
@@ -94,6 +100,9 @@ class JournalService:
             description=journal.description,
             created_by_id=user.id,
             posted_by_id=user.id,
+            business_unit_id=journal.business_unit_id,
+            location_id=journal.location_id,
+            department_id=journal.department_id,
         )
 
         db.add(entry)
@@ -107,6 +116,10 @@ class JournalService:
                 debit=item.debit,
                 credit=item.credit,
                 description=item.description,
+                business_unit_id=journal.business_unit_id,
+                location_id=journal.location_id,
+                department_id=item.department_id or journal.department_id,
+                supplier_id=item.supplier_id,
             )
 
             db.add(line)
