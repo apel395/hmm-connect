@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, LayoutDashboard, RotateCcw, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import useWorkspaceTabs from "@/store/workspaceTabs";
 import { workspaceTabGroup, workspaceTitle } from "./workspaceTitle";
@@ -9,6 +10,7 @@ const MAX_VISIBLE_TABS = 8;
 export default function WorkspaceTabs() {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const stripRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const {
@@ -22,6 +24,13 @@ export default function WorkspaceTabs() {
     reopenLastClosed,
   } = useWorkspaceTabs();
   const currentPath = `${location.pathname}${location.search}`;
+
+  useEffect(() => {
+    // Workspace navigation can revisit long-lived detail tabs after another
+    // screen changed the same record. Refresh active route data on every tab
+    // activation instead of relying on component mount semantics.
+    void queryClient.invalidateQueries({ refetchType: "active" });
+  }, [currentPath, queryClient]);
 
   useEffect(() => {
     if (location.pathname === "/" || location.pathname.endsWith("/print")) return;
