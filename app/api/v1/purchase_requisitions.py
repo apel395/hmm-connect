@@ -12,6 +12,7 @@ from app.dependencies.authorization import is_superuser, require_permission
 from app.models.business_unit import BusinessUnit
 from app.models.department import Department
 from app.models.location import Location
+from app.models.location_department import LocationDepartment
 from app.models.purchase_requisition import PurchaseRequisition
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
@@ -278,7 +279,19 @@ def _apply_login_organization_context(db: Session, data: PurchaseRequisitionCrea
             business_unit_id = department.business_unit_id
         elif department.business_unit_id not in {None, business_unit_id}:
             raise HTTPException(409, "Assigned department does not belong to the user's Business Unit")
-        data.department_id = department.id
+        if location:
+            mapped = (
+                db.query(LocationDepartment)
+                .filter(
+                    LocationDepartment.location_id == location.id,
+                    LocationDepartment.department_id == department.id,
+                )
+                .first()
+            )
+            if not mapped:
+                department = None
+        if department:
+            data.department_id = department.id
 
     if business_unit_id is not None:
         business_unit = db.get(BusinessUnit, business_unit_id)
