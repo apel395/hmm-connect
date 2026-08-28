@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import type { Supplier, SupplierPayload, SupplierPICPayload } from "../types";
+import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 
 interface Props {
   open: boolean;
@@ -15,7 +17,7 @@ interface Props {
 
 const emptyForm: SupplierPayload = {
   code: "", name: "", address: "", bank_name: "", bank_account_number: "", bank_account_name: "",
-  is_pkp: false, npwp: null, nitku: null, tax_registration_name: null,
+  is_pkp: false, npwp: null, nitku: null, tax_registration_name: null, payable_account_id:null,
   is_active: true, rows: [],
 };
 const emptyPic = (): SupplierPICPayload => ({ pic_name: "", phone: null, unit: null, item: null });
@@ -23,6 +25,7 @@ const emptyPic = (): SupplierPICPayload => ({ pic_name: "", phone: null, unit: n
 export default function SupplierForm({ open, supplier, loading = false, error, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<SupplierPayload>(emptyForm);
   const [validation, setValidation] = useState<string | null>(null);
+  const payableAccounts = useQuery({queryKey:["supplier-payable-coa-lookup"],queryFn:()=>getAccountLookup({account_type:"LIABILITY",is_active:true,is_posting:true})});
 
   useEffect(() => {
     if (!open) return;
@@ -31,7 +34,7 @@ export default function SupplierForm({ open, supplier, loading = false, error, o
       code:supplier.code, name:supplier.name, address:supplier.address ?? "",
       bank_name:supplier.bank_name ?? "", bank_account_number:supplier.bank_account_number ?? "", bank_account_name:supplier.bank_account_name ?? "",
       is_pkp:Boolean(supplier.is_pkp), npwp:supplier.npwp ?? null, nitku:supplier.nitku ?? null,
-      tax_registration_name:supplier.tax_registration_name ?? null, is_active:supplier.is_active,
+      tax_registration_name:supplier.tax_registration_name ?? null, payable_account_id:supplier.payable_account_id ?? null, is_active:supplier.is_active,
       rows:supplier.rows?.map((row) => ({ id:row.id, pic_name:row.pic_name, phone:row.phone, unit:row.unit, item:row.item })) ?? [],
     } : { ...emptyForm, rows:[emptyPic()] });
   }, [open, supplier]);
@@ -70,6 +73,16 @@ export default function SupplierForm({ open, supplier, loading = false, error, o
             <label className="space-y-1 text-sm font-medium"><span>Account Number</span><Input value={form.bank_account_number} disabled={loading} onChange={(e)=>setField("bank_account_number",e.target.value)} /></label>
             <label className="space-y-1 text-sm font-medium"><span>Account Name</span><Input value={form.bank_account_name} disabled={loading} onChange={(e)=>setField("bank_account_name",e.target.value)} /></label>
             <label className="flex items-center gap-2 pt-6 text-sm font-medium"><input type="checkbox" checked={form.is_active} disabled={loading} onChange={(e)=>setField("is_active",e.target.checked)} />Active supplier</label>
+          </div>
+
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+            <div className="mb-3"><h3 className="font-semibold">Accounts Payable COA</h3><p className="text-sm text-slate-500">Supplier invoices credit this account directly. The selected account is snapshotted into each journal.</p></div>
+            <label className="block text-sm font-medium">Payable Account
+              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.payable_account_id ?? ""} onChange={(e)=>setField("payable_account_id",e.target.value?Number(e.target.value):null)}>
+                <option value="">Not configured</option>
+                {payableAccounts.data?.map((account)=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}
+              </select>
+            </label>
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
