@@ -166,3 +166,21 @@ def test_supplier_adjustment_detail_hides_cross_location_document():
     with pytest.raises(HTTPException) as hidden:
         get_adjustment(FakeDb(), 1, current)
     assert hidden.value.status_code == 404
+
+
+def test_direct_coa_settings_require_finance_manage_permission():
+    from app.api.v1.accounting import (
+        direct_coa_settings,
+        update_direct_coa_settings,
+    )
+
+    for endpoint in (direct_coa_settings, update_direct_coa_settings):
+        dependency = next(
+            parameter.default.dependency
+            for parameter in __import__("inspect").signature(endpoint).parameters.values()
+            if hasattr(parameter.default, "dependency")
+        )
+        denied = user(role("REQUESTER", "pr.view"))
+        with pytest.raises(HTTPException) as error:
+            dependency(current_user=denied)
+        assert error.value.status_code == 403
