@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.supplier import Supplier
 from app.schemas.supplier import SupplierCreate, SupplierUpdate
+from app.services.direct_coa_service import DirectCoaService
 
 
 router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
@@ -41,6 +42,8 @@ def lookup_suppliers(search: str = Query(default="", max_length=100), limit: int
 def create_supplier(data: SupplierCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
     if db.query(Supplier).filter(Supplier.code == data.code).first():
         raise HTTPException(status_code=409, detail="Supplier code already exists")
+    if data.payable_account_id:
+        DirectCoaService(db).payable_account(type("SupplierProbe", (), {"code": data.code, "payable_account_id": data.payable_account_id})())
     supplier = Supplier(**data.model_dump())
     db.add(supplier)
     db.commit()
@@ -54,7 +57,10 @@ def update_supplier(supplier_id: int, data: SupplierUpdate, db: Session = Depend
     supplier = db.get(Supplier, supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    if "payable_account_id" in payload and payload["payable_account_id"]:
+        DirectCoaService(db).payable_account(type("SupplierProbe", (), {"code": supplier.code, "payable_account_id": payload["payable_account_id"]})())
+    for field, value in payload.items():
         setattr(supplier, field, value)
     db.commit()
     db.refresh(supplier)
