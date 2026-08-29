@@ -136,3 +136,36 @@ def test_supplier_invoice_serializer_falls_back_to_posted_journal_location():
 
     assert result["location_id"] == 3
     assert result["location_name"] == "Zamped"
+
+
+def test_supplier_invoice_source_location_uses_matching_warehouse_location():
+    receipt = SimpleNamespace(
+        destination_type="WAREHOUSE",
+        location_id=3,
+        warehouse=SimpleNamespace(location_id=3),
+    )
+    purchase_order = SimpleNamespace(location_id=3)
+
+    assert SupplierInvoiceService._source_location_id(receipt, purchase_order) == 3
+
+
+def test_supplier_invoice_source_location_rejects_warehouse_conflict():
+    receipt = SimpleNamespace(
+        destination_type="WAREHOUSE",
+        location_id=4,
+        warehouse=SimpleNamespace(location_id=3),
+    )
+    purchase_order = SimpleNamespace(location_id=3)
+
+    with pytest.raises(HTTPException, match="does not match"):
+        SupplierInvoiceService._source_location_id(receipt, purchase_order)
+
+
+def test_supplier_invoice_source_location_uses_direct_receipt_location():
+    receipt = SimpleNamespace(
+        destination_type="DIRECT_USE",
+        location_id=4,
+        warehouse=SimpleNamespace(location_id=3),
+    )
+
+    assert SupplierInvoiceService._source_location_id(receipt, None) == 4
