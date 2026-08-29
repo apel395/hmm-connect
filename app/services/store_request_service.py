@@ -99,9 +99,12 @@ class StoreRequestService:
 
     @staticmethod
     def create(db: Session, *, data: StoreRequestCreate, current_user: User) -> StoreRequest:
-        business_unit_id = data.business_unit_id or current_user.default_business_unit_id
         location_id = resolve_location_id(current_user, data.location_id)
-        StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
+        warehouse = StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
+        location = warehouse.location
+        if location is None or location.business_unit_id is None:
+            raise HTTPException(409, "Store Request warehouse Location must belong to a Business Unit")
+        business_unit_id = location.business_unit_id
         department_id = data.department_id or current_user.default_department_id or current_user.department_id
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
         request = StoreRequest(
@@ -136,10 +139,12 @@ class StoreRequestService:
         if request.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only draft Store Requests can be edited")
         location_id = resolve_location_id(current_user, data.location_id or request.location_id)
-        StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
+        warehouse = StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
+        if warehouse.location is None or warehouse.location.business_unit_id is None:
+            raise HTTPException(409, "Store Request warehouse Location must belong to a Business Unit")
         request.request_date = data.request_date or request.request_date
         request.notes = data.notes
-        request.business_unit_id = data.business_unit_id or request.business_unit_id
+        request.business_unit_id = warehouse.location.business_unit_id
         request.location_id = location_id
         request.department_id = data.department_id or request.department_id
         request.warehouse_id = data.warehouse_id
