@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.services.cash_flow_service import CashFlowService
 from app.services.supplier_invoice_service import SupplierInvoiceService
 
