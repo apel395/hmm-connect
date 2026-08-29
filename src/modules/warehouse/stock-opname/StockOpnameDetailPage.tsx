@@ -61,7 +61,7 @@ export default function StockOpnameDetailPage() {
         description={`${d.warehouse_name ?? "Warehouse"} • ${d.count_date}`}
         actions={
           <div className="flex gap-2">
-            {d.status === "DRAFT" && (
+            {d.status === "DRAFT" && d.items.length > 0 && (
               <>
                 <Button
                   variant="secondary"
@@ -78,7 +78,7 @@ export default function StockOpnameDetailPage() {
                 </Button>
               </>
             )}
-            {d.status === "APPROVED" && d.allowed_actions?.can_post === true && (
+            {d.status === "APPROVED" && d.items.length > 0 && d.allowed_actions?.can_post === true && (
               <Button disabled={post.isPending} onClick={() => post.mutate()}>
                 Post Adjustment
               </Button>
@@ -106,6 +106,13 @@ export default function StockOpnameDetailPage() {
           </div>
         </div>
       </Card>
+      {d.items.length === 0 && (
+        <Card className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          This Stock Opname has no inventory snapshot. It cannot be counted,
+          submitted, approved, or posted. Create a new Stock Opname after the
+          warehouse contains inventory.
+        </Card>
+      )}
       <Card className="p-0">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-xs">
