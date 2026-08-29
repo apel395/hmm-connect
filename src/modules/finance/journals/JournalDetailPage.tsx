@@ -63,7 +63,7 @@ export default function JournalDetailPage() {
     qc.invalidateQueries({ queryKey: ["eligible-payment-invoices"] });
     qc.invalidateQueries({ queryKey: ["payment"] });
     qc.invalidateQueries({ queryKey: ["payments"] });
-    qc.invalidateQueries({ queryKey: ["supplier-invoices"] });
+    qc.invalidateQueries({ queryKey: ["supplier-invoice"] });\n    qc.invalidateQueries({ queryKey: ["supplier-invoices"] });
     qc.invalidateQueries({ queryKey: ["ap-reporting"] });
   };
 
