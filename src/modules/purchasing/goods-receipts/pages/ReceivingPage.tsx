@@ -30,7 +30,7 @@ function workflowParams(status:string){
 }
 
 export default function ReceivingPage() {
-  const navigate=useNavigate();const{isSuperuser,hasPermission}=useAuthorization();const canCreate=isSuperuser()||hasPermission("receiving.manage");
+  const navigate=useNavigate();const{isSuperuser,hasPermission}=useAuthorization();const canCreate=isSuperuser()||hasPermission("receiving.create");
   const[search,setSearch]=useState("");const[destination,setDestination]=useState("ALL");const[status,setStatus]=useState("ALL");const[advanced,setAdvanced]=useState(false);const[creating,setCreating]=useState(false);const[direct,setDirect]=useState(false);const[page,setPage]=useState(1);
   const query=useAllGoodsReceipts({page,page_size:PAGE_SIZE,search:search.trim()||undefined,destination_type:destination==="ALL"?undefined:destination,...workflowParams(status)});const pending=useReceivablePurchaseOrders();const data:any=query.data??{};const rows:any[]=data.items??[];const summary=data.summary??{};const pages=Math.max(data.total_pages??0,1);const total=data.total_items??0;
   useEffect(()=>setPage(1),[search,destination,status]);useEffect(()=>{if(page>pages)setPage(pages)},[page,pages]);
