@@ -53,11 +53,8 @@ class StockOpnameService:
         if not location or not location.is_active:
             raise HTTPException(422, "Active Location is required for Stock Opname")
 
-        business_unit_id = (
-            data.business_unit_id
-            or current_user.default_business_unit_id
-            or location.business_unit_id
-        )
+        # Location is the authoritative operational dimension.
+        business_unit_id = location.business_unit_id
         if not business_unit_id:
             raise HTTPException(
                 422, "Selected Location is not assigned to a Business Unit"
