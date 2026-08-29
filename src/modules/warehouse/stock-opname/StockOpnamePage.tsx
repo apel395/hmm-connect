@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
@@ -24,6 +25,15 @@ export default function StockOpnamePage() {
   const [locationId, setLocationId] = useState<number>();
   const [notes, setNotes] = useState("");
   const warehouses = useWarehouses();
+  const locationWarehouses = useMemo(
+    () =>
+      (warehouses.data ?? []).filter(
+        (warehouse) =>
+          warehouse.is_active &&
+          (!locationId || warehouse.location_id === locationId),
+      ),
+    [warehouses.data, locationId],
+  );
   const locations = useQuery({
     queryKey: ["organization-locations", "active"],
     queryFn: () => listLocations({ is_active: true }),
@@ -33,6 +43,14 @@ export default function StockOpnamePage() {
       setLocationId(locations.data[0].id);
     }
   }, [show, locations.data, locationId]);
+  useEffect(() => {
+    if (
+      warehouseId &&
+      !locationWarehouses.some((warehouse) => warehouse.id === warehouseId)
+    ) {
+      setWarehouseId(undefined);
+    }
+  }, [warehouseId, locationWarehouses]);
   const query = useQuery({
     queryKey: ["stock-opnames", page, search, status],
     queryFn: async () =>
@@ -172,26 +190,11 @@ export default function StockOpnamePage() {
             <div className="space-y-3">
               <select
                 className={input}
-                value={warehouseId ?? ""}
-                onChange={(e) =>
-                  setWarehouseId(Number(e.target.value) || undefined)
-                }
-              >
-                <option value="">Warehouse</option>
-                {(warehouses.data ?? [])
-                  .filter((w) => w.is_active)
-                  .map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.code} - {w.name}
-                    </option>
-                  ))}
-              </select>
-              <select
-                className={input}
                 value={locationId ?? ""}
-                onChange={(e) =>
-                  setLocationId(Number(e.target.value) || undefined)
-                }
+                onChange={(e) => {
+                  setLocationId(Number(e.target.value) || undefined);
+                  setWarehouseId(undefined);
+                }}
               >
                 <option value="">Location</option>
                 {(locations.data ?? [])
@@ -202,6 +205,21 @@ export default function StockOpnamePage() {
                     </option>
                   ))}
               </select>
+              <select
+                className={input}
+                value={warehouseId ?? ""}
+                disabled={!locationId}
+                onChange={(e) =>
+                  setWarehouseId(Number(e.target.value) || undefined)
+                }
+              >
+                <option value="">Warehouse</option>
+                {locationWarehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.code} - {w.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <textarea
               className="mt-3 min-h-20 w-full rounded-md border p-3 text-sm"
@@ -210,11 +228,36 @@ export default function StockOpnamePage() {
               onChange={(e) => setNotes(e.target.value)}
             />
             {create.error && (
-              <p className="mt-2 text-sm text-red-600">
-                {create.error instanceof Error
-                  ? create.error.message
-                  : "Unable to create"}
-              </p>
+              <div className="mt-2 text-sm text-red-600">
+                {(() => {
+                  if (axios.isAxiosError(create.error)) {
+                    const detail = create.error.response?.data?.detail;
+                    const payload =
+                      detail && typeof detail === "object" ? detail : null;
+                    return (
+                      <div>
+                        <p>
+                          {payload?.message ||
+                            (typeof detail === "string"
+                              ? detail
+                              : create.error.message)}
+                        </p>
+                        {payload?.opname_id && (
+                          <Link
+                            className="font-medium underline"
+                            to={`/stock-opnames/${payload.opname_id}`}
+                          >
+                            Open {payload.opname_number ?? "active Stock Opname"}
+                          </Link>
+                        )}
+                      </div>
+                    );
+                  }
+                  return create.error instanceof Error
+                    ? create.error.message
+                    : "Unable to create";
+                })()}
+              </div>
             )}
             <div className="mt-5 flex justify-end gap-2">
               <Button
