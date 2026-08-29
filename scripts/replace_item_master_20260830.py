@@ -13,6 +13,9 @@ Safe replacement strategy:
 - Existing preferred supplier / direct COA mappings on retained canonical
   products are preserved because the workbook intentionally contains no COA IDs.
 - One database transaction is used. Dry-run is default; --apply commits.
+- --force-replace performs a hard reset of products with PostgreSQL TRUNCATE
+  ... CASCADE, intentionally discarding current item-linked test data before
+  inserting the cleaned canonical master.
 
 This script is intended to run on the EC2 worker/admin environment where
 openpyxl is available. It is not packaged into Lambda.
@@ -439,6 +442,27 @@ def remove_noncanonical(
     db.flush()
 
 
+
+def force_truncate_product_graph(db: Session, stats: Counter) -> None:
+    """Hard-reset Item Master and every table PostgreSQL must cascade-truncate.
+
+    This mode is intentionally destructive and is only for the current HMM
+    non-production transaction dataset. It guarantees that stale product
+    references cannot block the replacement.
+    """
+    dialect = db.get_bind().dialect.name
+    if dialect != "postgresql":
+        raise RuntimeError(
+            f"--force-replace requires PostgreSQL; current dialect is {dialect}"
+        )
+
+    before = db.query(Product).count()
+    print("FORCE REPLACE enabled: truncating products RESTART IDENTITY CASCADE")
+    db.execute(text("TRUNCATE TABLE products RESTART IDENTITY CASCADE"))
+    db.flush()
+    stats["force_products_removed"] = before
+
+
 def verify_final(db: Session, canonical_codes: set[str]) -> None:
     active_codes = {
         upper(code)
@@ -473,7 +497,19 @@ def main() -> int:
         help="Path to cleaned workbook on EC2",
     )
     parser.add_argument("--apply", action="store_true", help="Commit replacement")
+    parser.add_argument(
+        "--force-replace",
+        action="store_true",
+        help=(
+            "Hard reset products using PostgreSQL TRUNCATE ... CASCADE before "
+            "loading the cleaned workbook. This intentionally discards all "
+            "current item-linked test data."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.force_replace and not args.apply:
+        raise RuntimeError("--force-replace is destructive and must be used together with --apply")
 
     path = Path(args.input)
     if not path.is_file():
@@ -491,11 +527,17 @@ def main() -> int:
         print(f"Existing products before seed: {db.query(Product).count()}")
 
         ensure_classification(db, products)
-        canonical = upsert_canonical_products(db, products, stats)
-        refs = product_fk_columns(db)
-        print(f"Detected product FK columns: {len(refs)}")
-        apply_merge_map(db, merge_rows, canonical, refs, stats)
-        remove_noncanonical(db, canonical_codes, refs, stats)
+
+        if args.force_replace:
+            force_truncate_product_graph(db, stats)
+            upsert_canonical_products(db, products, stats)
+        else:
+            canonical = upsert_canonical_products(db, products, stats)
+            refs = product_fk_columns(db)
+            print(f"Detected product FK columns: {len(refs)}")
+            apply_merge_map(db, merge_rows, canonical, refs, stats)
+            remove_noncanonical(db, canonical_codes, refs, stats)
+
         verify_final(db, canonical_codes)
 
         final_total = db.query(Product).count()
