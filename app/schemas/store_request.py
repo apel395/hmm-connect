@@ -16,7 +16,7 @@ class StoreRequestCreate(BaseModel):
     location_id: int | None = None
     warehouse_id: int
     notes: str | None = None
-    items: list[StoreRequestItemCreate]
+    items: list[StoreRequestItemCreate] = Field(min_length=1)
 
 
 class StoreRequestIssueItem(BaseModel):
@@ -25,5 +25,5 @@ class StoreRequestIssueItem(BaseModel):
 
 
 class StoreRequestIssueCreate(BaseModel):
-    items: list[StoreRequestIssueItem]
+    items: list[StoreRequestIssueItem] = Field(min_length=1)
     notes: str | None = None
