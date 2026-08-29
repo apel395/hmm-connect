@@ -90,15 +90,38 @@ class StockOpnameService:
             db, data=data, current_user=current_user
         )
 
-        if (
+        if wh.location_id is None:
+            raise HTTPException(409, "Warehouse must be assigned to a Location before Stock Opname")
+        if wh.location_id != loc:
+            raise HTTPException(
+                422,
+                f"Warehouse {wh.code} belongs to Location {wh.location.name if wh.location else wh.location_id}, "
+                "not the selected Stock Opname Location",
+            )
+
+        active_opname = (
             db.query(StockOpname)
             .filter(
                 StockOpname.warehouse_id == wh.id,
                 StockOpname.status.in_(["DRAFT", "PENDING_APPROVAL", "APPROVED"]),
             )
+            .order_by(StockOpname.id.desc())
             .first()
-        ):
-            raise HTTPException(409, "Warehouse already has an active Stock Opname")
+        )
+        if active_opname:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "ACTIVE_STOCK_OPNAME",
+                    "message": (
+                        f"Warehouse {wh.code} already has active Stock Opname "
+                        f"{active_opname.opname_number} ({active_opname.status})."
+                    ),
+                    "opname_id": active_opname.id,
+                    "opname_number": active_opname.opname_number,
+                    "status": active_opname.status,
+                },
+            )
         op = StockOpname(
             opname_number=next_document_number(db, "SO"),
             status="DRAFT",
@@ -126,14 +149,49 @@ class StockOpnameService:
                         uom=product.uom,
                     )
                 )
+        if not op.items:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "EMPTY_STOCK_SNAPSHOT",
+                    "message": (
+                        f"Warehouse {wh.code} has no active inventory lines. "
+                        "Stock Opname cannot be created from an empty snapshot."
+                    ),
+                    "warehouse_id": wh.id,
+                    "warehouse_code": wh.code,
+                },
+            )
+
         db.add(op)
         try:
             db.flush()
         except IntegrityError as exc:
             db.rollback()
-            raise HTTPException(
-                409, "Warehouse already has an active Stock Opname"
-            ) from exc
+            conflict = (
+                db.query(StockOpname)
+                .filter(
+                    StockOpname.warehouse_id == wh.id,
+                    StockOpname.status.in_(["DRAFT", "PENDING_APPROVAL", "APPROVED"]),
+                )
+                .order_by(StockOpname.id.desc())
+                .first()
+            )
+            if conflict:
+                raise HTTPException(
+                    409,
+                    detail={
+                        "code": "ACTIVE_STOCK_OPNAME",
+                        "message": (
+                            f"Warehouse {wh.code} already has active Stock Opname "
+                            f"{conflict.opname_number} ({conflict.status})."
+                        ),
+                        "opname_id": conflict.id,
+                        "opname_number": conflict.opname_number,
+                        "status": conflict.status,
+                    },
+                ) from exc
+            raise
         AuditService.log(
             db=db,
             user=current_user,
@@ -236,6 +294,8 @@ class StockOpnameService:
         op = StockOpnameService._get(db, opname_id, lock=True)
         if op.status != "PENDING_APPROVAL":
             raise HTTPException(409, "Stock Opname does not have pending approval")
+        if not op.items:
+            raise HTTPException(409, "Stock Opname has no inventory snapshot and cannot be approved")
         req = get_request(db, "STOCK_OPNAME", op.id, for_update=True)
         if not req:
             raise HTTPException(500, "Approval workflow not found")
@@ -299,6 +359,8 @@ class StockOpnameService:
         op = StockOpnameService._get(db, opname_id, lock=True)
         if op.status != "APPROVED":
             raise HTTPException(409, "Only approved Stock Opname can be posted")
+        if not op.items:
+            raise HTTPException(409, "Stock Opname has no inventory snapshot and cannot be posted")
         if op.posted_at is not None:
             raise HTTPException(409, "Stock Opname is already posted")
         prepared = []
