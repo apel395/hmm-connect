@@ -199,7 +199,10 @@ def list_requisitions_eligible_for_po(db: Session = Depends(get_db), user=Depend
                 "tax_amount": item.tax_amount,
                 "line_total": Decimal(item.total_price) + Decimal(item.tax_amount or 0),
             })
-        result.append(payload)
+        # Corrupted legacy headers (non-zero totals but no surviving lines) must
+        # never be offered for PO conversion. They require backup-based recovery.
+        if payload["items"]:
+            result.append(payload)
     return result
 
 
@@ -241,6 +244,11 @@ def get_requisition(requisition_id: int, db: Session = Depends(get_db), user=Dep
             "line_total": Decimal(item.total_price) + Decimal(item.tax_amount or 0),
         } for item in requisition.items],
         "generated_purchase_orders": [{"id": order.id, "document_number": order.po_number, "status": order.status} for order in requisition.purchase_orders],
+        "integrity_status": (
+            "MISSING_ITEMS"
+            if not requisition.items and Decimal(requisition.total_amount or 0) != 0
+            else "OK"
+        ),
     }
     result.update(document_context(db, "PURCHASE_REQUISITION", requisition.id, requisition.status, user))
     return result
