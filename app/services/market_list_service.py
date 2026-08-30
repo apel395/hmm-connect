@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.market_list import MarketList, MarketListItem
@@ -196,26 +197,87 @@ class MarketListService:
         supplier = db.get(Supplier, data.supplier_id)
         if not supplier or not supplier.is_active:
             raise HTTPException(status_code=404, detail="Active supplier not found")
+
+        existing_allocations = dict(
+            db.query(
+                PurchaseOrderItem.market_list_item_id,
+                func.coalesce(func.sum(PurchaseOrderItem.quantity), 0),
+            )
+            .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
+            .filter(
+                PurchaseOrderItem.market_list_item_id.in_([item.id for item in market_list.items]),
+                PurchaseOrder.status != "CANCELLED",
+            )
+            .group_by(PurchaseOrderItem.market_list_item_id)
+            .all()
+        )
+
+        selected = data.items
+        if selected is None:
+            selected_items = [(item, Decimal(item.quantity)) for item in market_list.items]
+        else:
+            by_id = {item.id: item for item in market_list.items}
+            if not selected:
+                raise HTTPException(status_code=400, detail="Select at least one Market List source line")
+            if len({item.market_list_item_id for item in selected}) != len(selected):
+                raise HTTPException(status_code=409, detail="A Market List source line can only be selected once")
+            selected_items = []
+            for requested in selected:
+                item = by_id.get(requested.market_list_item_id)
+                if not item:
+                    raise HTTPException(status_code=404, detail=f"Market List item {requested.market_list_item_id} not found")
+                selected_items.append((item, Decimal(requested.quantity)))
+
+        order_lines = []
+        subtotal = Decimal("0")
+        tax_amount = Decimal("0")
+        selected_ids = {item.id for item, _ in selected_items}
+        for item, quantity in selected_items:
+            allocated = Decimal(existing_allocations.get(item.id) or 0)
+            remaining = Decimal(item.quantity) - allocated
+            if quantity > remaining:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Market List line {item.id} has only {remaining} remaining; requested {quantity}.",
+                )
+            if quantity <= 0:
+                raise HTTPException(status_code=400, detail=f"Quantity for Market List line {item.id} must be greater than zero")
+            line_subtotal = quantity * Decimal(item.estimated_price)
+            line_tax = line_subtotal * Decimal(item.tax_rate or 0) / Decimal("100") if item.is_taxable else Decimal("0")
+            subtotal += line_subtotal
+            tax_amount += line_tax
+            order_lines.append((item, quantity, line_subtotal, line_tax))
+
         order = PurchaseOrder(
             po_number=next_document_number(db, "PO"), supplier_id=supplier.id, market_list_id=market_list.id,
             status="DRAFT", order_date=date.today(), notes=f"Created from {market_list.ml_number}",
             business_unit_id=market_list.business_unit_id, location_id=market_list.location_id,
-            department_id=market_list.department_id, subtotal=market_list.subtotal, tax_amount=market_list.tax_amount,
-            total_amount=market_list.total_amount,
+            department_id=market_list.department_id, subtotal=subtotal, tax_amount=tax_amount,
+            total_amount=subtotal + tax_amount,
         )
-        for item in market_list.items:
+        for item, quantity, line_subtotal, line_tax in order_lines:
             order.items.append(PurchaseOrderItem(
-                market_list_item_id=item.id, product_id=item.product_id, quantity=item.quantity,
-                received_quantity=Decimal("0"), unit_price=item.estimated_price, total_price=item.total_price,
-                is_taxable=item.is_taxable, tax_rate=item.tax_rate, tax_amount=item.tax_amount,
+                market_list_item_id=item.id, product_id=item.product_id, quantity=quantity,
+                received_quantity=Decimal("0"), unit_price=item.estimated_price, total_price=line_subtotal,
+                is_taxable=item.is_taxable, tax_rate=item.tax_rate, tax_amount=line_tax,
                 description=item.product.description, uom=item.product.uom,
             ))
-        market_list.status = "CONVERTED"
+
+        all_allocated = True
+        for item in market_list.items:
+            allocated = Decimal(existing_allocations.get(item.id) or 0)
+            if item.id in selected_ids:
+                allocated += next(quantity for selected_item, quantity in selected_items if selected_item.id == item.id)
+            if allocated < Decimal(item.quantity):
+                all_allocated = False
+                break
+        market_list.status = "CONVERTED" if all_allocated else "APPROVED"
         db.add(order); db.flush()
         AuditService.log(
             db=db, user=current_user, action="CONVERT", entity_type="MARKET_LIST", entity_id=market_list.id,
             summary=f"Converted {market_list.ml_number} to {order.po_number}", document_type="ML",
-            document_number=market_list.ml_number, document_status="CONVERTED", reference_document=order.po_number,
+            document_number=market_list.ml_number, document_status=market_list.status, reference_document=order.po_number,
+            details={"selected_line_count": len(order_lines), "partial_conversion": not all_allocated},
         )
         db.commit(); db.refresh(order)
         return order
