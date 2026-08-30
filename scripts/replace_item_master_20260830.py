@@ -13,9 +13,7 @@ Safe replacement strategy:
 - Existing preferred supplier / direct COA mappings on retained canonical
   products are preserved because the workbook intentionally contains no COA IDs.
 - One database transaction is used. Dry-run is default; --apply commits.
-- --force-replace performs a hard reset of products with PostgreSQL TRUNCATE
-  ... CASCADE, intentionally discarding current item-linked test data before
-  inserting the cleaned canonical master.
+- Destructive replacement is intentionally unsupported: transaction lines must survive every master-data refresh.
 
 This script is intended to run on the EC2 worker/admin environment where
 openpyxl is available. It is not packaged into Lambda.
@@ -443,24 +441,26 @@ def remove_noncanonical(
 
 
 
-def force_truncate_product_graph(db: Session, stats: Counter) -> None:
-    """Hard-reset Item Master and every table PostgreSQL must cascade-truncate.
+def reference_row_counts(db: Session, refs: list[tuple[str, str]]) -> dict[str, int]:
+    """Snapshot product-linked row counts so a master refresh cannot erase transactions."""
+    tables = sorted({table_name for table_name, _ in refs if table_name != "inventory"})
+    return {
+        table_name: int(db.execute(text(f'SELECT count(*) FROM "{table_name}"')).scalar_one())
+        for table_name in tables
+    }
 
-    This mode is intentionally destructive and is only for the current HMM
-    non-production transaction dataset. It guarantees that stale product
-    references cannot block the replacement.
-    """
-    dialect = db.get_bind().dialect.name
-    if dialect != "postgresql":
+
+def verify_reference_counts(before: dict[str, int], after: dict[str, int]) -> None:
+    changed = {
+        table_name: {"before": count, "after": after.get(table_name, 0)}
+        for table_name, count in before.items()
+        if after.get(table_name, 0) != count
+    }
+    if changed:
         raise RuntimeError(
-            f"--force-replace requires PostgreSQL; current dialect is {dialect}"
+            "Item Master replacement changed product-linked row counts. "
+            "No changes were committed: " + json.dumps(changed, sort_keys=True)
         )
-
-    before = db.query(Product).count()
-    print("FORCE REPLACE enabled: truncating products RESTART IDENTITY CASCADE")
-    db.execute(text("TRUNCATE TABLE products RESTART IDENTITY CASCADE"))
-    db.flush()
-    stats["force_products_removed"] = before
 
 
 def verify_final(db: Session, canonical_codes: set[str]) -> None:
@@ -497,19 +497,7 @@ def main() -> int:
         help="Path to cleaned workbook on EC2",
     )
     parser.add_argument("--apply", action="store_true", help="Commit replacement")
-    parser.add_argument(
-        "--force-replace",
-        action="store_true",
-        help=(
-            "Hard reset products using PostgreSQL TRUNCATE ... CASCADE before "
-            "loading the cleaned workbook. This intentionally discards all "
-            "current item-linked test data."
-        ),
-    )
     args = parser.parse_args()
-
-    if args.force_replace and not args.apply:
-        raise RuntimeError("--force-replace is destructive and must be used together with --apply")
 
     path = Path(args.input)
     if not path.is_file():
@@ -526,18 +514,14 @@ def main() -> int:
         print(f"Merge Map rows: {len(merge_rows)}")
         print(f"Existing products before seed: {db.query(Product).count()}")
 
+        refs = product_fk_columns(db)
+        before_reference_counts = reference_row_counts(db, refs)
         ensure_classification(db, products)
-
-        if args.force_replace:
-            force_truncate_product_graph(db, stats)
-            upsert_canonical_products(db, products, stats)
-        else:
-            canonical = upsert_canonical_products(db, products, stats)
-            refs = product_fk_columns(db)
-            print(f"Detected product FK columns: {len(refs)}")
-            apply_merge_map(db, merge_rows, canonical, refs, stats)
-            remove_noncanonical(db, canonical_codes, refs, stats)
-
+        canonical = upsert_canonical_products(db, products, stats)
+        print(f"Detected product FK columns: {len(refs)}")
+        apply_merge_map(db, merge_rows, canonical, refs, stats)
+        remove_noncanonical(db, canonical_codes, refs, stats)
+        verify_reference_counts(before_reference_counts, reference_row_counts(db, refs))
         verify_final(db, canonical_codes)
 
         final_total = db.query(Product).count()
