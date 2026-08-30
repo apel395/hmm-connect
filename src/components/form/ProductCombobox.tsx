@@ -34,37 +34,21 @@ interface Props {
   onSelect?: (product: ProductComboboxOption) => void;
 }
 
-type DropdownPosition = {
-  left: number;
-  top: number;
-  width: number;
-};
-
-type TaxEditorState = {
-  product: ProductComboboxOption;
-  category: "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL";
-  rate: number;
-  reason: string;
-  reference: string;
-};
+type DropdownPosition = { left: number; top: number; width: number };
+type TaxEditorState = { product: ProductComboboxOption; category: "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL"; rate: number; reason: string; reference: string };
 
 function labelFor(product: ProductComboboxOption): string {
   const code = product.code ?? product.product_code ?? "";
   const name = product.name ?? product.product_name ?? "";
   return code ? `${code} - ${name}` : name;
 }
-
-function taxProfileIncomplete(product: ProductComboboxOption): boolean {
-  return product.tax_category === "REVIEW_REQUIRED";
-}
-
+function taxProfileIncomplete(product: ProductComboboxOption): boolean { return product.tax_category === "REVIEW_REQUIRED"; }
 function priceFor(value?: number | string | null): string | null {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   if (!Number.isFinite(number)) return null;
   return number.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
 async function loadRemoteProducts(search: string, marketOnly: boolean, excludeMarket: boolean): Promise<ProductComboboxOption[]> {
   try {
     const lookup = await productApi.lookup(search, 30, marketOnly, excludeMarket);
@@ -72,25 +56,13 @@ async function loadRemoteProducts(search: string, marketOnly: boolean, excludeMa
   } catch {
     // Fall through to canonical pagination endpoint.
   }
-
   const list = await productApi.list({ page: 1, page_size: 30, search, active_only: true, market_only: marketOnly, exclude_market: excludeMarket });
   const payload = list.data;
   if (Array.isArray(payload)) return payload;
   return Array.isArray(payload?.items) ? payload.items : [];
 }
 
-export default function ProductCombobox({
-  value,
-  products = [],
-  disabled,
-  placeholder = "Type product code or name...",
-  remote = false,
-  marketOnly = false,
-  excludeMarket = false,
-  requireTaxReady = false,
-  onChange,
-  onSelect,
-}: Props) {
+export default function ProductCombobox({ value, products = [], disabled, placeholder = "Type product code or name...", remote = false, marketOnly = false, excludeMarket = false, requireTaxReady = false, onChange, onSelect }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -108,13 +80,11 @@ export default function ProductCombobox({
   const [loadError, setLoadError] = useState(false);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const withTaxOverride = useCallback(
-    (product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }),
-    [taxOverrides],
-  );
+  const withTaxOverride = useCallback((product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }), [taxOverrides]);
   const options = (remote ? remoteProducts : products).map(withTaxOverride);
-  const selected = [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value);
-  const [query, setQuery] = useState(selected ? labelFor(selected) : "");
+  const selected = useMemo(() => [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value), [products, remoteProducts, withTaxOverride, value]);
+  const selectedLabel = selected ? labelFor(selected) : "";
+  const [query, setQuery] = useState(selectedLabel);
 
   const updatePosition = useCallback(() => {
     const input = inputRef.current;
@@ -123,16 +93,12 @@ export default function ProductCombobox({
     setPosition({ left: rect.left, top: rect.bottom + 4, width: rect.width });
   }, []);
 
-  useEffect(() => {
-    setQuery(selected ? labelFor(selected) : "");
-  }, [selected]);
+  useEffect(() => { setQuery(selectedLabel); }, [selectedLabel]);
 
   useEffect(() => {
     if (!remote || disabled) return;
     const raw = query.trim();
-    const selectedLabel = selected ? labelFor(selected) : "";
     if (selected && raw === selectedLabel && remoteProducts.length > 0) return;
-
     const requestId = ++requestIdRef.current;
     const timer = window.setTimeout(async () => {
       setLoading(true);
@@ -141,17 +107,13 @@ export default function ProductCombobox({
         const rows = await loadRemoteProducts(selected && raw === selectedLabel ? "" : raw, marketOnly, excludeMarket);
         if (requestId === requestIdRef.current) setRemoteProducts(rows);
       } catch {
-        if (requestId === requestIdRef.current) {
-          setRemoteProducts([]);
-          setLoadError(true);
-        }
+        if (requestId === requestIdRef.current) { setRemoteProducts([]); setLoadError(true); }
       } finally {
         if (requestId === requestIdRef.current) setLoading(false);
       }
     }, raw ? 250 : 0);
-
     return () => window.clearTimeout(timer);
-  }, [remote, disabled, query, selected, remoteProducts.length, marketOnly, excludeMarket]);
+  }, [remote, disabled, query, selected, selectedLabel, remoteProducts.length, marketOnly, excludeMarket]);
 
   useEffect(() => {
     if (!open) return;
@@ -159,337 +121,80 @@ export default function ProductCombobox({
     const onReposition = () => updatePosition();
     window.addEventListener("resize", onReposition);
     window.addEventListener("scroll", onReposition, true);
-    return () => {
-      window.removeEventListener("resize", onReposition);
-      window.removeEventListener("scroll", onReposition, true);
-    };
+    return () => { window.removeEventListener("resize", onReposition); window.removeEventListener("scroll", onReposition, true); };
   }, [open, updatePosition]);
-
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      const insideInput = rootRef.current?.contains(target);
-      const insideDropdown = dropdownRef.current?.contains(target);
-      if (!insideInput && !insideDropdown) setOpen(false);
+      if (!rootRef.current?.contains(target) && !dropdownRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, []);
-
   const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
-
   useEffect(() => {
-    if (!open || visibleOptions.length === 0) {
-      setActiveIndex(-1);
-      return;
-    }
+    if (!open || visibleOptions.length === 0) { setActiveIndex(-1); return; }
     setActiveIndex((current) => current >= 0 && current < visibleOptions.length ? current : 0);
   }, [open, visibleOptions]);
-
-  useEffect(() => {
-    if (activeIndex < 0) return;
-    optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex]);
+  useEffect(() => { if (activeIndex >= 0) optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" }); }, [activeIndex]);
 
   const openTaxEditor = useCallback((product: ProductComboboxOption) => {
-    const currentCategory =
-      product.tax_category && product.tax_category !== "REVIEW_REQUIRED"
-        ? product.tax_category
-        : "STANDARD";
+    const currentCategory = product.tax_category && product.tax_category !== "REVIEW_REQUIRED" ? product.tax_category : "STANDARD";
     setTaxError("");
-    setTaxEditor({
-      product,
-      category: currentCategory as TaxEditorState["category"],
-      rate: Number(product.tax_rate || 0),
-      reason: "",
-      reference: "",
-    });
+    setTaxEditor({ product, category: currentCategory as TaxEditorState["category"], rate: Number(product.tax_rate || 0), reason: "", reference: "" });
   }, []);
-
   const selectProduct = useCallback((product: ProductComboboxOption) => {
-    if (requireTaxReady && taxProfileIncomplete(product)) {
-      if (canManageTax) openTaxEditor(product);
-      return;
-    }
-    onChange(product.id);
-    onSelect?.(product);
-    setQuery(labelFor(product));
-    setOpen(false);
-    setActiveIndex(-1);
+    if (requireTaxReady && taxProfileIncomplete(product)) { if (canManageTax) openTaxEditor(product); return; }
+    onChange(product.id); onSelect?.(product); setQuery(labelFor(product)); setOpen(false); setActiveIndex(-1);
   }, [onChange, onSelect, requireTaxReady, canManageTax, openTaxEditor]);
-
   const saveTaxProfile = useCallback(async () => {
     if (!taxEditor) return;
     const taxable = taxEditor.category === "STANDARD" || taxEditor.category === "SPECIAL";
-    if (taxable && (!Number.isFinite(taxEditor.rate) || taxEditor.rate <= 0)) {
-      setTaxError("PPN rate must be greater than zero.");
-      return;
-    }
-    setTaxSaving(true);
-    setTaxError("");
+    if (taxable && (!Number.isFinite(taxEditor.rate) || taxEditor.rate <= 0)) { setTaxError("PPN rate must be greater than zero."); return; }
+    setTaxSaving(true); setTaxError("");
     try {
-      const response = await productApi.updateTaxProfile(taxEditor.product.id, {
-        tax_category: taxEditor.category,
-        is_taxable: taxable,
-        tax_rate: taxable ? taxEditor.rate : 0,
-        tax_reason: taxEditor.reason.trim() || null,
-        tax_reference: taxEditor.reference.trim() || null,
-      });
-      const updated = {
-        ...taxEditor.product,
-        ...response.data,
-        tax_category: response.data.tax_category,
-        is_taxable: response.data.is_taxable,
-        tax_rate: response.data.tax_rate,
-      } as ProductComboboxOption;
+      const response = await productApi.updateTaxProfile(taxEditor.product.id, { tax_category: taxEditor.category, is_taxable: taxable, tax_rate: taxable ? taxEditor.rate : 0, tax_reason: taxEditor.reason.trim() || null, tax_reference: taxEditor.reference.trim() || null });
+      const updated = { ...taxEditor.product, ...response.data, tax_category: response.data.tax_category, is_taxable: response.data.is_taxable, tax_rate: response.data.tax_rate } as ProductComboboxOption;
       setTaxOverrides((current) => ({ ...current, [updated.id]: updated }));
-      setRemoteProducts((current) =>
-        current.map((product) => (product.id === updated.id ? { ...product, ...updated } : product)),
-      );
-      onChange(updated.id);
-      onSelect?.(updated);
-      setQuery(labelFor(updated));
-      setTaxEditor(null);
-      setOpen(false);
-      setActiveIndex(-1);
-    } catch {
-      setTaxError("Tax profile could not be saved. Check your permission and try again.");
-    } finally {
-      setTaxSaving(false);
-    }
+      setRemoteProducts((current) => current.map((product) => product.id === updated.id ? { ...product, ...updated } : product));
+      onChange(updated.id); onSelect?.(updated); setQuery(labelFor(updated)); setTaxEditor(null); setOpen(false); setActiveIndex(-1);
+    } catch { setTaxError("Tax profile could not be saved. Check your permission and try again."); }
+    finally { setTaxSaving(false); }
   }, [taxEditor, onChange, onSelect]);
-
   const moveActive = (direction: 1 | -1) => {
     if (visibleOptions.length === 0) return;
     setOpen(true);
-    setActiveIndex((current) => {
-      if (current < 0) return direction === 1 ? 0 : visibleOptions.length - 1;
-      return (current + direction + visibleOptions.length) % visibleOptions.length;
-    });
+    setActiveIndex((current) => current < 0 ? (direction === 1 ? 0 : visibleOptions.length - 1) : (current + direction + visibleOptions.length) % visibleOptions.length);
   };
 
-  const dropdown = open && !disabled && position && typeof document !== "undefined"
-    ? createPortal(
-        <div
-          ref={dropdownRef}
-          role="listbox"
-          className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl"
-          style={{ left: position.left, top: position.top, width: position.width }}
-        >
-          {loading && visibleOptions.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div>
-          ) : loadError ? (
-            <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div>
-          ) : visibleOptions.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div>
-          ) : (
-            visibleOptions.map((product, index) => {
-              const lastPrice = priceFor(product.last_purchase_price);
-              const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
-              return (
-                <button
-                  key={product.id}
-                  ref={(element) => { optionRefs.current[index] = element; }}
-                  type="button"
-                  role="option"
-                  disabled={taxIncomplete && !canManageTax}
-                  aria-disabled={taxIncomplete && !canManageTax}
-                  aria-selected={index === activeIndex}
-                  className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? (canManageTax ? "cursor-pointer bg-amber-50 text-slate-700 hover:bg-amber-100" : "cursor-not-allowed bg-amber-50 text-slate-500") : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    selectProduct(product);
-                  }}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    selectProduct(product);
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{canManageTax ? "Set PPN" : "Tax profile incomplete"}</span>}</div>
-                  {(product.uom || product.usage_uom) && (
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}
-                    </div>
-                  )}
-                  {taxIncomplete && (
-                    <div className="mt-1 text-xs text-amber-800">
-                      {canManageTax ? "Set PPN here to use this item." : "PPN profile must be completed by an authorized Item Master user."}
-                    </div>
-                  )}
-                  {lastPrice && (
-                    <div className="mt-0.5 text-xs font-medium text-emerald-700">
-                      Last purchase: Rp {lastPrice}{product.last_purchase_po_number ? ` · ${product.last_purchase_po_number}` : ""}
-                    </div>
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>,
-        document.body,
-      )
-    : null;
+  const dropdown = open && !disabled && position && typeof document !== "undefined" ? createPortal(
+    <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
+      {loading && visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div> : loadError ? <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div> : visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div> : visibleOptions.map((product, index) => {
+        const lastPrice = priceFor(product.last_purchase_price);
+        const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
+        return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" disabled={taxIncomplete && !canManageTax} aria-disabled={taxIncomplete && !canManageTax} aria-selected={index === activeIndex} className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? (canManageTax ? "cursor-pointer bg-amber-50 text-slate-700 hover:bg-amber-100" : "cursor-not-allowed bg-amber-50 text-slate-500") : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onMouseEnter={() => setActiveIndex(index)} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
+          <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{canManageTax ? "Set PPN" : "Tax profile incomplete"}</span>}</div>
+          {(product.uom || product.usage_uom) && <div className="mt-0.5 text-xs text-slate-500">UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}</div>}
+          {taxIncomplete && <div className="mt-1 text-xs text-amber-800">{canManageTax ? "Set PPN here to use this item." : "PPN profile must be completed by an authorized Item Master user."}</div>}
+          {lastPrice && <div className="mt-0.5 text-xs font-medium text-emerald-700">Last purchase: Rp {lastPrice}{product.last_purchase_po_number ? ` · ${product.last_purchase_po_number}` : ""}</div>}
+        </button>;
+      })}
+    </div>, document.body) : null;
 
-  const taxEditorModal = taxEditor && typeof document !== "undefined"
-    ? createPortal(
-        <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-4 shadow-2xl">
-            <div className="mb-3">
-              <div className="text-sm font-semibold text-slate-900">Set PPN · {labelFor(taxEditor.product)}</div>
-              <div className="mt-1 text-xs text-slate-500">Update the item tax profile without leaving this transaction.</div>
-            </div>
-            <div className="space-y-3">
-              <label className="block text-xs font-medium text-slate-700">
-                Tax Treatment
-                <select
-                  className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
-                  value={taxEditor.category}
-                  onChange={(event) =>
-                    setTaxEditor((current) =>
-                      current ? { ...current, category: event.target.value as TaxEditorState["category"] } : current,
-                    )
-                  }
-                >
-                  <option value="STANDARD">Standard PPN</option>
-                  <option value="SPECIAL">Special PPN</option>
-                  <option value="NON_VAT">Non VAT</option>
-                  <option value="EXEMPT">Exempt</option>
-                </select>
-              </label>
-              {(taxEditor.category === "STANDARD" || taxEditor.category === "SPECIAL") && (
-                <label className="block text-xs font-medium text-slate-700">
-                  PPN Rate (%)
-                  <input
-                    type="number"
-                    min="0.01"
-                    max="100"
-                    step="0.01"
-                    className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
-                    value={taxEditor.rate}
-                    onChange={(event) =>
-                      setTaxEditor((current) =>
-                        current ? { ...current, rate: Number(event.target.value) } : current,
-                      )
-                    }
-                  />
-                </label>
-              )}
-              <label className="block text-xs font-medium text-slate-700">
-                Tax Reason / Notes
-                <input
-                  className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
-                  value={taxEditor.reason}
-                  onChange={(event) =>
-                    setTaxEditor((current) =>
-                      current ? { ...current, reason: event.target.value } : current,
-                    )
-                  }
-                />
-              </label>
-              <label className="block text-xs font-medium text-slate-700">
-                Tax Reference
-                <input
-                  className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
-                  value={taxEditor.reference}
-                  onChange={(event) =>
-                    setTaxEditor((current) =>
-                      current ? { ...current, reference: event.target.value } : current,
-                    )
-                  }
-                />
-              </label>
-              {taxError && <div className="text-xs font-medium text-red-600">{taxError}</div>}
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="h-9 rounded-md border border-slate-300 px-4 text-sm"
-                disabled={taxSaving}
-                onClick={() => setTaxEditor(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="h-9 rounded-md bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-60"
-                disabled={taxSaving}
-                onClick={() => void saveTaxProfile()}
-              >
-                {taxSaving ? "Saving..." : "Save PPN"}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )
-    : null;
+  const taxEditorModal = taxEditor && typeof document !== "undefined" ? createPortal(
+    <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-lg bg-white p-4 shadow-2xl">
+        <div className="mb-3"><div className="text-sm font-semibold text-slate-900">Set PPN · {labelFor(taxEditor.product)}</div><div className="mt-1 text-xs text-slate-500">Update the item tax profile without leaving this transaction.</div></div>
+        <div className="space-y-3">
+          <label className="block text-xs font-medium text-slate-700">Tax Treatment<select className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.category} onChange={(event) => setTaxEditor((current) => current ? { ...current, category: event.target.value as TaxEditorState["category"] } : current)}><option value="STANDARD">Standard PPN</option><option value="SPECIAL">Special PPN</option><option value="NON_VAT">Non VAT</option><option value="EXEMPT">Exempt</option></select></label>
+          {(taxEditor.category === "STANDARD" || taxEditor.category === "SPECIAL") && <label className="block text-xs font-medium text-slate-700">PPN Rate (%)<input type="number" min="0.01" max="100" step="0.01" className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.rate} onChange={(event) => setTaxEditor((current) => current ? { ...current, rate: Number(event.target.value) } : current)} /></label>}
+          <label className="block text-xs font-medium text-slate-700">Tax Reason / Notes<input className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.reason} onChange={(event) => setTaxEditor((current) => current ? { ...current, reason: event.target.value } : current)} /></label>
+          <label className="block text-xs font-medium text-slate-700">Tax Reference<input className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.reference} onChange={(event) => setTaxEditor((current) => current ? { ...current, reference: event.target.value } : current)} /></label>
+          {taxError && <div className="text-xs font-medium text-red-600" role="alert">{taxError}</div>}
+        </div>
+        <div className="mt-4 flex justify-end gap-2"><button type="button" className="h-9 rounded-md border border-slate-300 px-4 text-sm" disabled={taxSaving} onClick={() => setTaxEditor(null)}>Cancel</button><button type="button" className="h-9 rounded-md bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-60" disabled={taxSaving} onClick={() => void saveTaxProfile()}>{taxSaving ? "Saving..." : "Save PPN"}</button></div>
+      </div>
+    </div>, document.body) : null;
 
-  return (
-    <div ref={rootRef} className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        value={query}
-        disabled={disabled}
-        placeholder={placeholder}
-        autoComplete="off"
-        role="combobox"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-autocomplete="list"
-        data-form-control
-        data-form-density="compact"
-        className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`}
-        onFocus={() => {
-          updatePosition();
-          setOpen(true);
-        }}
-        onChange={(event) => {
-          const next = event.target.value;
-          setQuery(next);
-          updatePosition();
-          setOpen(true);
-          setActiveIndex(0);
-          if (!next.trim() && value) onChange(0);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            moveActive(1);
-            return;
-          }
-          if (event.key === "ArrowUp") {
-            event.preventDefault();
-            moveActive(-1);
-            return;
-          }
-          if (event.key === "Home" && open && visibleOptions.length > 0) {
-            event.preventDefault();
-            setActiveIndex(0);
-            return;
-          }
-          if (event.key === "End" && open && visibleOptions.length > 0) {
-            event.preventDefault();
-            setActiveIndex(visibleOptions.length - 1);
-            return;
-          }
-          if (event.key === "Enter" && open && activeIndex >= 0 && visibleOptions[activeIndex]) {
-            event.preventDefault();
-            selectProduct(visibleOptions[activeIndex]);
-            return;
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            setOpen(false);
-            setActiveIndex(-1);
-          }
-        }}
-      />
-      {dropdown}
-      {taxEditorModal}
-    </div>
-  );
+  return <div ref={rootRef} className="relative"><input ref={inputRef} type="text" value={query} disabled={disabled} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`} onFocus={() => { updatePosition(); setOpen(true); }} onChange={(event) => { const next = event.target.value; setQuery(next); updatePosition(); setOpen(true); setActiveIndex(0); if (!next.trim() && value) onChange(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && visibleOptions.length > 0) { event.preventDefault(); setActiveIndex(0); return; } if (event.key === "End" && open && visibleOptions.length > 0) { event.preventDefault(); setActiveIndex(visibleOptions.length - 1); return; } if (event.key === "Enter" && open && activeIndex >= 0 && visibleOptions[activeIndex]) { event.preventDefault(); selectProduct(visibleOptions[activeIndex]); return; } if (event.key === "Escape") { event.preventDefault(); setOpen(false); setActiveIndex(-1); } }} />{dropdown}{taxEditorModal}</div>;
 }
