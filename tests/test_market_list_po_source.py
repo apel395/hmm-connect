@@ -42,7 +42,7 @@ class FakeDb:
         self.added = []
 
     def query(self, *models):
-        if models == (MarketList,):
+        if len(models) == 1 and models[0] is MarketList:
             return FakeQuery(row=self.market_list)
         if PurchaseOrderItem.market_list_item_id in models or len(models) > 1:
             return FakeQuery(rows=[])
