@@ -199,6 +199,19 @@ class PurchaseRequisitionService:
             document_status="DRAFT",
             details={
                 "total_amount": str(total_amount),
+                # Keep a recovery-grade snapshot outside product-linked tables.
+                # This survives master-data remaps and protects future test-data cleanup.
+                "items": [
+                    {
+                        "product_code": item.product.code,
+                        "product_name": item.product.name,
+                        "quantity": str(item.quantity),
+                        "estimated_price": str(item.estimated_price),
+                        "is_taxable": bool(item.is_taxable),
+                        "tax_rate": str(item.tax_rate or 0),
+                    }
+                    for item in purchase_requisition.items
+                ],
             },
         )
 
