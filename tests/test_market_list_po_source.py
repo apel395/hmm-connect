@@ -41,12 +41,12 @@ class FakeDb:
         self.supplier = supplier
         self.added = []
 
-    def query(self, model):
-        if model is MarketList:
+    def query(self, *models):
+        if models == (MarketList,):
             return FakeQuery(row=self.market_list)
-        if model is PurchaseOrderItem:
+        if PurchaseOrderItem.market_list_item_id in models or len(models) > 1:
             return FakeQuery(rows=[])
-        raise AssertionError(f"Unexpected query model: {model}")
+        raise AssertionError(f"Unexpected query model(s): {models}")
 
     def get(self, model, _id):
         if model is Supplier:
