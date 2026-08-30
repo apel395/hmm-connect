@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.models.market_list import MarketList, MarketListItem
+from app.models.market_list import MarketList
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.supplier import Supplier
 from app.schemas.market_list import MarketListConvertCreate
@@ -68,7 +68,7 @@ class FakeDb:
 
 def make_market_list():
     product = SimpleNamespace(description="Carrot", uom="KG")
-    item = MarketListItem(
+    item = SimpleNamespace(
         id=101,
         product_id=10,
         quantity=Decimal("10"),
@@ -77,8 +77,8 @@ def make_market_list():
         is_taxable=False,
         tax_rate=Decimal("0"),
         tax_amount=Decimal("0"),
+        product=product,
     )
-    item.product = product
     return SimpleNamespace(
         id=1,
         ml_number="ML-001",
