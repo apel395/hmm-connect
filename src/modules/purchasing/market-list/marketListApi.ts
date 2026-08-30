@@ -1,6 +1,7 @@
 import api from "@/api/client";
 
 export type MarketListParams = { scope?:"active"|"history"|"all"; page?:number; page_size?:number; search?:string; status?:string };
+export type MarketListConvertItem = { market_list_item_id:number; quantity:number };
 
 export const marketListApi = {
   list:(params:MarketListParams={})=>api.get("/market-lists",{params}),
@@ -11,5 +12,5 @@ export const marketListApi = {
   submit:(id:number)=>api.post(`/market-lists/${id}/submit`),
   approve:(id:number,comment?:string)=>api.post(`/market-lists/${id}/approve`,{comment}),
   reject:(id:number,comment?:string)=>api.post(`/market-lists/${id}/reject`,{comment}),
-  convertToPO:(id:number,supplier_id:number)=>api.post(`/market-lists/${id}/convert-to-po`,{supplier_id}),
+  convertToPO:(id:number,supplier_id:number,items?:MarketListConvertItem[])=>api.post(`/market-lists/${id}/convert-to-po`,{supplier_id,...(items ? {items} : {})}),
 };
