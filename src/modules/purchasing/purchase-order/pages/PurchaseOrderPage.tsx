@@ -12,6 +12,7 @@ import Loading from "@/components/ui/Loading";
 
 import PurchaseOrderTable from "../components/PurchaseOrderTable";
 import PurchaseOrderForm from "../components/PurchaseOrderForm";
+import MarketListPurchaseOrderDialog from "../components/MarketListPurchaseOrderDialog";
 
 
 import ReceiveGoodsDialog from "@/modules/purchasing/goods-receipts/components/ReceiveGoodsDialog";
@@ -66,9 +67,8 @@ export default function PurchaseOrderPage() {
 
   const [open, setOpen] =
     useState(false);
-
-
-
+  const [marketListOpen, setMarketListOpen] =
+    useState(false);
 
 
 
@@ -76,7 +76,6 @@ export default function PurchaseOrderPage() {
     useState<PurchaseOrder | null>(
       null
     );
-
 
 
   function createPO() {
@@ -261,19 +260,14 @@ export default function PurchaseOrderPage() {
 
 
           actions={
-
-            <Button
-
-              onClick={
-                createPO
-              }
-
-            >
-
-              New Purchase Order
-
-            </Button>
-
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setMarketListOpen(true)}>
+                From Market List
+              </Button>
+              <Button onClick={createPO}>
+                New Purchase Order
+              </Button>
+            </div>
           }
 
         />
@@ -345,8 +339,13 @@ export default function PurchaseOrderPage() {
 
       />
 
-
-
+      <MarketListPurchaseOrderDialog
+        open={marketListOpen}
+        onClose={() => setMarketListOpen(false)}
+        onCreated={(purchaseOrder) => {
+          if (purchaseOrder?.id) navigate(`/purchase-orders/${purchaseOrder.id}`);
+        }}
+      />
 
 
 

@@ -135,6 +135,15 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
         items: validItems,
       });
       onClose();
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      const message = typeof detail === "string"
+        ? detail
+        : detail?.message ?? error?.message ?? "Purchase requisition could not be saved.";
+      setFormError(message);
+      window.requestAnimationFrame(() => {
+        document.querySelector("[data-pr-form-error]")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
     } finally { setSaving(false); }
   }
 
@@ -147,7 +156,7 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
       <div className="shrink-0 border-b border-slate-200 px-6 py-5"><h2 className="text-xl font-semibold">{editing ? "Edit Purchase Requisition" : "Create Purchase Requisition"}</h2><p className="mt-1 text-sm text-slate-500">{editing ? "Update all requisition details except the PR number." : "Create a purchasing request before approval and purchase order creation."}</p></div>
       <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6">
-        {formError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{formError}</div>}
+        {formError && <div data-pr-form-error role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{formError}</div>}
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
           <label data-pr-field="business-unit" className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" value={businessUnitId} options={businessUnits.data ?? []} disabled={lockedBusinessUnit} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} /></label>
           <label data-pr-field="location" className="text-sm font-medium">Location<SearchableSelect className="mt-1" value={locationId} options={activeLocations} disabled={lockedLocation || !businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => changeLocation(id || undefined)} /></label>
