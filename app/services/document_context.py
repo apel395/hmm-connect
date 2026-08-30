@@ -68,6 +68,19 @@ def _entity_location_name(db: Session, entity_type: str, entity_id: int) -> str 
     return location.name if location else None
 
 
+
+def _entity_has_items(db: Session, entity_type: str, entity_id: int) -> bool:
+    if entity_type == "STORE_REQUEST":
+        from app.models.store_request import StoreRequest
+        entity = db.get(StoreRequest, entity_id)
+        return bool(entity and entity.items)
+    if entity_type == "STOCK_OPNAME":
+        from app.models.stock_opname import StockOpname
+        entity = db.get(StockOpname, entity_id)
+        return bool(entity and entity.items)
+    return True
+
+
 def document_context(db: Session, entity_type: str, entity_id: int, status: str, user) -> dict:
     request = db.query(ApprovalRequest).filter(
         ApprovalRequest.entity_type == entity_type,
@@ -100,13 +113,16 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         and status in {"APPROVED", "PARTIALLY_RECEIVED"}
         and has_permission(user, "receiving.manage")
     )
+    has_items = _entity_has_items(db, entity_type, entity_id)
     can_issue = (
         entity_type == "STORE_REQUEST"
+        and has_items
         and status in {"APPROVED", "PARTIALLY_ISSUED"}
         and has_permission(user, "store_request.manage")
     )
     can_post = (
         entity_type == "STOCK_OPNAME"
+        and has_items
         and status == "APPROVED"
         and has_permission(user, "stock_opname.manage")
     )
@@ -120,8 +136,8 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         "location_name": _entity_location_name(db, entity_type, entity_id),
         "allowed_actions": {
             "can_edit": (status == "DRAFT" or (pending and can_edit_approval)) and _can(user, entity_type, "edit"),
-            "can_submit": status == "DRAFT" and _can(user, entity_type, "submit"),
-            "can_approve": pending and can_decide and _can(user, entity_type, "approve"),
+            "can_submit": status == "DRAFT" and has_items and _can(user, entity_type, "submit"),
+            "can_approve": pending and has_items and can_decide and _can(user, entity_type, "approve"),
             "can_reject": pending and can_decide and _can(user, entity_type, "approve"),
             "can_reopen": can_reopen and _can(user, entity_type, "manage"),
             "can_print": _can(user, entity_type, "view"),

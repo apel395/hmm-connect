@@ -38,7 +38,7 @@ def store_db(monkeypatch):
     business_unit = BusinessUnit(code="BU-A", name="Business Unit A", is_active=True)
     department = Department(code="DEP-A", name="Department A", is_active=True, business_unit=business_unit)
     location = Location(code="LOC-A", name="Location A", is_active=True, business_unit=business_unit)
-    warehouse = Warehouse(code="WH-A", name="Warehouse A", is_active=True)
+    warehouse = Warehouse(code="WH-A", name="Warehouse A", is_active=True, location=location)
     store_request_manage = Permission(code="store_request.manage", description="Store Request Manage")
     requester_role = Role(name="DEPARTMENT", description=None, permissions=[store_request_manage])
     warehouse_role = Role(name="WAREHOUSE", description=None, permissions=[store_request_manage])
@@ -193,3 +193,29 @@ def test_store_request_list_paginates_beyond_two_pages(store_db):
         "items": None, "page": 3, "page_size": 25, "total_items": 55,
         "total_pages": 3, "has_next": False, "has_previous": True, "summary": None,
     }
+
+
+def test_issue_rejects_legacy_empty_store_request(store_db):
+    db, bu, department, location, warehouse, requester, store_user, _ = store_db
+    request = StoreRequest(
+        sr_number="SR-EMPTY",
+        status="APPROVED",
+        business_unit_id=bu.id,
+        department_id=department.id,
+        location_id=location.id,
+        warehouse_id=warehouse.id,
+        requested_by_id=requester.id,
+    )
+    db.add(request)
+    db.commit()
+
+    with pytest.raises(HTTPException) as error:
+        StoreRequestService.create_issue(
+            db,
+            request_id=request.id,
+            data=StoreRequestIssueCreate(items=[StoreRequestIssueItem(item_id=999, quantity=1)]),
+            current_user=store_user,
+        )
+
+    assert error.value.status_code == 409
+    assert "at least one item" in str(error.value.detail)

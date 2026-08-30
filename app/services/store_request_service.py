@@ -61,6 +61,23 @@ class StoreRequestService:
             )
 
     @staticmethod
+    def _assert_request_integrity(db: Session, request: StoreRequest, current_user: User) -> Warehouse:
+        if not request.items:
+            raise HTTPException(409, "Store Request must contain at least one item")
+        for item in request.items:
+            if Decimal(item.requested_quantity or 0) <= 0:
+                raise HTTPException(
+                    409,
+                    f"Store Request item {item.id or item.product_id} must have positive quantity",
+                )
+        return StoreRequestService._warehouse(
+            db,
+            request.warehouse_id,
+            current_user,
+            request.location_id,
+        )
+
+    @staticmethod
     def _validate_available_stock(db: Session, request: StoreRequest) -> None:
         inventory = {
             row.product_id: Decimal(row.quantity or 0)
@@ -82,9 +99,12 @@ class StoreRequestService:
 
     @staticmethod
     def create(db: Session, *, data: StoreRequestCreate, current_user: User) -> StoreRequest:
-        business_unit_id = data.business_unit_id or current_user.default_business_unit_id
         location_id = resolve_location_id(current_user, data.location_id)
-        StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
+        warehouse = StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
+        location = warehouse.location
+        if location is None or location.business_unit_id is None:
+            raise HTTPException(409, "Store Request warehouse Location must belong to a Business Unit")
+        business_unit_id = location.business_unit_id
         department_id = data.department_id or current_user.default_department_id or current_user.department_id
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
         request = StoreRequest(
@@ -119,10 +139,12 @@ class StoreRequestService:
         if request.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only draft Store Requests can be edited")
         location_id = resolve_location_id(current_user, data.location_id or request.location_id)
-        StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
+        warehouse = StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
+        if warehouse.location is None or warehouse.location.business_unit_id is None:
+            raise HTTPException(409, "Store Request warehouse Location must belong to a Business Unit")
         request.request_date = data.request_date or request.request_date
         request.notes = data.notes
-        request.business_unit_id = data.business_unit_id or request.business_unit_id
+        request.business_unit_id = warehouse.location.business_unit_id
         request.location_id = location_id
         request.department_id = data.department_id or request.department_id
         request.warehouse_id = data.warehouse_id
@@ -145,9 +167,7 @@ class StoreRequestService:
         enforce_location_access(current_user, request.location_id)
         if request.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only draft Store Requests can be submitted")
-        if not request.items:
-            raise HTTPException(status_code=409, detail="Store Request must have items")
-        StoreRequestService._warehouse(db, request.warehouse_id, current_user, request.location_id)
+        StoreRequestService._assert_request_integrity(db, request, current_user)
         StoreRequestService._validate_available_stock(db, request)
         start_approval(db, entity_type="STORE_REQUEST", entity_id=request.id, workflow_code="SR_APPROVAL", user=current_user)
         request.status = "PENDING_APPROVAL"
@@ -167,6 +187,7 @@ class StoreRequestService:
         enforce_location_access(current_user, request.location_id)
         if request.status != "PENDING_APPROVAL":
             raise HTTPException(status_code=409, detail="Store Request does not have pending approval")
+        StoreRequestService._assert_request_integrity(db, request, current_user)
         StoreRequestService._validate_available_stock(db, request)
         approval = get_request(db, "STORE_REQUEST", request.id, for_update=True)
         if not approval:
@@ -214,6 +235,7 @@ class StoreRequestService:
         enforce_location_access(current_user, request.location_id)
         if request.status not in {"APPROVED", "PARTIALLY_ISSUED"}:
             raise HTTPException(status_code=409, detail="Only approved Store Requests can issue goods")
+        StoreRequestService._assert_request_integrity(db, request, current_user)
         if db.query(StoreIssue).filter(StoreIssue.store_request_id == request.id, StoreIssue.status == "DRAFT").first():
             raise HTTPException(status_code=409, detail="Store Request already has an active issue draft")
         if not data.items:
@@ -236,6 +258,8 @@ class StoreRequestService:
                 raise HTTPException(status_code=404, detail=f"Store Request item {incoming.item_id} not found")
             remaining = Decimal(source.requested_quantity) - Decimal(source.issued_quantity or 0)
             qty = Decimal(incoming.quantity)
+            if qty <= 0:
+                raise HTTPException(status_code=409, detail=f"Issue quantity must be positive for {source.product.name}")
             if qty > remaining:
                 raise HTTPException(status_code=409, detail=f"Issue quantity exceeds remaining quantity for {source.product.name}")
             issue.items.append(StoreIssueItem(

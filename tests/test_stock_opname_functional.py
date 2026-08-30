@@ -44,7 +44,7 @@ def stock_db(monkeypatch):
     db.add(location)
     db.flush()
 
-    warehouse = Warehouse(code="WH-1", name="Warehouse 1", is_active=True)
+    warehouse = Warehouse(code="WH-1", name="Warehouse 1", is_active=True, location_id=location.id)
     user = User(
         username="warehouse",
         email="warehouse@example.test",
@@ -212,3 +212,39 @@ def test_listing_is_restricted_to_user_work_location(stock_db):
 
     assert [row["opname_number"] for row in page["items"]] == ["OWN-LOCATION"]
     assert page["total_items"] == 1
+
+
+def test_create_rejects_empty_inventory_snapshot(stock_db):
+    db, warehouse, user, _, inventory = stock_db
+    for row in inventory:
+        db.delete(row)
+    db.commit()
+
+    with pytest.raises(HTTPException) as error:
+        create_opname(db, warehouse, user)
+
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "EMPTY_STOCK_SNAPSHOT"
+
+
+def test_create_rejects_warehouse_location_mismatch(stock_db):
+    db, warehouse, user, *_ = stock_db
+    other = Location(
+        code="LOC-MISMATCH",
+        name="Location Mismatch",
+        location_type="HOTEL",
+        is_active=True,
+        business_unit_id=user.default_business_unit_id,
+    )
+    db.add(other)
+    db.commit()
+
+    with pytest.raises(HTTPException) as error:
+        StockOpnameService.create(
+            db=db,
+            data=StockOpnameCreate(warehouse_id=warehouse.id, location_id=other.id),
+            current_user=user,
+        )
+
+    assert error.value.status_code == 422
+    assert "belongs to Location" in str(error.value.detail)

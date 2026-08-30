@@ -483,6 +483,8 @@ class GoodsReceiptService:
                 raise HTTPException(status_code=409, detail="Receiving warehouse must be assigned to a work location")
             if warehouse.location_id != receipt.location_id:
                 raise HTTPException(status_code=409, detail="Warehouse must belong to the receiving work location")
+        if not receipt.items:
+            raise HTTPException(status_code=409, detail="Goods receipt must contain at least one item before posting")
         cls._recalculate_totals(receipt)
         if Decimal(receipt.total_amount or 0) <= 0:
             raise HTTPException(status_code=409, detail="Goods receipt total must be greater than zero")
@@ -498,6 +500,23 @@ class GoodsReceiptService:
                 po_item.received_quantity = Decimal(po_item.received_quantity or 0) + quantity
                 receipt_item.product_id = po_item.product_id
             if receipt.destination_type == "WAREHOUSE":
+                existing_movement = (
+                    db.query(StockMovement)
+                    .filter(
+                        StockMovement.goods_receipt_item_id == receipt_item.id,
+                        StockMovement.reference_type == "GOODS_RECEIPT",
+                        StockMovement.movement_type == "IN",
+                    )
+                    .first()
+                )
+                if existing_movement:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Receiving line {receipt_item.id} already has stock movement "
+                            f"SM-{existing_movement.id:08d}; posting aborted to prevent duplicate stock."
+                        ),
+                    )
                 inventory = cls._inventory_for_update(
                     db,
                     receipt_item.product_id,
@@ -508,7 +527,61 @@ class GoodsReceiptService:
                 inventory.average_cost = ((old_qty * old_avg) + (quantity * Decimal(receipt_item.unit_cost))) / new_qty
                 inventory.quantity = new_qty
                 db.add(cls._movement(receipt, receipt_item, "IN", "GOODS_RECEIPT"))
-        cls._sync_accounting_journal(db, receipt=receipt, user=user)
+
+        db.flush()
+        if receipt.destination_type == "WAREHOUSE":
+            movement_count = (
+                db.query(StockMovement)
+                .filter(
+                    StockMovement.goods_receipt_id == receipt.id,
+                    StockMovement.reference_type == "GOODS_RECEIPT",
+                    StockMovement.movement_type == "IN",
+                )
+                .count()
+            )
+            if movement_count != len(receipt.items):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Receiving inventory ledger verification failed: expected "
+                        f"{len(receipt.items)} movements, found {movement_count}."
+                    ),
+                )
+            missing_inventory = []
+            for receipt_item in receipt.items:
+                inventory = (
+                    db.query(Inventory)
+                    .filter(
+                        Inventory.product_id == receipt_item.product_id,
+                        Inventory.warehouse_id == receipt.warehouse_id,
+                    )
+                    .first()
+                )
+                if inventory is None:
+                    missing_inventory.append(receipt_item.product_id)
+            if missing_inventory:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Receiving inventory balance verification failed for products {missing_inventory[:10]}",
+                )
+
+        journal = cls._sync_accounting_journal(db, receipt=receipt, user=user)
+        if receipt.destination_type == "WAREHOUSE" and journal is not None:
+            resolver = DirectCoaService(db)
+            grni = resolver.grni_account()
+            for movement in (
+                db.query(StockMovement)
+                .filter(
+                    StockMovement.goods_receipt_id == receipt.id,
+                    StockMovement.reference_type == "GOODS_RECEIPT",
+                    StockMovement.movement_type == "IN",
+                )
+                .all()
+            ):
+                product = db.get(Product, movement.product_id)
+                movement.inventory_account_id = resolver.inventory_account(product, receipt.location_id).id
+                movement.offset_account_id = grni.id
+                movement.journal_entry_id = journal.id
         if purchase_order:
             purchase_order.status = "RECEIVED" if all(Decimal(item.received_quantity or 0) >= Decimal(item.quantity) for item in purchase_order.items) else "PARTIALLY_RECEIVED"
         receipt.status = "POSTED"
