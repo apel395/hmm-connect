@@ -108,6 +108,10 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
     selectedPO?.location_name ??
     locations.data?.find((item) => item.id === selectedPO?.location_id)?.name ??
     "—";
+  const locationWarehouses = useMemo(
+    () => warehouses.filter((warehouse) => warehouse.is_active && warehouse.location_id === selectedPO?.location_id),
+    [warehouses, selectedPO?.location_id],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -177,6 +181,8 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
   const submit = async () => {
     if (!purchaseOrderId) return alert("Select an approved purchase order.");
     if (destinationType === "WAREHOUSE" && !warehouseId) return alert("Warehouse is required.");
+    if (destinationType === "WAREHOUSE" && !selectedPO?.location_id) return alert("The source Purchase Order has no authoritative location; warehouse receiving is blocked.");
+    if (destinationType === "WAREHOUSE" && !locationWarehouses.some((warehouse) => warehouse.id === warehouseId)) return alert("Selected warehouse does not belong to the Purchase Order location.");
     if (!receivedAt || isBeforeNow(receivedAt)) return alert("Receipt Date/Time cannot be before now.");
 
     const selected = lines.filter((line) => line.quantity > 0);
@@ -291,20 +297,24 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
             </select>
 
             {destinationType === "WAREHOUSE" && (
-              <select
-                className="h-9 w-full rounded-md border px-3 text-[13px]"
-                value={warehouseId ?? ""}
-                onChange={(event) => setWarehouseId(Number(event.target.value) || null)}
-              >
-                <option value="">Select warehouse</option>
-                {warehouses
-                  .filter((warehouse) => warehouse.is_active)
-                  .map((warehouse) => (
+              <>
+                <select
+                  className="h-9 w-full rounded-md border px-3 text-[13px]"
+                  value={warehouseId ?? ""}
+                  onChange={(event) => setWarehouseId(Number(event.target.value) || null)}
+                  disabled={!selectedPO?.location_id}
+                >
+                  <option value="">Select warehouse for {locationName}</option>
+                  {locationWarehouses.map((warehouse) => (
                     <option key={warehouse.id} value={warehouse.id}>
                       {warehouse.code} — {warehouse.name}
                     </option>
                   ))}
-              </select>
+                </select>
+                {!locationWarehouses.length && selectedPO?.location_id && (
+                  <p className="text-xs text-amber-700">No active warehouse belongs to the source location. Cross-location warehouses are intentionally not offered.</p>
+                )}
+              </>
             )}
 
             {remaining.isLoading ? (
