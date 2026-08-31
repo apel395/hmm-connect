@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import type { Product, TaxCategory } from "../types";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 
@@ -45,7 +46,7 @@ const blank = () => ({
 
 export default function ProductForm({ open, product, products = [], loading, onClose, onSubmit }: Props) {
   const [form, setForm] = useState(blank());
-  const accounts = useQuery({queryKey:["product-coa-lookup"],queryFn:()=>getAccountLookup({is_active:true,is_posting:true})});
+  const accounts = useQuery({queryKey:["product-coa-lookup"],queryFn:()=>getAccountLookup({is_active:true,is_posting:true,page:1,page_size:1000})});
 
   const groups = useMemo(() => {
     const map = new Map<string, { code:string; name:string }>();
@@ -130,6 +131,10 @@ export default function ProductForm({ open, product, products = [], loading, onC
     onSubmit(payload);
   };
 
+  const groupOptions=groups.map((group)=>({id:group.code,label:`${group.code} — ${group.name}`,keywords:[group.code,group.name]}));
+  const subGroupOptions=subGroups.map((item)=>({id:item.code,label:`${item.code} — ${item.name}`,keywords:[item.code,item.name]}));
+  const accountOptions=(accounts.data??[]).map((account)=>({id:account.id,label:`${account.account_code} — ${account.account_name}`,keywords:[account.account_code,account.account_name,account.account_type,account.account_subtype]}));
+
   return <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
     <DialogContent className="max-w-3xl">
       <DialogHeader><DialogTitle>{product ? "Edit Product" : "New Product"}</DialogTitle></DialogHeader>
@@ -140,23 +145,9 @@ export default function ProductForm({ open, product, products = [], loading, onC
         <label className="text-sm font-medium">Product Name
           <Input className="mt-1" autoFocus value={form.name} onChange={(event) => update("name", event.target.value)} />
         </label>
-        <label className="text-sm font-medium">Group
-          <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.group_code} onChange={(event) => {
-            const group = groups.find((item) => item.code === event.target.value);
-            setForm((current) => ({...current, group_code:group?.code ?? "", group_name:group?.name ?? "", subgroup_code:"", subgroup_name:""}));
-          }}>
-            <option value="">Select Group</option>{groups.map((group) => <option key={group.code} value={group.code}>{group.code} - {group.name}</option>)}
-          </select>
-        </label>
-        <label className="text-sm font-medium">Sub Group
-          <select disabled={!form.group_code} className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-100" value={form.subgroup_code} onChange={(event) => {
-            const subgroup = subGroups.find((item) => item.code === event.target.value);
-            setForm((current) => ({...current, subgroup_code:subgroup?.code ?? "", subgroup_name:subgroup?.name ?? ""}));
-          }}>
-            <option value="">{form.group_code ? "Select Sub Group" : "Select Group first"}</option>{subGroups.map((item) => <option key={item.code} value={item.code}>{item.code} - {item.name}</option>)}
-          </select>
-          {form.subgroup_name && <span className="mt-1 block text-xs font-normal text-slate-500">Market List eligibility is automatic: only VEGETABLES and FRUIT use Market List; all other subgroups use Purchase Requisition.</span>}
-        </label>
+        <SearchableSelect label="Group" value={form.group_code || undefined} required placeholder="Type group code or name..." options={groupOptions} onChange={(value)=>{const code=value ?? "";const group=groups.find((item)=>item.code===code);setForm((current)=>({...current,group_code:code,group_name:group?.name ?? "",subgroup_code:"",subgroup_name:""}))}} />
+        <SearchableSelect label="Sub Group" value={form.subgroup_code || undefined} required disabled={!form.group_code} placeholder={form.group_code ? "Type subgroup code or name..." : "Select Group first"} options={subGroupOptions} onChange={(value)=>{const code=value ?? "";const subgroup=subGroups.find((item)=>item.code===code);setForm((current)=>({...current,subgroup_code:code,subgroup_name:subgroup?.name ?? ""}))}} />
+        <label className="col-span-2 text-sm font-medium -mt-2"><span className="text-xs font-normal text-slate-500">{form.subgroup_name ? "Market List eligibility is automatic: only VEGETABLES and FRUIT use Market List; all other subgroups use Purchase Requisition." : ""}</span></label>
         <label className="text-sm font-medium">Purchase UOM
           <Input className="mt-1" list="purchase-uom-options" value={form.uom} placeholder="Select or type UOM" onChange={(event) => changePurchaseUom(event.target.value)} />
           <datalist id="purchase-uom-options">{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
@@ -174,52 +165,26 @@ export default function ProductForm({ open, product, products = [], loading, onC
         </label>
 
         <div className="col-span-2 mt-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
-          <div className="mb-3">
-            <div className="font-semibold text-slate-900">Direct COA Mapping</div>
-            <div className="text-xs text-slate-500">COA is copied to transaction and journal snapshots. Existing posted journals never follow later master changes.</div>
-          </div>
+          <div className="mb-3"><div className="font-semibold text-slate-900">Direct COA Mapping</div><div className="text-xs text-slate-500">COA is copied to transaction and journal snapshots. Existing posted journals never follow later master changes.</div></div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {[
               ["Inventory Asset COA","inventory_account_id","Used when this item is received into a warehouse."],
               ["Consumption / Expense COA","purchase_account_id","Used for direct-use supplier invoices."],
               ["COGS / Issue COA","cogs_account_id","Used when warehouse stock is issued or consumed."],
-            ].map(([label,key,help])=><label key={key} className="text-sm font-medium">{label}
-              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={(form as any)[key] ?? ""} onChange={(event)=>update(key,event.target.value?Number(event.target.value):null)}>
-                <option value="">Not configured</option>
-                {accounts.data?.map((account)=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}
-              </select>
-              <span className="mt-1 block text-xs font-normal text-slate-500">{help}</span>
-            </label>)}
+            ].map(([label,key,help])=><div key={key} className="text-sm font-medium"><SearchableSelect label={label} value={(form as any)[key] ?? undefined} placeholder="Type COA code or name..." options={accountOptions} onChange={(value)=>update(key,value ?? null)} /><span className="mt-1 block text-xs font-normal text-slate-500">{help}</span></div>)}
           </div>
         </div>
 
         <div className="col-span-2 mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="mb-3">
-            <div className="font-semibold text-slate-900">PPN / Tax Profile</div>
-            <div className="text-xs text-slate-500">Default pajak dari Item Master akan di-snapshot ke PR, PO, Receiving, dan Supplier Invoice.</div>
-          </div>
+          <div className="mb-3"><div className="font-semibold text-slate-900">PPN / Tax Profile</div><div className="text-xs text-slate-500">Default pajak dari Item Master akan di-snapshot ke PR, PO, Receiving, dan Supplier Invoice.</div></div>
           <div className="grid grid-cols-2 gap-4">
             <label className="text-sm font-medium">Tax Treatment
-              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.tax_category} onChange={(event) => changeTaxCategory(event.target.value as TaxCategory)}>
-                {TAX_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-              </select>
+              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.tax_category} onChange={(event) => changeTaxCategory(event.target.value as TaxCategory)}>{TAX_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
               <span className="mt-1 block text-xs font-normal text-slate-500">{selectedTax?.help}</span>
             </label>
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 pt-1 text-sm font-medium">
-                <input type="checkbox" checked={form.is_taxable} disabled={!(["STANDARD", "SPECIAL"] as TaxCategory[]).includes(form.tax_category)} onChange={(event) => setForm((current) => ({...current, is_taxable:event.target.checked, tax_rate:event.target.checked ? current.tax_rate : 0}))}/>
-                Item kena PPN
-              </label>
-              <label className="block text-sm font-medium">Default PPN Rate (%)
-                <Input className="mt-1" type="number" min="0" max="100" step="0.01" disabled={!form.is_taxable} value={form.tax_rate} onChange={(event) => update("tax_rate", Number(event.target.value))}/>
-              </label>
-            </div>
-            <label className="text-sm font-medium">Tax Reason / Notes
-              <Input className="mt-1" placeholder="Contoh: kebutuhan pokok / standard taxable" value={form.tax_reason} onChange={(event) => update("tax_reason", event.target.value)} />
-            </label>
-            <label className="text-sm font-medium">Tax Reference
-              <Input className="mt-1" placeholder="Referensi aturan / memo Finance" value={form.tax_reference} onChange={(event) => update("tax_reference", event.target.value)} />
-            </label>
+            <div className="space-y-3"><label className="flex items-center gap-2 pt-1 text-sm font-medium"><input type="checkbox" checked={form.is_taxable} disabled={!(["STANDARD", "SPECIAL"] as TaxCategory[]).includes(form.tax_category)} onChange={(event) => setForm((current) => ({...current, is_taxable:event.target.checked, tax_rate:event.target.checked ? current.tax_rate : 0}))}/>Item kena PPN</label><label className="block text-sm font-medium">Default PPN Rate (%)<Input className="mt-1" type="number" min="0" max="100" step="0.01" disabled={!form.is_taxable} value={form.tax_rate} onChange={(event) => update("tax_rate", Number(event.target.value))}/></label></div>
+            <label className="text-sm font-medium">Tax Reason / Notes<Input className="mt-1" placeholder="Contoh: kebutuhan pokok / standard taxable" value={form.tax_reason} onChange={(event) => update("tax_reason", event.target.value)} /></label>
+            <label className="text-sm font-medium">Tax Reference<Input className="mt-1" placeholder="Referensi aturan / memo Finance" value={form.tax_reference} onChange={(event) => update("tax_reference", event.target.value)} /></label>
           </div>
         </div>
       </div></DialogBody>
