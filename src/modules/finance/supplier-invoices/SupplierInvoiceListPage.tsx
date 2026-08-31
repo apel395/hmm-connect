@@ -53,6 +53,83 @@ const withTaxSnapshot = (item: any, extra: Record<string, unknown> = {}): Invoic
   ...extra,
 });
 
+type AccountOption = {
+  id: number;
+  account_code?: string | null;
+  account_name?: string | null;
+  account_type?: string | null;
+};
+
+function AccountPicker({ value, accounts, onChange }: { value: number | null | undefined; accounts: AccountOption[]; onChange: (id: number | null) => void }) {
+  const selected = accounts.find((account) => account.id === value);
+  const selectedLabel = selected ? `${selected.account_code ?? ""} — ${selected.account_name ?? ""}` : "";
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(selectedLabel);
+
+  useEffect(() => {
+    setQuery(selectedLabel);
+  }, [selectedLabel]);
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle || needle === selectedLabel.toLowerCase()) return accounts;
+    return accounts.filter((account) => [account.account_code, account.account_name, account.account_type]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(needle));
+  }, [accounts, query, selectedLabel]);
+
+  const choose = (account: AccountOption) => {
+    onChange(account.id);
+    setQuery(`${account.account_code ?? ""} — ${account.account_name ?? ""}`);
+    setOpen(false);
+  };
+
+  return <div className="relative">
+    <input
+      className={input}
+      value={query}
+      placeholder="Type COA code or name..."
+      autoComplete="off"
+      role="combobox"
+      aria-expanded={open}
+      aria-haspopup="listbox"
+      onFocus={() => setOpen(true)}
+      onChange={(event) => {
+        setQuery(event.target.value);
+        setOpen(true);
+        if (!event.target.value.trim()) onChange(null);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setOpen(false);
+          setQuery(selectedLabel);
+        }
+      }}
+    />
+    {open && <>
+      <button type="button" aria-label="Close COA options" className="fixed inset-0 z-[9998] cursor-default" onMouseDown={() => { setOpen(false); setQuery(selectedLabel); }} />
+      <div role="listbox" className="absolute left-0 top-full z-[9999] mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl">
+        {filtered.length ? filtered.map((account) => (
+          <button
+            key={account.id}
+            type="button"
+            role="option"
+            aria-selected={account.id === value}
+            className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-emerald-50"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => choose(account)}
+          >
+            <div className="font-medium text-slate-800">{account.account_code} — {account.account_name}</div>
+            {account.account_type && <div className="mt-0.5 text-xs text-slate-500">{account.account_type}</div>}
+          </button>
+        )) : <div className="px-3 py-3 text-sm text-slate-500">No matching COA.</div>}
+      </div>
+    </>}
+  </div>;
+}
+
 export default function SupplierInvoiceListPage() {
   const { hasPermission } = useAuthorization();
   const navigate = useNavigate();
@@ -232,7 +309,7 @@ export default function SupplierInvoiceListPage() {
       </div>
       {sourceLocked && <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Business Unit, Department, Location, and item PPN treatment are inherited from the selected PO/Receiving document.</div>}
 
-      <div className="overflow-x-auto rounded border"><table className="min-w-[1250px] w-full text-sm"><thead><tr><th>Item / Description</th><th>Qty</th><th>UOM</th><th>Unit Price</th><th>Subtotal</th><th>PPN</th><th>Tax</th><th>Line Total</th><th>COA</th><th/></tr></thead><tbody>{form.lines.map((line: any, index: number) => { const base=Number(line.quantity)*Number(line.unit_price); const lineTax=line.is_taxable?base*Number(line.tax_rate||0)/100:0; return <tr key={index} className="border-t"><td>{line.product_name ? <><div>{line.product_name}</div><div className="text-xs text-slate-500">{line.description}</div></> : <input required className={input} value={line.description} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, description: event.target.value } : row))} />}</td><td><QuantityInput value={Number(line.quantity)} onValueChange={(value) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, quantity: value } : row))} /></td><td><input className={input} value={line.uom ?? ""} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, uom: event.target.value } : row))} /></td><td><CurrencyInput value={Number(line.unit_price)} onValueChange={(value) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, unit_price: value } : row))} /></td><td className="text-right">{money(base)}</td><td>{line.is_taxable ? <Badge variant="info">{Number(line.tax_rate||0)}%</Badge> : <Badge variant="secondary">Non PPN</Badge>}</td><td className="text-right">{money(lineTax)}</td><td className="text-right font-semibold">{money(base+lineTax)}</td><td><select className={input} value={line.account_id ?? ""} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, account_id: Number(event.target.value) || null } : row))}><option value="">Use Item / Source COA</option>{accounts.data?.map((account: any) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></td><td>{!sourceLocked&&<Button variant="outline" size="xs" onClick={() => setLines(form.lines.filter((_: any, rowIndex: number) => rowIndex !== index))}>Remove</Button>}</td></tr> })}</tbody></table></div>
+      <div className="overflow-x-auto rounded border"><table className="min-w-[1250px] w-full text-sm"><thead><tr><th>Item / Description</th><th>Qty</th><th>UOM</th><th>Unit Price</th><th>Subtotal</th><th>PPN</th><th>Tax</th><th>Line Total</th><th>COA</th><th/></tr></thead><tbody>{form.lines.map((line: any, index: number) => { const base=Number(line.quantity)*Number(line.unit_price); const lineTax=line.is_taxable?base*Number(line.tax_rate||0)/100:0; return <tr key={index} className="border-t"><td>{line.product_name ? <><div>{line.product_name}</div><div className="text-xs text-slate-500">{line.description}</div></> : <input required className={input} value={line.description} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, description: event.target.value } : row))} />}</td><td><QuantityInput value={Number(line.quantity)} onValueChange={(value) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, quantity: value } : row))} /></td><td><input className={input} value={line.uom ?? ""} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, uom: event.target.value } : row))} /></td><td><CurrencyInput value={Number(line.unit_price)} onValueChange={(value) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, unit_price: value } : row))} /></td><td className="text-right">{money(base)}</td><td>{line.is_taxable ? <Badge variant="info">{Number(line.tax_rate||0)}%</Badge> : <Badge variant="secondary">Non PPN</Badge>}</td><td className="text-right">{money(lineTax)}</td><td className="text-right font-semibold">{money(base+lineTax)}</td><td><AccountPicker value={line.account_id} accounts={(accounts.data ?? []) as AccountOption[]} onChange={(accountId) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, account_id: accountId } : row))} /></td><td>{!sourceLocked&&<Button variant="outline" size="xs" onClick={() => setLines(form.lines.filter((_: any, rowIndex: number) => rowIndex !== index))}>Remove</Button>}</td></tr> })}</tbody></table></div>
       {!sourceLocked && <Button variant="outline" onClick={() => setLines([...form.lines, blankLine()])}>Add Manual Line</Button>}
 
       {hasVat && <div className="rounded-lg border border-blue-200 bg-blue-50 p-4"><div className="mb-3 flex items-center justify-between"><div><div className="font-semibold text-blue-950">Faktur Pajak</div><div className="text-xs text-blue-700">Required because this invoice contains PPN.</div></div><Badge variant={selectedSupplier?.is_pkp ? "success" : "danger"}>{selectedSupplier?.is_pkp ? "Supplier PKP" : "Supplier is not PKP"}</Badge></div><div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Faktur Pajak Number *<input className={input} value={form.tax_invoice_number} onChange={(event)=>setForm({...form,tax_invoice_number:event.target.value})}/></label><label className="text-sm">Faktur Pajak Date *<input type="date" className={input} value={form.tax_invoice_date} onChange={(event)=>setForm({...form,tax_invoice_date:event.target.value})}/></label></div></div>}
