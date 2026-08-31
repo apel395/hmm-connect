@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import { listLocations } from "@/modules/admin/organization/api";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
 import { stockOpnameApi } from "./api";
 
 const PAGE_SIZE = 25;
-const input =
-  "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
+const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
 export default function StockOpnamePage() {
   const navigate = useNavigate();
@@ -26,261 +26,42 @@ export default function StockOpnamePage() {
   const [notes, setNotes] = useState("");
   const warehouses = useWarehouses();
   const locationWarehouses = useMemo(
-    () =>
-      (warehouses.data ?? []).filter(
-        (warehouse) =>
-          warehouse.is_active &&
-          (!locationId || warehouse.location_id === locationId),
-      ),
+    () => (warehouses.data ?? []).filter((warehouse) => warehouse.is_active && (!locationId || warehouse.location_id === locationId)),
     [warehouses.data, locationId],
   );
-  const locations = useQuery({
-    queryKey: ["organization-locations", "active"],
-    queryFn: () => listLocations({ is_active: true }),
-  });
+  const locations = useQuery({ queryKey: ["organization-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
   useEffect(() => {
-    if (show && locations.data?.length === 1 && !locationId) {
-      setLocationId(locations.data[0].id);
-    }
+    if (show && locations.data?.length === 1 && !locationId) setLocationId(locations.data[0].id);
   }, [show, locations.data, locationId]);
   useEffect(() => {
-    if (
-      warehouseId &&
-      !locationWarehouses.some((warehouse) => warehouse.id === warehouseId)
-    ) {
-      setWarehouseId(undefined);
-    }
+    if (warehouseId && !locationWarehouses.some((warehouse) => warehouse.id === warehouseId)) setWarehouseId(undefined);
   }, [warehouseId, locationWarehouses]);
   const query = useQuery({
     queryKey: ["stock-opnames", page, search, status],
-    queryFn: async () =>
-      (
-        await stockOpnameApi.list({
-          page,
-          page_size: PAGE_SIZE,
-          search: search || undefined,
-          status: status === "ALL" ? undefined : status,
-        })
-      ).data,
+    queryFn: async () => (await stockOpnameApi.list({ page, page_size: PAGE_SIZE, search: search || undefined, status: status === "ALL" ? undefined : status })).data,
   });
   const create = useMutation({
     mutationFn: () => {
       if (!warehouseId) throw new Error("Warehouse is required");
       if (!locationId) throw new Error("Location is required");
-      return stockOpnameApi.create({
-        warehouse_id: warehouseId,
-        location_id: locationId,
-        notes: notes || undefined,
-      });
+      return stockOpnameApi.create({ warehouse_id: warehouseId, location_id: locationId, notes: notes || undefined });
     },
     onSuccess: async (r) => {
       await qc.invalidateQueries({ queryKey: ["stock-opnames"] });
-      setShow(false);
-      setWarehouseId(undefined);
-      setLocationId(undefined);
-      setNotes("");
+      setShow(false); setWarehouseId(undefined); setLocationId(undefined); setNotes("");
       navigate(`/stock-opnames/${r.data.id}`);
     },
   });
   const data = query.data;
   const rows = data?.items ?? [];
+  const locationOptions=(locations.data??[]).filter((location)=>location.is_active).map((location)=>({id:location.id,label:`${location.code} — ${location.name}`,keywords:[location.code??"",location.name??""]}));
+  const warehouseOptions=locationWarehouses.map((warehouse)=>({id:warehouse.id,label:`${warehouse.code} — ${warehouse.name}`,keywords:[warehouse.code??"",warehouse.name??""]}));
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Stock Opname"
-        description="Physical inventory count, variance approval, and controlled stock adjustment."
-        actions={
-          <Button onClick={() => setShow(true)}>Create Stock Opname</Button>
-        }
-      />
-      <Card className="p-4">
-        <div className="grid gap-3 md:grid-cols-[1fr_220px]">
-          <input
-            className={input}
-            placeholder="Search opname number"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-          />
-          <select
-            className={input}
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(1);
-            }}
-          >
-            {[
-              "ALL",
-              "DRAFT",
-              "PENDING_APPROVAL",
-              "APPROVED",
-              "POSTED",
-              "REJECTED",
-            ].map((v) => (
-              <option key={v}>{v}</option>
-            ))}
-          </select>
-        </div>
-      </Card>
-      <Card className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-xs">
-            <thead>
-              <tr>
-                <th className="px-4 py-3 text-left">Number</th>
-                <th className="px-4 py-3 text-left">Count Date</th>
-                <th className="px-4 py-3 text-left">Warehouse</th>
-                <th className="px-4 py-3 text-left">Location</th>
-                <th className="px-4 py-3 text-right">Items</th>
-                <th className="px-4 py-3 text-right">Variance</th>
-                <th className="px-4 py-3 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-t whitespace-nowrap">
-                  <td className="px-4 py-3 font-medium">
-                    <Link
-                      className="text-emerald-700 hover:underline"
-                      to={`/stock-opnames/${row.id}`}
-                    >
-                      {row.opname_number}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">{row.count_date}</td>
-                  <td className="px-4 py-3">{row.warehouse_name ?? "—"}</td>
-                  <td className="px-4 py-3">{row.location_name ?? "—"}</td>
-                  <td className="px-4 py-3 text-right">{row.total_items}</td>
-                  <td className="px-4 py-3 text-right">
-                    {Number(row.total_variance_quantity || 0).toLocaleString(
-                      "id-ID",
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {row.status.replaceAll("_", " ")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="p-4">
-          <Pagination
-            page={page}
-            pages={Math.max(data?.total_pages ?? 0, 1)}
-            total={data?.total_items ?? 0}
-            pageSize={PAGE_SIZE}
-            noun="stock opnames"
-            onChange={setPage}
-          />
-        </div>
-      </Card>
-      {show && (
-        <div className="fixed inset-0 z-[80] grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-white p-6">
-            <h2 className="text-lg font-semibold">Create Stock Opname</h2>
-            <p className="mb-5 text-xs text-slate-500">
-              Inventory quantities and average costs are snapshotted when this
-              document is created. Business Unit is resolved automatically from
-              the selected Location.
-            </p>
-            <div className="space-y-3">
-              <select
-                className={input}
-                value={locationId ?? ""}
-                onChange={(e) => {
-                  setLocationId(Number(e.target.value) || undefined);
-                  setWarehouseId(undefined);
-                }}
-              >
-                <option value="">Location</option>
-                {(locations.data ?? [])
-                  .filter((location) => location.is_active)
-                  .map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.code} - {location.name}
-                    </option>
-                  ))}
-              </select>
-              <select
-                className={input}
-                value={warehouseId ?? ""}
-                disabled={!locationId}
-                onChange={(e) =>
-                  setWarehouseId(Number(e.target.value) || undefined)
-                }
-              >
-                <option value="">Warehouse</option>
-                {locationWarehouses.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.code} - {w.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <textarea
-              className="mt-3 min-h-20 w-full rounded-md border p-3 text-sm"
-              placeholder="Notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-            {create.error && (
-              <div className="mt-2 text-sm text-red-600">
-                {(() => {
-                  if (axios.isAxiosError(create.error)) {
-                    const detail = create.error.response?.data?.detail;
-                    const payload =
-                      detail && typeof detail === "object" ? detail : null;
-                    return (
-                      <div>
-                        <p>
-                          {payload?.message ||
-                            (typeof detail === "string"
-                              ? detail
-                              : create.error.message)}
-                        </p>
-                        {payload?.opname_id && (
-                          <Link
-                            className="font-medium underline"
-                            to={`/stock-opnames/${payload.opname_id}`}
-                          >
-                            Open {payload.opname_number ?? "active Stock Opname"}
-                          </Link>
-                        )}
-                      </div>
-                    );
-                  }
-                  return create.error instanceof Error
-                    ? create.error.message
-                    : "Unable to create";
-                })()}
-              </div>
-            )}
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setShow(false);
-                  setWarehouseId(undefined);
-                  setLocationId(undefined);
-                  setNotes("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                disabled={create.isPending || !warehouseId || !locationId}
-                onClick={() => create.mutate()}
-              >
-                Create
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PageHeader title="Stock Opname" description="Physical inventory count, variance approval, and controlled stock adjustment." actions={<Button onClick={() => setShow(true)}>Create Stock Opname</Button>} />
+      <Card className="p-4"><div className="grid gap-3 md:grid-cols-[1fr_220px]"><input className={input} placeholder="Search opname number" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} /><select className={input} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>{["ALL","DRAFT","PENDING_APPROVAL","APPROVED","POSTED","REJECTED"].map((v) => <option key={v}>{v}</option>)}</select></div></Card>
+      <Card className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead><tr><th className="px-4 py-3 text-left">Number</th><th className="px-4 py-3 text-left">Count Date</th><th className="px-4 py-3 text-left">Warehouse</th><th className="px-4 py-3 text-left">Location</th><th className="px-4 py-3 text-right">Items</th><th className="px-4 py-3 text-right">Variance</th><th className="px-4 py-3 text-left">Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className="border-t whitespace-nowrap"><td className="px-4 py-3 font-medium"><Link className="text-emerald-700 hover:underline" to={`/stock-opnames/${row.id}`}>{row.opname_number}</Link></td><td className="px-4 py-3">{row.count_date}</td><td className="px-4 py-3">{row.warehouse_name ?? "—"}</td><td className="px-4 py-3">{row.location_name ?? "—"}</td><td className="px-4 py-3 text-right">{row.total_items}</td><td className="px-4 py-3 text-right">{Number(row.total_variance_quantity || 0).toLocaleString("id-ID")}</td><td className="px-4 py-3">{row.status.replaceAll("_", " ")}</td></tr>)}</tbody></table></div><div className="p-4"><Pagination page={page} pages={Math.max(data?.total_pages ?? 0, 1)} total={data?.total_items ?? 0} pageSize={PAGE_SIZE} noun="stock opnames" onChange={setPage} /></div></Card>
+      {show && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/40 p-4"><div className="w-full max-w-lg rounded-xl bg-white p-6"><h2 className="text-lg font-semibold">Create Stock Opname</h2><p className="mb-5 text-xs text-slate-500">Inventory quantities and average costs are snapshotted when this document is created. Business Unit is resolved automatically from the selected Location.</p><div className="space-y-3"><SearchableSelect label="Location" required value={locationId} disabled={locations.isLoading} placeholder="Type location code or name..." options={locationOptions} onChange={(value)=>{setLocationId(value);setWarehouseId(undefined)}}/><SearchableSelect label="Warehouse" required value={warehouseId} disabled={!locationId || warehouses.isLoading} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={(value)=>setWarehouseId(value)}/></div><textarea className="mt-3 min-h-20 w-full rounded-md border p-3 text-sm" placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />{create.error && <div className="mt-2 text-sm text-red-600">{(() => { if (axios.isAxiosError(create.error)) { const detail=create.error.response?.data?.detail; const payload=detail&&typeof detail==="object"?detail:null; return <div><p>{payload?.message || (typeof detail==="string" ? detail : create.error.message)}</p>{payload?.opname_id && <Link className="font-medium underline" to={`/stock-opnames/${payload.opname_id}`}>Open {payload.opname_number ?? "active Stock Opname"}</Link>}</div>; } return create.error instanceof Error ? create.error.message : "Unable to create"; })()}</div>}<div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={() => {setShow(false);setWarehouseId(undefined);setLocationId(undefined);setNotes("")}}>Cancel</Button><Button disabled={create.isPending || !warehouseId || !locationId} onClick={() => create.mutate()}>Create</Button></div></div></div>}
     </div>
   );
 }
