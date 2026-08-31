@@ -45,10 +45,26 @@ def account_tree(is_active: bool | None = None, db: Session = Depends(get_db), _
 
 
 @router.get("/lookup", response_model=list[ChartOfAccountLookup])
-def account_lookup(search: str | None = None, is_active: bool | None = None,
-                   account_type: AccountType | None = None, account_subtype: list[str] | None = Query(None), is_posting: bool | None = None,
-                   db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return ChartOfAccountService(db).lookup(search, is_active, account_type, is_posting, account_subtype)
+def account_lookup(
+    search: str | None = None,
+    is_active: bool | None = None,
+    account_type: AccountType | None = None,
+    account_subtype: list[str] | None = Query(None),
+    is_posting: bool | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=50),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return ChartOfAccountService(db).lookup(
+        search,
+        is_active,
+        account_type,
+        is_posting,
+        account_subtype,
+        page,
+        page_size,
+    )
 
 
 @router.get("/{account_id}", response_model=ChartOfAccountRead)
