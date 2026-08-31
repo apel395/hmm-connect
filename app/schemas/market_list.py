@@ -23,5 +23,11 @@ class MarketListCreate(BaseModel):
     items: list[MarketListItemCreate]
 
 
+class MarketListConvertItem(BaseModel):
+    market_list_item_id: int
+    quantity: Decimal = Field(gt=0)
+
+
 class MarketListConvertCreate(BaseModel):
     supplier_id: int
+    items: list[MarketListConvertItem] | None = None
