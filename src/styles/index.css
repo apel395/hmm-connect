@@ -198,14 +198,93 @@ h6 {
 
 /*
  * The Supplier Invoice COA picker lives inside a horizontally scrollable
- * invoice-lines table. An absolutely positioned listbox is otherwise clipped
- * by that overflow container. Temporarily allow the container to overflow
- * while any combobox inside it is open; the normal horizontal scrolling is
- * restored as soon as the picker closes.
+ * invoice-lines table. The original 1250px table forced the COA column off the
+ * right side of the dialog, which also made matching accounts such as the
+ * 500-... expense accounts appear to be missing. Keep the whole line editor
+ * inside the dialog and give each field a deliberate width instead.
  */
 @media screen {
-  .overflow-x-auto:has([role="combobox"][aria-expanded="true"]) {
+  .overflow-x-auto.rounded.border:has([role="combobox"]) {
     overflow: visible !important;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(1),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(1) {
+    width: 23%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(2),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(2) {
+    width: 6%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(3),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(3) {
+    width: 7%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(4),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(4) {
+    width: 11%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(5),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(5) {
+    width: 9%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(6),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(6) {
+    width: 7%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(7),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(7) {
+    width: 7%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(8),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(8) {
+    width: 9%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(9),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(9) {
+    width: 17%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > thead > tr > :nth-child(10),
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > :nth-child(10) {
+    width: 4%;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table :is(th, td) {
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table :is(input, select) {
+    min-width: 0;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) > table > tbody > tr > td:first-child {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) [role="combobox"] {
+    min-width: 0;
+  }
+
+  .overflow-x-auto.rounded.border:has([role="combobox"]) [role="listbox"] {
+    width: max(100%, 240px);
+    max-width: min(360px, calc(100vw - 2rem));
   }
 }
 
