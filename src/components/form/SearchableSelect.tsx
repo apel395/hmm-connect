@@ -2,32 +2,28 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FORM_UI } from "@/config/formUi";
 
-export interface SearchableSelectOption {
-  id: number;
+export interface SearchableSelectOption<T extends string | number = number> {
+  id: T;
   label?: string;
   code?: string;
   name?: string;
   keywords?: string[];
 }
 
-interface Props {
+interface Props<T extends string | number = number> {
   label?: string;
-  value?: number;
-  options: SearchableSelectOption[];
+  value?: T;
+  options: SearchableSelectOption<T>[];
   disabled?: boolean;
   placeholder?: string;
   required?: boolean;
   className?: string;
-  onChange: (value: number | undefined) => void;
+  onChange: (value: T | undefined) => void;
 }
 
-type DropdownPosition = {
-  left: number;
-  top: number;
-  width: number;
-};
+type DropdownPosition = { left: number; top: number; width: number };
 
-function optionLabel(option: SearchableSelectOption): string {
+function optionLabel<T extends string | number>(option: SearchableSelectOption<T>): string {
   if (option.label?.trim()) return option.label.trim();
   const code = option.code?.trim() ?? "";
   const name = option.name?.trim() ?? "";
@@ -35,14 +31,14 @@ function optionLabel(option: SearchableSelectOption): string {
   return name || code || String(option.id);
 }
 
-function searchableText(option: SearchableSelectOption): string {
+function searchableText<T extends string | number>(option: SearchableSelectOption<T>): string {
   return [optionLabel(option), option.code, option.name, ...(option.keywords ?? [])]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
 }
 
-export default function SearchableSelect({
+export default function SearchableSelect<T extends string | number = number>({
   label,
   value,
   options,
@@ -51,7 +47,7 @@ export default function SearchableSelect({
   required = false,
   className = "",
   onChange,
-}: Props) {
+}: Props<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -126,7 +122,7 @@ export default function SearchableSelect({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, []);
 
-  const selectOption = useCallback((option: SearchableSelectOption) => {
+  const selectOption = useCallback((option: SearchableSelectOption<T>) => {
     onChange(option.id);
     setQuery(optionLabel(option));
     setOpen(false);
@@ -154,7 +150,7 @@ export default function SearchableSelect({
             <div className="px-3 py-2 text-xs text-slate-500">No matching options.</div>
           ) : filteredOptions.map((option, index) => (
             <button
-              key={option.id}
+              key={String(option.id)}
               ref={(element) => { optionRefs.current[index] = element; }}
               type="button"
               role="option"
@@ -245,9 +241,7 @@ export default function SearchableSelect({
           }}
           onBlur={() => {
             window.setTimeout(() => {
-              if (!dropdownRef.current?.matches(":hover")) {
-                setQuery(selectedLabel);
-              }
+              if (!dropdownRef.current?.matches(":hover")) setQuery(selectedLabel);
             }, 0);
           }}
         />
