@@ -101,7 +101,8 @@ class ChartOfAccountService:
         return roots
 
     def lookup(self, search: str | None, is_active: bool | None, account_type: str | None,
-               is_posting: bool | None, account_subtypes: list[str] | None = None) -> list[dict]:
+               is_posting: bool | None, account_subtypes: list[str] | None = None,
+               page: int = 1, page_size: int = 50) -> list[dict]:
         query = self.db.query(ChartOfAccount)
         if is_active is not None:
             query = query.filter(ChartOfAccount.is_active.is_(is_active))
@@ -114,12 +115,27 @@ class ChartOfAccountService:
         if search:
             term = f"%{search.strip()}%"
             query = query.filter(or_(ChartOfAccount.account_number.ilike(term), ChartOfAccount.account_name.ilike(term)))
-        return [{"id": row.id, "account_code": row.account_number, "account_name": row.account_name,
-                 "account_type": row.account_type, "normal_balance": row.normal_balance,
-                 "is_posting": row.is_posting, "is_active": row.is_active,
-                 "account_subtype": row.account_subtype, "cash_flow_category": row.cash_flow_category}
-                | {"financial_statement_group": row.financial_statement_group}
-                for row in query.order_by(ChartOfAccount.account_number).limit(1000).all()]
+        rows = (
+            query.order_by(ChartOfAccount.account_number, ChartOfAccount.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return [
+            {
+                "id": row.id,
+                "account_code": row.account_number,
+                "account_name": row.account_name,
+                "account_type": row.account_type,
+                "normal_balance": row.normal_balance,
+                "is_posting": row.is_posting,
+                "is_active": row.is_active,
+                "account_subtype": row.account_subtype,
+                "cash_flow_category": row.cash_flow_category,
+            }
+            | {"financial_statement_group": row.financial_statement_group}
+            for row in rows
+        ]
 
     def create(self, payload: ChartOfAccountCreate) -> ChartOfAccount:
         self._validate_unique(payload.account_code, payload.account_name)
