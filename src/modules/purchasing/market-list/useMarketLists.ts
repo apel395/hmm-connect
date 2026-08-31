@@ -1,5 +1,5 @@
-import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
-import { marketListApi,type MarketListParams } from "./marketListApi";
+import {useMutation,useQuery,useQueryClient} from "@tanstack/react-query";
+import {marketListApi,type MarketListConvertItem,type MarketListParams} from "./marketListApi";
 
 async function refresh(qc:ReturnType<typeof useQueryClient>,id?:number,detail?:unknown){
  if(id&&detail)qc.setQueryData(["market-list",id],detail);
@@ -17,4 +17,4 @@ export function useSubmitMarketList(){const qc=useQueryClient();return useMutati
 export function useApproveMarketList(){const qc=useQueryClient();return useMutation({mutationFn:({id,comment}:{id:number;comment?:string})=>marketListApi.approve(id,comment),onSuccess:(r,v)=>refresh(qc,v.id,r.data)})}
 export function useRejectMarketList(){const qc=useQueryClient();return useMutation({mutationFn:({id,comment}:{id:number;comment:string})=>marketListApi.reject(id,comment),onSuccess:(r,v)=>refresh(qc,v.id,r.data)})}
 export function useReopenMarketList(){const qc=useQueryClient();return useMutation({mutationFn:(id:number)=>marketListApi.reopen(id),onSuccess:(r,id)=>refresh(qc,id,r.data)})}
-export function useConvertMarketList(){const qc=useQueryClient();return useMutation({mutationFn:({id,supplier_id}:{id:number;supplier_id:number})=>marketListApi.convertToPO(id,supplier_id),onSuccess:async()=>{await Promise.all([qc.invalidateQueries({queryKey:["market-lists"]}),qc.invalidateQueries({queryKey:["purchase-orders"]})])}})}
+export function useConvertMarketList(){const qc=useQueryClient();return useMutation({mutationFn:({id,supplier_id,items}:{id:number;supplier_id:number;items?:MarketListConvertItem[]})=>marketListApi.convertToPO(id,supplier_id,items),onSuccess:async(r)=>{await Promise.all([qc.invalidateQueries({queryKey:["market-lists"]}),qc.invalidateQueries({queryKey:["purchase-orders"]}),qc.invalidateQueries({queryKey:["purchase-order",r.data?.id]})])}})}
