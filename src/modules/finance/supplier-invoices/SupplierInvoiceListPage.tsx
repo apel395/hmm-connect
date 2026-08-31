@@ -12,7 +12,7 @@ import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTi
 import CurrencyInput from "@/components/form/CurrencyInput";
 import QuantityInput from "@/components/form/QuantityInput";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
-import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { getAccounts } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import purchaseOrderApi from "@/modules/purchasing/purchase-order/api/purchaseOrderApi";
 import goodsReceiptApi from "@/modules/purchasing/goods-receipts/api/goodsReceiptApi";
@@ -64,7 +64,7 @@ function AccountPicker({ value, selectedCode, selectedName, onChange }: { value:
   const initialLabel = selectedCode || selectedName ? `${selectedCode ?? ""}${selectedCode && selectedName ? " — " : ""}${selectedName ?? ""}` : "";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(initialLabel);
-  const [debouncedQuery, setDebouncedQuery] = useState(initialLabel);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
@@ -80,16 +80,28 @@ function AccountPicker({ value, selectedCode, selectedName, onChange }: { value:
 
   const lookup = useQuery({
     queryKey: ["coa-invoice-lookup", debouncedQuery],
-    queryFn: () => getAccountLookup({ search: debouncedQuery || undefined, page: 1, page_size: 50, is_active: true, is_posting: true }),
+    queryFn: async () => {
+      const result = await getAccounts({
+        page: 1,
+        page_size: 50,
+        search: debouncedQuery || undefined,
+        is_active: true,
+        is_posting: true,
+        sort_by: "account_code",
+        sort_order: "asc",
+      });
+      return result.items as AccountOption[];
+    },
     enabled: open,
     staleTime: 30_000,
   });
 
-  const accounts = (lookup.data ?? []) as AccountOption[];
+  const accounts = lookup.data ?? [];
   const selectedFromLookup = accounts.find((account) => account.id === value);
   const selectedLabel = selectedFromLookup
     ? `${selectedFromLookup.account_code ?? ""} — ${selectedFromLookup.account_name ?? ""}`
     : initialLabel;
+  const waitingForSearch = query.trim() !== debouncedQuery;
 
   const choose = (account: AccountOption) => {
     onChange(account.id);
@@ -122,8 +134,8 @@ function AccountPicker({ value, selectedCode, selectedName, onChange }: { value:
     {open && <>
       <button type="button" aria-label="Close COA options" className="fixed inset-0 z-[9998] cursor-default" onMouseDown={() => { setOpen(false); setQuery(selectedLabel); }} />
       <div role="listbox" className="absolute left-0 top-full z-[9999] mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl">
-        {lookup.isFetching && <div className="px-3 py-3 text-sm text-slate-500">Searching COA...</div>}
-        {!lookup.isFetching && accounts.length ? accounts.map((account) => (
+        {(waitingForSearch || lookup.isFetching) && <div className="px-3 py-3 text-sm text-slate-500">Searching COA...</div>}
+        {!waitingForSearch && !lookup.isFetching && accounts.length ? accounts.map((account) => (
           <button
             key={account.id}
             type="button"
@@ -137,7 +149,7 @@ function AccountPicker({ value, selectedCode, selectedName, onChange }: { value:
             {account.account_type && <div className="mt-0.5 text-xs text-slate-500">{account.account_type}</div>}
           </button>
         )) : null}
-        {!lookup.isFetching && !accounts.length && <div className="px-3 py-3 text-sm text-slate-500">No matching COA.</div>}
+        {!waitingForSearch && !lookup.isFetching && !accounts.length && <div className="px-3 py-3 text-sm text-slate-500">No matching COA.</div>}
       </div>
     </>}
   </div>;
