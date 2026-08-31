@@ -12,7 +12,6 @@ export interface AccountParams {
   sort_by: string;
   sort_order: "asc" | "desc";
 }
-
 export async function getAccounts(params: AccountParams) {
   const { data } = await api.get<AccountPage>("/chart-of-accounts", { params });
   return data;
@@ -21,8 +20,22 @@ export async function getAccountTree() {
   const { data } = await api.get<ChartOfAccountNode[]>("/chart-of-accounts/tree");
   return data;
 }
-export async function getAccountLookup(params: { account_type?: AccountType; account_subtype?: AccountSubtype | AccountSubtype[]; is_posting?: boolean; is_active?: boolean } = {}) {
-  const { data } = await api.get<AccountLookup[]>("/chart-of-accounts/lookup", { params });
+export async function getAccountLookup(params: {
+  search?: string;
+  page?: number;
+  page_size?: number;
+  account_type?: AccountType;
+  account_subtype?: AccountSubtype | AccountSubtype[];
+  is_posting?: boolean;
+  is_active?: boolean;
+} = {}) {
+  const { data } = await api.get<AccountLookup[]>("/chart-of-accounts/lookup", {
+    params: {
+      ...params,
+      page: params.page ?? 1,
+      page_size: params.page_size ?? 50,
+    },
+  });
   return data;
 }
 export async function createAccount(payload: AccountPayload) {
