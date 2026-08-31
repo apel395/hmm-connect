@@ -6,6 +6,7 @@ import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listLocations } from "@/modules/admin/organization/api";
 import { getCashAccounts } from "./api";
@@ -25,7 +26,7 @@ export default function CashAccountsPage() {
   const bankAccounts = useQuery({ queryKey: ["bank-accounts"], queryFn: () => listBankAccounts(false) });
   const businessUnits = useQuery({ queryKey: ["business-units", "bank-account", "active"], queryFn: () => filterBusinessUnits({ is_active: true }) });
   const locations = useQuery({ queryKey: ["bank-account-locations", form.business_unit_id], queryFn: () => listLocations({ business_unit_id: form.business_unit_id, is_active: true }), enabled: Boolean(form.business_unit_id) });
-  const coa = useQuery({ queryKey: ["bank-coa"], queryFn: () => getAccountLookup({ account_type: "ASSET", is_posting: true, is_active: true }) });
+  const coa = useQuery({ queryKey: ["bank-coa"], queryFn: () => getAccountLookup({ account_type: "ASSET", is_posting: true, is_active: true, page: 1, page_size: 1000 }) });
 
   useEffect(() => {
     if (!form.id && !form.business_unit_id && businessUnits.data?.length === 1) {
@@ -59,6 +60,9 @@ export default function CashAccountsPage() {
     });
   };
   const canSave = Boolean(form.bank_name?.trim() && form.account_name?.trim() && form.account_number?.trim() && form.business_unit_id && form.coa_account_id);
+  const businessUnitOptions=(businessUnits.data??[]).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const locationOptions=(locations.data??[]).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const coaOptions=(coa.data??[]).map((row:any)=>({id:row.id,label:`${row.account_code} — ${row.account_name}`,keywords:[row.account_code,row.account_name,row.account_type]}));
 
   return <div className="space-y-6">
     <PageHeader title="Cash & Bank Accounts" description="Register real bank accounts, link each account to its posting COA, and review posted cash activity." />
@@ -72,10 +76,10 @@ export default function CashAccountsPage() {
         <label className="text-sm">Account Number *<input className={input} value={form.account_number} onChange={(e) => setForm({ ...form, account_number: e.target.value })} /></label>
         <label className="text-sm">Account Holder<input className={input} value={form.account_holder ?? ""} onChange={(e) => setForm({ ...form, account_holder: e.target.value })} /></label>
         <label className="text-sm">Currency<input className={input} maxLength={3} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></label>
-        <label className="text-sm">Business Unit *<select required className={input} value={form.business_unit_id || ""} onChange={(e) => setForm({ ...form, business_unit_id: Number(e.target.value), location_id: null })}><option value="">Select Business Unit</option>{businessUnits.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
-        <label className="text-sm">Location<select disabled={!form.business_unit_id} className={input} value={form.location_id ?? ""} onChange={(e) => setForm({ ...form, location_id: Number(e.target.value) || null })}><option value="">Global / all locations</option>{locations.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
-        <label className="text-sm md:col-span-2">Linked COA *<select required className={input} value={form.coa_account_id || ""} onChange={(e) => setForm({ ...form, coa_account_id: Number(e.target.value) })}><option value="">Select bank/cash posting account</option>{coa.data?.map((row: any) => <option key={row.id} value={row.id}>{row.account_code} — {row.account_name}</option>)}</select></label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />Active</label>
+        <SearchableSelect label="Business Unit" value={form.business_unit_id || undefined} required disabled={businessUnits.isLoading} placeholder="Type business unit..." options={businessUnitOptions} onChange={(value)=>setForm({ ...form, business_unit_id:value ?? 0, location_id:null })} />
+        <SearchableSelect label="Location" value={form.location_id ?? undefined} disabled={!form.business_unit_id || locations.isLoading} placeholder="Type location..." options={locationOptions} onChange={(value)=>setForm({ ...form, location_id:value ?? null })} />
+        <div className="md:col-span-2"><SearchableSelect label="Linked COA" value={form.coa_account_id || undefined} required disabled={coa.isLoading} placeholder="Type COA code or account name..." options={coaOptions} onChange={(value)=>setForm({ ...form, coa_account_id:value ?? 0 })} /></div>
+        <label className="flex items-center gap-2 text-sm pt-6"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />Active</label>
       </div>
       <div className="flex justify-end gap-2">{form.id && <Button variant="outline" onClick={() => setForm({ ...empty, business_unit_id: businessUnits.data?.length === 1 ? businessUnits.data[0].id : 0 })}>Cancel Edit</Button>}<Button loading={save.isPending} disabled={!canSave} onClick={submit}>{form.id ? "Update Bank Account" : "Create Bank Account"}</Button></div>
       <Table className="min-w-[780px]"><THead><TR className="whitespace-nowrap"><TH>Bank Account</TH><TH>Organization</TH><TH>Linked COA</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{bankAccounts.data?.map((row) => <TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={`${row.bank_name} — ${row.account_name}`} secondary={row.account_number}/></TD><TD><TableCellStack primary={row.business_unit_name ?? "—"} secondary={row.location_name ?? undefined}/></TD><TD><TableCellStack primary={row.coa_account_name} secondary={row.coa_account_code}/></TD><TD>{row.is_active ? "Active" : "Inactive"}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => edit(row)}>Edit</Button></div></TD></TR>)}</TBody></Table>

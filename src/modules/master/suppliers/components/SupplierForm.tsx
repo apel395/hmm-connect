@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import type { Supplier, SupplierPayload, SupplierPICPayload } from "../types";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 
@@ -59,6 +60,12 @@ export default function SupplierForm({ open, supplier, loading = false, error, o
     });
   }
 
+  const payableOptions=(payableAccounts.data??[]).map((account)=>({
+    id:account.id,
+    label:`${account.account_code} — ${account.account_name}`,
+    keywords:[account.account_code,account.account_name,account.account_type ?? ""],
+  }));
+
   return <Dialog open={open} onOpenChange={(value)=>!value && onClose()}>
     <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
       <form onSubmit={submit}>
@@ -77,12 +84,14 @@ export default function SupplierForm({ open, supplier, loading = false, error, o
 
           <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
             <div className="mb-3"><h3 className="font-semibold">Accounts Payable COA</h3><p className="text-sm text-slate-500">Supplier invoices credit this account directly. The selected account is snapshotted into each journal.</p></div>
-            <label className="block text-sm font-medium">Payable Account
-              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.payable_account_id ?? ""} onChange={(e)=>setField("payable_account_id",e.target.value?Number(e.target.value):null)}>
-                <option value="">Not configured</option>
-                {payableAccounts.data?.map((account)=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Payable Account"
+              value={form.payable_account_id ?? undefined}
+              disabled={loading || payableAccounts.isLoading}
+              placeholder={payableAccounts.isLoading ? "Loading payable accounts..." : "Type COA code or account name..."}
+              options={payableOptions}
+              onChange={(value)=>setField("payable_account_id",value ?? null)}
+            />
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
