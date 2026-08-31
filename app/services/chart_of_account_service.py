@@ -119,7 +119,7 @@ class ChartOfAccountService:
                  "is_posting": row.is_posting, "is_active": row.is_active,
                  "account_subtype": row.account_subtype, "cash_flow_category": row.cash_flow_category}
                 | {"financial_statement_group": row.financial_statement_group}
-                for row in query.order_by(ChartOfAccount.account_number).limit(200).all()]
+                for row in query.order_by(ChartOfAccount.account_number).limit(1000).all()]
 
     def create(self, payload: ChartOfAccountCreate) -> ChartOfAccount:
         self._validate_unique(payload.account_code, payload.account_name)
