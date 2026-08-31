@@ -196,6 +196,19 @@ h6 {
     }
 }
 
+/*
+ * The Supplier Invoice COA picker lives inside a horizontally scrollable
+ * invoice-lines table. An absolutely positioned listbox is otherwise clipped
+ * by that overflow container. Temporarily allow the container to overflow
+ * while any combobox inside it is open; the normal horizontal scrolling is
+ * restored as soon as the picker closes.
+ */
+@media screen {
+  .overflow-x-auto:has([role="combobox"][aria-expanded="true"]) {
+    overflow: visible !important;
+  }
+}
+
 @page { size: A4; margin: 14mm; }
 @media print {
   body { background: white; color: black; font-size: 14px; }
