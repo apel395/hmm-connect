@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import Button from "@/components/ui/Button";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import CurrencyInput from "@/components/form/CurrencyInput";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
 import { useUpdateGoodsReceipt } from "../hooks/useGoodsReceipts";
 import type { GoodsReceipt } from "../types";
@@ -52,13 +53,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           destination_type:destination,
           warehouse_id:destination==="WAREHOUSE"?warehouseId:null,
           notes:notes.trim()||null,
-          items:items.map(item=>({
-            item_id:item.item_id,
-            quantity:item.quantity,
-            unit_cost:item.unit_cost,
-            is_taxable:item.is_taxable,
-            tax_rate:item.is_taxable?item.tax_rate:0,
-          })),
+          items:items.map(item=>({item_id:item.item_id,quantity:item.quantity,unit_cost:item.unit_cost,is_taxable:item.is_taxable,tax_rate:item.is_taxable?item.tax_rate:0})),
         },
       });
       toast.success("Receiving updated");
@@ -69,31 +64,30 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     }
   };
 
+  const warehouseOptions=warehouses.filter((row:any)=>row.is_active).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
+
   return <Dialog open={open} onOpenChange={value=>!value&&onClose()}>
-    <DialogContent className="max-w-6xl">
+    <DialogContent className="max-h-[92vh] max-w-6xl overflow-hidden">
       <DialogHeader><DialogTitle>Edit Receiving Report</DialogTitle></DialogHeader>
-      <DialogBody className="space-y-4">
+      <DialogBody className="space-y-4 overflow-y-auto">
         <div className="rounded border bg-slate-50 p-3 text-sm">
           <div className="font-medium">{receipt.receipt_number}</div>
-          <div className="text-slate-600">
-            Source {receipt.purchase_order_number ?? "Direct Receiving"} · Supplier {receipt.supplier_name ?? "—"} ·
-            BU {receipt.business_unit_name ?? "—"} · Location {receipt.location_name ?? "—"} · Department {receipt.department_name ?? "—"}
-          </div>
+          <div className="text-slate-600">Source {receipt.purchase_order_number ?? "Direct Receiving"} · Supplier {receipt.supplier_name ?? "—"} · BU {receipt.business_unit_name ?? "—"} · Location {receipt.location_name ?? "—"} · Department {receipt.department_name ?? "—"}</div>
           <div className="mt-1 text-xs text-slate-500">Source document and inherited organization dimensions are locked for traceability.</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm">Receipt Date *<input type="datetime-local" className="mt-1 h-10 w-full rounded border px-3" value={receivedAt} onChange={e=>setReceivedAt(e.target.value)}/></label>
           <label className="text-sm">Delivery Note / Reference<input className="mt-1 h-10 w-full rounded border px-3" value={reference} onChange={e=>setReference(e.target.value)}/></label>
           <label className="text-sm">Destination<select className="mt-1 h-10 w-full rounded border px-3" value={destination} onChange={e=>setDestination(e.target.value as any)}><option value="WAREHOUSE">Warehouse</option><option value="DIRECT_USE">Direct Use</option></select></label>
-          {destination==="WAREHOUSE"&&<label className="text-sm">Warehouse *<select className="mt-1 h-10 w-full rounded border px-3" value={warehouseId??""} onChange={e=>setWarehouseId(Number(e.target.value)||null)}><option value="">Select warehouse</option>{warehouses.filter((row:any)=>row.is_active).map((row:any)=><option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>}
+          {destination==="WAREHOUSE"&&<SearchableSelect label="Warehouse" required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>} 
         </div>
         <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-3" value={notes} onChange={e=>setNotes(e.target.value)}/></label>
         <div className="overflow-x-auto rounded border">
-          <table className="min-w-[900px] w-full text-sm">
-            <thead><tr><th className="p-3 text-left">Item</th><th>UOM</th><th>Qty</th><th>Unit Cost</th><th>PPN</th><th>Rate %</th></tr></thead>
+          <table className="w-full min-w-[820px] text-sm">
+            <thead><tr><th className="w-[40%] p-3 text-left">Item</th><th className="w-20">UOM</th><th className="w-32">Qty</th><th className="w-40">Unit Cost</th><th className="w-20">PPN</th><th className="w-28">Rate %</th></tr></thead>
             <tbody>{items.map(item=><tr key={item.item_id} className="border-t">
               <td className="p-3"><div className="font-medium">{item.product_name}</div><div className="text-xs text-slate-500">{item.product_code}</div></td>
-              <td>{item.uom??"—"}</td>
+              <td className="text-center">{item.uom??"—"}</td>
               <td className="p-2"><input type="number" min="0.01" step="0.01" className="h-9 w-28 rounded border px-2 text-right" value={item.quantity} onChange={e=>patch(item.item_id,{quantity:Number(e.target.value)})}/></td>
               <td className="p-2"><CurrencyInput value={item.unit_cost} onValueChange={value=>patch(item.item_id,{unit_cost:value})}/></td>
               <td className="text-center"><input type="checkbox" checked={item.is_taxable} onChange={e=>patch(item.item_id,{is_taxable:e.target.checked,tax_rate:e.target.checked?(item.tax_rate||11):0})}/></td>
