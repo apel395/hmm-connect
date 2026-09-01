@@ -111,10 +111,13 @@ def listing(
     po_number: str | None = None,
     receipt_number: str | None = None,
     source_type: str | None = None,
+    location_id: int | None = None,
     db: Session = Depends(get_db),
     user=Depends(invoice_view_user),
 ):
     query = apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user)
+    if location_id:
+        query = query.filter(SupplierInvoice.location_id == location_id)
     if search:
         query = query.filter(or_(SupplierInvoice.internal_invoice_number.ilike(f"%{search}%"), SupplierInvoice.supplier_invoice_number.ilike(f"%{search}%")))
     if supplier_id:

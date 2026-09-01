@@ -340,10 +340,13 @@ def listing(
     payment_method: str | None = None,
     payment_date_from: date | None = None,
     payment_date_to: date | None = None,
+    location_id: int | None = None,
     db: Session = Depends(get_db),
     user=Depends(payment_view_user),
 ):
     query = apply_location_scope(db.query(Payment), Payment, user)
+    if location_id:
+        query = query.filter(Payment.location_id == location_id)
     if search:
         query = query.filter(or_(Payment.payment_number.ilike(f"%{search}%"), Payment.reference_number.ilike(f"%{search}%")))
     if supplier_id:

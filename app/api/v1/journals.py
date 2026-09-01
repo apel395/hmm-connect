@@ -210,10 +210,13 @@ def listing(
     date_to: date | None = None,
     reference_type: str | None = None,
     account_id: int | None = None,
+    location_id: int | None = None,
     db: Session = Depends(get_db),
     user=Depends(journal_view_user),
 ):
     q = apply_location_scope(db.query(JournalEntry), JournalEntry, user)
+    if location_id:
+        q = q.filter(JournalEntry.location_id == location_id)
     if search:
         q = q.filter(or_(
             JournalEntry.journal_number.ilike(f"%{search}%"),
