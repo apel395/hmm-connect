@@ -27,6 +27,7 @@ export default function JournalListPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [filterLocationId, setFilterLocationId] = useState<number>();
   const [open, setOpen] = useState(false);
   const [postingDate, setPostingDate] = useState(todayLocal());
   const [documentNumber, setDocumentNumber] = useState("");
@@ -37,14 +38,15 @@ export default function JournalListPage() {
   const [lines, setLines] = useState<Line[]>([blankLine(), blankLine()]);
   const [selected, setSelected] = useState<number[]>([]);
 
-  const q = useQuery({ queryKey: ["journal-entries", page, search, status], queryFn: () => listJournals({ page, page_size: 20, search: search || undefined, status: status || undefined }) });
+  const q = useQuery({ queryKey: ["journal-entries", page, search, status, filterLocationId], queryFn: () => listJournals({ page, page_size: 20, search: search || undefined, status: status || undefined, location_id: filterLocationId ?? undefined }) });
   const accounts = useQuery({ queryKey: ["journal-account-lookup"], queryFn: () => getAccountLookup({ is_posting: true, is_active: true, page: 1, page_size: 1000 }), enabled: open });
   const businessUnits = useQuery({ queryKey: ["business-units", "manual-journal", "active"], queryFn: () => filterBusinessUnits({ is_active: true }), enabled: open });
   const departments = useQuery({ queryKey: ["journal-departments", businessUnitId], queryFn: () => listDepartments({ business_unit_id: businessUnitId, is_active: true }), enabled: open && Boolean(businessUnitId) });
   const locations = useQuery({ queryKey: ["journal-locations", businessUnitId], queryFn: () => listLocations({ business_unit_id: businessUnitId, is_active: true }), enabled: open && Boolean(businessUnitId) });
+  const filterLocations = useQuery({ queryKey: ["journal-filter-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
   const currentPeriod = useQuery({ queryKey: ["journal-current-period-preview"], queryFn: getCurrentPeriodPreview, enabled: canBulkManage });
 
-  useEffect(() => { setSelected([]); }, [page, search, status]);
+  useEffect(() => { setSelected([]); }, [page, search, status, filterLocationId]);
   useEffect(() => { if (open && !businessUnitId && businessUnits.data?.length === 1) setBusinessUnitId(businessUnits.data[0].id); }, [open, businessUnitId, businessUnits.data]);
 
   const totals = useMemo(() => lines.reduce((sum, line) => ({ debit: sum.debit + line.debit, credit: sum.credit + line.credit }), { debit: 0, credit: 0 }), [lines]);
@@ -69,11 +71,12 @@ export default function JournalListPage() {
   const buOptions=(businessUnits.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const departmentOptions=(departments.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const locationOptions=(locations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
+  const filterLocationOptions=(filterLocations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const accountOptions=(accounts.data??[]).map((account:any)=>({id:account.id,label:`${account.account_code} — ${account.account_name}`,keywords:[account.account_code,account.account_name,account.account_type,account.account_subtype]}));
 
   return <>
     <PageHeader title="Journal Entries" description="Review debit and credit entries, then post or safely unpost eligible journals." actions={<div className="flex flex-wrap gap-2">{canBulkManage && <><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post All</Button><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost All</Button><Button variant="outline" loading={recreatePeriod.isPending} disabled={!currentPeriod.data?.posted_count} onClick={runRecreatePeriod}>Recreate Current Period</Button></>}<Button onClick={() => { setPostingDate(todayLocal()); setOpen(true); }}>Create Journal Entry</Button></div>} />
-    <Card><div className="mb-4 flex gap-3"><input className="h-10 flex-1 rounded border px-3" placeholder="Search journal, document, or description" value={search} onChange={(e) => setSearch(e.target.value)} /><select className="h-10 rounded border px-3" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select></div>
+    <Card><div className="mb-4 flex flex-wrap gap-3 items-end"><div className="flex-1 min-w-48"><input className="h-10 w-full rounded border px-3" placeholder="Search journal, document, or description" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} /></div><div className="min-w-[160px]"><label className="block text-xs font-medium text-slate-600 mb-1">Status</label><select className="h-10 w-full rounded border px-3" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select></div><div className="min-w-[240px]"><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={filterLocationOptions} onChange={(id) => { setFilterLocationId(id); setPage(1); }} /></div></div>
       <Table className="min-w-[850px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH className="w-10"><input type="checkbox" aria-label="Select all journals on this page" checked={allVisibleSelected} onChange={toggleAllVisible} /></TH><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Amount</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead><TBody>{visibleRows.map((x: any) => <TR key={x.id} className="whitespace-nowrap"><TD><input type="checkbox" aria-label={`Select ${x.journal_number}`} checked={selected.includes(x.id)} onChange={() => setSelected((current) => current.includes(x.id) ? current.filter((value) => value !== x.id) : [...current, x.id])} /></TD><TD><TableCellStack primary={x.journal_number} secondary={x.reference_type?.replaceAll("_", " ")}/></TD><TD>{x.journal_date}</TD><TD className="font-medium">{x.reference_number || "—"}</TD><TD className="max-w-[280px]"><span className="block truncate" title={x.description || undefined}>{x.description || "—"}</span></TD><TD numeric className="font-semibold">{Number(x.total_debit).toLocaleString("id-ID", { minimumFractionDigits: 2 })}</TD><TD>{x.status}</TD><TD><div className="flex justify-end gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}</div></TD></TR>)}</TBody></Table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
 
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-5xl"><DialogHeader><DialogTitle>Create Journal Entry</DialogTitle></DialogHeader><DialogBody className="space-y-5">

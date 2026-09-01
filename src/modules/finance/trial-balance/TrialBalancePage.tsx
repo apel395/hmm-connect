@@ -7,6 +7,7 @@ import Badge from "@/components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { exportTrialBalanceCsv, getTrialBalance, TrialBalanceFilters } from "./api";
 import { listLocations } from "@/modules/admin/organization/api";
+import SearchableSelect from "@/components/form/SearchableSelect";
 
 const today = new Date().toISOString().slice(0, 10);
 const monthStart = `${today.slice(0, 8)}01`;
@@ -36,7 +37,7 @@ export default function TrialBalancePage() {
       <label className="text-sm">From<input className={`${input} mt-1 w-full`} type="date" value={draft.date_from} onChange={(e) => setDraft({ ...draft, date_from: e.target.value })}/></label>
       <label className="text-sm">To<input className={`${input} mt-1 w-full`} type="date" value={draft.date_to} onChange={(e) => setDraft({ ...draft, date_to: e.target.value })}/></label>
       <label className="text-sm">Search<input className={`${input} mt-1 w-full`} placeholder="Account code or name" value={draft.search || ""} onChange={(e) => setDraft({ ...draft, search: e.target.value })}/></label>
-      <label className="text-sm">Location<select className={`${input} mt-1 w-full`} value={draft.location_id ?? ""} disabled={(locations.data?.length ?? 0) <= 1} onChange={(e) => setDraft({ ...draft, location_id: Number(e.target.value) || undefined })}><option value="">All accessible locations</option>{locations.data?.map((row:any)=><option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
+      <label className="text-sm">Location<SearchableSelect value={draft.location_id} disabled={(locations.data?.length ?? 0) <= 1} placeholder="Type location code or name..." options={(locations.data??[]).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}))} onChange={(id)=>setDraft({...draft,location_id:id})}/></label>
       <div className="flex items-end gap-2"><Button type="submit">Apply</Button><label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={Boolean(draft.include_zero_balance)} onChange={(e) => setDraft({ ...draft, include_zero_balance: e.target.checked })}/>Include zero balance</label></div>
     </form></Card>
 

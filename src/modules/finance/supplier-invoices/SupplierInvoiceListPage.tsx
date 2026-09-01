@@ -11,6 +11,7 @@ import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import QuantityInput from "@/components/form/QuantityInput";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
 import { getAccounts } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
@@ -163,19 +164,21 @@ export default function SupplierInvoiceListPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [filterLocationId, setFilterLocationId] = useState<number>();
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<any>(emptyForm());
   const sourceLocked = Boolean(form.goods_receipt_id || form.purchase_order_id);
 
-  const invoices = useQuery({ queryKey: ["supplier-invoices", page, search, status], queryFn: () => listInvoices({ page, page_size: 20, search: search || undefined, status: status || undefined }) });
+  const invoices = useQuery({ queryKey: ["supplier-invoices", page, search, status, filterLocationId], queryFn: () => listInvoices({ page, page_size: 20, search: search || undefined, status: status || undefined, location_id: filterLocationId ?? undefined }) });
   const { data: suppliers = [] } = useSuppliers();
   const purchaseOrders = useQuery({ queryKey: ["invoice-pos"], queryFn: async () => (await purchaseOrderApi.list({ scope: "all", page_size: 100 })).data.items });
   const receipts = useQuery({ queryKey: ["invoice-receipts"], queryFn: listEligibleReceiptSources });
   const businessUnits = useQuery({ queryKey: ["business-units", "invoice", "active"], queryFn: () => filterBusinessUnits({ is_active: true }) });
   const departments = useQuery({ queryKey: ["invoice-departments", form.business_unit_id], queryFn: () => listDepartments({ business_unit_id: Number(form.business_unit_id), is_active: true }), enabled: Boolean(form.business_unit_id) });
   const locations = useQuery({ queryKey: ["invoice-locations", form.business_unit_id], queryFn: () => listLocations({ business_unit_id: Number(form.business_unit_id), is_active: true }), enabled: Boolean(form.business_unit_id) });
+  const filterLocations = useQuery({ queryKey: ["invoice-filter-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
 
   useEffect(() => {
     if (open && !sourceLocked && !form.business_unit_id && businessUnits.data?.length === 1) setForm((current: any) => ({ ...current, business_unit_id: businessUnits.data![0].id }));
@@ -317,7 +320,7 @@ export default function SupplierInvoiceListPage() {
 
   return <>
     <PageHeader title="Supplier Invoices" description="Create invoices from posted receiving documents or enter a direct supplier invoice." actions={hasPermission("supplier_invoice.create") ? <Button onClick={() => { const next = emptyForm(); if (businessUnits.data?.length === 1) next.business_unit_id = businessUnits.data[0].id; setEditingId(null); setForm(next); setOpen(true); }}>Create Invoice</Button> : null} />
-    <Card className="mt-6"><div className="mb-4 flex gap-3"><input className={input} placeholder="Search invoices" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><select className={input} value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option>{["DRAFT", "VERIFIED", "REJECTED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}</select></div><Table className="min-w-[900px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Invoice</TH><TH>Supplier</TH><TH>Dates</TH><TH>Source Document</TH><TH numeric>PPN</TH><TH numeric>Total</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{invoices.data?.items.map((row: any) => <TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={row.internal_invoice_number} secondary={row.supplier_invoice_number}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD><TableCellStack primary={row.invoice_date} secondary={row.due_date ? `Due ${row.due_date}` : undefined}/></TD><TD>{row.receipt_number || "—"}</TD><TD numeric>{money(row.tax_amount)}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => navigate(`/supplier-invoices/${row.id}`)}>View</Button></div></TD></TR>)}</TBody></Table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!invoices.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!invoices.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
+    <Card className="mt-6"><div className="mb-4 flex flex-wrap items-end gap-3"><div className="min-w-64 flex-1"><input className={input} placeholder="Search invoices" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></div><div className="min-w-[160px]"><label className="mb-1 block text-xs font-medium text-slate-600">Status</label><select className={input} value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option>{["DRAFT", "VERIFIED", "REJECTED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}</select></div><div className="min-w-[240px]"><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(filterLocations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => { setFilterLocationId(id); setPage(1); }} /></div></div><Table className="min-w-[900px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Invoice</TH><TH>Supplier</TH><TH>Dates</TH><TH>Source Document</TH><TH numeric>PPN</TH><TH numeric>Total</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{invoices.data?.items.map((row: any) => <TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={row.internal_invoice_number} secondary={row.supplier_invoice_number}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD><TableCellStack primary={row.invoice_date} secondary={row.due_date ? `Due ${row.due_date}` : undefined}/></TD><TD>{row.receipt_number || "—"}</TD><TD numeric>{money(row.tax_amount)}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => navigate(`/supplier-invoices/${row.id}`)}>View</Button></div></TD></TR>)}</TBody></Table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!invoices.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!invoices.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
 
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditingId(null); }}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId ? "Edit Draft Supplier Invoice" : "Create Supplier Invoice"}</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
