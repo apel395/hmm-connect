@@ -71,8 +71,6 @@ export function DialogContent({
           "focus:outline-none",
           className,
         )}
-        onEscapeKeyDown={() => {}}
-        onPointerDownOutside={() => {}}
       >
         <DialogPrimitive.Close asChild>
           <button

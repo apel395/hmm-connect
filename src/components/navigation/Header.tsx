@@ -49,9 +49,14 @@ export default function Header({ onMenuClick }: Props) {
           <CircleHelp className="h-[18px] w-[18px]" />
         </Link>
         <div className="ml-1 flex items-center gap-2 border-l border-[#E8E2D8] pl-3">
-          <div className="grid h-8 w-8 place-items-center rounded-full bg-[#0F6758] text-xs font-bold text-white">
+          <button
+            className="grid h-8 w-8 place-items-center rounded-full bg-[#0F6758] text-xs font-bold text-white sm:hidden"
+            aria-label="Sign out"
+            title={`Sign out ${name}`}
+            onClick={logout}
+          >
             {initials || "HU"}
-          </div>
+          </button>
           <div className="hidden max-w-32 sm:block">
             <div className="truncate text-sm font-semibold">{name}</div>
             <button

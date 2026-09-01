@@ -35,6 +35,16 @@ description="System Notification"
 
 <tbody>
 
+<tr>
+
+<td colSpan={3} className="px-4 py-12 text-center text-sm text-slate-500">
+
+No notifications yet.
+
+</td>
+
+</tr>
+
 </tbody>
 
 </table>

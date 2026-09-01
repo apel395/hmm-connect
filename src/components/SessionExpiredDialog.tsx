@@ -4,11 +4,11 @@ export default function SessionExpiredDialog(){
 
 return(
 
-<div className="fixed inset-0 flex items-center justify-center bg-black/40">
+<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
 
-<div className="w-96 rounded-lg bg-white p-6">
+<div role="dialog" aria-modal="true" aria-labelledby="session-expired-title" className="w-96 rounded-lg bg-white p-6 shadow-2xl">
 
-<h2 className="text-xl font-semibold">
+<h2 id="session-expired-title" className="text-xl font-semibold">
 
 Session Expired
 
@@ -26,7 +26,7 @@ Please login again.
 
 onClick={()=>{
 
-localStorage.clear();
+["access_token","refresh_token","user","hmm-last-activity-at"].forEach((key)=>localStorage.removeItem(key));
 
 window.location.href="/login";
 
