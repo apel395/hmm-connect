@@ -15,6 +15,7 @@ Revision ID: 20260901_location2_accounting_settings
 Revises: 20260901_po_created_by
 """
 from alembic import op
+import sqlalchemy as sa
 
 revision = "20260901_location2_accounting_settings"
 down_revision = "20260901_po_created_by"
@@ -36,7 +37,7 @@ def upgrade():
     bind = op.get_bind()
     for setting_key, (account_number, description) in SETTINGS.items():
         existing = bind.execute(
-            op.text(
+            sa.text(
                 "SELECT id FROM accounting_settings WHERE setting_key = :k"
             ),
             {"k": setting_key},
@@ -44,13 +45,13 @@ def upgrade():
         if existing:
             continue
         account = bind.execute(
-            op.text("SELECT id FROM chart_of_accounts WHERE account_number = :n"),
+            sa.text("SELECT id FROM chart_of_accounts WHERE account_number = :n"),
             {"n": account_number},
         ).fetchone()
         if account is None:
             raise RuntimeError(f"COA {account_number} not found for {setting_key}")
         bind.execute(
-            op.text(
+            sa.text(
                 "INSERT INTO accounting_settings (setting_key, account_id, description) "
                 "VALUES (:k, :a, :d)"
             ),
@@ -62,6 +63,6 @@ def downgrade():
     bind = op.get_bind()
     for setting_key in SETTINGS:
         bind.execute(
-            op.text("DELETE FROM accounting_settings WHERE setting_key = :k"),
+            sa.text("DELETE FROM accounting_settings WHERE setting_key = :k"),
             {"k": setting_key},
         )
