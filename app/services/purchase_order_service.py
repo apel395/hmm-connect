@@ -335,6 +335,7 @@ class PurchaseOrderService:
             location_id=location_id,
             business_unit_id=business_unit_id,
             status="DRAFT",
+            created_by_id=user.id,
             order_date=data.order_date or date.today(),
             source_type=data.source_type,
             external_reference=data.external_reference,

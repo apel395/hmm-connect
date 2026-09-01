@@ -123,6 +123,7 @@ class PurchaseRequisitionService:
                 db
             ),
             status="DRAFT",
+            requested_by_id=current_user.id,
             request_date=data.request_date or date.today(),
             source_type=data.source_type,
             external_reference=data.external_reference,

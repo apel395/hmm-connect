@@ -75,6 +75,9 @@ class PurchaseOrder(Base, TimestampMixin):
     imported_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     imported_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
