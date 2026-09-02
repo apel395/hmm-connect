@@ -25,6 +25,7 @@ PERMISSION_CATALOG = {
     "inventory.view", "inventory.manage",
     "store_request.view", "store_request.manage",
     "stock_opname.view", "stock_opname.manage",
+    "pos.view", "pos.sell", "pos.manage",
     "finance.view", "finance.manage",
     "ap.view", "ap.manage",
     "supplier_invoice.view", "supplier_invoice.create", "supplier_invoice.edit",

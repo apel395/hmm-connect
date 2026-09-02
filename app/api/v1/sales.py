@@ -1,0 +1,324 @@
+from datetime import date, datetime, timezone
+from math import ceil
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.dependencies.auth import get_current_user
+from app.models.inventory import Inventory
+from app.models.product import Product
+from app.models.sales_transaction import SalesTransaction
+from app.models.user import User
+from app.models.warehouse import Warehouse
+from app.schemas.sales_transaction import (
+    SalesTransactionCreate,
+    SalesTransactionPost,
+    SalesTransactionUpdate,
+    SalesTransactionVoid,
+)
+from app.services.location_access import apply_warehouse_scope
+from app.services.sales_transaction_service import SalesTransactionService
+
+router = APIRouter(prefix="/pos", tags=["Point of Sales"])
+
+
+def _paged(items, *, page: int, page_size: int, total: int):
+    total_pages = ceil(total / page_size) if total else 0
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+    }
+
+
+def _sale_items(transaction: SalesTransaction) -> list[dict]:
+    return [
+        {
+            "id": line.id,
+            "product_id": line.product_id,
+            "product_code": line.product.code if line.product else None,
+            "product_name": line.product.name if line.product else None,
+            "uom": line.uom,
+            "quantity": line.quantity,
+            "unit_price": line.unit_price,
+            "tax_rate": line.tax_rate,
+            "tax_amount": line.tax_amount,
+            "line_amount": line.line_amount,
+            "unit_cost": line.unit_cost,
+        }
+        for line in sorted(transaction.lines, key=lambda row: row.id)
+    ]
+
+
+def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
+    created_by = transaction.created_by
+    posted_by = transaction.posted_by
+    customer = transaction.customer
+    journal = transaction.journal_entry
+    return {
+        "id": transaction.id,
+        "transaction_number": transaction.transaction_number,
+        "status": transaction.status,
+        "sale_date": transaction.sale_date,
+        "warehouse_id": transaction.warehouse_id,
+        "warehouse_code": transaction.warehouse.code if transaction.warehouse else None,
+        "warehouse_name": transaction.warehouse.name if transaction.warehouse else None,
+        "customer_id": transaction.customer_id,
+        "customer_code": customer.customer_code if customer else None,
+        "customer_name": customer.customer_name if customer else None,
+        "business_unit_id": transaction.business_unit_id,
+        "location_id": transaction.location_id,
+        "department_id": transaction.department_id,
+        "payment_method": transaction.payment_method,
+        "payment_received": transaction.payment_received,
+        "change_amount": transaction.change_amount,
+        "discount_amount": transaction.discount_amount,
+        "subtotal": transaction.subtotal,
+        "tax_amount": transaction.tax_amount,
+        "total_amount": transaction.total_amount,
+        "notes": transaction.notes,
+        "created_by_id": transaction.created_by_id,
+        "created_by_name": (created_by.full_name or created_by.username) if created_by else None,
+        "posted_by_id": transaction.posted_by_id,
+        "posted_by_name": (posted_by.full_name or posted_by.username) if posted_by else None,
+        "posted_at": transaction.posted_at,
+        "void_reason": transaction.void_reason,
+        "journal_number": journal.journal_number if journal else None,
+        "items": _sale_items(transaction),
+    }
+
+
+@router.get("/products")
+def list_pos_products(
+    warehouse_id: int | None = None,
+    search: str | None = Query(default=None, max_length=100),
+    group_name: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    query = (
+        db.query(Inventory, Product, Warehouse)
+        .join(Product, Product.id == Inventory.product_id)
+        .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
+        .filter(Product.is_active.is_(True), Warehouse.is_active.is_(True))
+    )
+    query = apply_warehouse_scope(query, user)
+    if warehouse_id:
+        query = query.filter(Inventory.warehouse_id == warehouse_id)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Product.code.ilike(term),
+                Product.name.ilike(term),
+                Product.group_name.ilike(term),
+                Product.subgroup_name.ilike(term),
+            )
+        )
+    if group_name and group_name.strip():
+        query = query.filter(Product.group_name == group_name.strip())
+
+    total = query.count()
+    rows = (
+        query.order_by(Product.group_name, Product.name, Product.code)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    items = [
+        {
+            "id": inventory.id,
+            "product_id": product.id,
+            "product_code": product.code,
+            "product_name": product.name,
+            "group_name": product.group_name,
+            "subgroup_name": product.subgroup_name,
+            "uom": product.uom,
+            "selling_price": product.selling_price,
+            "tax_rate": product.tax_rate,
+            "is_taxable": product.is_taxable,
+            "warehouse_id": warehouse.id,
+            "warehouse_code": warehouse.code,
+            "warehouse_name": warehouse.name,
+            "quantity": inventory.quantity,
+            "average_cost": inventory.average_cost,
+        }
+        for inventory, product, warehouse in rows
+    ]
+    return _paged(items, page=page, page_size=page_size, total=total)
+
+
+@router.get("")
+def list_sales(
+    status: str | None = Query(default=None, max_length=30),
+    warehouse_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    search: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    SalesTransactionService._require(user, "pos.view")
+    query = apply_warehouse_scope(db.query(SalesTransaction), user)
+    if status and status.upper() != "ALL":
+        query = query.filter(SalesTransaction.status == status.upper())
+    if warehouse_id:
+        query = query.filter(SalesTransaction.warehouse_id == warehouse_id)
+    if date_from:
+        query = query.filter(SalesTransaction.sale_date >= date_from)
+    if date_to:
+        query = query.filter(SalesTransaction.sale_date <= date_to)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.join(Warehouse, Warehouse.id == SalesTransaction.warehouse_id)
+        query = query.filter(
+            or_(
+                SalesTransaction.transaction_number.ilike(term),
+                Warehouse.name.ilike(term),
+            )
+        )
+
+    summary_rows = (
+        apply_warehouse_scope(db.query(SalesTransaction), user)
+        .with_entities(SalesTransaction.status, func.count(SalesTransaction.id))
+        .group_by(SalesTransaction.status)
+        .all()
+    )
+    totals_filter = (
+        apply_warehouse_scope(db.query(SalesTransaction), user).filter(
+            SalesTransaction.status == "POSTED"
+        )
+    )
+    if date_from:
+        totals_filter = totals_filter.filter(SalesTransaction.sale_date >= date_from)
+    if date_to:
+        totals_filter = totals_filter.filter(SalesTransaction.sale_date <= date_to)
+    posted_rows = totals_filter.with_entities(
+        func.count(SalesTransaction.id),
+        func.coalesce(func.sum(SalesTransaction.total_amount), 0),
+        func.coalesce(func.sum(SalesTransaction.tax_amount), 0),
+    ).first()
+
+    total = query.count()
+    rows = (
+        query.order_by(SalesTransaction.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    items = [serialize_sale(row) for row in rows]
+    result = _paged(items, page=page, page_size=page_size, total=total)
+    result["summary"] = {
+        "status_counts": {key: int(value) for key, value in summary_rows},
+        "posted_count": int(posted_rows[0] or 0),
+        "posted_value": posted_rows[1] or 0,
+        "tax_value": posted_rows[2] or 0,
+    }
+    return result
+
+
+@router.post("", status_code=201)
+def create_sale(
+    data: SalesTransactionCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return serialize_sale(SalesTransactionService.create(db, data=data, user=user))
+
+
+@router.get("/{sale_id}")
+def get_sale(
+    sale_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    SalesTransactionService._require(user, "pos.view")
+    transaction = (
+        apply_warehouse_scope(db.query(SalesTransaction), user)
+        .filter(SalesTransaction.id == sale_id)
+        .first()
+    )
+    if not transaction:
+        raise HTTPException(status_code=404, detail="POS sale not found")
+    return serialize_sale(transaction)
+
+
+@router.put("/{sale_id}")
+def update_sale(
+    sale_id: int,
+    data: SalesTransactionUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    transaction = (
+        apply_warehouse_scope(db.query(SalesTransaction), user)
+        .filter(SalesTransaction.id == sale_id)
+        .first()
+    )
+    if not transaction:
+        raise HTTPException(status_code=404, detail="POS sale not found")
+    return serialize_sale(
+        SalesTransactionService.update(db, transaction=transaction, data=data, user=user)
+    )
+
+
+@router.post("/{sale_id}/post")
+def post_sale(
+    sale_id: int,
+    data: SalesTransactionPost,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    transaction = (
+        apply_warehouse_scope(db.query(SalesTransaction), user)
+        .filter(SalesTransaction.id == sale_id)
+        .first()
+    )
+    if not transaction:
+        raise HTTPException(status_code=404, detail="POS sale not found")
+    return serialize_sale(
+        SalesTransactionService.post(db, transaction_id=sale_id, data=data, user=user)
+    )
+
+
+@router.post("/{sale_id}/void")
+def void_sale(
+    sale_id: int,
+    data: SalesTransactionVoid = SalesTransactionVoid(),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return serialize_sale(
+        SalesTransactionService.void(db, transaction_id=sale_id, data=data, user=user)
+    )
+
+
+@router.get("/{sale_id}/print")
+def print_sale(
+    sale_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    SalesTransactionService._require(user, "pos.view")
+    transaction = (
+        apply_warehouse_scope(db.query(SalesTransaction), user)
+        .filter(SalesTransaction.id == sale_id)
+        .first()
+    )
+    if not transaction:
+        raise HTTPException(status_code=404, detail="POS sale not found")
+    payload = serialize_sale(transaction)
+    payload["printed_by"] = (user.full_name or user.username) if user else "System"
+    payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+    return payload
