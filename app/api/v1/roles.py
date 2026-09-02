@@ -34,6 +34,7 @@ PERMISSION_CATALOG = {
     "payment.view", "payment.manage",
     "journal.view", "journal.manage",
     "coa.view", "coa.manage",
+    "fiscal.view", "fiscal.manage",
     "reports.view", "reports.purchasing", "reports.inventory", "reports.finance", "reports.own",
     "audit.read",
     "admin.users.manage", "admin.roles.manage", "admin.settings.manage",
