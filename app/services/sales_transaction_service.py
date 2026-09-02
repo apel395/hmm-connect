@@ -17,6 +17,7 @@ from app.schemas.sales_transaction import (
     SalesTransactionCreate,
     SalesTransactionItemIn,
     SalesTransactionPost,
+    SalesTransactionUpdate,
     SalesTransactionVoid,
 )
 from app.services.activity_service import ActivityService
