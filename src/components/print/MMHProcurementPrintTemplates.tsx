@@ -78,7 +78,7 @@ function SignatureBlock({ signature }: { signature: MMHPrintSignature }) {
   return <div className="flex min-h-[30mm] flex-col justify-end text-center"><div className="flex h-[18mm] items-end justify-center">{signature.imageSrc && <img src={signature.imageSrc} alt="" className="max-h-[16mm] max-w-[35mm] object-contain" />}</div><div className="border-t border-black pt-1 text-[9px] font-bold uppercase">{signature.label}</div><div className="mt-0.5 min-h-[12px] text-[9px]">{signature.name ?? ""}</div></div>;
 }
 
-function PrintShell({ children }: { children: ReactNode }) { return <article className="mmh-print-document mx-auto w-full max-w-[190mm] bg-white text-black">{children}</article>; }
+function PrintShell({ children }: { children: ReactNode }) { return <article className="mmh-print-document mx-auto w-[190mm] max-w-none bg-white text-black">{children}</article>; }
 function HeaderCell({ label, align = "left" }: { label: string; align?: Align }) { return <th className={`border border-black px-1.5 py-1.5 ${alignClass[align]}`}>{label}</th>; }
 
 export function MMHPurchaseRequisitionPrint({ data }: { data: MMHProcurementPrintData }) {
