@@ -17,6 +17,7 @@ import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDo
 import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
 import FiscalPeriodsPage from "@/modules/finance/fiscal-periods/FiscalPeriodsPage";
+import FiscalAccountPage from "@/modules/fiscal/pages/FiscalAccountPage";
 import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/SupplierInvoiceListPage";
 import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
@@ -109,6 +110,7 @@ const LANDING_CANDIDATES = [
   { path: "/accounts-payable", permission: "ap.view" },
   { path: "/journal", permission: "journal.view" },
   { path: "/cash-flow-statement", permission: "reports.view" },
+  { path: "/fiscal-coa", permission: "fiscal.view" },
 ] as const;
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -210,6 +212,7 @@ const router = createBrowserRouter([
       { path: "chart-of-accounts", element: <ChartOfAccountPage /> },
       { path: "posting-rules", element: <PostingRulesPage /> },
       { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
+      { path: "fiscal-coa", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalAccountPage /></PermissionGuard> },
 
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
       { path: "financial-reconciliation", element: <ReconciliationPage /> },

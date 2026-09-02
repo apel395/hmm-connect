@@ -44,6 +44,7 @@ const exactTitles: Record<string, string> = {
   "/chart-of-accounts": "Chart of Accounts",
   "/posting-rules": "Direct COA Setup",
   "/fiscal-periods": "Fiscal Periods",
+  "/fiscal-coa": "Fiscal COA",
   "/fixed-assets": "Fixed Assets",
   "/fixed-assets/categories": "Asset Categories",
   "/fixed-assets/depreciation": "Depreciation",
