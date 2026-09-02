@@ -43,9 +43,13 @@ Thumbs.db
 # tracked+committed on the `backend` branch; on `main` they are ignored
 # so Vercel never attempts a Python/Docker build.
 app/
+alembic/
 infra/
 samples/
-scripts/backend-testing/
+scripts/
+tests/
+docs/
+.github/workflows/
 alembic.ini
 Dockerfile
 lambda_handler.py
