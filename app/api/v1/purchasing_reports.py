@@ -75,7 +75,7 @@ def purchasing_summary(
             ),
             0,
         )
-    ).scalar_one()
+    ).scalar()
     open_po = po_query.filter(
         PurchaseOrder.status.in_({"APPROVED", "PARTIALLY_RECEIVED"})
     ).with_entities(
@@ -92,7 +92,7 @@ def purchasing_summary(
     gr_total = sum(gr_status.values())
     received_value = gr_query.filter(GoodsReceipt.status == "POSTED").with_entities(
         func.coalesce(func.sum(func.coalesce(GoodsReceipt.subtotal, 0)), 0)
-    ).scalar_one()
+    ).scalar()
 
     supplier_rows = (
         gr_query.filter(GoodsReceipt.status == "POSTED")
