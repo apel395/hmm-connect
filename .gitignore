@@ -38,6 +38,22 @@ pnpm-debug.log*
 # OS / editor files
 .DS_Store
 Thumbs.db
+
+# Backend source (kept out of the frontend `main` deploy). These are
+# tracked+committed on the `backend` branch; on `main` they are ignored
+# so Vercel never attempts a Python/Docker build.
+app/
+infra/
+samples/
+scripts/backend-testing/
+alembic.ini
+Dockerfile
+lambda_handler.py
+seed.py
+pyproject.toml
+requirements.txt
+requirements-api.txt
+requirements-worker.txt
 .vscode/
 .idea/
 .vercel
