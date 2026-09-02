@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Settings, ShoppingCart, X } from "lucide-react";
+import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Settings, ShoppingCart, Store, X } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
@@ -9,6 +9,7 @@ interface Child { title: string; url?: string; roles?: string[]; permission?: st
 interface Group { title: string; icon: typeof LayoutDashboard; url?: string; roles?: string[]; permission?: string; children?: Child[] }
 
 const INVENTORY_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
+const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
 
 const groups: Group[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
@@ -33,6 +34,10 @@ const groups: Group[] = [
     { title: "Store Request", url: "/store-requests", permission: "store_request.view", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "DEPARTMENT", "PURCHASING", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Stock Opname", url: "/stock-opnames", permission: "stock_opname.view", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Stock Adjustment", url: "/stock-adjustments", permission: "inventory.view", roles: INVENTORY_ROLES },
+  ] },
+  { title: "Point of Sales", icon: Store, roles: POS_ROLES, children: [
+    { title: "Register", url: "/pos", exact: true, permission: "pos.view", roles: POS_ROLES },
+    { title: "Sales", url: "/pos/sales", permission: "pos.view", roles: POS_ROLES },
   ] },
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Finance Dashboard", url: "/finance-dashboard", permission: "finance.view" },

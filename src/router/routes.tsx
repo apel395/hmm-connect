@@ -71,6 +71,9 @@ import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
 import StockOpnamePage from "@/modules/warehouse/stock-opname/StockOpnamePage";
 import StockOpnameDetailPage from "@/modules/warehouse/stock-opname/StockOpnameDetailPage";
 import StockAdjustmentPage from "@/modules/warehouse/inventory-adjustment/pages/StockAdjustmentPage";
+import PosRegisterPage from "@/modules/pos/pages/PosRegisterPage";
+import PosSalesPage from "@/modules/pos/pages/PosSalesPage";
+import PosReceiptPrintPage from "@/modules/pos/pages/PosReceiptPrintPage";
 import PurchasingReportsPage from "@/modules/purchasing/reports/PurchasingReportsPage";
 import ProductPage from "@/modules/master/products/pages/ProductPage";
 import SupplierPage from "@/modules/master/suppliers/pages/SupplierPage";
@@ -100,6 +103,7 @@ const LANDING_CANDIDATES = [
   { path: "/receiving", permission: "receiving.view" },
   { path: "/inventory", permission: "inventory.view" },
   { path: "/store-requests", permission: "store_request.view" },
+  { path: "/pos", permission: "pos.view" },
   { path: "/products", permission: "products.view" },
   { path: "/finance-dashboard", permission: "finance.view" },
   { path: "/accounts-payable", permission: "ap.view" },
@@ -222,6 +226,9 @@ const router = createBrowserRouter([
       { path: "stock-opnames", element: <StockOpnamePage /> },
       { path: "stock-opnames/:id", element: <StockOpnameDetailPage /> },
       { path: "put-away", element: <PutAwayPage /> },
+      { path: "pos", element: <PermissionGuard permission="pos.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PosRegisterPage /></PermissionGuard> },
+      { path: "pos/sales", element: <PermissionGuard permission="pos.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PosSalesPage /></PermissionGuard> },
+      { path: "pos/sales/:id/print", element: <PermissionGuard permission="pos.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PosReceiptPrintPage /></PermissionGuard> },
       { path: "products", element: <ProductPage /> },
       { path: "suppliers", element: <SupplierPage /> },
       { path: "warehouses", element: <WarehousePage /> },
