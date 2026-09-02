@@ -1,0 +1,31 @@
+# Exclude backend source from the frontend deploy.
+# These files are NOT part of the `main` (frontend) branch and must never
+# be uploaded, otherwise Vercel attempts a Python/Docker build.
+app/
+alembic/
+.alembic/
+infra/
+samples/
+scripts/
+tests/
+docs/
+.github/
+alembic.ini
+Dockerfile
+docker-compose.yml
+lambda_handler.py
+seed.py
+pyproject.toml
+requirements.txt
+requirements-api.txt
+requirements-worker.txt
+nginx.conf
+RECOVERY.md
+TRIAL_USERS.md
+UX_PASS.md
+RELEASE_CHECKLIST.md
+IDENTITY_CONTEXT.md
+*.tsbuildinfo
+.vscode/
+.idea/
+.vercel/env.*
