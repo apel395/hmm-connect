@@ -107,7 +107,7 @@ function mmhPoSignatures(data: PrintDocument): MMHPrintSignature[] {
   return signatures;
 }
 
-function procurementPrintData(data: PrintDocument, isPr: boolean, isPo: boolean): MMHProcurementPrintData {
+function procurementPrintData(data: PrintDocument, isPr: boolean): MMHProcurementPrintData {
   const itemSubtotal = data.items.reduce((sum, item) => sum + Number(item.total_price ?? Number(item.quantity) * Number(item.unit_price ?? item.estimated_price ?? 0)), 0);
   const subtotal = Number(data.subtotal ?? itemSubtotal);
   const taxAmount = Number(data.tax_amount ?? data.items.reduce((sum, item) => sum + Number(item.tax_amount ?? 0), 0));
@@ -149,8 +149,8 @@ export default function PrintDocumentPage({ kind }: { kind: "purchase-requisitio
   const isMl = kind === "market-lists";
   const isPo = kind === "purchase-orders";
 
-  if (isPr) return <MMHPurchaseRequisitionPrint data={procurementPrintData(data, true, false)} />;
-  if (isPo) return <MMHPurchaseOrderPrint data={procurementPrintData(data, false, true)} />;
+  if (isPr) return <MMHPurchaseRequisitionPrint data={procurementPrintData(data, true)} />;
+  if (isPo) return <MMHPurchaseOrderPrint data={procurementPrintData(data, false)} />;
 
   const number = data.ml_number ?? data.receipt_number;
   const date = data.request_date ?? data.received_at;
