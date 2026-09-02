@@ -79,7 +79,6 @@ interface PrintDocument {
 const money = (value: unknown) => Number(value ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const displayDate = (value?: string) => value ? new Date(value).toLocaleDateString() : "—";
 const longDate = (value?: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "—";
-const shortDate = (value?: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "—";
 const addCalendarDays = (value: string, days: number) => { const date = new Date(`${value.slice(0, 10)}T00:00:00`); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); };
 
 function approvedSignatures(data: PrintDocument): PrintSignature[] {
@@ -160,7 +159,6 @@ export default function PrintDocumentPage({ kind }: { kind: "purchase-requisitio
   const total = isReceipt
     ? (data.total_value ?? data.items.reduce((sum, item) => sum + Number(item.line_total ?? Number(item.quantity) * Number(item.unit_cost ?? 0)), 0))
     : (data.total_amount ?? data.items.reduce((sum, item) => sum + Number(item.total_price ?? Number(item.quantity) * Number(item.unit_price ?? item.estimated_price ?? 0)), 0));
-  const deliveryDeadline = isPo ? (data.expected_date ?? (data.order_date ? addCalendarDays(data.order_date, 3) : undefined)) : undefined;
   const fields = [
     ...((isMl) ? [{ label: "REQUESTER", value: data.requester_name }] : [{ label: "SUPPLIER", value: data.supplier_name }]),
     ...(!isMl && data.source_pr_number ? [{ label: "PR #", value: data.source_pr_number }] : []),
@@ -180,6 +178,5 @@ export default function PrintDocumentPage({ kind }: { kind: "purchase-requisitio
     { label: "AMOUNT", align: "right" as const, render: (item: PrintItem) => <span className="whitespace-nowrap">{money(isReceipt ? (item.line_total ?? Number(item.quantity) * Number(item.unit_cost ?? 0)) : (item.total_price ?? Number(item.quantity) * Number(item.unit_price ?? item.estimated_price ?? 0)))}</span> },
   ];
   const signatures = approvedSignatures(data);
-  const poTerms = isPo ? <section className="avoid-break mt-7 text-[11px] leading-5"><div className="mb-1 font-bold">Syarat & Ketentuan</div><ol className="list-decimal space-y-0.5 pl-5"><li>Barang harus dikirim paling lambat {longDate(deliveryDeadline)} ke lokasi yang tertera pada PO ini.</li><li>Pembayaran dilakukan melalui transfer bank setelah 60 hari sejak barang diterima dan diverifikasi.</li><li>Faktur asli dan dokumen pendukung harus dilampirkan bersama pengiriman barang.</li><li>Apabila terjadi keterlambatan pengiriman ataupun selisih, pihak pemasok wajib memberikan pemberitahuan tertulis.</li></ol></section> : undefined;
-  return <DocumentPrintTemplate title={isReceipt ? "Receiving Report" : data.document_type} documentNumber={number} documentDate={displayDate(date)} status={data.status} fields={fields} columns={columns} rows={data.items} rowKey={(item) => item.id} totals={[{ label: "TOTAL", value: money(total), emphasis: true }]} notes={data.notes} extraAfterTable={poTerms} signatures={signatures.length ? signatures : [{ label: "Prepared By", name: data.printed_by }, { label: "Checked By" }, { label: "Approved By" }]} footer={<>Printed by {data.printed_by} · {new Date(data.generated_at).toLocaleString()}</>} />;
+  return <DocumentPrintTemplate title={isReceipt ? "Receiving Report" : data.document_type} documentNumber={number} documentDate={displayDate(date)} status={data.status} fields={fields} columns={columns} rows={data.items} rowKey={(item) => item.id} totals={[{ label: "TOTAL", value: money(total), emphasis: true }]} notes={data.notes} signatures={signatures.length ? signatures : [{ label: "Prepared By", name: data.printed_by }, { label: "Checked By" }, { label: "Approved By" }]} footer={<>Printed by {data.printed_by} · {new Date(data.generated_at).toLocaleString()}</>} />;
 }
