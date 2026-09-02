@@ -9,3 +9,6 @@ from "./purchase-order/pages/PurchaseOrderListPage";
 
 export { default as PurchaseOrderDetailPage }
 from "./purchase-order/pages/PurchaseOrderDetailPage";
+
+export { default as PurchasingReportsPage }
+from "./reports/PurchasingReportsPage";

@@ -114,7 +114,7 @@ export default function WorkspaceTabs() {
             close(tab.id);
           }
         }}
-        className={`group relative flex min-w-[132px] max-w-[240px] items-stretch border-r border-[#DCD6CB] text-xs transition ${active ? "bg-white text-[#202723]" : "bg-[#F3F0EA] text-[#666C68] hover:bg-[#EDE9E1]"}`}
+        className={`group relative flex min-w-[132px] max-w-[280px] items-stretch border-r border-[#DCD6CB] text-xs transition ${active ? "bg-white text-[#202723]" : "bg-[#F3F0EA] text-[#666C68] hover:bg-[#EDE9E1]"}`}
       >
         <button
           type="button"

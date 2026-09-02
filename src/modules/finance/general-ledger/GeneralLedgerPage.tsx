@@ -29,21 +29,21 @@ export default function GeneralLedgerPage() {
     <Card><div className="grid gap-3 md:grid-cols-4"><input className={input} placeholder="Search journal, document, description" value={filters.search} onChange={event => change("search", event.target.value)}/><select className={input} value={filters.account_id} onChange={event => change("account_id", event.target.value)}><option value="">All accounts</option>{accounts.data?.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select><input className={input} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/><input className={input} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/><select className={input} value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select><input className={input} placeholder="Supplier ID" value={filters.supplier_id} onChange={event => change("supplier_id", event.target.value)}/><input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/><div><SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} /></div></div></Card>
     {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Total Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Total Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
     <Card>
-      <Table variant="grid" stickyHeader className="min-w-[1100px]" containerClassName="border-0 shadow-none">
+      <Table variant="grid" stickyHeader className="min-w-[980px]" containerClassName="border-0 shadow-none">
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
         <TBody>{ledger.data?.items.map((row: any) => {
           const contextPrimary = row.supplier_name || row.business_unit_name;
           const contextSecondary = [row.department_name, row.location_name].filter(Boolean).join(" · ");
-          return <TR key={row.id} className="whitespace-nowrap">
-            <TD>{row.posting_date}</TD>
-            <TD><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
-            <TD className="max-w-[280px]"><TableCellStack primary={row.account_name} secondary={row.account_code}/></TD>
-            <TD className="max-w-[260px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
-            <TD className="font-medium text-slate-700">{row.reference_number || "—"}</TD>
-            <TD numeric>{amount(row.debit)}</TD>
-            <TD numeric>{amount(row.credit)}</TD>
-            <TD numeric className="font-semibold">{amount(row.balance)}</TD>
-            <TD className="max-w-[220px]">{contextPrimary || contextSecondary ? <TableCellStack primary={contextPrimary || contextSecondary} secondary={contextPrimary ? contextSecondary : undefined}/> : "—"}</TD>
+          return <TR key={row.id}>
+            <TD className="whitespace-nowrap">{row.posting_date}</TD>
+            <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
+            <TD className="max-w-[200px]"><TableCellStack primary={row.account_name} secondary={row.account_code}/></TD>
+            <TD className="max-w-[220px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
+            <TD className="max-w-[160px]"><span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span></TD>
+            <TD numeric className="whitespace-nowrap">{amount(row.debit)}</TD>
+            <TD numeric className="whitespace-nowrap">{amount(row.credit)}</TD>
+            <TD numeric className="whitespace-nowrap font-semibold">{amount(row.balance)}</TD>
+            <TD className="max-w-[180px]">{contextPrimary || contextSecondary ? <TableCellStack primary={contextPrimary || contextSecondary} secondary={contextPrimary ? contextSecondary : undefined}/> : "—"}</TD>
           </TR>;
         })}</TBody>
       </Table>

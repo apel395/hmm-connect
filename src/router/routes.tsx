@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import AppLayout from "@/layouts/AppLayout";
 import AuthGuard from "@/components/guard/AuthGuard";
+import PermissionGuard from "@/components/guard/PermissionGuard";
 import LoginPage from "@/modules/auth/pages/LoginPage";
 import SignupPage from "@/modules/auth/pages/SignupPage";
 import DashboardPage from "@/modules/dashboard/DashboardPage";
@@ -62,12 +63,15 @@ import ApprovalCenterPage from "@/modules/approval/ApprovalCenterPage";
 import ApprovalConfigurationPage from "@/modules/approval/ApprovalConfigurationPage";
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
 import InventoryMovementPage from "@/modules/warehouse/inventory/pages/InventoryMovementPage";
+import InventoryReportsPage from "@/modules/warehouse/inventory/pages/InventoryReportsPage";
 import StoreRequestPage from "@/modules/warehouse/store-request/StoreRequestPage";
 import StoreRequestDetailPage from "@/modules/warehouse/store-request/StoreRequestDetailPage";
 import StoreRequestPrintPage from "@/modules/warehouse/store-request/StoreRequestPrintPage";
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
 import StockOpnamePage from "@/modules/warehouse/stock-opname/StockOpnamePage";
 import StockOpnameDetailPage from "@/modules/warehouse/stock-opname/StockOpnameDetailPage";
+import StockAdjustmentPage from "@/modules/warehouse/inventory-adjustment/pages/StockAdjustmentPage";
+import PurchasingReportsPage from "@/modules/purchasing/reports/PurchasingReportsPage";
 import ProductPage from "@/modules/master/products/pages/ProductPage";
 import SupplierPage from "@/modules/master/suppliers/pages/SupplierPage";
 import WarehousePage from "@/modules/master/warehouses/WarehousePage";
@@ -209,6 +213,9 @@ const router = createBrowserRouter([
       { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "inventory", element: <InventoryPage /> },
       { path: "inventory/movements", element: <InventoryMovementPage /> },
+      { path: "reports/inventory", element: <InventoryReportsPage /> },
+      { path: "reports/purchasing", element: <PermissionGuard permission="reports.purchasing" legacyRoles={["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PurchasingReportsPage /></PermissionGuard> },
+      { path: "stock-adjustments", element: <StockAdjustmentPage /> },
       { path: "store-requests", element: <StoreRequestPage /> },
       { path: "store-requests/:id", element: <StoreRequestDetailPage /> },
       { path: "store-requests/:id/print", element: <StoreRequestPrintPage /> },

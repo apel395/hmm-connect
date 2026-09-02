@@ -30,6 +30,12 @@ config.headers.Authorization=
 
 }
 
+if((config.method??"get").toLowerCase()==="get"&&config.params){
+
+config.params=Object.fromEntries(Object.entries(config.params as Record<string,unknown>).filter(([,value])=>value!==undefined&&value!==null&&value!==""));
+
+}
+
 return config;
 
 });

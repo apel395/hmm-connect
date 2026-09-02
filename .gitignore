@@ -40,3 +40,7 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+.vercel
+.env*
+vite.config.js
+vite.config.d.ts
