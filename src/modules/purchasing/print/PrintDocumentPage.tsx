@@ -79,7 +79,6 @@ interface PrintDocument {
 const money = (value: unknown) => Number(value ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const displayDate = (value?: string) => value ? new Date(value).toLocaleDateString() : "—";
 const longDate = (value?: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "—";
-const addCalendarDays = (value: string, days: number) => { const date = new Date(`${value.slice(0, 10)}T00:00:00`); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); };
 
 function approvedSignatures(data: PrintDocument): PrintSignature[] {
   const approved = (data.approval_history ?? []).filter((record) => record.status === "APPROVED");
@@ -113,7 +112,6 @@ function procurementPrintData(data: PrintDocument, isPr: boolean, isPo: boolean)
   const subtotal = Number(data.subtotal ?? itemSubtotal);
   const taxAmount = Number(data.tax_amount ?? data.items.reduce((sum, item) => sum + Number(item.tax_amount ?? 0), 0));
   const totalAmount = Number(data.total_amount ?? subtotal + taxAmount);
-  const deliveryDate = data.expected_date ?? (isPo && data.order_date ? addCalendarDays(data.order_date, 3) : undefined);
 
   return {
     documentNumber: isPr ? data.pr_number : data.po_number,
@@ -123,7 +121,7 @@ function procurementPrintData(data: PrintDocument, isPr: boolean, isPo: boolean)
     locationName: data.location_name ?? undefined,
     businessUnitName: data.business_unit_name ?? undefined,
     departmentName: data.department_name ?? undefined,
-    deliveryDate: longDate(deliveryDate),
+    deliveryDate: longDate(data.expected_date),
     attn: data.supplier_name,
     contact: undefined,
     purpose: undefined,
