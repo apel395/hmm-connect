@@ -46,6 +46,7 @@ const exactTitles: Record<string, string> = {
   "/fiscal-periods": "Fiscal Periods",
   "/fiscal-coa": "Fiscal COA",
   "/fiscal-reconciliation": "Fiscal Reconciliation",
+  "/spt-1771": "SPT Tahunan 1771",
   "/fixed-assets": "Fixed Assets",
   "/fixed-assets/categories": "Asset Categories",
   "/fixed-assets/depreciation": "Depreciation",
