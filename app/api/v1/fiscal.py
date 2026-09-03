@@ -152,6 +152,22 @@ def unmapped_commercial(
     )
 
 
+@router.get("/linked-coa", response_model=dict)
+def linked_coa(
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    search: str | None = None, account_types: str | None = None,
+    status: Literal["all", "linked", "unlinked"] = "all",
+    db: Session = Depends(get_db), _user=Depends(get_current_user),
+):
+    if not has_permission(_user, "fiscal.view"):
+        raise HTTPException(status_code=403, detail="Fiscal access required")
+    types = [t.strip().upper() for t in account_types.split(",")] if account_types else None
+    return FiscalAccountService(db).linked_coa(
+        page=page, page_size=page_size, search=search,
+        account_types=types, status=status,
+    )
+
+
 @router.post("/mappings", response_model=FiscalMappingRead, status_code=status.HTTP_201_CREATED)
 def create_mapping(
     data: FiscalMappingCreate, db: Session = Depends(get_db), user=Depends(get_current_user),

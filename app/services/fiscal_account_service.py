@@ -210,6 +210,72 @@ class FiscalAccountService:
             "pages": pages,
         }
 
+    def linked_coa(
+        self, *, page: int, page_size: int, search: str | None,
+        account_types: list[str] | None, status: str | None,
+    ) -> dict:
+        mapped_ids = select(FiscalAccountMapping.commercial_account_id)
+        query = self.db.query(
+            ChartOfAccount,
+            FiscalAccountMapping,
+            FiscalAccount,
+        ).outerjoin(
+            FiscalAccountMapping,
+            FiscalAccountMapping.commercial_account_id == ChartOfAccount.id,
+        ).outerjoin(
+            FiscalAccount,
+            FiscalAccount.id == FiscalAccountMapping.fiscal_account_id,
+        )
+        query = query.filter(ChartOfAccount.is_active.is_(True))
+        if account_types:
+            query = query.filter(ChartOfAccount.account_type.in_(account_types))
+        if status == "linked":
+            query = query.filter(ChartOfAccount.id.in_(mapped_ids))
+        elif status == "unlinked":
+            query = query.filter(ChartOfAccount.id.notin_(mapped_ids))
+        if search:
+            term = f"%{search.strip()}%"
+            query = query.filter(
+                or_(
+                    ChartOfAccount.account_number.ilike(term),
+                    ChartOfAccount.account_name.ilike(term),
+                    FiscalAccount.code.ilike(term),
+                    FiscalAccount.name.ilike(term),
+                    FiscalAccount.klasifikasi_fiskal.ilike(term),
+                )
+            )
+
+        total = query.count()
+        pages = max(1, ceil(total / page_size))
+        rows = (
+            query.order_by(asc(ChartOfAccount.account_number))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        items = []
+        for commercial, mapping, fiscal in rows:
+            items.append(
+                {
+                    "id": commercial.id,
+                    "commercial_code": commercial.account_number,
+                    "commercial_name": commercial.account_name,
+                    "account_type": commercial.account_type,
+                    "mapping_id": mapping.id if mapping else None,
+                    "fiscal_account_id": fiscal.id if fiscal else None,
+                    "fiscal_code": fiscal.code if fiscal else None,
+                    "fiscal_name": fiscal.name if fiscal else None,
+                    "klasifikasi_fiskal": fiscal.klasifikasi_fiskal if fiscal else None,
+                }
+            )
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": pages,
+        }
+
     def create_mapping(self, data: FiscalMappingCreate) -> FiscalAccountMapping:
         fiscal = self.get_or_404(data.fiscal_account_id)
         commercial = self.db.get(ChartOfAccount, data.commercial_account_id)
