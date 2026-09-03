@@ -1,6 +1,11 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+KLASIFIKASI_FISKAL = Literal[
+    "NORMAL", "FINAL", "KOREKSI_POSITIF", "KOREKSI_NEGATIF", "NON_DEDUCTIBLE"
+]
 
 
 class FiscalAccountBase(BaseModel):
@@ -10,6 +15,7 @@ class FiscalAccountBase(BaseModel):
     parent_code: str | None = Field(default=None, max_length=20)
     is_header: bool = False
     is_active: bool = True
+    klasifikasi_fiskal: KLASIFIKASI_FISKAL = "NORMAL"
 
 
 class FiscalAccountCreate(FiscalAccountBase):
@@ -23,6 +29,7 @@ class FiscalAccountUpdate(BaseModel):
     is_header: bool | None = None
     is_active: bool | None = None
     sort_order: int | None = None
+    klasifikasi_fiskal: KLASIFIKASI_FISKAL | None = None
 
 
 class FiscalAccountRead(FiscalAccountBase):

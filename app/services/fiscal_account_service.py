@@ -28,6 +28,7 @@ class FiscalAccountService:
             "is_header": account.is_header,
             "is_active": account.is_active,
             "sort_order": account.sort_order,
+            "klasifikasi_fiskal": account.klasifikasi_fiskal,
             "created_at": account.created_at,
             "updated_at": account.updated_at,
         }

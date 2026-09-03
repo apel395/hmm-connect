@@ -1,3 +1,5 @@
+from datetime import date
+
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -14,6 +16,7 @@ from app.schemas.fiscal_account import (
 )
 from app.services.audit import record_audit
 from app.services.fiscal_account_service import FiscalAccountService
+from app.services.fiscal_reconciliation_service import FiscalReconciliationService
 
 router = APIRouter(prefix="/fiscal", tags=["Fiscal Chart of Accounts"])
 
@@ -52,6 +55,28 @@ def list_categories(
     if not has_permission(_user, "fiscal.view"):
         raise HTTPException(status_code=403, detail="Fiscal access required")
     return FiscalAccountService(db).categories()
+
+
+@router.get("/reconciliation")
+def fiscal_reconciliation(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    location_id: int | None = None,
+    department_id: int | None = None,
+    business_unit_id: int | None = None,
+    db: Session = Depends(get_db), _user=Depends(get_current_user),
+):
+    if not has_permission(_user, "fiscal.view"):
+        raise HTTPException(status_code=403, detail="Fiscal access required")
+    try:
+        result = FiscalReconciliationService(db).report(
+            date_from=date_from, date_to=date_to,
+            location_id=location_id, department_id=department_id,
+            business_unit_id=business_unit_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result
 
 
 @router.get("/accounts/{account_id}", response_model=FiscalAccountRead)
