@@ -8,7 +8,7 @@ from app.api.v1 import (
     fixed_assets_core, general_ledger, goods_receipts, inventory, journal_detail, journals, market_lists,
     organization_dimensions, payment_eligibility, payments, products, profit_loss, purchase_orders,
     purchase_requisitions, purchasing_documents, purchasing_reports, roles, sales, stock_adjustments, stock_opnames, store_requests, supplier_adjustments, supplier_invoice_sources,
-    supplier_invoices, supplier_products, suppliers, system_capabilities, trial_balance, users, warehouses,
+    supplier_invoices, supplier_products, suppliers, system_capabilities, spt_1771, trial_balance, users, warehouses,
     year_end,
 )
 
@@ -71,6 +71,7 @@ for router in (
     exports.router,
     fiscal.router,
     bank_transfers.router,
+    spt_1771.router,
     organization_dimensions.router,
     system_capabilities.router,
     admin_lifecycle.router,

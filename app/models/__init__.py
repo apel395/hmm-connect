@@ -54,6 +54,7 @@ from app.models.stock_movement import StockMovement
 from app.models.stock_opname import StockOpname, StockOpnameItem
 from app.models.store_request import StoreIssue, StoreIssueItem, StoreRequest, StoreRequestItem
 from app.models.supplier import Supplier, SupplierRow
+from app.models.tax import CompanyTaxProfile, TaxCredit
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.models.supplier_product import SupplierProduct
 from app.models.user import User
