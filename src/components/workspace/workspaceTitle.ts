@@ -45,6 +45,7 @@ const exactTitles: Record<string, string> = {
   "/posting-rules": "Direct COA Setup",
   "/fiscal-periods": "Fiscal Periods",
   "/fiscal-coa": "Fiscal COA",
+  "/fiscal-reconciliation": "Fiscal Reconciliation",
   "/fixed-assets": "Fixed Assets",
   "/fixed-assets/categories": "Asset Categories",
   "/fixed-assets/depreciation": "Depreciation",

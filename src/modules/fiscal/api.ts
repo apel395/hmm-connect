@@ -71,4 +71,5 @@ export const fiscalApi = {
   unmappedCommercial: (params: Record<string, unknown> = {}) => api.get("/fiscal/mappings/unmapped-commercial", { params }),
   createMapping: (payload: { fiscal_account_id: number; commercial_account_id: number }) => api.post("/fiscal/mappings", payload),
   deleteMapping: (id: number) => api.delete(`/fiscal/mappings/${id}`),
+  reconciliation: (params: { date_from: string; date_to: string; location_id?: number; department_id?: number; business_unit_id?: number }) => api.get("/fiscal/reconciliation", { params }),
 };
