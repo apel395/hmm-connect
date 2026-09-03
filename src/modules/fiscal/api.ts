@@ -60,6 +60,26 @@ export type FiscalMappingPage = {
   pages: number;
 };
 
+export type FiscalLinkedAccount = {
+  id: number;
+  commercial_code: string;
+  commercial_name: string;
+  account_type: string;
+  mapping_id: number | null;
+  fiscal_account_id: number | null;
+  fiscal_code: string | null;
+  fiscal_name: string | null;
+  klasifikasi_fiskal: string | null;
+};
+
+export type FiscalLinkedAccountPage = {
+  items: FiscalLinkedAccount[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+};
+
 export const fiscalApi = {
   accounts: (params: FiscalAccountListParams = {}) => api.get("/fiscal/accounts", { params }),
   account: (id: number) => api.get(`/fiscal/accounts/${id}`),
@@ -68,6 +88,7 @@ export const fiscalApi = {
   deleteAccount: (id: number) => api.delete(`/fiscal/accounts/${id}`),
   categories: () => api.get("/fiscal/categories"),
   mappings: (params: Record<string, unknown> = {}) => api.get("/fiscal/mappings", { params }),
+  linkedCoa: (params: Record<string, unknown> = {}) => api.get("/fiscal/linked-coa", { params }),
   unmappedCommercial: (params: Record<string, unknown> = {}) => api.get("/fiscal/mappings/unmapped-commercial", { params }),
   createMapping: (payload: { fiscal_account_id: number; commercial_account_id: number }) => api.post("/fiscal/mappings", payload),
   deleteMapping: (id: number) => api.delete(`/fiscal/mappings/${id}`),
