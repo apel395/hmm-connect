@@ -79,6 +79,18 @@ class FiscalBalanceSheetService:
         )["items"]
         return {row["account_id"]: Decimal(row["closing_balance"]) for row in rows}
 
+    def _earnings(self, fiscal_year: int, *, location_id=None, department_id=None) -> Decimal:
+        """Current-period earnings (revenue - expense) for the fiscal year, mirroring EOY retained earnings."""
+        as_of = date(fiscal_year, 12, 31)
+        rows = self.trial.report(
+            date_from=date(fiscal_year, 1, 1), date_to=as_of,
+            include_zero_balance=True, paginate=False, page_size=1000,
+            location_id=location_id, department_id=department_id,
+        )["items"]
+        revenue = sum((Decimal(row["period_credit"]) - Decimal(row["period_debit"]) for row in rows if row["account_type"] == "REVENUE"), ZERO)
+        expense = sum((Decimal(row["period_debit"]) - Decimal(row["period_credit"]) for row in rows if row["account_type"] == "EXPENSE"), ZERO)
+        return revenue - expense
+
     def report(self, *, fiscal_year: int, location_id=None, department_id=None) -> dict:
         closing = self._closing_balances(fiscal_year, location_id=location_id, department_id=department_id)
 
@@ -110,11 +122,12 @@ class FiscalBalanceSheetService:
                 continue
             fiscal_totals[code] = fiscal_totals.get(code, ZERO) + balance
 
-        def build_section(section_spec):
+        def build_section(section_spec, extra=None):
+            extra = extra or {}
             lines = []
             for code in section_spec["accounts"]:
                 fa = fiscal_by_code.get(code)
-                amount = fiscal_totals.get(code, ZERO)
+                amount = fiscal_totals.get(code, ZERO) + extra.get(code, ZERO)
                 lines.append({
                     "fiscal_code": code,
                     "account_name": fa.name if fa else code,
@@ -128,8 +141,12 @@ class FiscalBalanceSheetService:
                 "total": total,
             }
 
+        current_earnings = self._earnings(fiscal_year, location_id=location_id, department_id=department_id)
+
         aset_sections = [build_section(s) for s in BALANCE_SHEET_TEMPLATE["aset"]["sections"]]
-        ke_sections = [build_section(s) for s in BALANCE_SHEET_TEMPLATE["kewajiban_ekuitas"]["sections"]]
+        liab_sections = [build_section(s) for s in BALANCE_SHEET_TEMPLATE["kewajiban_ekuitas"]["sections"][:2]]
+        equity_section = build_section(BALANCE_SHEET_TEMPLATE["kewajiban_ekuitas"]["sections"][2], extra={"3200": current_earnings})
+        ke_sections = liab_sections + [equity_section]
 
         total_aset = sum((s["total"] for s in aset_sections), ZERO)
         total_liabilitas = sum((s["total"] for s in ke_sections[:2]), ZERO)
@@ -159,6 +176,7 @@ class FiscalBalanceSheetService:
                 "total_assets": total_aset,
                 "total_liabilities": total_liabilitas,
                 "total_equity": total_ekuitas,
+                "current_period_earnings": current_earnings,
                 "total_liabilities_and_equity": total_liab_ekuitas,
                 "difference": difference,
                 "is_balanced": difference == ZERO,
