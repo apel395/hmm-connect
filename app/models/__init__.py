@@ -26,6 +26,7 @@ from app.models.item_group import ItemGroup
 from app.models.item_subgroup import ItemSubgroup
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
+from app.models.opening_balance import OpeningBalance
 from app.models.journal_vouche import JournalVoucher
 from app.models.journal_voucher_line import JournalVoucherLine
 from app.models.location import Location

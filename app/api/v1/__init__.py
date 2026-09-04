@@ -9,7 +9,7 @@ from app.api.v1 import (
     organization_dimensions, payment_eligibility, payments, products, profit_loss, purchase_orders,
     purchase_requisitions, purchasing_documents, purchasing_reports, roles, sales, stock_adjustments, stock_opnames, store_requests, supplier_adjustments, supplier_invoice_sources,
     supplier_invoices, supplier_products, suppliers, system_capabilities, spt_1771, trial_balance, users, warehouses,
-    year_end,
+    year_end, opening_balances,
 )
 
 api_router = APIRouter()
@@ -75,5 +75,6 @@ for router in (
     organization_dimensions.router,
     system_capabilities.router,
     admin_lifecycle.router,
+    opening_balances.router,
 ):
     api_router.include_router(router)
