@@ -23,7 +23,6 @@ ZERO = Decimal("0.00")
 BALANCE_SHEET_TYPES = ["ASSET", "LIABILITY", "EQUITY"]
 
 DEFAULT_EQUITY_SETTING_KEY = "OPENING_BALANCE_EQUITY_ACCOUNT"
-DEFAULT_EQUITY_CODE = "3200"
 
 
 class OpeningBalanceService:
@@ -46,17 +45,19 @@ class OpeningBalanceService:
                 return account
         account = (
             self.db.query(ChartOfAccount)
-            .filter(ChartOfAccount.account_number == DEFAULT_EQUITY_CODE)
             .filter(ChartOfAccount.is_active.is_(True))
+            .filter(ChartOfAccount.is_posting.is_(True))
+            .filter(ChartOfAccount.account_type == "EQUITY")
+            .order_by(ChartOfAccount.account_number)
             .first()
         )
         if account is None:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Opening Balance Equity account not configured. Set the "
-                    f"'{DEFAULT_EQUITY_SETTING_KEY}' accounting setting or ensure "
-                    f"account code {DEFAULT_EQUITY_CODE} (Retained Earnings) exists."
+                    "Opening Balance Equity account not configured and no "
+                    "active posting equity account exists. Set the "
+                    f"'{DEFAULT_EQUITY_SETTING_KEY}' accounting setting."
                 ),
             )
         return account
