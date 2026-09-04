@@ -9,24 +9,38 @@ const money = (value: any) =>
 export default function FinancialStatementTable({
   sections,
   comparative,
+  mode = "comparative",
   ledgerUrl,
 }: {
   sections: any[];
-  comparative: boolean;
+  comparative?: boolean;
+  mode?: "comparative" | "opening_closing";
   ledgerUrl: (id: number) => string;
 }) {
   const numeric = "whitespace-nowrap text-right tabular-nums";
+  const yearly = mode === "opening_closing";
+  const rowValue = (row: any, key: any, fallbackKey?: any) =>
+    yearly ? row[fallbackKey ?? key] ?? row[key] ?? 0 : row[key] ?? 0;
   return (
     <Table variant="grid" stickyHeader className="min-w-[850px]">
       <THead>
         <TR>
           <TH>Account</TH>
-          <TH className={numeric}>Current Amount</TH>
-          {comparative && (
+          {yearly ? (
             <>
-              <TH className={numeric}>Comparative Amount</TH>
-              <TH className={numeric}>Variance</TH>
-              <TH className={numeric}>Variance %</TH>
+              <TH className={numeric}>Opening Amount</TH>
+              <TH className={numeric}>Closing Amount</TH>
+            </>
+          ) : (
+            <>
+              <TH className={numeric}>Current Amount</TH>
+              {comparative && (
+                <>
+                  <TH className={numeric}>Comparative Amount</TH>
+                  <TH className={numeric}>Variance</TH>
+                  <TH className={numeric}>Variance %</TH>
+                </>
+              )}
             </>
           )}
         </TR>
@@ -37,20 +51,25 @@ export default function FinancialStatementTable({
             {
               <TR key={section.code} className="bg-slate-100 font-bold">
                 <TD>{section.label}</TD>
-                <TD className={numeric}>{money(section.total)}</TD>
-                {comparative && (
+                {yearly ? (
                   <>
-                    <TD className={numeric}>
-                      {money(section.comparative_total)}
-                    </TD>
-                    <TD className={numeric}>
-                      {money(section.variance_amount)}
-                    </TD>
-                    <TD className={numeric}>
-                      {section.variance_percentage == null
-                        ? "—"
-                        : `${money(section.variance_percentage)}%`}
-                    </TD>
+                    <TD className={numeric}>{money(rowValue(section, "opening_total", "opening_amount"))}</TD>
+                    <TD className={numeric}>{money(rowValue(section, "closing_total", "closing_amount"))}</TD>
+                  </>
+                ) : (
+                  <>
+                    <TD className={numeric}>{money(rowValue(section, "total"))}</TD>
+                    {comparative && (
+                      <>
+                        <TD className={numeric}>{money(rowValue(section, "comparative_total"))}</TD>
+                        <TD className={numeric}>{money(rowValue(section, "variance_amount"))}</TD>
+                        <TD className={numeric}>
+                          {section.variance_percentage == null
+                            ? "—"
+                            : `${money(section.variance_percentage)}%`}
+                        </TD>
+                      </>
+                    )}
                   </>
                 )}
               </TR>
@@ -62,20 +81,25 @@ export default function FinancialStatementTable({
                   className="bg-slate-50 font-semibold"
                 >
                   <TD className="pl-6">{group.label}</TD>
-                  <TD className={numeric}>{money(group.total)}</TD>
-                  {comparative && (
+                  {yearly ? (
                     <>
-                      <TD className={numeric}>
-                        {money(group.comparative_total)}
-                      </TD>
-                      <TD className={numeric}>
-                        {money(group.variance_amount)}
-                      </TD>
-                      <TD className={numeric}>
-                        {group.variance_percentage == null
-                          ? "—"
-                          : `${money(group.variance_percentage)}%`}
-                      </TD>
+                      <TD className={numeric}>{money(rowValue(group, "opening_total", "opening_amount"))}</TD>
+                      <TD className={numeric}>{money(rowValue(group, "closing_total", "closing_amount"))}</TD>
+                    </>
+                  ) : (
+                    <>
+                      <TD className={numeric}>{money(rowValue(group, "total"))}</TD>
+                      {comparative && (
+                        <>
+                          <TD className={numeric}>{money(rowValue(group, "comparative_total"))}</TD>
+                          <TD className={numeric}>{money(rowValue(group, "variance_amount"))}</TD>
+                          <TD className={numeric}>
+                            {group.variance_percentage == null
+                              ? "—"
+                              : `${money(group.variance_percentage)}%`}
+                          </TD>
+                        </>
+                      )}
                     </>
                   )}
                 </TR>
@@ -95,20 +119,25 @@ export default function FinancialStatementTable({
                         account.account_name
                       )}
                     </TD>
-                    <TD className={numeric}>{money(account.current_amount)}</TD>
-                    {comparative && (
+                    {yearly ? (
                       <>
-                        <TD className={numeric}>
-                          {money(account.comparative_amount)}
-                        </TD>
-                        <TD className={numeric}>
-                          {money(account.variance_amount)}
-                        </TD>
-                        <TD className={numeric}>
-                          {account.variance_percentage == null
-                            ? "—"
-                            : `${money(account.variance_percentage)}%`}
-                        </TD>
+                        <TD className={numeric}>{money(account.opening_amount)}</TD>
+                        <TD className={numeric}>{money(account.closing_amount)}</TD>
+                      </>
+                    ) : (
+                      <>
+                        <TD className={numeric}>{money(account.current_amount)}</TD>
+                        {comparative && (
+                          <>
+                            <TD className={numeric}>{money(account.comparative_amount)}</TD>
+                            <TD className={numeric}>{money(account.variance_amount)}</TD>
+                            <TD className={numeric}>
+                              {account.variance_percentage == null
+                                ? "—"
+                                : `${money(account.variance_percentage)}%`}
+                            </TD>
+                          </>
+                        )}
                       </>
                     )}
                   </TR>
