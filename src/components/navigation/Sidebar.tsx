@@ -45,6 +45,7 @@ const groups: Group[] = [
     { title: "Accounts Receivable", url: "/accounts-receivable", permission: "finance.view" },
     { title: "Cash & Bank", url: "/cash-bank", permission: "finance.view" },
     { title: "Journal", url: "/journal", permission: "journal.view" },
+    { title: "Opening Balances", url: "/opening-balances", permission: "journal.manage" },
     { title: "Reconciliation", url: "/financial-reconciliation", permission: "finance.view" },
     { title: "Fixed Assets", url: "/fixed-assets", permission: "finance.view" },
     { title: "Fiscal COA", url: "/fiscal-coa", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },

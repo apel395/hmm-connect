@@ -17,6 +17,7 @@ import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDo
 import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
 import FiscalPeriodsPage from "@/modules/finance/fiscal-periods/FiscalPeriodsPage";
+import OpeningBalancesPage from "@/modules/finance/opening-balances/OpeningBalancesPage";
 import FiscalAccountPage from "@/modules/fiscal/pages/FiscalAccountPage";
 import FiscalReconciliationPage from "@/modules/fiscal/pages/FiscalReconciliationPage";
 import Spt1771Page from "@/modules/tax/pages/Spt1771Page";
@@ -217,6 +218,7 @@ const router = createBrowserRouter([
       { path: "posting-rules", element: <PostingRulesPage /> },
       { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
       { path: "fiscal-coa", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalAccountPage /></PermissionGuard> },
+  { path: "opening-balances", element: <PermissionGuard permission="journal.manage" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><OpeningBalancesPage /></PermissionGuard> },
   { path: "fiscal-reconciliation", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalReconciliationPage /></PermissionGuard> },
   { path: "spt-1771", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><Spt1771Page /></PermissionGuard> },
 
