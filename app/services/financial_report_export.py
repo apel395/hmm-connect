@@ -6,12 +6,15 @@ from fastapi.responses import StreamingResponse
 
 
 def _schema(report):
+    if not report.get("sections"):
+        return "current_comparative"
+    first = report["sections"][0]
+    if isinstance(first.get("sections"), list):
+        return "fiscal_neraca"
     for section in report["sections"]:
-        for group in section["groups"]:
-            for account in group["accounts"]:
+        for group in section.get("groups", []):
+            for account in group.get("accounts", []):
                 return "opening_closing" if "closing_amount" in account else "current_comparative"
-    if report["sections"]:
-        section = report["sections"][0]
         return "opening_closing" if "closing_total" in section else "current_comparative"
     return "current_comparative"
 
@@ -37,6 +40,16 @@ def _section_values(section, schema):
 def flatten_sections(report):
     schema = _schema(report)
     rows = []
+    if schema == "fiscal_neraca":
+        for top in report["sections"]:
+            rows.append((top["label"], (top.get("total"),), "section"))
+            for sub in top.get("sections", []):
+                rows.append((f"  {sub['label']}", ("",), "group"))
+                for line in sub.get("lines", []):
+                    label = f"    {line['fiscal_code']} — {line['account_name']}"
+                    rows.append((label, (line["amount"],), "account"))
+                rows.append((f"  Subtotal {sub['label']}", (sub.get("total"),), "subtotal"))
+        return rows, schema
     for section in report["sections"]:
         rows.append((section["label"], _section_values(section, schema), "section"))
         for group in section["groups"]:
@@ -67,6 +80,8 @@ def export_statement(report, report_name, period, filters, format, filename, sum
     rows, schema = flatten_sections(report)
     if schema == "opening_closing":
         headers = ["Account / Section", "Opening Amount", "Closing Amount", "", ""]
+    elif schema == "fiscal_neraca":
+        headers = ["Account / Section", "Amount"]
     else:
         headers = ["Account / Section", "Current Amount", "Comparative Amount", "Variance", "Variance %"]
     output = StringIO()
@@ -80,9 +95,7 @@ def export_statement(report, report_name, period, filters, format, filename, sum
         writer.writerow([label, *values])
     for label in summary_rows:
         if isinstance(label, (tuple, list)):
-            writer.writerow([label[0], label[1], "", "", ""])
-        else:
-            writer.writerow([label, "", "", "", ""])
+            writer.writerow([label[0], label[1]])
 
     return StreamingResponse(
         iter([output.getvalue()]),

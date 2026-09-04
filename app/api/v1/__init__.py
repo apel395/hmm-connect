@@ -4,7 +4,7 @@ from app.api.v1 import (
     accounting, accounting_posting_rules, admin_lifecycle, amortizations, ap_aging, ap_reconciliation, ap_reporting, approvals, ar_aging, ar_reporting,
     audit_trail, auth, balance_sheet, bank_accounts, bank_reconciliations, bank_transfers,
     cash_flow, chart_of_accounts, customer_payments, dashboard,
-    document_attachments, document_drilldown, document_events, exports, financial_reconciliation, fiscal, fiscal_periods,
+    document_attachments, document_drilldown, document_events, exports, financial_reconciliation, fiscal, fiscal_balance_sheet, fiscal_periods,
     fixed_assets_core, general_ledger, goods_receipts, inventory, journal_detail, journals, market_lists,
     organization_dimensions, payment_eligibility, payments, products, profit_loss, purchase_orders,
     purchase_requisitions, purchasing_documents, purchasing_reports, roles, sales, stock_adjustments, stock_opnames, store_requests, supplier_adjustments, supplier_invoice_sources,
@@ -76,5 +76,6 @@ for router in (
     system_capabilities.router,
     admin_lifecycle.router,
     opening_balances.router,
+    fiscal_balance_sheet.router,
 ):
     api_router.include_router(router)
