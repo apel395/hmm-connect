@@ -25,6 +25,7 @@ SUPPORTED_SOURCE_TYPES = {
     "SUPPLIER_ADJUSTMENT",
     "BANK_TRANSFER",
     "GOODS_RECEIPT",
+    "OPENING_BALANCE",
 }
 
 
@@ -110,6 +111,9 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
     now = datetime.now(timezone.utc)
 
     if source == "MANUAL":
+        return
+
+    if source == "OPENING_BALANCE":
         return
 
     if source == "SUPPLIER_INVOICE":
@@ -261,6 +265,9 @@ def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
         transfer.status = "DRAFT"
         transfer.posted_by_id = None
         transfer.posted_at = None
+        return
+
+    if source == "OPENING_BALANCE":
         return
 
     raise HTTPException(
