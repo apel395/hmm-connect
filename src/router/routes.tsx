@@ -48,6 +48,7 @@ import BankTransferPrintPage from "@/modules/finance/cash-flow/BankTransferPrint
 import CashBankWorkspacePage from "@/modules/finance/cash-flow/CashBankWorkspacePage";
 import TrialBalancePage from "@/modules/finance/trial-balance/TrialBalancePage";
 import BalanceSheetPage from "@/modules/finance/financial-statements/BalanceSheetPage";
+import FiscalBalanceSheetPage from "@/modules/finance/financial-statements/FiscalBalanceSheetPage";
 import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPage";
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
 import ReconciliationPage from "@/modules/finance/reconciliation/ReconciliationPage";
@@ -225,6 +226,7 @@ const router = createBrowserRouter([
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
       { path: "financial-reconciliation", element: <ReconciliationPage /> },
       { path: "balance-sheet", element: <BalanceSheetPage /> },
+      { path: "fiscal-balance-sheet", element: <FiscalBalanceSheetPage /> },
       { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "inventory", element: <InventoryPage /> },
       { path: "inventory/movements", element: <InventoryMovementPage /> },

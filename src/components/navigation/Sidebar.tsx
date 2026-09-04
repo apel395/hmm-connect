@@ -57,6 +57,7 @@ const groups: Group[] = [
     { title: "Inventory Reports", url: "/reports/inventory", permission: "inventory.view", roles: INVENTORY_ROLES },
     { title: "Cash Flow Statement", url: "/cash-flow-statement", permission: "reports.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR", "VIEWER"] },
     { title: "Balance Sheet", url: "/balance-sheet", permission: "reports.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR", "VIEWER"] },
+    { title: "Fiscal Balance Sheet (Neraca)", url: "/fiscal-balance-sheet", permission: "reports.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR", "VIEWER"] },
     { title: "Profit & Loss", url: "/profit-loss", permission: "reports.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR", "VIEWER"] },
   ] },
   { title: "Administration", icon: Settings, roles: ["SYSTEM_ADMINISTRATOR"], children: [

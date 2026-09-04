@@ -58,6 +58,7 @@ const exactTitles: Record<string, string> = {
   "/cash-flow-statement": "Cash Flow Statement",
   "/trial-balance": "Trial Balance",
   "/balance-sheet": "Balance Sheet",
+  "/fiscal-balance-sheet": "Fiscal Balance Sheet (Neraca)",
   "/profit-loss": "Profit & Loss",
   "/users": "Users",
   "/roles": "Roles",
