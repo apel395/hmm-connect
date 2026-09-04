@@ -5,44 +5,47 @@ from fastapi import HTTPException, status
 from fastapi.responses import StreamingResponse
 
 
+def _schema(report):
+    for section in report["sections"]:
+        for group in section["groups"]:
+            for account in group["accounts"]:
+                return "opening_closing" if "closing_amount" in account else "current_comparative"
+    if report["sections"]:
+        section = report["sections"][0]
+        return "opening_closing" if "closing_total" in section else "current_comparative"
+    return "current_comparative"
+
+
+def _account_values(account, schema):
+    if schema == "opening_closing":
+        return (account["opening_amount"], account["closing_amount"], "", "")
+    return (account.get("current_amount"), account.get("comparative_amount"), account.get("variance_amount"), account.get("variance_percentage"))
+
+
+def _group_values(group, schema):
+    if schema == "opening_closing":
+        return (group["opening_total"], group["closing_total"], "", "")
+    return (group.get("total"), group.get("comparative_total"), group.get("variance_amount"), group.get("variance_percentage"))
+
+
+def _section_values(section, schema):
+    if schema == "opening_closing":
+        return (section["opening_total"], section["closing_total"], "", "")
+    return (section.get("total"), section.get("comparative_total"), section.get("variance_amount"), section.get("variance_percentage"))
+
+
 def flatten_sections(report):
+    schema = _schema(report)
     rows = []
     for section in report["sections"]:
-        rows.append(
-            (
-                section["label"],
-                section["total"],
-                section.get("comparative_total"),
-                section.get("variance_amount"),
-                section.get("variance_percentage"),
-                "section",
-            )
-        )
+        rows.append((section["label"], _section_values(section, schema), "section"))
         for group in section["groups"]:
-            rows.append(
-                (
-                    f"  {group['label']}",
-                    group["total"],
-                    group.get("comparative_total"),
-                    group.get("variance_amount"),
-                    group.get("variance_percentage"),
-                    "group",
-                )
-            )
+            rows.append((f"  {group['label']}", _group_values(group, schema), "group"))
             for account in group["accounts"]:
                 code = account.get("account_code") or ""
                 label = f"    {code}{' — ' if code else ''}{account['account_name']}"
-                rows.append(
-                    (
-                        label,
-                        account["current_amount"],
-                        account.get("comparative_amount"),
-                        account.get("variance_amount"),
-                        account.get("variance_percentage"),
-                        "account",
-                    )
-                )
-    return rows
+                rows.append((label, _account_values(account, schema), "account"))
+    return rows, schema
 
 
 def export_statement(report, report_name, period, filters, format, filename, summary_rows):
@@ -61,14 +64,11 @@ def export_statement(report, report_name, period, filters, format, filename, sum
             },
         )
 
-    headers = [
-        "Account / Section",
-        "Current Amount",
-        "Comparative Amount",
-        "Variance",
-        "Variance %",
-    ]
-    rows = flatten_sections(report)
+    rows, schema = flatten_sections(report)
+    if schema == "opening_closing":
+        headers = ["Account / Section", "Opening Amount", "Closing Amount", "", ""]
+    else:
+        headers = ["Account / Section", "Current Amount", "Comparative Amount", "Variance", "Variance %"]
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow([report_name])
@@ -76,10 +76,13 @@ def export_statement(report, report_name, period, filters, format, filename, sum
     writer.writerow([f"Filters: {filters}"])
     writer.writerow([])
     writer.writerow(headers)
-    for label, current, comparative, variance, percentage, _ in rows:
-        writer.writerow([label, current, comparative, variance, percentage])
-    for label, value in summary_rows:
-        writer.writerow([label, value, "", "", ""])
+    for label, values, _ in rows:
+        writer.writerow([label, *values])
+    for label in summary_rows:
+        if isinstance(label, (tuple, list)):
+            writer.writerow([label[0], label[1], "", "", ""])
+        else:
+            writer.writerow([label, "", "", "", ""])
 
     return StreamingResponse(
         iter([output.getvalue()]),

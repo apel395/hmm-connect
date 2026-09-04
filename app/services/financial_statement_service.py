@@ -67,43 +67,52 @@ class FinancialStatementService:
 
     def balance_sheet(
         self, *, as_of_date: date, comparative_date: date | None = None,
+        fiscal_year: int | None = None,
         account_id=None, parent_account_id=None, location_id=None, department_id=None, business_unit_id=None,
         include_zero_balance=False, include_inactive=False, detail_level="DETAIL",
     ) -> dict:
+        """Yearly balance sheet (Neraca) with Opening (Saldo Awal) and Closing (Saldo Akhir).
+
+        Mirrors Coretax Neraca Lampiran L1 Bagian B: a single annual position showing
+        each balance-sheet account's balance at the start of the fiscal year (opening)
+        and at the end of the fiscal year (closing). Results are normal-balance adjusted
+        within the standard Assets / Liabilities & Equity layout.
+        """
+        if fiscal_year is not None:
+            as_of_date = as_of_date or date(fiscal_year, 12, 31)
+        if as_of_date is None:
+            raise ValueError("as_of_date (or fiscal_year) is required")
+        fiscal_year = fiscal_year or as_of_date.year
+        year_start = date(fiscal_year, 1, 1)
+        year_end = date(fiscal_year, 12, 31)
+
         filters = self._filters(account_id, parent_account_id, include_inactive, location_id, department_id, business_unit_id)
-        current_rows = self._trial(date(as_of_date.year, 1, 1), as_of_date, **filters)
-        comparative_rows = self._trial(date(comparative_date.year, 1, 1), comparative_date, **filters) if comparative_date else []
-        comparisons = {row["account_id"]: row for row in comparative_rows}
+        rows = self._trial(year_start, as_of_date, **filters)
         groups = {code: [] for values in BALANCE_GROUPS.values() for code in values}
         unclassified = 0
-        for row in current_rows:
+        for row in rows:
             account_type = row["account_type"]
             if account_type not in BALANCE_GROUPS:
                 continue
-            net = self._net(row)
-            amount = net
-            comp_row = comparisons.get(row["account_id"])
-            comp_net = self._net(comp_row) if comp_row else ZERO
-            comparative = comp_net if comparative_date else None
-            if not include_zero_balance and amount == ZERO and (comparative is None or comparative == ZERO):
+            opening = Decimal(row.get("opening_balance") or ZERO)
+            closing = Decimal(row.get("closing_balance") or ZERO)
+            if not include_zero_balance and opening == ZERO and closing == ZERO:
                 continue
             configured = row.get("financial_statement_group")
             allowed = set(BALANCE_GROUPS[account_type][:-1] if account_type != "EQUITY" else ("EQUITY",))
             group = configured if configured in allowed else BALANCE_GROUPS[account_type][-1]
             if group.startswith("UNCLASSIFIED"):
                 unclassified += 1
-            variance, percentage = self._variance(amount, comparative)
-            groups[group].append({**row, "current_amount": amount, "comparative_amount": comparative, "variance_amount": variance, "variance_percentage": percentage})
+            groups[group].append({**row, "opening_amount": opening, "closing_amount": closing})
 
         current_earnings = self.earnings(as_of_date, **filters)
-        comparative_earnings = self.earnings(comparative_date, **filters) if comparative_date else None
-        variance, percentage = self._variance(current_earnings, comparative_earnings)
+        opening_earnings = self.earnings(year_start, **filters)
         groups["EQUITY"].append({
             "account_id": None, "account_code": "", "account_name": "Current Period Earnings",
             "account_type": "EQUITY", "parent_account_id": None,
-            "financial_statement_group": "CURRENT_PERIOD_EARNINGS", "current_amount": current_earnings,
-            "comparative_amount": comparative_earnings, "variance_amount": variance,
-            "variance_percentage": percentage, "is_synthetic": True,
+            "financial_statement_group": "CURRENT_PERIOD_EARNINGS",
+            "opening_amount": opening_earnings, "closing_amount": current_earnings,
+            "is_synthetic": True,
         })
         section_specs = [("ASSETS", "Assets", "ASSET"), ("LIABILITIES", "Liabilities", "LIABILITY"), ("EQUITY", "Equity", "EQUITY")]
         sections = []
@@ -111,29 +120,37 @@ class FinancialStatementService:
             section_groups = []
             for group_code in BALANCE_GROUPS[account_type]:
                 accounts = sorted(groups[group_code], key=lambda row: row["account_code"])
-                total = sum((row["current_amount"] for row in accounts), ZERO)
-                comparative_total = sum((row["comparative_amount"] or ZERO for row in accounts), ZERO) if comparative_date else None
-                group_variance, group_percentage = self._variance(total, comparative_total)
+                opening_total = sum((row["opening_amount"] for row in accounts), ZERO)
+                closing_total = sum((row["closing_amount"] for row in accounts), ZERO)
                 if accounts or include_zero_balance:
-                    section_groups.append({"code": group_code, "label": GROUP_LABELS[group_code], "accounts": accounts if detail_level == "DETAIL" else [], "total": total, "comparative_total": comparative_total, "variance_amount": group_variance, "variance_percentage": group_percentage})
-            if account_type == "EQUITY":
-                accounts = groups["EQUITY"]
-                if detail_level == "SUMMARY":
-                    target = next((group for group in section_groups if group["code"] == "EQUITY"), None)
-                    if target:
-                        target["accounts"] = []
-            total = sum((group["total"] for group in section_groups), ZERO)
-            comparative_total = sum((group["comparative_total"] or ZERO for group in section_groups), ZERO) if comparative_date else None
-            section_variance, section_percentage = self._variance(total, comparative_total)
-            sections.append({"code": section_code, "label": section_label, "groups": section_groups, "total": total, "comparative_total": comparative_total, "variance_amount": section_variance, "variance_percentage": section_percentage})
-        totals = {section["code"]: section["total"] for section in sections}
+                    section_groups.append({"code": group_code, "label": GROUP_LABELS[group_code], "accounts": accounts if detail_level == "DETAIL" else [], "opening_total": opening_total, "closing_total": closing_total})
+            if account_type == "EQUITY" and detail_level == "SUMMARY":
+                target = next((group for group in section_groups if group["code"] == "EQUITY"), None)
+                if target:
+                    target["accounts"] = []
+            opening_total = sum((group["opening_total"] for group in section_groups), ZERO)
+            closing_total = sum((group["closing_total"] for group in section_groups), ZERO)
+            sections.append({"code": section_code, "label": section_label, "groups": section_groups, "opening_total": opening_total, "closing_total": closing_total})
+        totals = {section["code"]: section["closing_total"] for section in sections}
+        opening_totals = {section["code"]: section["opening_total"] for section in sections}
         liabilities_equity = totals["LIABILITIES"] + totals["EQUITY"]
+        opening_liabilities_equity = opening_totals["LIABILITIES"] + opening_totals["EQUITY"]
         difference = totals["ASSETS"] - liabilities_equity
+        opening_difference = opening_totals["ASSETS"] - opening_liabilities_equity
         return {
-            "as_of_date": as_of_date, "comparative_date": comparative_date, "detail_level": detail_level,
+            "as_of_date": as_of_date, "comparative_date": None, "detail_level": detail_level,
+            "fiscal_year": fiscal_year, "year_start": year_start, "year_end": year_end,
             "sections": sections,
-            "summary": {"total_assets": totals["ASSETS"], "total_liabilities": totals["LIABILITIES"], "total_equity": totals["EQUITY"], "current_period_earnings": current_earnings, "total_liabilities_and_equity": liabilities_equity, "difference": difference, "is_balanced": difference == ZERO, "unclassified_account_count": unclassified},
-            "metadata": {"canonical_source": "POSTED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "NOT_AVAILABLE", "earnings_reconciled": True},
+            "summary": {
+                "opening_total_assets": opening_totals["ASSETS"], "opening_total_liabilities": opening_totals["LIABILITIES"],
+                "opening_total_equity": opening_totals["EQUITY"], "opening_current_period_earnings": opening_earnings,
+                "opening_total_liabilities_and_equity": opening_liabilities_equity, "opening_difference": opening_difference,
+                "opening_is_balanced": opening_difference == ZERO,
+                "total_assets": totals["ASSETS"], "total_liabilities": totals["LIABILITIES"], "total_equity": totals["EQUITY"],
+                "current_period_earnings": current_earnings, "total_liabilities_and_equity": liabilities_equity,
+                "difference": difference, "is_balanced": difference == ZERO, "unclassified_account_count": unclassified,
+            },
+            "metadata": {"canonical_source": "POSTED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "NOT_AVAILABLE", "earnings_reconciled": True, "is_yearly": True, "year_start": year_start, "year_end": year_end},
         }
 
     def profit_and_loss(
