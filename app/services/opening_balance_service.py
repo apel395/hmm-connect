@@ -9,6 +9,7 @@ from app.models.chart_of_account import ChartOfAccount
 from app.models.accounting_setting import AccountingSetting
 from app.models.journal_entry import JournalEntry
 from app.models.opening_balance import OpeningBalance
+from app.models.location import Location
 
 from app.schemas.journal import JournalCreate, JournalLineCreate
 
@@ -218,6 +219,19 @@ class OpeningBalanceService:
         prepared = self.prepare(fiscal_year=fiscal_year, lines=lines)
         posting_date = self.opening_date(fiscal_year)
         resolved_location_id = resolve_location_id(user, location_id)
+        if resolved_location_id is None:
+            fallback = (
+                self.db.query(Location)
+                .filter(Location.is_active.is_(True))
+                .order_by(Location.id)
+                .first()
+            )
+            if fallback is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No active location is available for opening balances",
+                )
+            resolved_location_id = fallback.id
 
         journal_lines = []
         for item in prepared["lines"]:
