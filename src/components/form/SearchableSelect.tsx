@@ -239,6 +239,7 @@ export default function SearchableSelect<T extends string | number = number>({
             }
             if (event.key === "Escape") {
               event.preventDefault();
+              event.stopPropagation();
               setOpen(false);
               setActiveIndex(-1);
               setHoverIndex(-1);
