@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 class PurchaseRequisitionItemCreate(BaseModel):
     product_id: int
     quantity: Decimal = Field(gt=0)
-    estimated_price: Decimal = Field(ge=0)
+    estimated_price: Decimal = Field(gt=0)
     is_taxable: bool = False
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
 

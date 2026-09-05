@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 class MarketListItemCreate(BaseModel):
     product_id: int
     quantity: Decimal = Field(gt=0)
-    estimated_price: Decimal = Field(ge=0)
+    estimated_price: Decimal = Field(gt=0)
 
 
 class MarketListCreate(BaseModel):
