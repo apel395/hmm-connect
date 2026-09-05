@@ -57,6 +57,7 @@ export default function SearchableSelect<T extends string | number = number>({
   const [query, setQuery] = useState(selectedLabel);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [hoverIndex, setHoverIndex] = useState(-1);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
 
   useEffect(() => {
@@ -90,14 +91,13 @@ export default function SearchableSelect<T extends string | number = number>({
   useEffect(() => {
     if (!open || filteredOptions.length === 0) {
       setActiveIndex(-1);
+      setHoverIndex(-1);
       return;
     }
     setActiveIndex((current) => current >= 0 && current < filteredOptions.length ? current : 0);
   }, [open, filteredOptions]);
 
-  useEffect(() => {
-    if (activeIndex >= 0) optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex]);
+  const scrollOptionIntoView = useCallback((index: number) => { if (index >= 0) optionRefs.current[index]?.scrollIntoView({ block: "nearest" }); }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -127,15 +127,15 @@ export default function SearchableSelect<T extends string | number = number>({
     setQuery(optionLabel(option));
     setOpen(false);
     setActiveIndex(-1);
+    setHoverIndex(-1);
   }, [onChange]);
 
   const moveActive = (direction: 1 | -1) => {
     if (filteredOptions.length === 0) return;
     setOpen(true);
-    setActiveIndex((current) => {
-      if (current < 0) return direction === 1 ? 0 : filteredOptions.length - 1;
-      return (current + direction + filteredOptions.length) % filteredOptions.length;
-    });
+    const next = activeIndex < 0 ? (direction === 1 ? 0 : filteredOptions.length - 1) : (activeIndex + direction + filteredOptions.length) % filteredOptions.length;
+    setActiveIndex(next);
+    scrollOptionIntoView(next);
   };
 
   const dropdown = open && !disabled && position && typeof document !== "undefined"
@@ -155,8 +155,9 @@ export default function SearchableSelect<T extends string | number = number>({
               type="button"
               role="option"
               aria-selected={index === activeIndex}
-              className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`}
-              onMouseEnter={() => setActiveIndex(index)}
+              className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex || index === hoverIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`}
+              onMouseEnter={() => { setActiveIndex(index); setHoverIndex(index); }}
+              onMouseLeave={() => setHoverIndex(-1)}
               onPointerDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -221,11 +222,14 @@ export default function SearchableSelect<T extends string | number = number>({
             if (event.key === "Home" && open && filteredOptions.length > 0) {
               event.preventDefault();
               setActiveIndex(0);
+              scrollOptionIntoView(0);
               return;
             }
             if (event.key === "End" && open && filteredOptions.length > 0) {
               event.preventDefault();
-              setActiveIndex(filteredOptions.length - 1);
+              const endIndex = filteredOptions.length - 1;
+              setActiveIndex(endIndex);
+              scrollOptionIntoView(endIndex);
               return;
             }
             if (event.key === "Enter" && open && activeIndex >= 0 && filteredOptions[activeIndex]) {
@@ -236,6 +240,8 @@ export default function SearchableSelect<T extends string | number = number>({
             if (event.key === "Escape") {
               event.preventDefault();
               setOpen(false);
+              setActiveIndex(-1);
+              setHoverIndex(-1);
               setQuery(selectedLabel);
             }
           }}

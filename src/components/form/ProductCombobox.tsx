@@ -141,6 +141,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   }, []);
   const selectProduct = useCallback((product: ProductComboboxOption) => {
     if (requireTaxReady && taxProfileIncomplete(product)) {
+      setOpen(false); setActiveIndex(-1); setHoverIndex(-1);
       if (canManageTax) { openTaxEditor(product); return; }
       toast.error("This item's PPN profile must be completed by an authorized Item Master user before it can be used.");
       return;
@@ -162,6 +163,12 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     } catch { setTaxError("Tax profile could not be saved. Check your permission and try again."); }
     finally { setTaxSaving(false); }
   }, [taxEditor, onChange, onSelect]);
+  useEffect(() => {
+    if (!taxEditor) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setTaxEditor(null); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [taxEditor]);
   const moveActive = (direction: 1 | -1) => {
     if (visibleOptions.length === 0) return;
     setOpen(true);
@@ -181,7 +188,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     </div>, document.body) : null;
 
   const taxEditorModal = taxEditor && typeof document !== "undefined" ? createPortal(
-    <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setTaxEditor(null); }}>
       <div className="w-full max-w-md rounded-lg bg-white p-4 shadow-2xl">
         <div className="mb-3"><div className="text-sm font-semibold text-slate-900">Set PPN · {labelFor(taxEditor.product)}</div><div className="mt-1 text-xs text-slate-500">Update the item tax profile without leaving this transaction.</div></div>
         <div className="space-y-3">
