@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { productApi } from "@/modules/master/products/api/productApi";
 import { FORM_UI } from "@/config/formUi";
 import useAuthorization from "@/hooks/useAuthorization";
@@ -43,12 +44,6 @@ function labelFor(product: ProductComboboxOption): string {
   return code ? `${code} - ${name}` : name;
 }
 function taxProfileIncomplete(product: ProductComboboxOption): boolean { return product.tax_category === "REVIEW_REQUIRED"; }
-function priceFor(value?: number | string | null): string | null {
-  if (value === null || value === undefined || value === "") return null;
-  const number = Number(value);
-  if (!Number.isFinite(number)) return null;
-  return number.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 async function loadRemoteProducts(search: string, marketOnly: boolean, excludeMarket: boolean): Promise<ProductComboboxOption[]> {
   try {
     const lookup = await productApi.lookup(search, 30, marketOnly, excludeMarket);
@@ -144,7 +139,11 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     setTaxEditor({ product, category: currentCategory as TaxEditorState["category"], rate: Number(product.tax_rate || 0), reason: "", reference: "" });
   }, []);
   const selectProduct = useCallback((product: ProductComboboxOption) => {
-    if (requireTaxReady && taxProfileIncomplete(product)) { if (canManageTax) openTaxEditor(product); return; }
+    if (requireTaxReady && taxProfileIncomplete(product)) {
+      if (canManageTax) { openTaxEditor(product); return; }
+      toast.error("This item's PPN profile must be completed by an authorized Item Master user before it can be used.");
+      return;
+    }
     onChange(product.id); onSelect?.(product); setQuery(labelFor(product)); setOpen(false); setActiveIndex(-1);
   }, [onChange, onSelect, requireTaxReady, canManageTax, openTaxEditor]);
   const saveTaxProfile = useCallback(async () => {
@@ -154,7 +153,8 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     setTaxSaving(true); setTaxError("");
     try {
       const response = await productApi.updateTaxProfile(taxEditor.product.id, { tax_category: taxEditor.category, is_taxable: taxable, tax_rate: taxable ? taxEditor.rate : 0, tax_reason: taxEditor.reason.trim() || null, tax_reference: taxEditor.reference.trim() || null });
-      const updated = { ...taxEditor.product, ...response.data, tax_category: response.data.tax_category, is_taxable: response.data.is_taxable, tax_rate: response.data.tax_rate } as ProductComboboxOption;
+      const patch = (response.data ?? {}) as Partial<ProductComboboxOption>;
+      const updated = { ...taxEditor.product, ...patch, tax_category: patch.tax_category ?? taxEditor.category, is_taxable: patch.is_taxable !== undefined ? Boolean(patch.is_taxable) : taxable, tax_rate: Number(patch.tax_rate ?? (taxable ? taxEditor.rate : 0)) } as ProductComboboxOption;
       setTaxOverrides((current) => ({ ...current, [updated.id]: updated }));
       setRemoteProducts((current) => current.map((product) => product.id === updated.id ? { ...product, ...updated } : product));
       onChange(updated.id); onSelect?.(updated); setQuery(labelFor(updated)); setTaxEditor(null); setOpen(false); setActiveIndex(-1);
@@ -170,13 +170,9 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const dropdown = open && !disabled && position && typeof document !== "undefined" ? createPortal(
     <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
       {loading && visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div> : loadError ? <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div> : visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div> : visibleOptions.map((product, index) => {
-        const lastPrice = priceFor(product.last_purchase_price);
         const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
-        return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" disabled={taxIncomplete && !canManageTax} aria-disabled={taxIncomplete && !canManageTax} aria-selected={index === activeIndex} className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? (canManageTax ? "cursor-pointer bg-amber-50 text-slate-700 hover:bg-amber-100" : "cursor-not-allowed bg-amber-50 text-slate-500") : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onMouseEnter={() => setActiveIndex(index)} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
-          <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{canManageTax ? "Set PPN" : "Tax profile incomplete"}</span>}</div>
-          {(product.uom || product.usage_uom) && <div className="mt-0.5 text-xs text-slate-500">UOM: {product.uom ?? "—"}{product.usage_uom ? ` · Usage: ${product.usage_uom}` : ""}</div>}
-          {taxIncomplete && <div className="mt-1 text-xs text-amber-800">{canManageTax ? "Set PPN here to use this item." : "PPN profile must be completed by an authorized Item Master user."}</div>}
-          {lastPrice && <div className="mt-0.5 text-xs font-medium text-emerald-700">Last purchase: Rp {lastPrice}{product.last_purchase_po_number ? ` · ${product.last_purchase_po_number}` : ""}</div>}
+        return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full cursor-pointer border-b border-slate-100 px-3.5 py-2.5 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "bg-amber-50 text-slate-700 hover:bg-amber-100" : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onMouseEnter={() => setActiveIndex(index)} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
+          <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{canManageTax ? "Set PPN" : "Needs PPN"}</span>}</div>
         </button>;
       })}
     </div>, document.body) : null;

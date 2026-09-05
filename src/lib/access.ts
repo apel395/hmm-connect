@@ -42,6 +42,12 @@ export function isSuperuser(user?: UserLike | null): boolean {
   return userRoleNames(user).some((role) => SUPERUSER_ROLES.has(role));
 }
 
+export function canBackdate(user?: UserLike | null): boolean {
+  if (isSuperuser(user)) return true;
+  const roles = userRoleNames(user);
+  return ["GENERAL_MANAGER", "FINANCE_MANAGER", "PURCHASING_MANAGER", "PROCUREMENT_MANAGER"].some((role) => roles.includes(role));
+}
+
 export function userPermissionCodes(user?: UserLike | null): string[] {
   return Array.from(new Set((user?.roles ?? []).flatMap((role) => {
     if (typeof role === "string") return [];
