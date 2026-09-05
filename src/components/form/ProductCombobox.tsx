@@ -84,6 +84,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const selected = useMemo(() => [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value), [products, remoteProducts, withTaxOverride, value]);
   const selectedLabel = selected ? labelFor(selected) : "";
   const [query, setQuery] = useState(selectedLabel);
+  const hasRemoteProducts = remoteProducts.length > 0;
 
   const updatePosition = useCallback(() => {
     const input = inputRef.current;
@@ -101,7 +102,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   useEffect(() => {
     if (!remote || disabled) return;
     const raw = query.trim();
-    if (selected && raw === selectedLabel && remoteProducts.length > 0) return;
+    if (selected && raw === selectedLabel && hasRemoteProducts) return;
     const requestId = ++requestIdRef.current;
     const timer = window.setTimeout(async () => {
       setLoading(true);
@@ -116,7 +117,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       }
     }, raw ? 250 : 0);
     return () => window.clearTimeout(timer);
-  }, [remote, disabled, query, selected, selectedLabel, marketOnly, excludeMarket]);
+  }, [remote, disabled, query, selected, selectedLabel, marketOnly, excludeMarket, hasRemoteProducts]);
 
   useEffect(() => {
     if (!open) return;
