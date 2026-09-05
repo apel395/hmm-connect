@@ -78,6 +78,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const [loadError, setLoadError] = useState(false);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [, setHoverIndex] = useState(-1);
   const withTaxOverride = useCallback((product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }), [taxOverrides]);
   const options = useMemo(() => (remote ? remoteProducts : products).map(withTaxOverride), [remote, remoteProducts, products, withTaxOverride]);
   const selected = useMemo(() => [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value), [products, remoteProducts, withTaxOverride, value]);
@@ -152,12 +153,12 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   }, []);
   const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
   useEffect(() => {
-    if (!open || visibleOptions.length === 0) { setActiveIndex(-1); return; }
+    if (!open || visibleOptions.length === 0) { setActiveIndex(-1); setHoverIndex(-1); return; }
     setActiveIndex((current) => current >= 0 && current < visibleOptions.length ? current : 0);
   }, [open, visibleOptions]);
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); } };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); setHoverIndex(-1); } };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [open]);
