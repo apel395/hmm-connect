@@ -132,6 +132,12 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     if (!open || visibleOptions.length === 0) { setActiveIndex(-1); setHoverIndex(-1); return; }
     setActiveIndex((current) => current >= 0 && current < visibleOptions.length ? current : 0);
   }, [open, visibleOptions]);
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); setHoverIndex(-1); } };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [open]);
   const scrollOptionIntoView = useCallback((index: number) => { if (index >= 0) optionRefs.current[index]?.scrollIntoView({ block: "nearest" }); }, []);
 
   const openTaxEditor = useCallback((product: ProductComboboxOption) => {
@@ -202,5 +208,5 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       </div>
     </div>, document.body) : null;
 
-  return <div ref={rootRef} className="relative"><input ref={inputRef} type="text" value={query} disabled={disabled} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`} onFocus={() => { updatePosition(); setOpen(true); }} onChange={(event) => { const next = event.target.value; setQuery(next); updatePosition(); setOpen(true); setActiveIndex(0); if (!next.trim() && value) onChange(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && visibleOptions.length > 0) { event.preventDefault(); setActiveIndex(0); scrollOptionIntoView(0); return; } if (event.key === "End" && open && visibleOptions.length > 0) { event.preventDefault(); const endIndex = visibleOptions.length - 1; setActiveIndex(endIndex); scrollOptionIntoView(endIndex); return; } if (event.key === "Enter" && open && activeIndex >= 0 && visibleOptions[activeIndex]) { event.preventDefault(); selectProduct(visibleOptions[activeIndex]); return; } if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); setHoverIndex(-1); } }} />{dropdown}{taxEditorModal}</div>;
+  return <div ref={rootRef} className="relative"><input ref={inputRef} type="text" value={query} disabled={disabled} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`} onFocus={() => { updatePosition(); setOpen(true); }} onChange={(event) => { const next = event.target.value; setQuery(next); updatePosition(); setOpen(true); setActiveIndex(0); if (!next.trim() && value) onChange(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && visibleOptions.length > 0) { event.preventDefault(); setActiveIndex(0); scrollOptionIntoView(0); return; } if (event.key === "End" && open && visibleOptions.length > 0) { event.preventDefault(); const endIndex = visibleOptions.length - 1; setActiveIndex(endIndex); scrollOptionIntoView(endIndex); return; } if (event.key === "Enter" && open && activeIndex >= 0 && visibleOptions[activeIndex]) { event.preventDefault(); selectProduct(visibleOptions[activeIndex]); return; } }} />{dropdown}{taxEditorModal}</div>;
 }

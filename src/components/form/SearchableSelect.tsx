@@ -101,6 +101,12 @@ export default function SearchableSelect<T extends string | number = number>({
 
   useEffect(() => {
     if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); setHoverIndex(-1); setQuery(selectedLabel); } };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [open, selectedLabel]);
+  useEffect(() => {
+    if (!open) return;
     updatePosition();
     const reposition = () => updatePosition();
     window.addEventListener("resize", reposition);
@@ -236,14 +242,6 @@ export default function SearchableSelect<T extends string | number = number>({
               event.preventDefault();
               selectOption(filteredOptions[activeIndex]);
               return;
-            }
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              setOpen(false);
-              setActiveIndex(-1);
-              setHoverIndex(-1);
-              setQuery(selectedLabel);
             }
           }}
           onBlur={() => {
