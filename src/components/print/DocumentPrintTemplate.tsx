@@ -25,6 +25,7 @@ export interface PrintSignature {
 
 interface Props<Row> {
   title: string;
+  showLogo?: boolean;
   documentNumber?: ReactNode;
   documentDate?: ReactNode;
   status?: ReactNode;
@@ -43,6 +44,7 @@ const alignClass = { left: "text-left", center: "text-center", right: "text-righ
 
 export default function DocumentPrintTemplate<Row>({
   title,
+  showLogo,
   documentNumber,
   documentDate,
   status,
@@ -57,12 +59,15 @@ export default function DocumentPrintTemplate<Row>({
   footer,
 }: Props<Row>) {
   return <article className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
-    <header className="grid grid-cols-[1.35fr_1fr] gap-8 border-b border-black pb-4">
-      <div className="leading-5">
-        <div className="text-[17px] font-bold tracking-wide">PT. MUTIARA MERDEKA HOTEL</div>
-        <div>Jalan Yos Sudarso No 12 A PO Box 1129</div>
-        <div>Pekanbaru - Riau</div>
-        <div>Telp. 0761-31272</div>
+    <header className="grid grid-cols-[1.35fr_1fr] items-center gap-8 border-b border-black pb-4">
+      <div className="flex items-center gap-4">
+        {showLogo && <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-14 w-auto shrink-0 object-contain" />}
+        <div className="leading-5">
+          <div className="text-[17px] font-bold tracking-wide">PT. MUTIARA MERDEKA HOTEL</div>
+          <div>Jalan Yos Sudarso No 12 A PO Box 1129</div>
+          <div>Pekanbaru - Riau</div>
+          <div>Telp. 0761-31272</div>
+        </div>
       </div>
       <dl className="grid grid-cols-[auto_1fr] content-start gap-x-3 gap-y-1">
         <dt className="font-semibold">DATE:</dt><dd>{documentDate ?? "—"}</dd>
