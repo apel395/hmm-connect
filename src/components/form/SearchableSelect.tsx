@@ -52,6 +52,8 @@ export default function SearchableSelect<T extends string | number = number>({
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const positionRef = useRef<DropdownPosition | null>(null);
+  const repositionFrameRef = useRef<number | null>(null);
   const selected = options.find((option) => option.id === value);
   const selectedLabel = selected ? optionLabel(selected) : "";
   const [query, setQuery] = useState(selectedLabel);
@@ -78,7 +80,11 @@ export default function SearchableSelect<T extends string | number = number>({
     const input = inputRef.current;
     if (!input) return;
     const rect = input.getBoundingClientRect();
-    setPosition({ left: rect.left, top: rect.bottom + 4, width: rect.width });
+    const next = { left: rect.left, top: rect.bottom + 4, width: rect.width };
+    const previous = positionRef.current;
+    if (previous && previous.left === next.left && previous.top === next.top && previous.width === next.width) return;
+    positionRef.current = next;
+    setPosition(next);
   }, []);
 
   const filteredOptions = useMemo(() => {
@@ -108,12 +114,22 @@ export default function SearchableSelect<T extends string | number = number>({
   useEffect(() => {
     if (!open) return;
     updatePosition();
-    const reposition = () => updatePosition();
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
+    const scheduleReposition = () => {
+      if (repositionFrameRef.current !== null) return;
+      repositionFrameRef.current = window.requestAnimationFrame(() => {
+        repositionFrameRef.current = null;
+        updatePosition();
+      });
+    };
+    window.addEventListener("resize", scheduleReposition);
+    window.addEventListener("scroll", scheduleReposition, true);
     return () => {
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", scheduleReposition);
+      window.removeEventListener("scroll", scheduleReposition, true);
+      if (repositionFrameRef.current !== null) {
+        window.cancelAnimationFrame(repositionFrameRef.current);
+        repositionFrameRef.current = null;
+      }
     };
   }, [open, updatePosition]);
 

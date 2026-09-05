@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import Dialog, { DialogContent } from "@/components/ui/Dialog";
 import { productApi } from "@/modules/master/products/api/productApi";
 import { FORM_UI } from "@/config/formUi";
 import useAuthorization from "@/hooks/useAuthorization";
@@ -63,6 +64,8 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const dropdownRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const requestIdRef = useRef(0);
+  const positionRef = useRef<DropdownPosition | null>(null);
+  const repositionFrameRef = useRef<number | null>(null);
   const { hasPermission } = useAuthorization();
   const canManageTax = hasPermission("products.manage");
   const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
@@ -77,7 +80,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const [activeIndex, setActiveIndex] = useState(-1);
   const [hoverIndex, setHoverIndex] = useState(-1);
   const withTaxOverride = useCallback((product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }), [taxOverrides]);
-  const options = (remote ? remoteProducts : products).map(withTaxOverride);
+  const options = useMemo(() => (remote ? remoteProducts : products).map(withTaxOverride), [remote, remoteProducts, products, withTaxOverride]);
   const selected = useMemo(() => [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value), [products, remoteProducts, withTaxOverride, value]);
   const selectedLabel = selected ? labelFor(selected) : "";
   const [query, setQuery] = useState(selectedLabel);
@@ -86,7 +89,11 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     const input = inputRef.current;
     if (!input) return;
     const rect = input.getBoundingClientRect();
-    setPosition({ left: rect.left, top: rect.bottom + 4, width: rect.width });
+    const next = { left: rect.left, top: rect.bottom + 4, width: rect.width };
+    const previous = positionRef.current;
+    if (previous && previous.left === next.left && previous.top === next.top && previous.width === next.width) return;
+    positionRef.current = next;
+    setPosition(next);
   }, []);
 
   useEffect(() => { setQuery(selectedLabel); }, [selectedLabel]);
@@ -109,16 +116,30 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       }
     }, raw ? 250 : 0);
     return () => window.clearTimeout(timer);
-  }, [remote, disabled, query, selected, selectedLabel, remoteProducts.length, marketOnly, excludeMarket]);
+  }, [remote, disabled, query, selected, selectedLabel, marketOnly, excludeMarket]);
 
   useEffect(() => {
     if (!open) return;
     updatePosition();
-    const onReposition = () => updatePosition();
-    window.addEventListener("resize", onReposition);
-    window.addEventListener("scroll", onReposition, true);
-    return () => { window.removeEventListener("resize", onReposition); window.removeEventListener("scroll", onReposition, true); };
+    const scheduleReposition = () => {
+      if (repositionFrameRef.current !== null) return;
+      repositionFrameRef.current = window.requestAnimationFrame(() => {
+        repositionFrameRef.current = null;
+        updatePosition();
+      });
+    };
+    window.addEventListener("resize", scheduleReposition);
+    window.addEventListener("scroll", scheduleReposition, true);
+    return () => {
+      window.removeEventListener("resize", scheduleReposition);
+      window.removeEventListener("scroll", scheduleReposition, true);
+      if (repositionFrameRef.current !== null) {
+        window.cancelAnimationFrame(repositionFrameRef.current);
+        repositionFrameRef.current = null;
+      }
+    };
   }, [open, updatePosition]);
+
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
@@ -169,12 +190,6 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     } catch { setTaxError("Tax profile could not be saved. Check your permission and try again."); }
     finally { setTaxSaving(false); }
   }, [taxEditor, onChange, onSelect]);
-  useEffect(() => {
-    if (!taxEditor) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setTaxEditor(null); } };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [taxEditor]);
   const moveActive = (direction: 1 | -1) => {
     if (visibleOptions.length === 0) return;
     setOpen(true);
@@ -193,20 +208,19 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       })}
     </div>, document.body) : null;
 
-  const taxEditorModal = taxEditor && typeof document !== "undefined" ? createPortal(
-    <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setTaxEditor(null); }}>
-      <div className="w-full max-w-md rounded-lg bg-white p-4 shadow-2xl">
-        <div className="mb-3"><div className="text-sm font-semibold text-slate-900">Set PPN · {labelFor(taxEditor.product)}</div><div className="mt-1 text-xs text-slate-500">Update the item tax profile without leaving this transaction.</div></div>
-        <div className="space-y-3">
-          <label className="block text-xs font-medium text-slate-700">Tax Treatment<select className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.category} onChange={(event) => setTaxEditor((current) => current ? { ...current, category: event.target.value as TaxEditorState["category"] } : current)}><option value="STANDARD">Standard PPN</option><option value="SPECIAL">Special PPN</option><option value="NON_VAT">Non VAT</option><option value="EXEMPT">Exempt</option></select></label>
-          {(taxEditor.category === "STANDARD" || taxEditor.category === "SPECIAL") && <label className="block text-xs font-medium text-slate-700">PPN Rate (%)<input type="number" min="0.01" max="100" step="0.01" className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.rate} onChange={(event) => setTaxEditor((current) => current ? { ...current, rate: Number(event.target.value) } : current)} /></label>}
-          <label className="block text-xs font-medium text-slate-700">Tax Reason / Notes<input className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.reason} onChange={(event) => setTaxEditor((current) => current ? { ...current, reason: event.target.value } : current)} /></label>
-          <label className="block text-xs font-medium text-slate-700">Tax Reference<input className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.reference} onChange={(event) => setTaxEditor((current) => current ? { ...current, reference: event.target.value } : current)} /></label>
-          {taxError && <div className="text-xs font-medium text-red-600" role="alert">{taxError}</div>}
-        </div>
-        <div className="mt-4 flex justify-end gap-2"><button type="button" className="h-9 rounded-md border border-slate-300 px-4 text-sm" disabled={taxSaving} onClick={() => setTaxEditor(null)}>Cancel</button><button type="button" className="h-9 rounded-md bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-60" disabled={taxSaving} onClick={() => void saveTaxProfile()}>{taxSaving ? "Saving..." : "Save PPN"}</button></div>
+  const taxEditorModal = <Dialog open={Boolean(taxEditor)} onOpenChange={(openState) => { if (!openState && !taxSaving) setTaxEditor(null); }}>
+    {taxEditor && <DialogContent className="max-w-md p-4">
+      <div className="mb-3"><div className="text-sm font-semibold text-slate-900">Set PPN · {labelFor(taxEditor.product)}</div><div className="mt-1 text-xs text-slate-500">Update the item tax profile without leaving this transaction.</div></div>
+      <div className="space-y-3">
+        <label className="block text-xs font-medium text-slate-700">Tax Treatment<select className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.category} onChange={(event) => setTaxEditor((current) => current ? { ...current, category: event.target.value as TaxEditorState["category"] } : current)}><option value="STANDARD">Standard PPN</option><option value="SPECIAL">Special PPN</option><option value="NON_VAT">Non VAT</option><option value="EXEMPT">Exempt</option></select></label>
+        {(taxEditor.category === "STANDARD" || taxEditor.category === "SPECIAL") && <label className="block text-xs font-medium text-slate-700">PPN Rate (%)<input type="number" min="0.01" max="100" step="0.01" className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.rate} onChange={(event) => setTaxEditor((current) => current ? { ...current, rate: Number(event.target.value) } : current)} /></label>}
+        <label className="block text-xs font-medium text-slate-700">Tax Reason / Notes<input className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.reason} onChange={(event) => setTaxEditor((current) => current ? { ...current, reason: event.target.value } : current)} /></label>
+        <label className="block text-xs font-medium text-slate-700">Tax Reference<input className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.reference} onChange={(event) => setTaxEditor((current) => current ? { ...current, reference: event.target.value } : current)} /></label>
+        {taxError && <div className="text-xs font-medium text-red-600" role="alert">{taxError}</div>}
       </div>
-    </div>, document.body) : null;
+      <div className="mt-4 flex justify-end gap-2"><button type="button" className="h-9 rounded-md border border-slate-300 px-4 text-sm" disabled={taxSaving} onClick={() => setTaxEditor(null)}>Cancel</button><button type="button" className="h-9 rounded-md bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-60" disabled={taxSaving} onClick={() => void saveTaxProfile()}>{taxSaving ? "Saving..." : "Save PPN"}</button></div>
+    </DialogContent>}
+  </Dialog>;
 
   return <div ref={rootRef} className="relative"><input ref={inputRef} type="text" value={query} disabled={disabled} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`} onFocus={() => { updatePosition(); setOpen(true); }} onChange={(event) => { const next = event.target.value; setQuery(next); updatePosition(); setOpen(true); setActiveIndex(0); if (!next.trim() && value) onChange(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && visibleOptions.length > 0) { event.preventDefault(); setActiveIndex(0); scrollOptionIntoView(0); return; } if (event.key === "End" && open && visibleOptions.length > 0) { event.preventDefault(); const endIndex = visibleOptions.length - 1; setActiveIndex(endIndex); scrollOptionIntoView(endIndex); return; } if (event.key === "Enter" && open && activeIndex >= 0 && visibleOptions[activeIndex]) { event.preventDefault(); selectProduct(visibleOptions[activeIndex]); return; } }} />{dropdown}{taxEditorModal}</div>;
 }
