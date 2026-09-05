@@ -104,13 +104,14 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const validItems = items.filter((item) => item.product_id > 0 && item.quantity > 0 && item.estimated_price >= 0);
+    const validItems = items.filter((item) => item.product_id > 0 && item.quantity > 0 && item.estimated_price > 0);
+    const badPrice = items.some((item) => item.product_id > 0 && (item.quantity <= 0 || item.estimated_price <= 0));
     const validation = !businessUnitId ? { message: "Business Unit is required.", field: "business-unit" }
       : !departmentId ? { message: "Department is required.", field: "department" }
       : !locationId ? { message: "Location is required.", field: "location" }
       : !editing && (!requestDate || isBeforeToday(requestDate)) ? { message: "Request Date cannot be before today.", field: "request-date" }
       : !editing && expiryDate && isBeforeDate(expiryDate, requestDate || todayLocal()) ? { message: "Valid Until cannot be before Request Date.", field: "expiry-date" }
-      : !validItems.length ? { message: "Please add valid products.", field: "items" }
+      : !validItems.length ? { message: badPrice ? "Estimated price and quantity must be greater than zero." : "Please add valid products.", field: "items" }
       : null;
     if (validation) {
       setFormError(validation.message);

@@ -75,6 +75,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const [loadError, setLoadError] = useState(false);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [hoverIndex, setHoverIndex] = useState(-1);
   const withTaxOverride = useCallback((product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }), [taxOverrides]);
   const options = (remote ? remoteProducts : products).map(withTaxOverride);
   const selected = useMemo(() => [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value), [products, remoteProducts, withTaxOverride, value]);
@@ -128,10 +129,10 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   }, []);
   const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
   useEffect(() => {
-    if (!open || visibleOptions.length === 0) { setActiveIndex(-1); return; }
+    if (!open || visibleOptions.length === 0) { setActiveIndex(-1); setHoverIndex(-1); return; }
     setActiveIndex((current) => current >= 0 && current < visibleOptions.length ? current : 0);
   }, [open, visibleOptions]);
-  useEffect(() => { if (activeIndex >= 0) optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" }); }, [activeIndex]);
+  const scrollOptionIntoView = useCallback((index: number) => { if (index >= 0) optionRefs.current[index]?.scrollIntoView({ block: "nearest" }); }, []);
 
   const openTaxEditor = useCallback((product: ProductComboboxOption) => {
     const currentCategory = product.tax_category && product.tax_category !== "REVIEW_REQUIRED" ? product.tax_category : "STANDARD";
@@ -144,7 +145,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       toast.error("This item's PPN profile must be completed by an authorized Item Master user before it can be used.");
       return;
     }
-    onChange(product.id); onSelect?.(product); setQuery(labelFor(product)); setOpen(false); setActiveIndex(-1);
+    onChange(product.id); onSelect?.(product); setQuery(labelFor(product)); setOpen(false); setActiveIndex(-1); setHoverIndex(-1);
   }, [onChange, onSelect, requireTaxReady, canManageTax, openTaxEditor]);
   const saveTaxProfile = useCallback(async () => {
     if (!taxEditor) return;
@@ -157,21 +158,23 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       const updated = { ...taxEditor.product, ...patch, tax_category: patch.tax_category ?? taxEditor.category, is_taxable: patch.is_taxable !== undefined ? Boolean(patch.is_taxable) : taxable, tax_rate: Number(patch.tax_rate ?? (taxable ? taxEditor.rate : 0)) } as ProductComboboxOption;
       setTaxOverrides((current) => ({ ...current, [updated.id]: updated }));
       setRemoteProducts((current) => current.map((product) => product.id === updated.id ? { ...product, ...updated } : product));
-      onChange(updated.id); onSelect?.(updated); setQuery(labelFor(updated)); setTaxEditor(null); setOpen(false); setActiveIndex(-1);
+      onChange(updated.id); onSelect?.(updated); setQuery(labelFor(updated)); setTaxEditor(null); setOpen(false); setActiveIndex(-1); setHoverIndex(-1);
     } catch { setTaxError("Tax profile could not be saved. Check your permission and try again."); }
     finally { setTaxSaving(false); }
   }, [taxEditor, onChange, onSelect]);
   const moveActive = (direction: 1 | -1) => {
     if (visibleOptions.length === 0) return;
     setOpen(true);
-    setActiveIndex((current) => current < 0 ? (direction === 1 ? 0 : visibleOptions.length - 1) : (current + direction + visibleOptions.length) % visibleOptions.length);
+    const next = activeIndex < 0 ? (direction === 1 ? 0 : visibleOptions.length - 1) : (activeIndex + direction + visibleOptions.length) % visibleOptions.length;
+    setActiveIndex(next);
+    scrollOptionIntoView(next);
   };
 
   const dropdown = open && !disabled && position && typeof document !== "undefined" ? createPortal(
     <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
       {loading && visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div> : loadError ? <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div> : visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div> : visibleOptions.map((product, index) => {
         const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
-        return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full cursor-pointer border-b border-slate-100 px-3.5 py-2.5 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "bg-amber-50 text-slate-700 hover:bg-amber-100" : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onMouseEnter={() => setActiveIndex(index)} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
+        return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full cursor-pointer border-b border-slate-100 px-3.5 py-2.5 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "bg-amber-50 text-slate-700 hover:bg-amber-100" : index === activeIndex || index === hoverIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onMouseEnter={() => { setActiveIndex(index); setHoverIndex(index); }} onMouseLeave={() => setHoverIndex(-1)} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
           <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{canManageTax ? "Set PPN" : "Needs PPN"}</span>}</div>
         </button>;
       })}
@@ -192,5 +195,5 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       </div>
     </div>, document.body) : null;
 
-  return <div ref={rootRef} className="relative"><input ref={inputRef} type="text" value={query} disabled={disabled} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`} onFocus={() => { updatePosition(); setOpen(true); }} onChange={(event) => { const next = event.target.value; setQuery(next); updatePosition(); setOpen(true); setActiveIndex(0); if (!next.trim() && value) onChange(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && visibleOptions.length > 0) { event.preventDefault(); setActiveIndex(0); return; } if (event.key === "End" && open && visibleOptions.length > 0) { event.preventDefault(); setActiveIndex(visibleOptions.length - 1); return; } if (event.key === "Enter" && open && activeIndex >= 0 && visibleOptions[activeIndex]) { event.preventDefault(); selectProduct(visibleOptions[activeIndex]); return; } if (event.key === "Escape") { event.preventDefault(); setOpen(false); setActiveIndex(-1); } }} />{dropdown}{taxEditorModal}</div>;
+  return <div ref={rootRef} className="relative"><input ref={inputRef} type="text" value={query} disabled={disabled} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`} onFocus={() => { updatePosition(); setOpen(true); }} onChange={(event) => { const next = event.target.value; setQuery(next); updatePosition(); setOpen(true); setActiveIndex(0); if (!next.trim() && value) onChange(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && visibleOptions.length > 0) { event.preventDefault(); setActiveIndex(0); scrollOptionIntoView(0); return; } if (event.key === "End" && open && visibleOptions.length > 0) { event.preventDefault(); const endIndex = visibleOptions.length - 1; setActiveIndex(endIndex); scrollOptionIntoView(endIndex); return; } if (event.key === "Enter" && open && activeIndex >= 0 && visibleOptions[activeIndex]) { event.preventDefault(); selectProduct(visibleOptions[activeIndex]); return; } if (event.key === "Escape") { event.preventDefault(); setOpen(false); setActiveIndex(-1); setHoverIndex(-1); } }} />{dropdown}{taxEditorModal}</div>;
 }
