@@ -78,7 +78,6 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const [loadError, setLoadError] = useState(false);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [hoverIndex, setHoverIndex] = useState(-1);
   const withTaxOverride = useCallback((product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }), [taxOverrides]);
   const options = useMemo(() => (remote ? remoteProducts : products).map(withTaxOverride), [remote, remoteProducts, products, withTaxOverride]);
   const selected = useMemo(() => [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value), [products, remoteProducts, withTaxOverride, value]);
@@ -122,7 +121,9 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   useEffect(() => {
     if (!open) return;
     updatePosition();
-    const scheduleReposition = () => {
+    const scheduleReposition = (event?: Event) => {
+      const target = event?.target;
+      if (target instanceof Node && dropdownRef.current?.contains(target)) return;
       if (repositionFrameRef.current !== null) return;
       repositionFrameRef.current = window.requestAnimationFrame(() => {
         repositionFrameRef.current = null;
@@ -151,12 +152,12 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   }, []);
   const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
   useEffect(() => {
-    if (!open || visibleOptions.length === 0) { setActiveIndex(-1); setHoverIndex(-1); return; }
+    if (!open || visibleOptions.length === 0) { setActiveIndex(-1); return; }
     setActiveIndex((current) => current >= 0 && current < visibleOptions.length ? current : 0);
   }, [open, visibleOptions]);
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); setHoverIndex(-1); } };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); } };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [open]);
@@ -169,12 +170,12 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   }, []);
   const selectProduct = useCallback((product: ProductComboboxOption) => {
     if (requireTaxReady && taxProfileIncomplete(product)) {
-      setOpen(false); setActiveIndex(-1); setHoverIndex(-1);
+      setOpen(false); setActiveIndex(-1);
       if (canManageTax) { openTaxEditor(product); return; }
       toast.error("This item's PPN profile must be completed by an authorized Item Master user before it can be used.");
       return;
     }
-    onChange(product.id); onSelect?.(product); setQuery(labelFor(product)); setOpen(false); setActiveIndex(-1); setHoverIndex(-1);
+    onChange(product.id); onSelect?.(product); setQuery(labelFor(product)); setOpen(false); setActiveIndex(-1);
   }, [onChange, onSelect, requireTaxReady, canManageTax, openTaxEditor]);
   const saveTaxProfile = useCallback(async () => {
     if (!taxEditor) return;
@@ -187,7 +188,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       const updated = { ...taxEditor.product, ...patch, tax_category: patch.tax_category ?? taxEditor.category, is_taxable: patch.is_taxable !== undefined ? Boolean(patch.is_taxable) : taxable, tax_rate: Number(patch.tax_rate ?? (taxable ? taxEditor.rate : 0)) } as ProductComboboxOption;
       setTaxOverrides((current) => ({ ...current, [updated.id]: updated }));
       setRemoteProducts((current) => current.map((product) => product.id === updated.id ? { ...product, ...updated } : product));
-      onChange(updated.id); onSelect?.(updated); setQuery(labelFor(updated)); setTaxEditor(null); setOpen(false); setActiveIndex(-1); setHoverIndex(-1);
+      onChange(updated.id); onSelect?.(updated); setQuery(labelFor(updated)); setTaxEditor(null); setOpen(false); setActiveIndex(-1);
     } catch { setTaxError("Tax profile could not be saved. Check your permission and try again."); }
     finally { setTaxSaving(false); }
   }, [taxEditor, onChange, onSelect]);
@@ -203,7 +204,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
       {loading && visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div> : loadError ? <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div> : visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div> : visibleOptions.map((product, index) => {
         const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
-        return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full cursor-pointer border-b border-slate-100 px-3.5 py-2.5 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "bg-amber-50 text-slate-700 hover:bg-amber-100" : index === activeIndex || index === hoverIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onMouseEnter={() => { setActiveIndex(index); setHoverIndex(index); }} onMouseLeave={() => setHoverIndex(-1)} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
+        return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full cursor-pointer border-b border-slate-100 px-3.5 py-2.5 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "bg-amber-50 text-slate-700 hover:bg-amber-100" : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
           <div className="flex items-center justify-between gap-2 text-[13px] font-medium text-slate-800"><span>{labelFor(product)}</span>{taxIncomplete && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{canManageTax ? "Set PPN" : "Needs PPN"}</span>}</div>
         </button>;
       })}
