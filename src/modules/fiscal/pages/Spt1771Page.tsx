@@ -136,32 +136,32 @@ export default function Spt1771Page() {
 
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="p-4 lg:col-span-3">
-              <div className="mb-3 flex items-center gap-2 font-semibold"><FileText className="h-4 w-4" /> I-A. Profit &amp; Loss (Laba/Rugi)</div>
+              <div className="mb-3 flex items-center gap-2 font-semibold"><FileText className="h-4 w-4" /> I-A. Profit &amp; Loss</div>
               <Table variant="grid"><THead><TR><TH>Line Item</TH><TH className="text-right">Amount</TH></TR></THead><TBody>
-                <Row l="Peredaran Usaha" v={ia.peredaran_usaha} />
-                <Row l="Penghasilan Luar Usaha" v={ia.penghasilan_luar_usaha} />
-                <Row l="Total Penghasilan Bruto" v={ia.total_penghasilan_bruto} strong />
-                <Row l="Harga Pokok Penjualan" v={ia.harga_pokok_penjualan} />
-                <Row l="Laba Kotor Usaha" v={ia.laba_kotor_usaha} strong />
-                <Row l="Biaya Usaha" v={ia.biaya_usaha} />
-                <Row l="Laba Usaha" v={ia.laba_usaha} strong />
-                <Row l="Biaya Luar Usaha" v={ia.biaya_luar_usaha} />
-                <Row l="Laba Sebelum Pajak (Komersial)" v={ia.laba_sebelum_pajak} strong />
+                <Row l="Gross Revenue" v={ia.peredaran_usaha} />
+                <Row l="Non-Business Income" v={ia.penghasilan_luar_usaha} />
+                <Row l="Total Gross Income" v={ia.total_penghasilan_bruto} strong />
+                <Row l="Cost of Goods Sold" v={ia.harga_pokok_penjualan} />
+                <Row l="Gross Profit" v={ia.laba_kotor_usaha} strong />
+                <Row l="Business Expenses" v={ia.biaya_usaha} />
+                <Row l="Operating Profit" v={ia.laba_usaha} strong />
+                <Row l="Non-Business Expenses" v={ia.biaya_luar_usaha} />
+                <Row l="Profit Before Tax (Commercial)" v={ia.laba_sebelum_pajak} strong />
               </TBody></Table>
             </Card>
 
             <Card className="p-4">
               <div className="mb-3 flex items-center gap-2 font-semibold"><Landmark className="h-4 w-4" /> II. Fiscal Reconciliation</div>
               <Table variant="grid"><THead><TR><TH>Line Item</TH><TH className="text-right">Amount</TH></TR></THead><TBody>
-                <Row l="Koreksi Fiskal Positif" v={ii.koreksi_fiskal_positif} />
-                <Row l="Koreksi Fiskal Negatif" v={ii.koreksi_fiskal_negatif} />
-                <Row l="Laba Fiskal" v={ii.laba_fiskal} strong />
-                <TR><TD className="text-slate-600">Kompensasi Kerugian</TD><TD className="text-right">
+                <Row l="Positive Fiscal Corrections" v={ii.koreksi_fiskal_positif} />
+                <Row l="Negative Fiscal Corrections" v={ii.koreksi_fiskal_negatif} />
+                <Row l="Fiscal Profit" v={ii.laba_fiskal} strong />
+                <TR><TD className="text-slate-600">Loss Carry-forward</TD><TD className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Input type="number" className={input + " h-8 w-32"} value={kompensasi} onChange={(e) => setKompensasi(e.target.value)} />
                   </div>
                 </TD></TR>
-                <Row l="Penghasilan Kena Pajak (PKP)" v={ii.penghasilan_kena_pajak} strong />
+                <Row l="Taxable Income (PKP)" v={ii.penghasilan_kena_pajak} strong />
               </TBody></Table>
             </Card>
 
@@ -169,12 +169,12 @@ export default function Spt1771Page() {
               <div className="mb-3 flex items-center gap-2 font-semibold"><FileText className="h-4 w-4" /> III. PPh Computation</div>
               <Table variant="grid"><THead><TR><TH>Line Item</TH><TH className="text-right">Amount</TH></TR></THead><TBody>
                 <TR><TD className="text-slate-600">PPh Rate</TD><TD className="text-right">{Number(iii.pph_rate ?? 0) * 100}%</TD></TR>
-                <Row l="PPh Terutang" v={iii.pph_terutang} strong />
-                <Row l="Total Kredit Pajak" v={iii.total_kredit_pajak} />
+                <Row l="Tax Payable" v={iii.pph_terutang} strong />
+                <Row l="Total Tax Credits" v={iii.total_kredit_pajak} />
                 {iii.is_lebih_bayar ? (
-                  <Row l="PPh Lebih Bayar" v={iii.pph_lebih_bayar} strong />
+                  <Row l="Overpaid Tax" v={iii.pph_lebih_bayar} strong />
                 ) : (
-                  <Row l="PPh Kurang Bayar" v={iii.pph_kurang_bayar} strong />
+                  <Row l="Underpaid Tax" v={iii.pph_kurang_bayar} strong />
                 )}
               </TBody></Table>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -187,7 +187,7 @@ export default function Spt1771Page() {
 
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2 font-semibold"><Landmark className="h-4 w-4" /> Tax Credits (Kredit Pajak)</div>
+              <div className="flex items-center gap-2 font-semibold"><Landmark className="h-4 w-4" /> Tax Credits</div>
             </div>
             <div className="mb-3 grid gap-2 sm:grid-cols-5">
               <select className={input} value={creditForm.credit_type} onChange={(e) => setCreditForm({ ...creditForm, credit_type: e.target.value })}>

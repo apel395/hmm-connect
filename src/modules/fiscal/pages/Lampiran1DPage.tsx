@@ -66,7 +66,7 @@ export default function Lampiran1DPage() {
   const sections: any[] = ds.data?.sections ?? [];
 
   const exportData = () => {
-    const headers = ["Kode Akun", "Uraian", "Klasifikasi", "Komersial", "Bukan Objek Pajak", "Dikenakan PPh Final", "Koreksi Positif", "Koreksi Negatif", "Fiskal"];
+    const headers = ["SPT Account Code", "Name", "Classification", "Commercial", "Non-Taxable Object", "Subject to Final PPh", "Positive Correction", "Negative Correction", "Fiscal"];
     const rows = lines.map((l) => {
       const finalAmount = l.klasifikasi_fiskal === "FINAL" ? l.saldo_komersial : 0;
       return [l.fiscal_code, l.fiscal_name, l.klasifikasi_fiskal ?? "", l.saldo_komersial, 0, finalAmount, l.koreksi_positif, l.koreksi_negatif, l.saldo_fiskal];
@@ -82,13 +82,13 @@ export default function Lampiran1DPage() {
       <div className="hidden print:block">
         <h1 className="text-2xl font-bold">HMM-Connect</h1>
         <h2 className="text-xl font-semibold">Lampiran 1D – Rekonsiliasi Laporan Keuangan (Jasa)</h2>
-        <p>Fiscal Year {year} · Coretax PER-11/PJ/2025 Sektor Jasa (L1-D)</p>
+        <p>Fiscal Year {year} · Coretax PER-11/PJ/2025 Jasa Sector (L1-D)</p>
       </div>
       <div className="print:hidden">
         <FiscalWorkspaceHeader />
       </div>
       <div className="print:hidden">
-        <PageHeader title="Lampiran 1D (Jasa)" description={`Fiscal Year ${year} · Coretax PER-11/PJ/2025 Lampiran L1-D — Rekonsiliasi Laporan Keuangan sektor Jasa. Komersial figures reconciled to fiskal by fiscal classification; balance sheet (neraca) half below.`} actions={
+        <PageHeader title="Lampiran 1D (Jasa)" description={`Fiscal Year ${year} · Coretax PER-11/PJ/2025 Lampiran L1-D — Rekonsiliasi Laporan Keuangan, Jasa sector. Commercial figures reconciled to fiscal by fiscal classification; balance sheet half below.`} actions={
           <>
             <Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>
             <Button variant="outline" onClick={exportData}><Download size={16} /> CSV</Button>
@@ -115,28 +115,28 @@ export default function Lampiran1DPage() {
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Laba Bersih Komersial</div><div className="mt-2 text-xl font-bold">{money(summary.laba_bersih_komersial)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Koreksi Positif (+)</div><div className="mt-2 text-xl font-bold text-red-700">{money(summary.koreksi_positif)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Koreksi Negatif (−)</div><div className="mt-2 text-xl font-bold text-blue-700">{money(summary.koreksi_negatif)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Laba Fiskal (PKP)</div><div className="mt-2 text-xl font-bold">{money(summary.laba_fiskal_pkp)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">PPh Terutang (31E)</div><div className="mt-2 text-xl font-bold text-emerald-700">{money(summary.pph_terutang)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Net Commercial Profit</div><div className="mt-2 text-xl font-bold">{money(summary.laba_bersih_komersial)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Positive Corrections (+)</div><div className="mt-2 text-xl font-bold text-red-700">{money(summary.koreksi_positif)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Negative Corrections (−)</div><div className="mt-2 text-xl font-bold text-blue-700">{money(summary.koreksi_negatif)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Fiscal Profit (PKP)</div><div className="mt-2 text-xl font-bold">{money(summary.laba_fiskal_pkp)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Corporate Tax Payable (31E)</div><div className="mt-2 text-xl font-bold text-emerald-700">{money(summary.pph_terutang)}</div></Card>
           </div>
 
           <Card className="p-0">
             <div className="border-b px-4 py-3">
-              <h2 className="font-semibold">Laporan Laba Rugi (Rekonsiliasi L1-D)</h2>
-              <p className="text-xs text-slate-500">Setiap baris komersial direkonsiliasi ke fiskal; kolom“Bukan Objek Pajak” dikosongkan karena belum dimodelkan secara terpisah.</p>
+              <h2 className="font-semibold">Income Statement (L1-D Reconciliation)</h2>
+              <p className="text-xs text-slate-500">Each commercial line is reconciled to fiscal; the "Non-Taxable Object" column is blank because it is not yet modeled separately.</p>
             </div>
             <div className="overflow-x-auto">
               <Table variant="grid">
                 <THead><TR>
-                  <TH>Kode Akun SPT</TH><TH>Uraian</TH><TH>Klasifikasi</TH>
-                  <TH className={numeric}>Komersial</TH>
-                  <TH className={numeric}>Bukan Objek</TH>
-                  <TH className={numeric}>PPh Final</TH>
-                  <TH className={numeric}>Koreksi +</TH>
-                  <TH className={numeric}>Koreksi −</TH>
-                  <TH className={numeric}>Fiskal</TH>
+                  <TH>SPT Account Code</TH><TH>Name</TH><TH>Classification</TH>
+                  <TH className={numeric}>Commercial</TH>
+                  <TH className={numeric}>Non-Taxable</TH>
+                  <TH className={numeric}>Final PPh</TH>
+                  <TH className={numeric}>Positive Corr.</TH>
+                  <TH className={numeric}>Negative Corr.</TH>
+                  <TH className={numeric}>Fiscal</TH>
                 </TR></THead>
                 <TBody>
                   {lines.length === 0 && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">No P&amp;L activity in the fiscal year.</TD></TR>}
@@ -173,7 +173,7 @@ export default function Lampiran1DPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Table variant="grid" stickyHeader className="min-w-full">
-                <THead><TR><TH>Laporan Posisi Keuangan (Neraca) — Aktiva</TH><TH className={numeric}>Fiskal</TH></TR></THead>
+                <THead><TR><TH>Statement of Financial Position (Balance Sheet) — Assets</TH><TH className={numeric}>Fiscal</TH></TR></THead>
                 <TBody>
                   {sections.filter((sec: any) => sec.code === "ASET").flatMap((sec: any) => sec.sections.map((sub: any) => (
                     <Fragment key={sub.code}>
@@ -183,13 +183,13 @@ export default function Lampiran1DPage() {
                       ))}
                     </Fragment>
                   )))}
-                  <TR className="bg-slate-100 font-bold"><TD>Total Aktiva</TD><TD className={numeric}>{money(s?.total_assets)}</TD></TR>
+                  <TR className="bg-slate-100 font-bold"><TD>Total Assets</TD><TD className={numeric}>{money(s?.total_assets)}</TD></TR>
                 </TBody>
               </Table>
             </div>
             <div>
               <Table variant="grid" stickyHeader className="min-w-full">
-                <THead><TR><TH>Laporan Posisi Keuangan (Neraca) — Kewajiban &amp; Ekuitas</TH><TH className={numeric}>Fiskal</TH></TR></THead>
+                <THead><TR><TH>Statement of Financial Position (Balance Sheet) — Liabilities &amp; Equity</TH><TH className={numeric}>Fiscal</TH></TR></THead>
                 <TBody>
                   {sections.filter((sec: any) => sec.code === "KEWAJIBAN_EKUITAS").flatMap((sec: any) => sec.sections.map((sub: any) => (
                     <Fragment key={sub.code}>
@@ -199,7 +199,7 @@ export default function Lampiran1DPage() {
                       ))}
                     </Fragment>
                   )))}
-                  <TR className="bg-slate-100 font-bold"><TD>Total Kewajiban &amp; Ekuitas</TD><TD className={numeric}>{money(s?.total_liabilities_and_equity)}</TD></TR>
+                  <TR className="bg-slate-100 font-bold"><TD>Total Liabilities &amp; Equity</TD><TD className={numeric}>{money(s?.total_liabilities_and_equity)}</TD></TR>
                 </TBody>
               </Table>
             </div>

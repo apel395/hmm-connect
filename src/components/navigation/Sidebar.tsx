@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X } from "lucide-react";
+import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Settings, ShoppingCart, Store, X } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
@@ -39,14 +39,6 @@ const groups: Group[] = [
     { title: "Register", url: "/pos", exact: true, permission: "pos.view", roles: POS_ROLES },
     { title: "Sales", url: "/pos/sales", permission: "pos.view", roles: POS_ROLES },
   ] },
-  { title: "Fiscal", icon: Scale, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
-    { title: "Fiscal COA", url: "/fiscal/coa", exact: true, permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-    { title: "Ekualisasi", url: "/fiscal/reconciliation", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-    { title: "Neraca", url: "/fiscal/balance-sheet", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-    { title: "Lampiran 1D", url: "/fiscal/lampiran-1d", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-    { title: "SPT Tahunan 1771", url: "/fiscal/spt-1771", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-    { title: "Periode Fiskal", url: "/fiscal/periods", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-  ] },
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Finance Dashboard", url: "/finance-dashboard", permission: "finance.view" },
     { title: "Accounts Payable", url: "/accounts-payable", permission: "ap.view" },
@@ -56,6 +48,12 @@ const groups: Group[] = [
     { title: "Opening Balances", url: "/opening-balances", permission: "journal.manage" },
     { title: "Reconciliation", url: "/financial-reconciliation", permission: "finance.view" },
     { title: "Fixed Assets", url: "/fixed-assets", permission: "finance.view" },
+    { title: "Fiscal COA", url: "/fiscal/coa", exact: true, permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "Fiscal Reconciliation", url: "/fiscal/reconciliation", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "Fiscal Balance Sheet", url: "/fiscal/balance-sheet", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "Lampiran 1D", url: "/fiscal/lampiran-1d", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "SPT Tahunan 1771", url: "/fiscal/spt-1771", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "Fiscal Periods", url: "/fiscal/periods", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
   ] },
   { title: "Reports", icon: FileBarChart, children: [
     { title: "Purchasing Reports", url: "/reports/purchasing", permission: "reports.purchasing", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },

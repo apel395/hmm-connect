@@ -55,7 +55,7 @@ export default function FiscalReconciliationPage() {
   return (
     <div className="space-y-6">
       <FiscalWorkspaceHeader />
-      <PageHeader title="Fiscal Reconciliation" description="Rekonsiliasi Fiskal — komersial profit &amp; loss adjusted by fiscal corrections to derive taxable income (PKP) and estimated corporate income tax (Pasal 31E, 11%)." />
+      <PageHeader title="Fiscal Reconciliation" description="Commercial profit &amp; loss adjusted by fiscal corrections to derive taxable income (PKP) and estimated corporate income tax (Pasal 31E, 11%)." />
 
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -72,11 +72,11 @@ export default function FiscalReconciliationPage() {
       {q.isLoading ? <div className="py-16"><Loading /></div> : (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Laba Bersih Komersial</div><div className="mt-2 text-xl font-bold">{money(summary.laba_bersih_komersial)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Koreksi Positif (+)</div><div className="mt-2 text-xl font-bold text-red-700">{money(summary.koreksi_positif)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Koreksi Negatif (−)</div><div className="mt-2 text-xl font-bold text-blue-700">{money(summary.koreksi_negatif)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Laba Fiskal (PKP)</div><div className="mt-2 text-xl font-bold">{money(summary.laba_fiskal_pkp)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">PPh Terutang (31E)</div><div className="mt-2 text-xl font-bold text-emerald-700">{money(summary.pph_terutang)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Net Commercial Profit</div><div className="mt-2 text-xl font-bold">{money(summary.laba_bersih_komersial)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Positive Corrections (+)</div><div className="mt-2 text-xl font-bold text-red-700">{money(summary.koreksi_positif)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Negative Corrections (−)</div><div className="mt-2 text-xl font-bold text-blue-700">{money(summary.koreksi_negatif)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Fiscal Profit (PKP)</div><div className="mt-2 text-xl font-bold">{money(summary.laba_fiskal_pkp)}</div></Card>
+            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Corporate Tax Payable (31E)</div><div className="mt-2 text-xl font-bold text-emerald-700">{money(summary.pph_terutang)}</div></Card>
           </div>
 
           {unmapped.length > 0 && (
@@ -87,7 +87,7 @@ export default function FiscalReconciliationPage() {
           )}
 
           <Card className="p-0">
-            <Table variant="grid"><THead><TR><TH>Fiscal Account</TH><TH>Classification</TH><TH className="text-right">Saldo Komersial</TH><TH className="text-right">Koreksi +</TH><TH className="text-right">Koreksi −</TH><TH className="text-right">Saldo Fiskal</TH><TH /></TR></THead>
+            <Table variant="grid"><THead><TR><TH>Fiscal Account</TH><TH>Classification</TH><TH className="text-right">Commercial Balance</TH><TH className="text-right">Positive Corr.</TH><TH className="text-right">Negative Corr.</TH><TH className="text-right">Fiscal Balance</TH><TH /></TR></THead>
             <TBody>
               {lines.length === 0 && <TR><TD colSpan={7} className="py-10 text-center text-slate-500">No P&amp;L activity in the selected period.</TD></TR>}
               {lines.map((line) => {
@@ -106,7 +106,7 @@ export default function FiscalReconciliationPage() {
                     {isOpen && (
                       <TR>
                         <TD colSpan={7} className="bg-slate-50/70 p-0">
-                          <Table variant="standard"><THead><TR><TH className="pl-10">Commercial Account</TH><TH className="text-right">Saldo Komersial</TH><TH className="text-right">Koreksi +</TH><TH className="text-right">Koreksi −</TH><TH className="text-right">Saldo Fiskal</TH></TR></THead>
+                          <Table variant="standard"><THead><TR><TH className="pl-10">Commercial Account</TH><TH className="text-right">Commercial Balance</TH><TH className="text-right">Positive Corr.</TH><TH className="text-right">Negative Corr.</TH><TH className="text-right">Fiscal Balance</TH></TR></THead>
                           <TBody>{line.accounts.map((a: any) => (
                             <TR key={a.commercial_account_id}><TD className="pl-10"><span className="font-mono">{a.commercial_code}</span> <span className="ml-1">{a.commercial_name}</span></TD><TD className="text-right tabular-nums">{money(a.saldo_komersial)}</TD><TD className="text-right tabular-nums">{money(a.koreksi_positif)}</TD><TD className="text-right tabular-nums">{money(a.koreksi_negatif)}</TD><TD className="text-right tabular-nums">{money(a.saldo_fiskal)}</TD></TR>
                           ))}</TBody></Table>
