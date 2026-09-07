@@ -25,6 +25,7 @@ const ROUTE_ACCESS: RouteAccess[] = [
   { prefix: "/supplier-invoices", permission: "supplier_invoice.view", legacyRoles: ["FINANCE"] },
   { prefix: "/accounts-payable", permission: "ap.view", legacyRoles: ["FINANCE", "GENERAL_MANAGER", "AUDITOR", "VIEWER"] },
   { prefix: "/finance/fiscal", permission: "fiscal.view", legacyRoles: ["FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
+  { prefix: "/finance/payment-vouchers", permission: "payment.view", legacyRoles: ["FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
   { prefix: "/payments", permission: "payment.view", legacyRoles: ["FINANCE"] },
   { prefix: "/journal", permission: "journal.view", legacyRoles: ["FINANCE", "GENERAL_MANAGER", "AUDITOR", "VIEWER"] },
   { prefix: "/general-ledger", permission: "reports.finance", legacyRoles: ["FINANCE", "GENERAL_MANAGER", "AUDITOR", "VIEWER"] },

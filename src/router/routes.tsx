@@ -25,6 +25,9 @@ import Spt1771Page from "@/modules/finance/fiscal/pages/Spt1771Page";
 import FiscalPeriodsPage from "@/modules/finance/fiscal/pages/FiscalPeriodsPage";
 import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/SupplierInvoiceListPage";
 import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
+import PaymentVoucherListPage from "@/modules/finance/payment-vouchers/pages/PaymentVoucherListPage";
+import PaymentVoucherDetailPage from "@/modules/finance/payment-vouchers/pages/PaymentVoucherDetailPage";
+import PaymentVoucherPrintPage from "@/modules/finance/payment-vouchers/pages/PaymentVoucherPrintPage";
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
 import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
 import APReportingPage from "@/modules/finance/accounts-payable/APReportingPage";
@@ -168,6 +171,10 @@ const router = createBrowserRouter([
       { path: "supplier-invoices", element: <SupplierInvoiceListPage /> },
       { path: "supplier-invoices/:id", element: <SupplierInvoiceDetailPage /> },
       { path: "supplier-invoices/:id/print", element: <AccountingPrintPage kind="supplier-invoices" /> },
+      { path: "finance/payment-vouchers", element: <PaymentVoucherListPage /> },
+      { path: "finance/payment-vouchers/:id", element: <PaymentVoucherDetailPage /> },
+      { path: "finance/payment-vouchers/:id/print", element: <PaymentVoucherPrintPage /> },
+      { path: "payment-vouchers", element: <Navigate to="/finance/payment-vouchers" replace /> },
       { path: "supplier-adjustments", element: <SupplierAdjustmentsPage /> },
       { path: "payments", element: <PaymentListPage /> },
       { path: "payments/:id", element: <PaymentDetailPage /> },

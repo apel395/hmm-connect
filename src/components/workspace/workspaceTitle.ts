@@ -49,6 +49,7 @@ const exactTitles: Record<string, string> = {
   "/finance/fiscal/lampiran-1d": "Lampiran 1D",
   "/finance/fiscal/spt-1771": "SPT Tahunan 1771",
   "/finance/fiscal/periods": "Fiscal Periods",
+  "/finance/payment-vouchers": "Payment Vouchers",
   "/fiscal/coa": "Fiscal COA",
   "/fiscal/reconciliation": "Fiscal Reconciliation",
   "/fiscal/balance-sheet": "Fiscal Balance Sheet",

@@ -48,6 +48,7 @@ const groups: Group[] = [
     { title: "Opening Balances", url: "/opening-balances", permission: "journal.manage" },
     { title: "Reconciliation", url: "/financial-reconciliation", permission: "finance.view" },
     { title: "Fixed Assets", url: "/fixed-assets", permission: "finance.view" },
+    { title: "Payment Vouchers", url: "/finance/payment-vouchers", permission: "payment.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
   ] },
   { title: "Fiscal", icon: Scale, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Fiscal COA", url: "/finance/fiscal/coa", exact: true, permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
