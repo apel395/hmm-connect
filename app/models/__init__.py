@@ -61,6 +61,7 @@ from app.models.supplier_product import SupplierProduct
 from app.models.user import User
 from app.models.user_role import UserRole
 from app.models.warehouse import Warehouse
+from app.models.payment_voucher import PaymentVoucher, PaymentVoucherAllocation
 
 # Import for SQLAlchemy event registration after all mapped classes above exist.
 from app.models import purchasing_item_policy as _purchasing_item_policy  # noqa: F401,E402
