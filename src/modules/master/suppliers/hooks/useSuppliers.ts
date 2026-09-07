@@ -5,16 +5,17 @@ import type { SupplierPayload } from "../types";
 export const supplierKeys = {
   all: ["suppliers"] as const,
   lists: () => [...supplierKeys.all, "list"] as const,
-  lookup: (search: string) => [...supplierKeys.all, "lookup", search] as const,
+  lookup: (search: string, limit: number) => [...supplierKeys.all, "lookup", search, limit] as const,
   detail: (id: number) => [...supplierKeys.all, "detail", id] as const,
 };
 
 // Backward-compatible form lookup. Master list pages should use useSupplierPage.
-export function useSuppliers(search = "") {
+export function useSuppliers(search = "", limit = 50, enabled = true) {
   return useQuery({
-    queryKey: supplierKeys.lookup(search),
-    queryFn: () => supplierApi.lookup(search, 100),
+    queryKey: supplierKeys.lookup(search, limit),
+    queryFn: () => supplierApi.lookup(search, limit),
     staleTime: 60_000,
+    enabled,
   });
 }
 
