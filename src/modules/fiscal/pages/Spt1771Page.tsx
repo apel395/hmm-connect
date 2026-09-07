@@ -9,7 +9,8 @@ import Input from "@/components/ui/Input";
 import Badge from "@/components/ui/Badge";
 import Loading from "@/components/ui/Loading";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
-import { taxApi } from "../api";
+import { fiscalApi } from "../api";
+import FiscalWorkspaceHeader from "../FiscalWorkspaceHeader";
 
 const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const input = "h-10 rounded-md border border-slate-300 bg-white px-3 text-sm";
@@ -26,15 +27,15 @@ export default function Spt1771Page() {
 
   const q = useQuery({
     queryKey: ["spt-1771", { taxYear, kompensasi }],
-    queryFn: async () => (await taxApi.report({ tax_year: taxYear, kompensasi_kerugian: kompensasi ? Number(kompensasi) : undefined })).data,
+    queryFn: async () => (await fiscalApi.sptReport({ tax_year: taxYear, kompensasi_kerugian: kompensasi ? Number(kompensasi) : undefined })).data,
   });
   const profileQuery = useQuery({
     queryKey: ["spt-1771-profile", taxYear],
-    queryFn: async () => (await taxApi.profile(taxYear)).data,
+    queryFn: async () => (await fiscalApi.sptProfile(taxYear)).data,
   });
   const creditsQuery = useQuery({
     queryKey: ["spt-1771-credits", taxYear],
-    queryFn: async () => (await taxApi.credits(taxYear)).data,
+    queryFn: async () => (await fiscalApi.sptCredits(taxYear)).data,
   });
 
   const data: any = q.data;
@@ -52,7 +53,7 @@ export default function Spt1771Page() {
   }, [profileQuery.data, profileForm]);
 
   const saveProfile = useMutation({
-    mutationFn: () => taxApi.upsertProfile(taxYear, profileMerge),
+    mutationFn: () => fiscalApi.sptUpsertProfile(taxYear, profileMerge),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["spt-1771-profile"] });
       qc.invalidateQueries({ queryKey: ["spt-1771"] });
@@ -62,7 +63,7 @@ export default function Spt1771Page() {
   });
 
   const addCredit = useMutation({
-    mutationFn: () => taxApi.createCredit({
+    mutationFn: () => fiscalApi.sptCreateCredit({
       tax_year: taxYear,
       credit_type: creditForm.credit_type as any,
       amount: Number(creditForm.amount),
@@ -79,7 +80,7 @@ export default function Spt1771Page() {
   });
 
   const deleteCredit = useMutation({
-    mutationFn: (id: number) => taxApi.deleteCredit(id),
+    mutationFn: (id: number) => fiscalApi.sptDeleteCredit(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["spt-1771-credits"] });
       qc.invalidateQueries({ queryKey: ["spt-1771"] });
@@ -99,6 +100,7 @@ export default function Spt1771Page() {
 
   return (
     <div className="space-y-6">
+      <FiscalWorkspaceHeader />
       <PageHeader
         title="SPT Tahunan 1771"
         description="Annual corporate income tax return — commercial P&L, fiscal reconciliation, and corporate tax computation (Pasal 31E)."

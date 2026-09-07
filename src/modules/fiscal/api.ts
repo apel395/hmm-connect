@@ -20,6 +20,7 @@ export type FiscalAccount = {
   is_header: boolean;
   is_active: boolean;
   sort_order: number;
+  klasifikasi_fiskal: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -40,6 +41,43 @@ export type FiscalAccountPage = {
   page: number;
   page_size: number;
   pages: number;
+};
+
+export interface SptReportParams {
+  tax_year: number;
+  location_id?: number;
+  department_id?: number;
+  business_unit_id?: number;
+  kompensasi_kerugian?: number;
+}
+
+export interface TaxProfile {
+  id?: number;
+  tax_year?: number;
+  npwp?: string | null;
+  company_name?: string | null;
+  address?: string | null;
+  city?: string | null;
+  klu?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  representative_name?: string | null;
+}
+
+export interface TaxCreditCreate {
+  tax_year: number;
+  credit_type: "PPh 22" | "PPh 23" | "PPh 24" | "PPh 25" | "OTHER";
+  amount: number;
+  payment_date?: string | null;
+  description?: string | null;
+  counterparty_npwp?: string | null;
+  counterparty_name?: string | null;
+}
+
+export type FiscalBalanceSheetParams = {
+  fiscal_year: number;
+  department_id?: number;
+  location_id?: number;
 };
 
 export type FiscalMapping = {
@@ -93,4 +131,12 @@ export const fiscalApi = {
   createMapping: (payload: { fiscal_account_id: number; commercial_account_id: number }) => api.post("/fiscal/mappings", payload),
   deleteMapping: (id: number) => api.delete(`/fiscal/mappings/${id}`),
   reconciliation: (params: { date_from: string; date_to: string; location_id?: number; department_id?: number; business_unit_id?: number }) => api.get("/fiscal/reconciliation", { params }),
+  fiscalBalanceSheet: (params: FiscalBalanceSheetParams) => api.get("/fiscal-balance-sheet", { params }),
+  exportBalanceSheet: (params: FiscalBalanceSheetParams, format: "xlsx" | "csv") => api.get("/fiscal-balance-sheet/export", { params: { ...params, format }, responseType: "blob" }),
+  sptReport: (params: SptReportParams) => api.get("/spt-1771/report", { params }),
+  sptProfile: (tax_year: number) => api.get("/spt-1771/profile", { params: { tax_year } }),
+  sptUpsertProfile: (tax_year: number, payload: Partial<TaxProfile>) => api.put("/spt-1771/profile", payload, { params: { tax_year } }),
+  sptCredits: (tax_year: number) => api.get("/spt-1771/credits", { params: { tax_year } }),
+  sptCreateCredit: (payload: TaxCreditCreate) => api.post("/spt-1771/credits", payload),
+  sptDeleteCredit: (id: number) => api.delete(`/spt-1771/credits/${id}`),
 };

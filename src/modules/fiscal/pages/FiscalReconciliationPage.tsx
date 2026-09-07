@@ -8,6 +8,7 @@ import Input from "@/components/ui/Input";
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { fiscalApi } from "../api";
+import FiscalWorkspaceHeader from "../FiscalWorkspaceHeader";
 
 const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const input = "h-10 rounded-md border border-slate-300 bg-white px-3 text-sm";
@@ -53,6 +54,7 @@ export default function FiscalReconciliationPage() {
 
   return (
     <div className="space-y-6">
+      <FiscalWorkspaceHeader />
       <PageHeader title="Fiscal Reconciliation" description="Rekonsiliasi Fiskal — komersial profit &amp; loss adjusted by fiscal corrections to derive taxable income (PKP) and estimated corporate income tax (Pasal 31E, 11%)." />
 
       <Card className="p-4">

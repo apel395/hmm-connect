@@ -1,15 +1,13 @@
 import ModuleWorkspaceHeader from "@/components/workspace/ModuleWorkspaceHeader";
 import ChartOfAccountPage from "@/modules/master/chart-of-accounts/pages/ChartOfAccountPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
-import FiscalPeriodsPage from "@/modules/finance/fiscal-periods/FiscalPeriodsPage";
 import BankAccountsSetupPage from "./BankAccountsSetupPage";
 
-type Section = "coa" | "posting-rules" | "fiscal-periods" | "bank-accounts";
+type Section = "coa" | "posting-rules" | "bank-accounts";
 
 const tabs = [
   { label: "Chart of Accounts", to: "/finance-setup", exact: true },
   { label: "Direct COA", to: "/finance-setup/posting-rules" },
-  { label: "Fiscal Periods", to: "/finance-setup/fiscal-periods" },
   { label: "Bank Accounts", to: "/finance-setup/bank-accounts" },
 ];
 
@@ -18,12 +16,11 @@ export default function FinanceSetupWorkspacePage({ section }: { section: Sectio
     <div className="space-y-5">
       <ModuleWorkspaceHeader
         title="Finance Setup"
-        description="Configure chart of accounts, direct master mappings, bank accounts, and fiscal periods."
+        description="Configure chart of accounts, direct master mappings, and bank accounts."
         tabs={tabs}
       />
       {section === "coa" && <ChartOfAccountPage />}
       {section === "posting-rules" && <PostingRulesPage />}
-      {section === "fiscal-periods" && <FiscalPeriodsPage />}
       {section === "bank-accounts" && <BankAccountsSetupPage />}
     </div>
   );

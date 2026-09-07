@@ -12,6 +12,7 @@ import Loading from "@/components/ui/Loading";
 import { exportCsv } from "@/utils/exportCsv";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { fiscalApi, type FiscalLinkedAccount } from "../api";
+import FiscalWorkspaceHeader from "../FiscalWorkspaceHeader";
 
 const PAGE_SIZE = 25;
 const selectClass = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500";
@@ -43,7 +44,7 @@ export default function FiscalAccountPage() {
     status,
   };
   const coa = useQuery({ queryKey: ["fiscal-linked", params], queryFn: async () => (await fiscalApi.linkedCoa(params)).data });
-  const opts = useQuery({ queryKey: ["fiscal-options"], queryFn: async () => (await fiscalApi.accounts({ page_size: 500, is_header: false, sort_by: "sort_order", sort_order: "asc" })).data });
+  const opts = useQuery({ queryKey: ["fiscal-options"], queryFn: async () => (await fiscalApi.accounts({ page_size: 100, is_header: false, sort_by: "sort_order", sort_order: "asc" })).data });
 
   const refresh = () => client.invalidateQueries({ queryKey: ["fiscal-linked"] });
 
@@ -68,6 +69,7 @@ export default function FiscalAccountPage() {
 
   return (
     <div className="space-y-6">
+      <FiscalWorkspaceHeader />
       <PageHeader title="Fiscal Linked Chart of Accounts" description="Commercial (HMM-Connect) accounts with their linked Coretax L1-D Jasa fiscal account. The fiscal COA appears only through its link to the commercial COA; commercial and fiscal figures are reported separately." actions={
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => exportCsv("fiscal-linked-chart-of-accounts.csv", ["Code", "Name", "Type", "Fiscal Code", "Fiscal Name", "Classification", "Status"], items.map((i) => [i.commercial_code, i.commercial_name, i.account_type, i.fiscal_code ?? "", i.fiscal_name ?? "", i.klasifikasi_fiskal ?? "", i.mapping_id != null ? "Linked" : "Unlinked"]))}>Export</Button>

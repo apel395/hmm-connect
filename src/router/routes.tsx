@@ -16,11 +16,13 @@ import ReceivingDetailPage from "@/modules/purchasing/goods-receipts/pages/Recei
 import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDocumentsPage";
 import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
-import FiscalPeriodsPage from "@/modules/finance/fiscal-periods/FiscalPeriodsPage";
 import OpeningBalancesPage from "@/modules/finance/opening-balances/OpeningBalancesPage";
 import FiscalAccountPage from "@/modules/fiscal/pages/FiscalAccountPage";
 import FiscalReconciliationPage from "@/modules/fiscal/pages/FiscalReconciliationPage";
-import Spt1771Page from "@/modules/tax/pages/Spt1771Page";
+import FiscalBalanceSheetPage from "@/modules/fiscal/pages/FiscalBalanceSheetPage";
+import Lampiran1DPage from "@/modules/fiscal/pages/Lampiran1DPage";
+import Spt1771Page from "@/modules/fiscal/pages/Spt1771Page";
+import FiscalPeriodsPage from "@/modules/fiscal/pages/FiscalPeriodsPage";
 import SupplierInvoiceListPage from "@/modules/finance/supplier-invoices/SupplierInvoiceListPage";
 import SupplierInvoiceDetailPage from "@/modules/finance/supplier-invoices/SupplierInvoiceDetailPage";
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
@@ -48,7 +50,6 @@ import BankTransferPrintPage from "@/modules/finance/cash-flow/BankTransferPrint
 import CashBankWorkspacePage from "@/modules/finance/cash-flow/CashBankWorkspacePage";
 import TrialBalancePage from "@/modules/finance/trial-balance/TrialBalancePage";
 import BalanceSheetPage from "@/modules/finance/financial-statements/BalanceSheetPage";
-import FiscalBalanceSheetPage from "@/modules/finance/financial-statements/FiscalBalanceSheetPage";
 import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPage";
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
 import ReconciliationPage from "@/modules/finance/reconciliation/ReconciliationPage";
@@ -114,9 +115,9 @@ const LANDING_CANDIDATES = [
   { path: "/accounts-payable", permission: "ap.view" },
   { path: "/journal", permission: "journal.view" },
   { path: "/cash-flow-statement", permission: "reports.view" },
-  { path: "/fiscal-coa", permission: "fiscal.view" },
-  { path: "/fiscal-reconciliation", permission: "fiscal.view" },
-  { path: "/spt-1771", permission: "fiscal.view" },
+  { path: "/fiscal/coa", permission: "fiscal.view" },
+  { path: "/fiscal/reconciliation", permission: "fiscal.view" },
+  { path: "/fiscal/spt-1771", permission: "fiscal.view" },
 ] as const;
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -211,22 +212,29 @@ const router = createBrowserRouter([
 
       { path: "finance-setup", element: <FinanceSetupWorkspacePage section="coa" /> },
       { path: "finance-setup/posting-rules", element: <FinanceSetupWorkspacePage section="posting-rules" /> },
-      { path: "finance-setup/fiscal-periods", element: <FinanceSetupWorkspacePage section="fiscal-periods" /> },
+      { path: "finance-setup/fiscal-periods", element: <Navigate to="/fiscal/periods" replace /> },
       { path: "finance-setup/bank-accounts", element: <FinanceSetupWorkspacePage section="bank-accounts" /> },
       { path: "finance-setup/bank-accounts/new", element: <BankAccountFormPage /> },
       { path: "finance-setup/bank-accounts/:id/edit", element: <BankAccountFormPage /> },
       { path: "chart-of-accounts", element: <ChartOfAccountPage /> },
       { path: "posting-rules", element: <PostingRulesPage /> },
-      { path: "fiscal-periods", element: <FiscalPeriodsPage /> },
-      { path: "fiscal-coa", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalAccountPage /></PermissionGuard> },
-  { path: "opening-balances", element: <PermissionGuard permission="journal.manage" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><OpeningBalancesPage /></PermissionGuard> },
-  { path: "fiscal-reconciliation", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalReconciliationPage /></PermissionGuard> },
-  { path: "spt-1771", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><Spt1771Page /></PermissionGuard> },
+      { path: "fiscal", element: <Navigate to="/fiscal/coa" replace /> },
+      { path: "fiscal/coa", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalAccountPage /></PermissionGuard> },
+      { path: "fiscal/reconciliation", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalReconciliationPage /></PermissionGuard> },
+      { path: "fiscal/balance-sheet", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalBalanceSheetPage /></PermissionGuard> },
+      { path: "fiscal/lampiran-1d", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><Lampiran1DPage /></PermissionGuard> },
+      { path: "fiscal/spt-1771", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><Spt1771Page /></PermissionGuard> },
+      { path: "fiscal/periods", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalPeriodsPage /></PermissionGuard> },
+      { path: "fiscal-coa", element: <Navigate to="/fiscal/coa" replace /> },
+      { path: "fiscal-reconciliation", element: <Navigate to="/fiscal/reconciliation" replace /> },
+      { path: "spt-1771", element: <Navigate to="/fiscal/spt-1771" replace /> },
+      { path: "fiscal-balance-sheet", element: <Navigate to="/fiscal/balance-sheet" replace /> },
+      { path: "fiscal-periods", element: <Navigate to="/fiscal/periods" replace /> },
+      { path: "opening-balances", element: <PermissionGuard permission="journal.manage" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><OpeningBalancesPage /></PermissionGuard> },
 
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
       { path: "financial-reconciliation", element: <ReconciliationPage /> },
       { path: "balance-sheet", element: <BalanceSheetPage /> },
-      { path: "fiscal-balance-sheet", element: <FiscalBalanceSheetPage /> },
       { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "inventory", element: <InventoryPage /> },
       { path: "inventory/movements", element: <InventoryMovementPage /> },
