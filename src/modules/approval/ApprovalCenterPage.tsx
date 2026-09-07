@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Clock3, FileCheck2, XCircle } from "lucide-react";
+import {CheckCircle2, Clock3, FileCheck2, XCircle, Printer} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
@@ -75,7 +75,7 @@ export default function ApprovalCenterPage() {
   };
 
   return <div className="space-y-5">
-    <PageHeader title="Approval Center" description="One inbox for approval work across purchasing, finance, and future business modules." />
+    <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Approval Center" description="One inbox for approval work across purchasing, finance, and future business modules." />
     <Card className="p-0 overflow-hidden">
       <div className="flex min-w-max gap-6 overflow-x-auto border-b px-4 pt-3">
         {views.map((item) => { const Icon = item.icon; const active = item.key === view; return <button key={item.key} onClick={() => changeView(item.key)} className={`relative flex items-center gap-2 px-1 pb-3 text-sm font-medium ${active ? "text-[#086B5A]" : "text-slate-500 hover:text-slate-900"}`}><Icon className="h-4 w-4"/>{item.label}{item.key === "pending" && pendingCount > 0 && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">{pendingCount}</span>}{active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[#086B5A]"/>}</button> })}

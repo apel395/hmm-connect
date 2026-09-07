@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -57,7 +58,7 @@ export default function PaymentVoucherListPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Payment Vouchers" description="Per-location payment request — select invoices, get approval, then payment is auto-created per supplier." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Payment Vouchers" description="Per-location payment request — select invoices, get approval, then payment is auto-created per supplier." />
       <Card className="p-4">
         <div className="mb-3 font-semibold">Create Voucher — Select Location + Invoices</div>
         <div className="grid gap-3 md:grid-cols-3">

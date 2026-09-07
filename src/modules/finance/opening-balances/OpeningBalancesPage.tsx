@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Save, Trash2 } from "lucide-react";
+import {CheckCircle2, Save, Trash2, Printer} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
@@ -114,7 +114,7 @@ export default function OpeningBalancesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Opening Balances" description="Enter the beginning-of-year balance for each balance-sheet account. Posted once per fiscal year (annual, not monthly); the balancing side goes to the Opening Balance Equity account and flows through the general ledger." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Opening Balances" description="Enter the beginning-of-year balance for each balance-sheet account. Posted once per fiscal year (annual, not monthly); the balancing side goes to the Opening Balance Equity account and flows through the general ledger." />
 
       <ModuleSummary metrics={[
         { label: "Fiscal Year", value: fiscal_year },

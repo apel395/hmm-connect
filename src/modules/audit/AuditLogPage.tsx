@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
@@ -55,7 +56,7 @@ export default function AuditLogPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Audit Log"
+         actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Audit Log"
         description="Append-only document and workflow activity."
       />
 

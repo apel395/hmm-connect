@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown } from "lucide-react";
+import {AlertTriangle, ChevronDown, Printer} from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -55,7 +55,7 @@ export default function FiscalReconciliationPage() {
   return (
     <div className="space-y-6">
       <FiscalWorkspaceHeader />
-      <PageHeader title="Fiscal Reconciliation" description="Commercial profit &amp; loss adjusted by fiscal corrections to derive taxable income (PKP) and estimated corporate income tax (Pasal 31E, 11%)." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Fiscal Reconciliation" description="Commercial profit &amp; loss adjusted by fiscal corrections to derive taxable income (PKP) and estimated corporate income tax (Pasal 31E, 11%)." />
 
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">

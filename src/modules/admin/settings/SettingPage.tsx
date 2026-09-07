@@ -1,11 +1,12 @@
-import { Building2, KeyRound, Landmark, Network, ShieldCheck, Users } from "lucide-react";
+import {Building2, KeyRound, Landmark, Network, ShieldCheck, Users, Printer} from "lucide-react";
 import { Link } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 
 export default function SettingPage() {
   return <div className="space-y-6">
-    <PageHeader title="System Settings" description="Configure organization, security, approvals, finance policy, and system behavior from one place."/>
+    <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="System Settings" description="Configure organization, security, approvals, finance policy, and system behavior from one place."/>
 
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Card>

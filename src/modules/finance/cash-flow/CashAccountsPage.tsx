@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
@@ -65,7 +66,7 @@ export default function CashAccountsPage() {
   const coaOptions=(coa.data??[]).map((row:any)=>({id:row.id,label:`${row.account_code} — ${row.account_name}`,keywords:[row.account_code,row.account_name,row.account_type]}));
 
   return <div className="space-y-6">
-    <PageHeader title="Cash & Bank Accounts" description="Register real bank accounts, link each account to its posting COA, and review posted cash activity." />
+    <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Cash & Bank Accounts" description="Register real bank accounts, link each account to its posting COA, and review posted cash activity." />
 
     <Card className="space-y-4">
       <div ref={formRef} className="scroll-mt-28" />

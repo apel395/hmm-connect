@@ -1,5 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
+import Button from "@/components/ui/Button";
 import OrganizationManagement, { OrganizationSection } from "./OrganizationManagement";
 
 const pageCopy: Record<OrganizationSection, { title: string; description: string }> = {
@@ -39,7 +41,7 @@ export default function OrganizationDimensionsPage({ section: fixedSection }: Pr
 
   return (
     <div className="space-y-4">
-      <PageHeader title={copy.title} description={copy.description} />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title={copy.title} description={copy.description} />
       <OrganizationManagement fixedSection={section} />
     </div>
   );
