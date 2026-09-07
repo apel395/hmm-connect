@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Settings, ShoppingCart, Store, X } from "lucide-react";
+import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
@@ -48,6 +48,8 @@ const groups: Group[] = [
     { title: "Opening Balances", url: "/opening-balances", permission: "journal.manage" },
     { title: "Reconciliation", url: "/financial-reconciliation", permission: "finance.view" },
     { title: "Fixed Assets", url: "/fixed-assets", permission: "finance.view" },
+  ] },
+  { title: "Fiscal", icon: Scale, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Fiscal COA", url: "/finance/fiscal/coa", exact: true, permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Fiscal Reconciliation", url: "/finance/fiscal/reconciliation", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Fiscal Balance Sheet", url: "/finance/fiscal/balance-sheet", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
