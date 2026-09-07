@@ -59,7 +59,6 @@ export default function SearchableSelect<T extends string | number = number>({
   const [query, setQuery] = useState(selectedLabel);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [hoverIndex, setHoverIndex] = useState(-1);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
 
   useEffect(() => {
@@ -97,7 +96,6 @@ export default function SearchableSelect<T extends string | number = number>({
   useEffect(() => {
     if (!open || filteredOptions.length === 0) {
       setActiveIndex(-1);
-      setHoverIndex(-1);
       return;
     }
     setActiveIndex((current) => current >= 0 && current < filteredOptions.length ? current : 0);
@@ -107,14 +105,17 @@ export default function SearchableSelect<T extends string | number = number>({
 
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); setHoverIndex(-1); setQuery(selectedLabel); } };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); setActiveIndex(-1); setQuery(selectedLabel); } };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [open, selectedLabel]);
+
   useEffect(() => {
     if (!open) return;
     updatePosition();
-    const scheduleReposition = () => {
+    const scheduleReposition = (event?: Event) => {
+      const target = event?.target;
+      if (target instanceof Node && dropdownRef.current?.contains(target)) return;
       if (repositionFrameRef.current !== null) return;
       repositionFrameRef.current = window.requestAnimationFrame(() => {
         repositionFrameRef.current = null;
@@ -149,7 +150,6 @@ export default function SearchableSelect<T extends string | number = number>({
     setQuery(optionLabel(option));
     setOpen(false);
     setActiveIndex(-1);
-    setHoverIndex(-1);
   }, [onChange]);
 
   const moveActive = (direction: 1 | -1) => {
@@ -177,9 +177,7 @@ export default function SearchableSelect<T extends string | number = number>({
               type="button"
               role="option"
               aria-selected={index === activeIndex}
-              className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex || index === hoverIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`}
-              onMouseEnter={() => { setActiveIndex(index); setHoverIndex(index); }}
-              onMouseLeave={() => setHoverIndex(-1)}
+              className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`}
               onPointerDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
