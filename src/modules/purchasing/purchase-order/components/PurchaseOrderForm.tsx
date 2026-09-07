@@ -20,7 +20,7 @@ type ProductOption={id:number;code:string;name:string;description?:string|null;u
 const today=todayLocal;
 
 export default function PurchaseOrderForm({open,loading,onClose,onSubmit,initialData}:Props){
- const editing=Boolean(initialData);const{data:suppliers=[]}=useSuppliers();const{canBackdate}=useAuthorization();const{data:approvedPRs=[]}=useApprovedPurchaseRequisitions();
+ const editing=Boolean(initialData);const{data:suppliers=[]}=useSuppliers("",50,open);const{canBackdate}=useAuthorization();const{data:approvedPRs=[]}=useApprovedPurchaseRequisitions();
  const{data:approvedMLs=[]}=useQuery({queryKey:["approved-market-lists-for-po"],queryFn:async()=>(await marketListApi.list({scope:"active",status:"APPROVED",page:1,page_size:100})).data.items??[],enabled:open&&!editing});
  const[products,setProducts]=useState<ProductOption[]>([]);const[creationType,setCreationType]=useState<CreationType>("FROM_PR");const[supplierId,setSupplierId]=useState<number>();const[selectedPRs,setSelectedPRs]=useState<any[]>([]);const[selectedML,setSelectedML]=useState<MarketListOption>();const[businessUnitId,setBusinessUnitId]=useState<number>();const[departmentId,setDepartmentId]=useState<number>();const[locationId,setLocationId]=useState<number>();const[orderDate,setOrderDate]=useState(today());const[expectedDate,setExpectedDate]=useState("");const[notes,setNotes]=useState("");const[formError,setFormError]=useState("");const[items,setItems]=useState<PurchaseOrderItemRow[]>([]);
  const{data:marketListDetail}=useQuery({queryKey:["purchase-order-source-market-list",selectedML?.id],queryFn:async()=>(await marketListApi.detail(selectedML!.id)).data,enabled:open&&!editing&&creationType==="FROM_ML"&&Boolean(selectedML?.id)});
