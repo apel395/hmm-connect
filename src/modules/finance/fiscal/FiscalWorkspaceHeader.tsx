@@ -1,12 +1,12 @@
 import ModuleWorkspaceHeader from "@/components/workspace/ModuleWorkspaceHeader";
 
 const tabs = [
-  { label: "COA & Mapping", to: "/fiscal/coa", exact: true },
-  { label: "Reconciliation", to: "/fiscal/reconciliation" },
-  { label: "Balance Sheet", to: "/fiscal/balance-sheet" },
-  { label: "Lampiran 1D", to: "/fiscal/lampiran-1d" },
-  { label: "SPT Tahunan 1771", to: "/fiscal/spt-1771" },
-  { label: "Fiscal Periods", to: "/fiscal/periods" },
+  { label: "COA & Mapping", to: "/finance/fiscal/coa", exact: true },
+  { label: "Reconciliation", to: "/finance/fiscal/reconciliation" },
+  { label: "Balance Sheet", to: "/finance/fiscal/balance-sheet" },
+  { label: "Lampiran 1D", to: "/finance/fiscal/lampiran-1d" },
+  { label: "SPT Tahunan 1771", to: "/finance/fiscal/spt-1771" },
+  { label: "Fiscal Periods", to: "/finance/fiscal/periods" },
 ];
 
 export default function FiscalWorkspaceHeader() {
