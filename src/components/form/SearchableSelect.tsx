@@ -66,7 +66,11 @@ export default function SearchableSelect<T extends string | number = number>({
   }, [selectedLabel, open]);
 
   useEffect(() => {
-    if (label?.trim().toLowerCase() === "location" && options.length === 1 && value !== options[0].id) {
+    if (
+      label?.trim().toLowerCase() === "location" &&
+      options.length === 1 &&
+      value !== options[0].id
+    ) {
       onChange(options[0].id);
     }
   }, [label, options, value, onChange]);
@@ -131,7 +135,6 @@ export default function SearchableSelect<T extends string | number = number>({
   }, [open, updatePosition]);
 
   useEffect(() => {
-    if (!open) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       const insideInput = rootRef.current?.contains(target);
@@ -140,7 +143,7 @@ export default function SearchableSelect<T extends string | number = number>({
     };
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
+  }, []);
 
   const selectOption = useCallback((option: SearchableSelectOption<T>) => {
     onChange(option.id);
@@ -159,20 +162,110 @@ export default function SearchableSelect<T extends string | number = number>({
 
   const dropdown = open && !disabled && position && typeof document !== "undefined"
     ? createPortal(
-        <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-64 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
-          {filteredOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching options.</div> : filteredOptions.map((option, index) => (
-            <button key={String(option.id)} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }}>
+        <div
+          ref={dropdownRef}
+          role="listbox"
+          className="pointer-events-auto fixed z-[10000] max-h-64 overflow-y-auto overscroll-contain will-change-transform rounded-md border border-slate-200 bg-white shadow-xl"
+          style={{ left: position.left, top: position.top, width: position.width }}
+        >
+          {filteredOptions.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-slate-500">No matching options.</div>
+          ) : filteredOptions.map((option, index) => (
+            <button
+              key={String(option.id)}
+              ref={(element) => { optionRefs.current[index] = element; }}
+              type="button"
+              role="option"
+              aria-selected={index === activeIndex}
+              className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                selectOption(option);
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                selectOption(option);
+              }}
+            >
               {optionLabel(option)}
             </button>
           ))}
-        </div>, document.body)
+        </div>,
+        document.body,
+      )
     : null;
 
-  return <label className="block">
-    {label && <span className={`${FORM_UI.label} ${FORM_UI.density.compact.label}`}>{label}{required ? <span className="text-red-500"> *</span> : null}</span>}
-    <div ref={rootRef} className={`relative ${label ? "mt-1" : ""}`}>
-      <input ref={inputRef} type="text" value={query} disabled={disabled} required={required} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} ${className}`} onFocus={(event) => { updatePosition(); setOpen(true); event.currentTarget.select(); }} onChange={(event) => { setQuery(event.target.value); updatePosition(); setOpen(true); setActiveIndex(0); if (!event.target.value.trim() && value !== undefined) onChange(undefined); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && filteredOptions.length > 0) { event.preventDefault(); setActiveIndex(0); scrollOptionIntoView(0); return; } if (event.key === "End" && open && filteredOptions.length > 0) { event.preventDefault(); const endIndex = filteredOptions.length - 1; setActiveIndex(endIndex); scrollOptionIntoView(endIndex); return; } if (event.key === "Enter" && open && activeIndex >= 0 && filteredOptions[activeIndex]) { event.preventDefault(); selectOption(filteredOptions[activeIndex]); return; } }} onBlur={() => { window.setTimeout(() => { if (!dropdownRef.current?.matches(":hover")) setQuery(selectedLabel); }, 0); }} />
-      {dropdown}
-    </div>
-  </label>;
+  return (
+    <label className="block">
+      {label && <span className={`${FORM_UI.label} ${FORM_UI.density.compact.label}`}>{label}{required ? <span className="text-red-500"> *</span> : null}</span>}
+      <div ref={rootRef} className={`relative ${label ? "mt-1" : ""}`}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          disabled={disabled}
+          required={required}
+          placeholder={placeholder}
+          autoComplete="off"
+          role="combobox"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          data-form-control
+          data-form-density="compact"
+          className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} ${className}`}
+          onFocus={(event) => {
+            updatePosition();
+            setOpen(true);
+            event.currentTarget.select();
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            updatePosition();
+            setOpen(true);
+            setActiveIndex(0);
+            if (!event.target.value.trim() && value !== undefined) onChange(undefined);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              moveActive(1);
+              return;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              moveActive(-1);
+              return;
+            }
+            if (event.key === "Home" && open && filteredOptions.length > 0) {
+              event.preventDefault();
+              setActiveIndex(0);
+              scrollOptionIntoView(0);
+              return;
+            }
+            if (event.key === "End" && open && filteredOptions.length > 0) {
+              event.preventDefault();
+              const endIndex = filteredOptions.length - 1;
+              setActiveIndex(endIndex);
+              scrollOptionIntoView(endIndex);
+              return;
+            }
+            if (event.key === "Enter" && open && activeIndex >= 0 && filteredOptions[activeIndex]) {
+              event.preventDefault();
+              selectOption(filteredOptions[activeIndex]);
+              return;
+            }
+          }}
+          onBlur={() => {
+            window.setTimeout(() => {
+              if (!dropdownRef.current?.matches(":hover")) setQuery(selectedLabel);
+            }, 0);
+          }}
+        />
+        {dropdown}
+      </div>
+    </label>
+  );
 }
