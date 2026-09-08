@@ -91,7 +91,7 @@ export default function RolePage() {
   }
 
   return <div className="space-y-6">
-    <PageHeader title="Roles" description="Manage core HMM-Connect roles and additional custom roles." actions={<>
+    <PageHeader title="Roles" description="Manage core MMH-Connect roles and additional custom roles." actions={<>
 <Button onClick={() => openRole()}><Plus size={16}/> Create Role</Button>
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}/>

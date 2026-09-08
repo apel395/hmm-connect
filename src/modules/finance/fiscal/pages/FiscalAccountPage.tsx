@@ -70,7 +70,7 @@ export default function FiscalAccountPage() {
   return (
     <div className="space-y-6">
       <FiscalWorkspaceHeader />
-      <PageHeader title="Fiscal Linked Chart of Accounts" description="Commercial (HMM-Connect) accounts with their linked Coretax L1-D Jasa fiscal account. The fiscal COA appears only through its link to the commercial COA; commercial and fiscal figures are reported separately." actions={
+      <PageHeader title="Fiscal Linked Chart of Accounts" description="Commercial (MMH-Connect) accounts with their linked Coretax L1-D Jasa fiscal account. The fiscal COA appears only through its link to the commercial COA; commercial and fiscal figures are reported separately." actions={
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => exportCsv("fiscal-linked-chart-of-accounts.csv", ["Code", "Name", "Type", "Fiscal Code", "Fiscal Name", "Classification", "Status"], items.map((i) => [i.commercial_code, i.commercial_name, i.account_type, i.fiscal_code ?? "", i.fiscal_name ?? "", i.klasifikasi_fiskal ?? "", i.mapping_id != null ? "Linked" : "Unlinked"]))}>Export</Button>
           <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>

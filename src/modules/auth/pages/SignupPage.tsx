@@ -123,10 +123,10 @@ export default function SignupPage() {
         <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full border border-[#C49A4A]/20" />
         <div className="relative flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-xl border border-[#C49A4A]/60 bg-white/5 font-serif text-lg font-bold tracking-wider text-[#E4C57E]">
-            HMM
+            MMH
           </div>
           <div>
-            <div className="font-semibold tracking-wide">HMM-Connect</div>
+            <div className="font-semibold tracking-wide">MMH-Connect</div>
             <div className="text-xs text-emerald-100/65">Hotel Administration</div>
           </div>
         </div>
@@ -161,10 +161,10 @@ export default function SignupPage() {
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <div className="grid h-11 w-11 place-items-center rounded-xl bg-[#073F37] font-serif text-sm font-bold tracking-wider text-[#E4C57E]">
-              HMM
+              MMH
             </div>
             <div>
-              <div className="font-semibold">HMM-Connect</div>
+              <div className="font-semibold">MMH-Connect</div>
               <div className="text-xs text-[#6F756F]">Hotel Mutiara Merdeka</div>
             </div>
           </div>
@@ -196,7 +196,7 @@ export default function SignupPage() {
                   </div>
                   <h1 className="font-serif text-3xl font-semibold tracking-tight">Create account</h1>
                   <p className="mt-2 text-sm text-[#6F756F]">
-                    Register for basic access to HMM-Connect.
+                    Register for basic access to MMH-Connect.
                   </p>
                 </div>
 

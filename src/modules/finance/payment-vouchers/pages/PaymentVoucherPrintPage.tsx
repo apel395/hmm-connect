@@ -18,7 +18,7 @@ export default function PaymentVoucherPrintPage() {
   return (
     <div className="print-document mx-auto max-w-[1100px] space-y-4 bg-white p-6 text-sm">
       <div className="flex items-start justify-between border-b pb-4">
-        <div><h1 className="text-2xl font-bold">HMM-Connect</h1><h2 className="text-lg font-semibold">Payment Voucher — {v.voucher_number}</h2><p className="text-xs text-slate-500">{v.location_name} • {v.voucher_date} • Periode {v.period_from || "—"} → {v.period_to || "—"}</p></div>
+        <div><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-lg font-semibold">Payment Voucher — {v.voucher_number}</h2><p className="text-xs text-slate-500">{v.location_name} • {v.voucher_date} • Periode {v.period_from || "—"} → {v.period_to || "—"}</p></div>
         <div className="text-right text-xs"><div>Printed by {user?.full_name || user?.username} • {new Date().toLocaleString()}</div><div className="mt-1 font-mono">PV-{v.id}</div></div>
       </div>
       <div className="rounded border">

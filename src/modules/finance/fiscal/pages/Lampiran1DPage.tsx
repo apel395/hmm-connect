@@ -80,7 +80,7 @@ export default function Lampiran1DPage() {
   return (
     <div className="print-document space-y-4">
       <div className="hidden print:block">
-        <h1 className="text-2xl font-bold">HMM-Connect</h1>
+        <h1 className="text-2xl font-bold">MMH-Connect</h1>
         <h2 className="text-xl font-semibold">Lampiran 1D – Rekonsiliasi Laporan Keuangan (Jasa)</h2>
         <p>Fiscal Year {year} · Coretax PER-11/PJ/2025 Jasa Sector (L1-D)</p>
       </div>

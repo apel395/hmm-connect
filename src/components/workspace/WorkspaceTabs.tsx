@@ -42,7 +42,7 @@ export default function WorkspaceTabs() {
       pinned: location.pathname === "/dashboard",
       group: workspaceTabGroup(location.pathname),
     });
-    document.title = `${title} · HMM-Connect`;
+    document.title = `${title} · MMH-Connect`;
   }, [currentPath, ensureTab, location.pathname, location.search]);
 
   const { visibleTabs, overflowTabs } = useMemo(() => {
