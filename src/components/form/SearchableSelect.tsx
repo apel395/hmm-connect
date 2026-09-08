@@ -85,8 +85,8 @@ export default function SearchableSelect<T extends string | number = number>({
   const filteredOptions = useMemo(() => {
     const raw = query.trim().toLowerCase();
     const effective = selected && raw === selectedLabel.toLowerCase() ? "" : raw;
-    if (!effective) return options.slice(0, 15);
-    return options.filter((option) => searchableText(option).includes(effective)).slice(0, 15);
+    if (!effective) return options.slice(0, 50);
+    return options.filter((option) => searchableText(option).includes(effective)).slice(0, 50);
   }, [options, query, selected, selectedLabel]);
 
   useEffect(() => {
@@ -159,7 +159,7 @@ export default function SearchableSelect<T extends string | number = number>({
 
   const dropdown = open && !disabled && position && typeof document !== "undefined"
     ? createPortal(
-        <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-64 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-lg" style={{ left: position.left, top: position.top, width: position.width, contain: "layout paint" }}>
+        <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-64 overflow-y-auto overscroll-contain will-change-transform rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
           {filteredOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching options.</div> : filteredOptions.map((option, index) => (
             <button key={String(option.id)} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }}>
               {optionLabel(option)}
