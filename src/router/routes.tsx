@@ -16,10 +16,8 @@ import ReceivingDetailPage from "@/modules/purchasing/goods-receipts/pages/Recei
 import PurchasingDocumentsPage from "@/modules/purchasing-documents/PurchasingDocumentsPage";
 import PrintDocumentPage from "@/modules/purchasing/print/PrintDocumentPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
-import OpeningBalancesPage from "@/modules/finance/opening-balances/OpeningBalancesPage";
 import FiscalAccountPage from "@/modules/finance/fiscal/pages/FiscalAccountPage";
 import FiscalReconciliationPage from "@/modules/finance/fiscal/pages/FiscalReconciliationPage";
-import FiscalBalanceSheetPage from "@/modules/finance/fiscal/pages/FiscalBalanceSheetPage";
 import Lampiran1DPage from "@/modules/finance/fiscal/pages/Lampiran1DPage";
 import Spt1771Page from "@/modules/finance/fiscal/pages/Spt1771Page";
 import FiscalPeriodsPage from "@/modules/finance/fiscal/pages/FiscalPeriodsPage";
@@ -223,28 +221,28 @@ const router = createBrowserRouter([
       { path: "finance-setup/bank-accounts", element: <FinanceSetupWorkspacePage section="bank-accounts" /> },
       { path: "finance-setup/bank-accounts/new", element: <BankAccountFormPage /> },
       { path: "finance-setup/bank-accounts/:id/edit", element: <BankAccountFormPage /> },
+      { path: "finance-setup/opening-balances", element: <FinanceSetupWorkspacePage section="opening-balances" /> },
       { path: "chart-of-accounts", element: <ChartOfAccountPage /> },
       { path: "posting-rules", element: <PostingRulesPage /> },
       { path: "finance/fiscal", element: <Navigate to="/finance/fiscal/coa" replace /> },
       { path: "finance/fiscal/coa", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalAccountPage /></PermissionGuard> },
       { path: "finance/fiscal/reconciliation", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalReconciliationPage /></PermissionGuard> },
-      { path: "finance/fiscal/balance-sheet", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalBalanceSheetPage /></PermissionGuard> },
       { path: "finance/fiscal/lampiran-1d", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><Lampiran1DPage /></PermissionGuard> },
       { path: "finance/fiscal/spt-1771", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><Spt1771Page /></PermissionGuard> },
       { path: "finance/fiscal/periods", element: <PermissionGuard permission="fiscal.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><FiscalPeriodsPage /></PermissionGuard> },
       { path: "fiscal", element: <Navigate to="/finance/fiscal/coa" replace /> },
       { path: "fiscal/coa", element: <Navigate to="/finance/fiscal/coa" replace /> },
       { path: "fiscal/reconciliation", element: <Navigate to="/finance/fiscal/reconciliation" replace /> },
-      { path: "fiscal/balance-sheet", element: <Navigate to="/finance/fiscal/balance-sheet" replace /> },
+      { path: "fiscal/balance-sheet", element: <Navigate to="/finance/fiscal/lampiran-1d" replace /> },
       { path: "fiscal/lampiran-1d", element: <Navigate to="/finance/fiscal/lampiran-1d" replace /> },
       { path: "fiscal/spt-1771", element: <Navigate to="/finance/fiscal/spt-1771" replace /> },
       { path: "fiscal/periods", element: <Navigate to="/finance/fiscal/periods" replace /> },
       { path: "fiscal-coa", element: <Navigate to="/finance/fiscal/coa" replace /> },
       { path: "fiscal-reconciliation", element: <Navigate to="/finance/fiscal/reconciliation" replace /> },
       { path: "spt-1771", element: <Navigate to="/finance/fiscal/spt-1771" replace /> },
-      { path: "fiscal-balance-sheet", element: <Navigate to="/finance/fiscal/balance-sheet" replace /> },
+      { path: "fiscal-balance-sheet", element: <Navigate to="/finance/fiscal/lampiran-1d" replace /> },
       { path: "fiscal-periods", element: <Navigate to="/finance/fiscal/periods" replace /> },
-      { path: "opening-balances", element: <PermissionGuard permission="journal.manage" legacyRoles={["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><OpeningBalancesPage /></PermissionGuard> },
+      { path: "opening-balances", element: <Navigate to="/finance-setup/opening-balances" replace /> },
 
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
       { path: "financial-reconciliation", element: <ReconciliationPage /> },

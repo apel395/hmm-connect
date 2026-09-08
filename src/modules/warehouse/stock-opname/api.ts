@@ -24,4 +24,5 @@ export const stockOpnameApi = {
   reject: (id: number, comment: string) =>
     api.post<StockOpname>(`/stock-opnames/${id}/reject`, { comment }),
   post: (id: number) => api.post<StockOpname>(`/stock-opnames/${id}/post`),
+  unpost: (id: number) => api.post<StockOpname>(`/stock-opnames/${id}/unpost`),
 };

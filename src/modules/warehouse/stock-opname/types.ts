@@ -30,7 +30,21 @@ export type StockOpname = {
     can_approve?: boolean;
     can_reject?: boolean;
     can_post?: boolean;
+    can_unpost?: boolean;
   };
+  approval_history?: Array<{
+    level?: number;
+    name?: string;
+    approver_role?: string;
+    location_name?: string | null;
+    status?: string;
+    approver_name?: string | null;
+    decided_at?: string | null;
+    comment?: string | null;
+    signature_name?: string | null;
+    signature_label?: string | null;
+    signature_image?: string | null;
+  }>;
 };
 
 export type StockOpnameList = {

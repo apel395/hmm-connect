@@ -96,7 +96,7 @@ export default function StockAdjustmentPage() {
 
   const inventoryQuery = useQuery({
     queryKey: ["stock-adjustment-inventory", warehouseId],
-    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100, warehouse_id: warehouseId })).data,
+    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 5000, warehouse_id: warehouseId })).data,
     enabled: Boolean(warehouseId),
   });
   const invRows: any[] = inventoryQuery.data?.items ?? [];

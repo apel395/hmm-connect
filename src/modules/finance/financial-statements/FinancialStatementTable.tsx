@@ -14,19 +14,24 @@ export default function FinancialStatementTable({
 }: {
   sections: any[];
   comparative?: boolean;
-  mode?: "comparative" | "opening_closing";
+  mode?: "comparative" | "opening_closing" | "balance";
   ledgerUrl: (id: number) => string;
 }) {
   const numeric = "whitespace-nowrap text-right tabular-nums";
+  const isBalance = mode === "balance";
   const yearly = mode === "opening_closing";
   const rowValue = (row: any, key: any, fallbackKey?: any) =>
     yearly ? row[fallbackKey ?? key] ?? row[key] ?? 0 : row[key] ?? 0;
+  const accountValue = (row: any) =>
+    isBalance ? row.closing_amount ?? 0 : yearly ? row.closing_amount ?? row.opening_amount ?? 0 : row.current_amount ?? 0;
   return (
     <Table variant="grid" stickyHeader className="min-w-[850px]">
       <THead>
         <TR>
           <TH>Account</TH>
-          {yearly ? (
+          {isBalance ? (
+            <TH className={numeric}>Saldo (Balance)</TH>
+          ) : yearly ? (
             <>
               <TH className={numeric}>Opening Amount</TH>
               <TH className={numeric}>Closing Amount</TH>
@@ -51,7 +56,9 @@ export default function FinancialStatementTable({
             {
               <TR key={section.code} className="bg-slate-100 font-bold">
                 <TD>{section.label}</TD>
-                {yearly ? (
+                {isBalance ? (
+                  <TD className={numeric}>{money(rowValue(section, "closing_total"))}</TD>
+                ) : yearly ? (
                   <>
                     <TD className={numeric}>{money(rowValue(section, "opening_total", "opening_amount"))}</TD>
                     <TD className={numeric}>{money(rowValue(section, "closing_total", "closing_amount"))}</TD>
@@ -81,7 +88,9 @@ export default function FinancialStatementTable({
                   className="bg-slate-50 font-semibold"
                 >
                   <TD className="pl-6">{group.label}</TD>
-                  {yearly ? (
+                  {isBalance ? (
+                    <TD className={numeric}>{money(group.closing_total ?? 0)}</TD>
+                  ) : yearly ? (
                     <>
                       <TD className={numeric}>{money(rowValue(group, "opening_total", "opening_amount"))}</TD>
                       <TD className={numeric}>{money(rowValue(group, "closing_total", "closing_amount"))}</TD>
@@ -119,7 +128,9 @@ export default function FinancialStatementTable({
                         account.account_name
                       )}
                     </TD>
-                    {yearly ? (
+                    {isBalance ? (
+                      <TD className={numeric}>{money(accountValue(account))}</TD>
+                    ) : yearly ? (
                       <>
                         <TD className={numeric}>{money(account.opening_amount)}</TD>
                         <TD className={numeric}>{money(account.closing_amount)}</TD>

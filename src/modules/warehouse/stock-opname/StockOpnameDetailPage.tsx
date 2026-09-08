@@ -53,8 +53,14 @@ export default function StockOpnameDetailPage() {
     mutationFn: () => stockOpnameApi.post(id),
     onSuccess: refresh,
   });
+  const unpost = useMutation({
+    mutationFn: () => stockOpnameApi.unpost(id),
+    onSuccess: refresh,
+  });
   const d = query.data;
   if (!d) return <div>Loading...</div>;
+  const editable = d.status !== "POSTED";
+  const canCount = editable && d.allowed_actions?.can_edit === true;
   return (
     <div className="space-y-6">
       <PageHeader
@@ -62,7 +68,7 @@ export default function StockOpnameDetailPage() {
         description={`${d.warehouse_name ?? "Warehouse"} • ${d.count_date}`}
         actions={
           <div className="flex gap-2">
-            {d.status === "DRAFT" && d.items.length > 0 && (
+            {canCount && d.items.length > 0 && (
               <>
                 <Button
                   variant="secondary"
@@ -71,17 +77,39 @@ export default function StockOpnameDetailPage() {
                 >
                   Save Count
                 </Button>
-                <Button
-                  disabled={submit.isPending}
-                  onClick={() => submit.mutate()}
-                >
-                  Submit
-                </Button>
               </>
+            )}
+            {d.status === "DRAFT" && d.items.length > 0 && d.allowed_actions?.can_submit === true && (
+              <Button
+                disabled={submit.isPending}
+                onClick={() => submit.mutate()}
+              >
+                Submit
+              </Button>
+            )}
+            {d.status === "REJECTED" && d.items.length > 0 && d.allowed_actions?.can_submit === true && (
+              <Button
+                disabled={submit.isPending}
+                onClick={() => submit.mutate()}
+              >
+                Resubmit
+              </Button>
             )}
             {d.status === "APPROVED" && d.items.length > 0 && d.allowed_actions?.can_post === true && (
               <Button disabled={post.isPending} onClick={() => post.mutate()}>
                 Post Adjustment
+              </Button>
+            )}
+            {d.status === "POSTED" && d.allowed_actions?.can_unpost === true && (
+              <Button
+                variant="danger"
+                disabled={unpost.isPending}
+                onClick={() => {
+                  if (window.confirm(`Unpost ${d.opname_number} and restore system quantities?`))
+                    unpost.mutate();
+                }}
+              >
+                Unpost
               </Button>
             )}
             <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
@@ -115,6 +143,26 @@ export default function StockOpnameDetailPage() {
           warehouse contains inventory.
         </Card>
       )}
+      <Card className="hidden print:block p-6">
+        <h2 className="mb-4 border-b border-black pb-2 text-sm font-bold uppercase tracking-wide">
+          Approval Signatures
+        </h2>
+        <div className="grid grid-cols-3 gap-10 text-center">
+          {(d.approval_history ?? []).map((step) => (
+            <div key={String(step.level ?? step.name)}>
+              <div className="flex h-14 items-end justify-center">
+                {step.signature_image && (
+                  <img src={step.signature_image} alt="" className="max-h-14 max-w-full object-contain" />
+                )}
+              </div>
+              <div className="border-t border-black pt-1 font-semibold">
+                {step.signature_label || step.name || `Level ${step.level}`}
+              </div>
+              <div className="mt-1 text-[11px]">{step.signature_name || step.approver_name || step.status}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
       <Card className="p-0">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-xs">
@@ -149,7 +197,7 @@ export default function StockOpnameDetailPage() {
                       {Number(i.system_quantity).toLocaleString("id-ID")}
                     </td>
                     <td className="px-4 py-2 text-right">
-                      {d.status === "DRAFT" ? (
+                      {canCount ? (
                         <input
                           className="h-8 w-28 rounded border px-2 text-right"
                           type="number"
@@ -189,10 +237,10 @@ export default function StockOpnameDetailPage() {
           </table>
         </div>
       </Card>
-      {(save.error || submit.error || post.error) && (
+      {(save.error || submit.error || post.error || unpost.error) && (
         <p className="text-sm text-red-600">
-          {(save.error || submit.error || post.error) instanceof Error
-            ? (save.error || submit.error || post.error)?.message
+          {(save.error || submit.error || post.error || unpost.error) instanceof Error
+            ? (save.error || submit.error || post.error || unpost.error)?.message
             : "Action failed. Refresh and verify the Stock Opname status."}
         </p>
       )}

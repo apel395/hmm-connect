@@ -45,7 +45,7 @@ const groups: Group[] = [
     { title: "Accounts Receivable", url: "/accounts-receivable", permission: "finance.view" },
     { title: "Cash & Bank", url: "/cash-bank", permission: "finance.view" },
     { title: "Journal", url: "/journal", permission: "journal.view" },
-    { title: "Opening Balances", url: "/opening-balances", permission: "journal.manage" },
+    { title: "Opening Balances", url: "/finance-setup/opening-balances", permission: "journal.manage" },
     { title: "Reconciliation", url: "/financial-reconciliation", permission: "finance.view" },
     { title: "Fixed Assets", url: "/fixed-assets", permission: "finance.view" },
     { title: "Payment Vouchers", url: "/finance/payment-vouchers", permission: "payment.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
@@ -53,10 +53,9 @@ const groups: Group[] = [
   { title: "Fiscal", icon: Scale, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Fiscal COA", url: "/finance/fiscal/coa", exact: true, permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Fiscal Reconciliation", url: "/finance/fiscal/reconciliation", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-    { title: "Fiscal Balance Sheet", url: "/finance/fiscal/balance-sheet", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Lampiran 1D", url: "/finance/fiscal/lampiran-1d", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "SPT Tahunan 1771", url: "/finance/fiscal/spt-1771", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
-    { title: "Fiscal Periods", url: "/finance/fiscal/periods", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
+    { title: "Accounting Periods", url: "/finance/fiscal/periods", permission: "fiscal.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
   ] },
   { title: "Reports", icon: FileBarChart, children: [
     { title: "Purchasing Reports", url: "/reports/purchasing", permission: "reports.purchasing", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
