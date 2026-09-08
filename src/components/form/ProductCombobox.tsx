@@ -151,7 +151,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
-  const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
+  const visibleOptions = useMemo(() => options.slice(0, 15), [options]);
   useEffect(() => {
     if (!open || visibleOptions.length === 0) { setActiveIndex(-1); return; }
     setActiveIndex((current) => current >= 0 && current < visibleOptions.length ? current : 0);
@@ -202,7 +202,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   };
 
   const dropdown = open && !disabled && position && typeof document !== "undefined" ? createPortal(
-    <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto overscroll-contain will-change-transform rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
+    <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-lg" style={{ left: position.left, top: position.top, width: position.width, contain: "layout paint" }}>
       {loading && visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div> : loadError ? <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div> : visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div> : visibleOptions.map((product, index) => {
         const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
         return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full cursor-pointer border-b border-slate-100 px-3.5 py-2.5 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "bg-amber-50 text-slate-700 hover:bg-amber-100" : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
