@@ -16,8 +16,9 @@ from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.payment import Payment, PaymentAllocation, PaymentFundingLine
+from app.models.payment_voucher import PaymentVoucher
 from app.models.supplier_invoice import SupplierInvoice
-from app.schemas.payment import PaymentCreate, PaymentUpdate
+from app.schemas.payment import PaymentAllocationInput, PaymentCreate, PaymentUpdate
 from app.services.direct_coa_service import DirectCoaService
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
@@ -100,6 +101,32 @@ def sync_payable(db: Session, invoice: SupplierInvoice, payment_date: date | Non
         if payment_date:
             payable.last_payment_date = payment_date
     return balance
+
+
+def _apply_voucher(db: Session, data: PaymentCreate, user) -> PaymentVoucher:
+    voucher = db.query(PaymentVoucher).filter(PaymentVoucher.id == data.voucher_id).with_for_update().first()
+    if not voucher or voucher.status != "APPROVED":
+        raise HTTPException(409, "Only approved payment vouchers can be converted to a payment")
+    if voucher.payment_id:
+        raise HTTPException(409, f"Voucher {voucher.voucher_number} already has a payment")
+    enforce_location_access(user, voucher.location_id)
+    allocs = [
+        a for a in voucher.allocations
+        if a.supplier_invoice.supplier_id == data.supplier_id
+    ]
+    if not allocs:
+        raise HTTPException(409, "Voucher has no unpaid invoices for the selected supplier")
+    currencies = {a.supplier_invoice.currency for a in allocs}
+    if currencies and currencies != {data.currency.upper()}:
+        raise HTTPException(400, "Voucher invoice currency does not match payment currency")
+    data.allocations = [
+        PaymentAllocationInput(
+            supplier_invoice_id=a.supplier_invoice_id,
+            allocated_amount=Decimal(a.allocated_amount),
+        )
+        for a in allocs
+    ]
+    return voucher
 
 
 def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = None):
@@ -278,6 +305,9 @@ def serialize(payment: Payment):
         "status": payment.status,
         "notes": payment.notes,
         "source_type": payment.source_type,
+        "external_reference": payment.external_reference,
+        "voucher_id": payment.payment_voucher.id if payment.payment_voucher else None,
+        "voucher_number": payment.payment_voucher.voucher_number if payment.payment_voucher else None,
         "journal_entry_id": payment.journal_entry_id,
         "journal_number": payment.journal_entry.journal_number if payment.journal_entry else None,
         "created_by_name": payment.created_by.full_name if payment.created_by else None,
@@ -406,6 +436,49 @@ def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_
     return available_rows
 
 
+@router.get("/eligible-vouchers")
+def eligible_vouchers(
+    supplier_id: int,
+    currency: str = "IDR",
+    db: Session = Depends(get_db),
+    user=Depends(payment_manage_user),
+):
+    """Return only APPROVED payment vouchers that have no payment yet for a supplier.
+
+    These are the vouchers the user converts into a real Payment from Create Payment.
+    """
+    rows = apply_location_scope(db.query(PaymentVoucher), PaymentVoucher, user).filter(
+        PaymentVoucher.status == "APPROVED",
+        PaymentVoucher.payment_id == None,  # noqa: E711  (not yet converted)
+    ).order_by(PaymentVoucher.id.desc()).all()
+    result = []
+    for v in rows:
+        supplier_pairs = [
+            a for a in v.allocations
+            if a.supplier_invoice.supplier_id == supplier_id
+            and a.supplier_invoice.currency == currency.upper()
+        ]
+        if not supplier_pairs:
+            continue
+        amount = sum((Decimal(a.allocated_amount) for a in supplier_pairs), ZERO)
+        result.append({
+            "id": v.id,
+            "voucher_number": v.voucher_number,
+            "voucher_date": v.voucher_date,
+            "location_id": v.location_id,
+            "location_name": v.location.name if v.location else None,
+            "currency": currency.upper(),
+            "allocated_amount": amount,
+            "invoices": [{
+                "id": a.supplier_invoice_id,
+                "invoice_number": a.supplier_invoice.internal_invoice_number,
+                "supplier_invoice_number": a.supplier_invoice.supplier_invoice_number,
+                "allocated_amount": a.allocated_amount,
+            } for a in supplier_pairs],
+        })
+    return result
+
+
 @router.get("/{payment_id}")
 def detail(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_view_user)):
     return result(db, get(db, payment_id, user), user)
@@ -413,6 +486,9 @@ def detail(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_
 
 @router.post("", status_code=201)
 def create(data: PaymentCreate, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
+    voucher = None
+    if data.voucher_id:
+        voucher = _apply_voucher(db, data, user)
     validate_data(db, data, user)
     payment = Payment(
         payment_number=next_document_number(db, "PAY"),
@@ -425,6 +501,7 @@ def create(data: PaymentCreate, db: Session = Depends(get_db), user=Depends(paym
         cheque_number=data.cheque_number,
         notes=data.notes,
         source_type=data.source_type,
+        external_reference=f"VOUCHER:{voucher.voucher_number}" if voucher else None,
         status="DRAFT",
         created_by_id=user.id,
         business_unit_id=data.business_unit_id,
@@ -435,6 +512,8 @@ def create(data: PaymentCreate, db: Session = Depends(get_db), user=Depends(paym
     payment.funding_lines = [PaymentFundingLine(**row.model_dump()) for row in data.funding_lines]
     db.add(payment)
     db.flush()
+    if voucher:
+        voucher.payment_id = payment.id
     record_audit(db, user, "PAYMENT_CREATED", "PAYMENT", f"Created {payment.payment_number}", entity_id=payment.id)
     db.commit()
     db.refresh(payment)

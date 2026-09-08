@@ -36,7 +36,7 @@ class PaymentVoucher(Base):
     department = relationship("Department")
     created_by = relationship("User", foreign_keys=[created_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
-    payment = relationship("Payment")
+    payment = relationship("Payment", foreign_keys=[payment_id])
     allocations = relationship("PaymentVoucherAllocation", back_populates="voucher", cascade="all, delete-orphan")
 
 

@@ -1,11 +1,10 @@
-from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models.payment import Payment, PaymentAllocation
+from app.models.payment import Payment
 from app.models.payment_voucher import PaymentVoucher, PaymentVoucherAllocation
 from app.models.supplier_invoice import SupplierInvoice
 from app.services.document_number import next_document_number
@@ -109,46 +108,8 @@ def approve(db: Session, voucher_id: int, user):
     if not v or v.status != "PENDING_APPROVAL":
         raise HTTPException(409, "Only pending vouchers can be approved")
     enforce_location_access(user, v.location_id)
-    # group allocations by supplier
-    from app.models.supplier_invoice import SupplierInvoice as SI
-    grouped = defaultdict(list)
-    for alloc in v.allocations:
-        inv = db.get(SI, alloc.supplier_invoice_id)
-        grouped[inv.supplier_id].append((alloc, inv))
-    # create one Payment per supplier
-    for supplier_id, pairs in grouped.items():
-        amount = sum((Decimal(a.allocated_amount) for a, _ in pairs), ZERO)
-        # check if payment already created for this voucher+supplier
-        existing = db.query(Payment).filter(Payment.external_reference == f"VOUCHER:{v.voucher_number}:{supplier_id}").first()
-        if existing:
-            continue
-        payment = Payment(
-            payment_number=next_document_number(db, "PAY"),
-            supplier_id=supplier_id,
-            payment_date=v.voucher_date,
-            amount=amount,
-            payment_method="BANK_TRANSFER",
-            currency=pairs[0][1].currency,
-            status="DRAFT",
-            created_by_id=user.id,
-            business_unit_id=v.business_unit_id,
-            location_id=v.location_id,
-            department_id=v.department_id,
-            source_type="LIVE",
-            external_reference=f"VOUCHER:{v.voucher_number}:{supplier_id}",
-            notes=f"From voucher {v.voucher_number}",
-        )
-        db.add(payment)
-        db.flush()
-        for alloc, inv in pairs:
-            db.add(PaymentAllocation(
-                payment_id=payment.id,
-                supplier_invoice_id=inv.id,
-                allocated_amount=Decimal(alloc.allocated_amount),
-            ))
-        # link voucher to first payment for traceability
-        if not v.payment_id:
-            v.payment_id = payment.id
+    # Approval only advances the voucher. The actual supplier Payment is created
+    # explicitly from this approved voucher via Create Payment.
     v.status = "APPROVED"
     v.approved_by_id = user.id
     v.approved_at = datetime.now(timezone.utc)

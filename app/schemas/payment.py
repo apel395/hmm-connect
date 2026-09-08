@@ -24,6 +24,7 @@ class PaymentCreate(BaseModel):
     payment_method: Literal["BANK_TRANSFER", "CASH", "CHEQUE", "CREDIT_CARD", "PETTY_CASH", "OTHER"] = "BANK_TRANSFER"
     currency: str = Field(default="IDR", min_length=3, max_length=3)
     total_amount: Decimal = Field(gt=0)
+    voucher_id: int | None = None
     reference_number: str | None = None
     cheque_number: str | None = None
     notes: str | None = None

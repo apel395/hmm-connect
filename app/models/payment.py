@@ -53,6 +53,7 @@ class Payment(Base):
     department = relationship("Department")
     allocations = relationship("PaymentAllocation", back_populates="payment", cascade="all, delete-orphan")
     funding_lines = relationship("PaymentFundingLine", back_populates="payment", cascade="all, delete-orphan")
+    payment_voucher = relationship("PaymentVoucher", foreign_keys="PaymentVoucher.payment_id", back_populates="payment", uselist=False, lazy="joined")
 
 
 class PaymentAllocation(Base):
