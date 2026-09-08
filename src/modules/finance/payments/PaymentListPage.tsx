@@ -14,7 +14,7 @@ import SearchableSelect from "@/components/form/SearchableSelect";
 import { listBankAccounts } from "@/modules/finance/cash-flow/bankAccountApi";
 import { listLocations } from "@/modules/admin/organization/api";
 import { isBeforeToday, todayLocal } from "@/utils/dateConstraints";
-import { createPayment, eligibleInvoices, eligibleSuppliers, listPayments, updatePayment } from "./api";
+import { createPayment, eligibleInvoices, eligibleSuppliers, eligibleVouchers, listPayments, updatePayment } from "./api";
 import useAuthorization from "@/hooks/useAuthorization";
 
 const methods = ["BANK_TRANSFER", "CASH", "CHEQUE", "CREDIT_CARD", "PETTY_CASH", "OTHER"];
@@ -22,7 +22,7 @@ const currencies = ["IDR", "USD", "SGD", "MYR", "EUR", "JPY", "CNY", "AUD"];
 const today = todayLocal;
 const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
-const emptyForm = () => ({ supplier_id:0,payment_date:today(),payment_method:"BANK_TRANSFER",currency:"IDR",total_amount:0,reference_number:"",cheque_number:"",notes:"",source_type:"LIVE",allocations:[] as any[],funding_lines:[{bank_account_id:0,amount:0}] as any[] });
+const emptyForm = () => ({ supplier_id:0,payment_date:today(),payment_method:"BANK_TRANSFER",currency:"IDR",total_amount:0,voucher_id:null as number|null,reference_number:"",cheque_number:"",notes:"",source_type:"LIVE",allocations:[] as any[],funding_lines:[{bank_account_id:0,amount:0}] as any[] });
 const availableBalance = (row:any) => Number(row.available_balance ?? row.outstanding_balance ?? 0);
 
 export default function PaymentListPage() {
@@ -34,6 +34,24 @@ export default function PaymentListPage() {
   const suppliers=useQuery({queryKey:["eligible-payment-suppliers",form.currency,editingId,editingId?form.supplier_id:0],queryFn:()=>eligibleSuppliers(form.currency,editingId?form.supplier_id:undefined),enabled:open});
   const bankAccounts=useQuery({queryKey:["active-payment-bank-accounts"],queryFn:()=>listBankAccounts(true,true)});
   const invoices=useQuery({queryKey:["eligible-payment-invoices",form.supplier_id,form.currency],queryFn:()=>eligibleInvoices(form.supplier_id,form.currency),enabled:Boolean(form.supplier_id)});
+  const vouchers=useQuery({queryKey:["eligible-payment-vouchers",form.supplier_id,form.currency],queryFn:()=>eligibleVouchers(form.supplier_id,form.currency),enabled:Boolean(form.supplier_id) && !editingId && open});
+  const applyVoucher=(v:any)=>setForm((current:any)=>({...current,voucher_id:v.id,allocations:(v.invoices??[]).map((inv:any)=>({supplier_invoice_id:inv.id,allocated_amount:Number(inv.allocated_amount)}))}));
+
+  useEffect(()=>{
+    const vid=(location.state as any)?.voucherId;
+    if(!vid) return;
+    const sid=(location.state as any)?.voucherSupplierId ?? 0;
+    navigate("/payments",{replace:true,state:null});
+    setEditingId(undefined);
+    setForm({...emptyForm(),voucher_id:vid,supplier_id:sid});
+    setOpen(true);
+  },[location.state,navigate]);
+
+  useEffect(()=>{
+    if(!form.voucher_id || !vouchers.data) return;
+    const matched=vouchers.data.find((v:any)=>v.id===form.voucher_id);
+    if(matched) applyVoucher(matched);
+  },[form.voucher_id,vouchers.data]);
   const filterLocations=useQuery({queryKey:["payments-filter-locations","active"],queryFn:()=>listLocations({is_active:true})});
 
   useEffect(()=>{
@@ -93,7 +111,7 @@ export default function PaymentListPage() {
   });
   const useAllocatedAsFunding=()=>setForm((current:any)=>({...current,funding_lines:current.funding_lines.length===1?[{...current.funding_lines[0],amount:allocated}]:current.funding_lines}));
 
-  const save=useMutation({mutationFn:()=>editingId?updatePayment(editingId,{...form,total_amount:allocated}):createPayment({...form,total_amount:allocated}),onSuccess:(payment)=>{toast.success(editingId?"Draft payment updated":"Payment saved as draft");setOpen(false);setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["payment",String(payment.id)]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["eligible-payment-suppliers"]});navigate(`/payments/${payment.id}`,{state:{returnTo}})},onError:(error:any)=>toast.error(error.response?.data?.detail||"Payment could not be saved")});
+  const save=useMutation({mutationFn:()=>editingId?updatePayment(editingId,{...form,voucher_id:undefined,total_amount:allocated}):createPayment({...form,total_amount:allocated}),onSuccess:(payment)=>{toast.success(editingId?"Draft payment updated":"Payment saved as draft");setOpen(false);setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["payment",String(payment.id)]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["eligible-payment-suppliers"]});navigate(`/payments/${payment.id}`,{state:{returnTo}})},onError:(error:any)=>toast.error(error.response?.data?.detail||"Payment could not be saved")});
   const submit=()=>{if(!form.supplier_id)return toast.error("Select a supplier");if(!form.payment_date||(!editingId&&isBeforeToday(form.payment_date)&&!canBackdate()))return toast.error("Payment Date cannot be before today");if(!form.allocations.length||allocated<=0)return toast.error("Select at least one supplier invoice");if(bankAccounts.isLoading)return toast.error("Funding accounts are still loading");if(bankAccounts.isError)return toast.error("Funding accounts could not be loaded");if(!eligibleBankAccounts.length)return toast.error("No active payment account with a linked COA is available for this currency");if(funded!==allocated)return toast.error("Funding total must equal selected invoice allocations");if(form.funding_lines.some((row:any)=>!row.bank_account_id||row.amount<=0))return toast.error("Complete every funding line");if(form.funding_lines.some((row:any)=>!eligibleBankAccountIds.has(row.bank_account_id)))return toast.error("Select only payment accounts with a valid linked COA");save.mutate()};
 
   return <>
@@ -106,6 +124,23 @@ export default function PaymentListPage() {
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId?"Edit Draft Supplier Payment":"Create Supplier Payment"}</DialogTitle></DialogHeader><DialogBody className="space-y-6">
       <div className="grid gap-3 md:grid-cols-4"><SearchableSelect label="Supplier" required value={form.supplier_id||undefined} disabled={suppliers.isLoading} placeholder={suppliers.isLoading?"Loading suppliers...":"Type supplier code or name..."} options={supplierOptions} onChange={value=>setForm({...form,supplier_id:value??0,allocations:[]})}/><label className="text-sm">Payment Date<input type="date" min={editingId||canBackdate()?undefined:today()} className={input} value={form.payment_date} onChange={e=>setForm({...form,payment_date:e.target.value})}/></label><label className="text-sm">Payment Method<select className={input} value={form.payment_method} onChange={e=>setForm({...form,payment_method:e.target.value})}>{methods.map(value=><option key={value}>{value}</option>)}</select></label><label className="text-sm">Currency<select className={input} value={form.currency} onChange={e=>setForm({...form,currency:e.target.value,supplier_id:editingId?form.supplier_id:0,allocations:[]})}>{currencies.map(value=><option key={value}>{value}</option>)}</select></label><label className="text-sm md:col-span-2">Reference Number<input className={input} value={form.reference_number} onChange={e=>setForm({...form,reference_number:e.target.value})}/></label>{form.payment_method==="CHEQUE"&&<label className="text-sm">Cheque Number<input className={input} value={form.cheque_number} onChange={e=>setForm({...form,cheque_number:e.target.value})}/></label>}</div>
 
+      {form.supplier_id && (
+        <section className="space-y-2">
+          <h3 className="font-semibold">Approved Payment Vouchers</h3>
+          <p className="text-sm text-slate-500">Select an approved voucher to import its invoices into this payment.</p>
+          {vouchers.isLoading && <div className="text-xs text-slate-500">Loading approved vouchers...</div>}
+          {vouchers.data?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {vouchers.data.map((v:any)=>(
+                <button key={v.id} type="button" className={`max-w-xs rounded-md border px-3 py-2 text-left text-sm hover:bg-slate-50 ${form.voucher_id===v.id?"border-emerald-600 bg-emerald-50 font-medium":"border-slate-200 bg-white"}`} onClick={()=>applyVoucher(v)}>
+                  <div className="font-medium">{v.voucher_number} <span className="text-xs text-slate-500">{v.voucher_date}</span></div>
+                  <div className="text-xs text-slate-500">{v.invoices.length} invoices • {money(v.allocated_amount)}</div>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      )}
       <section><div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h3 className="font-semibold">Available Supplier Invoices</h3><p className="text-sm text-slate-500">Enter any amount up to Available. Full settlement is not required, and the remaining balance stays available for a later payment.</p></div>{form.supplier_id&&<div className="flex gap-2"><Button size="sm" variant="outline" disabled={!invoiceRows.length} onClick={selectAll}>Select All Available</Button><Button size="sm" variant="outline" disabled={!selectedIds.size} onClick={clearAll}>Clear</Button></div>}</div>
         {!form.supplier_id?<div className="rounded border border-dashed p-8 text-center text-sm text-slate-500">Select a supplier to load invoices.</div>:invoices.isLoading?<div className="rounded border p-8 text-center text-sm text-slate-500">Loading supplier invoices…</div>:!invoiceRows.length?<div className="rounded border p-8 text-center text-sm text-slate-500">This supplier has no available verified/posted invoices.</div>:<div className="overflow-x-auto rounded border"><table className="min-w-[1120px] w-full text-sm"><thead><tr><th className="w-12">Pay</th><th>Invoice</th><th>Supplier Ref</th><th>Date</th><th>Due</th><th>Total</th><th>Paid</th><th>Reserved</th><th>Available</th><th>Allocated Amount</th></tr></thead><tbody>{invoiceRows.map((row:any)=>{const current=form.allocations.find((allocation:any)=>allocation.supplier_invoice_id===row.id)?.allocated_amount??0;const selected=selectedIds.has(row.id);const available=availableBalance(row);return <tr key={row.id} className={`border-t ${selected?"bg-emerald-50/60":""}`}><td className="text-center"><input aria-label={`Pay ${row.invoice_number}`} type="checkbox" checked={selected} onChange={e=>toggleInvoice(row,e.target.checked)}/></td><td><Link className="font-medium text-emerald-700 hover:underline" to={`/supplier-invoices/${row.id}`}>{row.invoice_number}</Link></td><td>{row.supplier_invoice_number||"—"}</td><td>{row.invoice_date}</td><td>{row.due_date||"—"}</td><td className="text-right">{money(row.total_amount)}</td><td className="text-right">{money(row.paid_amount)}</td><td className="text-right">{money(row.reserved_amount)}</td><td className="text-right font-medium">{money(available)}</td><td className="w-44"><CurrencyInput value={Number(current)} onValueChange={value=>setAllocation(row.id,Math.min(value,available))}/></td></tr>})}</tbody></table></div>}
       </section>

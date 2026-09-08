@@ -19,6 +19,7 @@ import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/a
 import purchaseOrderApi from "@/modules/purchasing/purchase-order/api/purchaseOrderApi";
 import goodsReceiptApi from "@/modules/purchasing/goods-receipts/api/goodsReceiptApi";
 import { createInvoice, getInvoice, InvoiceLine, listEligibleReceiptSources, listInvoices, updateInvoice } from "./api";
+import { createVoucher, listEligibleInvoices } from "@/modules/finance/payment-vouchers/api";
 import useAuthorization from "@/hooks/useAuthorization";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -167,10 +168,12 @@ export default function SupplierInvoiceListPage() {
   const [status, setStatus] = useState("");
   const [filterLocationId, setFilterLocationId] = useState<number>();
   const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
   const [submitError, setSubmitError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<any>(emptyForm());
   const [showAccounts, setShowAccounts] = useState(false);
+  const [selectedInvoices, setSelectedInvoices] = useState<Record<number, boolean>>({});
   const sourceLocked = Boolean(form.goods_receipt_id || form.purchase_order_id);
 
   const invoices = useQuery({ queryKey: ["supplier-invoices", page, search, status, filterLocationId], queryFn: () => listInvoices({ page, page_size: 20, search: search || undefined, status: status || undefined, location_id: filterLocationId ?? undefined }) });
@@ -282,6 +285,35 @@ export default function SupplierInvoiceListPage() {
       toast.error(message);
     },
   });
+  const makeVoucher = useMutation({
+    mutationFn: async () => {
+      const ids = Object.entries(selectedInvoices).filter(([, v]) => v).map(([k]) => Number(k));
+      if (!ids.length) throw new Error("Select at least one invoice");
+      const rows = (invoices.data?.items ?? []).filter((row: any) => ids.includes(row.id));
+      const locationIds = [...new Set(rows.map((r: any) => r.location_id).filter(Boolean))];
+      if (!locationIds.length) throw new Error("Selected invoices have no location");
+      if (locationIds.length > 1) throw new Error("All selected invoices must be from the same location");
+      const nonPosted = rows.find((r: any) => r.status !== "POSTED");
+      if (nonPosted) throw new Error(`Invoice ${nonPosted.internal_invoice_number} must be posted before creating a voucher`);
+      const locationId = Number(locationIds[0]);
+      const eligibleRows = (await listEligibleInvoices(locationId)).data as any[];
+      const eligibleIds = new Set(eligibleRows.map((r: any) => r.id));
+      const missing = ids.filter((id) => !eligibleIds.has(id));
+      if (missing.length) throw new Error(`Invoice(s) ${missing.join(", ")} are not payable or already allocated to a voucher`);
+      const allocations = eligibleRows
+        .filter((r: any) => ids.includes(r.id))
+        .map((r: any) => ({ supplier_invoice_id: r.id, allocated_amount: Number(r.available_balance) }));
+      return (await createVoucher({ location_id: locationId, voucher_date: today(), allocations })).data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(`Voucher ${data.voucher_number} created`);
+      setSelectedInvoices({});
+      qc.invalidateQueries({ queryKey: ["supplier-invoices"] });
+      qc.invalidateQueries({ queryKey: ["payment-vouchers"] });
+      navigate(`/finance/payment-vouchers/${data.id}`);
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || String(error)),
+  });
 
   const failSubmit = (message: string) => {
     setSubmitError(message);
@@ -322,10 +354,11 @@ export default function SupplierInvoiceListPage() {
 
   return <>
     <PageHeader title="Supplier Invoices" description="Create invoices from posted receiving documents or enter a direct supplier invoice." actions={<>
-hasPermission("supplier_invoice.create") ? <Button onClick={() => { const next = emptyForm(); if (businessUnits.data?.length === 1) next.business_unit_id = businessUnits.data[0].id; setEditingId(null); setForm(next); setOpen(true); }}>Create Invoice</Button> : null
+{hasPermission("supplier_invoice.create") ? <Button onClick={() => { const next = emptyForm(); if (businessUnits.data?.length === 1) next.business_unit_id = businessUnits.data[0].id; setEditingId(null); setForm(next); setOpen(true); }}>Create Invoice</Button> : null}
+{hasPermission("payment.manage") && <Button variant="outline" disabled={!Object.values(selectedInvoices).some(Boolean) || makeVoucher.isPending} loading={makeVoucher.isPending} onClick={() => makeVoucher.mutate()}>Payment Voucher</Button>}
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>} />
-    <Card className="mt-6"><div className="mb-4 flex flex-wrap items-end gap-3"><div className="min-w-64 flex-1"><input className={input} placeholder="Search invoices" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></div><div className="min-w-[160px]"><label className="mb-1 block text-xs font-medium text-slate-600">Status</label><select className={input} value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option>{["DRAFT", "VERIFIED", "REJECTED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}</select></div><div className="min-w-[240px]"><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(filterLocations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => { setFilterLocationId(id); setPage(1); }} /></div></div><Table className="min-w-[900px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Invoice</TH><TH>Supplier</TH><TH>Dates</TH><TH>Source Document</TH><TH numeric>PPN</TH><TH numeric>Total</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{invoices.data?.items.map((row: any) => <TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={row.internal_invoice_number} secondary={row.supplier_invoice_number}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD><TableCellStack primary={row.invoice_date} secondary={row.due_date ? `Due ${row.due_date}` : undefined}/></TD><TD>{row.receipt_number || "—"}</TD><TD numeric>{money(row.tax_amount)}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => navigate(`/supplier-invoices/${row.id}`)}>View</Button></div></TD></TR>)}</TBody></Table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!invoices.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!invoices.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
+    <Card className="mt-6"><div className="mb-4 flex flex-wrap items-end gap-3"><div className="min-w-64 flex-1"><input className={input} placeholder="Search invoices" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></div><div className="min-w-[160px]"><label className="mb-1 block text-xs font-medium text-slate-600">Status</label><select className={input} value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option>{["DRAFT", "VERIFIED", "REJECTED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}</select></div><div className="min-w-[240px]"><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(filterLocations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => { setFilterLocationId(id); setPage(1); }} /></div></div><Table className="min-w-[900px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH className="w-12"><input type="checkbox" checked={(invoices.data?.items?.length ?? 0) > 0 && (invoices.data?.items ?? []).every((row: any) => !!selectedInvoices[row.id])} onChange={(event) => { const next: Record<number, boolean> = {}; (invoices.data?.items ?? []).forEach((row: any) => { if (row.status === "POSTED") next[row.id] = event.target.checked; }); setSelectedInvoices(next); }} /></TH><TH>Invoice</TH><TH>Supplier</TH><TH>Dates</TH><TH>Source Document</TH><TH numeric>PPN</TH><TH numeric>Total</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{invoices.data?.items.map((row: any) => <TR key={row.id} className="whitespace-nowrap"><TD className="w-12"><input type="checkbox" checked={!!selectedInvoices[row.id]} disabled={row.status !== "POSTED"} onChange={(event) => setSelectedInvoices((current) => ({ ...current, [row.id]: event.target.checked }))} /></TD><TD><TableCellStack primary={row.internal_invoice_number} secondary={row.supplier_invoice_number}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD><TableCellStack primary={row.invoice_date} secondary={row.due_date ? `Due ${row.due_date}` : undefined}/></TD><TD>{row.receipt_number || "—"}</TD><TD numeric>{money(row.tax_amount)}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => navigate(`/supplier-invoices/${row.id}`)}>View</Button></div></TD></TR>)}</TBody></Table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!invoices.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!invoices.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></Card>
 
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditingId(null); }}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId ? "Edit Draft Supplier Invoice" : "Create Supplier Invoice"}</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">

@@ -55,6 +55,7 @@ const exactTitles: Record<string, string> = {
   "/fiscal/spt-1771": "SPT Tahunan 1771",
   "/fiscal/periods": "Accounting Periods",
   "/finance-setup/opening-balances": "Opening Balances",
+  "/finance-setup/accounting-periods": "Accounting Periods",
   "/opening-balances": "Opening Balances",
   "/fixed-assets": "Fixed Assets",
   "/fixed-assets/categories": "Asset Categories",

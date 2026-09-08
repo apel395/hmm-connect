@@ -23,7 +23,7 @@ type FiscalPeriod = {
 const currentYear = new Date().getFullYear();
 const input = "h-10 rounded-md border border-slate-300 bg-white px-3 text-sm";
 
-export default function FiscalPeriodsPage(){
+export default function FiscalPeriodsPage({ embedded = false }: { embedded?: boolean }){
   const qc=useQueryClient();
   const [year,setYear]=useState(currentYear);
   const periods=useQuery({
@@ -57,7 +57,7 @@ export default function FiscalPeriodsPage(){
   };
 
   return <div className="space-y-5">
-    <FiscalWorkspaceHeader />
+    {!embedded && <FiscalWorkspaceHeader />}
     <PageHeader title="Accounting Periods" description="Initialize monthly accounting periods, close completed months, and reopen a closed period only with an auditable reason." actions={<div className="flex items-center gap-2"><input className={`${input} w-28`} type="number" min={2000} max={2100} value={year} onChange={event=>setYear(Number(event.target.value)||currentYear)}/><Button disabled={initialize.isPending} onClick={()=>initialize.mutate()}>{initialized?"Complete Missing Periods":"Initialize Accounting Year"}</Button>  <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </div>}/>
 

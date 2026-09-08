@@ -19,13 +19,14 @@ export default function PaymentVoucherDetailPage() {
   const q = useQuery({ queryKey: ["payment-voucher", voucherId], queryFn: async () => (await getVoucher(voucherId)).data });
 
   const submit = useMutation({ mutationFn: () => submitVoucher(voucherId), onSuccess: () => { toast.success("Submitted for approval"); qc.invalidateQueries({ queryKey: ["payment-voucher", voucherId] }); }, onError: (e: any) => toast.error(e.response?.data?.detail || String(e)) });
-  const approve = useMutation({ mutationFn: () => approveVoucher(voucherId), onSuccess: () => { toast.success("Approved — payments created per supplier"); qc.invalidateQueries({ queryKey: ["payment-voucher", voucherId] }); }, onError: (e: any) => toast.error(e.response?.data?.detail || String(e)) });
+  const approve = useMutation({ mutationFn: () => approveVoucher(voucherId), onSuccess: () => { toast.success("Approved — create a payment from the Payments screen or below"); qc.invalidateQueries({ queryKey: ["payment-voucher", voucherId] }); qc.invalidateQueries({ queryKey: ["payments"] }); }, onError: (e: any) => toast.error(e.response?.data?.detail || String(e)) });
   const reject = useMutation({ mutationFn: () => rejectVoucher(voucherId, "Rejected from detail"), onSuccess: () => { toast.success("Rejected"); qc.invalidateQueries({ queryKey: ["payment-voucher", voucherId] }); }, onError: (e: any) => toast.error(e.response?.data?.detail || String(e)) });
   const voidIt = useMutation({ mutationFn: () => voidVoucher(voucherId), onSuccess: () => { toast.success("Voided"); navigate("/finance/payment-vouchers"); }, onError: (e: any) => toast.error(e.response?.data?.detail || String(e)) });
 
   if (q.isLoading) return <div className="py-16 text-center text-slate-500">Loading...</div>;
   if (q.isError) return <div className="py-16 text-center text-red-600">Voucher not found.</div>;
   const v: any = q.data;
+  const firstSupplierId = v.groups?.[0]?.supplier_id as number | undefined;
 
   return (
     <div className="space-y-6">
@@ -43,7 +44,7 @@ export default function PaymentVoucherDetailPage() {
         <Card className="p-4"><div className="text-xs uppercase text-slate-500">Total</div><div className="mt-1 text-xl font-bold">{money(v.total_amount)}</div></Card>
         <Card className="p-4"><div className="text-xs uppercase text-slate-500">Status</div><div className="mt-1"><Badge variant={v.status === "APPROVED" ? "success" : v.status === "PENDING_APPROVAL" ? "warning" : "secondary"}>{v.status}</Badge></div></Card>
         <Card className="p-4"><div className="text-xs uppercase text-slate-500">Period</div><div className="mt-1">{v.period_from || "—"} → {v.period_to || "—"}</div></Card>
-        <Card className="p-4"><div className="text-xs uppercase text-slate-500">Payment</div><div className="mt-1">{v.payment_id ? <Link to={`/payments/${v.payment_id}`} className="text-blue-600 hover:underline">Payment #{v.payment_id}</Link> : "— (created on approve, per supplier)"}</div></Card>
+        <Card className="p-4"><div className="text-xs uppercase text-slate-500">Payment</div><div className="mt-1">{v.payment_id ? <Link to={`/payments/${v.payment_id}`} className="text-blue-600 hover:underline">Open Payment #{v.payment_id}</Link> : v.status === "APPROVED" ? <Button size="sm" onClick={() => navigate("/payments", { state: { editPayment: null, voucherId: v.id, voucherSupplierId: firstSupplierId } })}>Create Payment</Button> : "—"}</div></Card>
       </div>
       {v.groups?.map((g: any) => (
         <Card key={g.supplier_id} className="p-0">

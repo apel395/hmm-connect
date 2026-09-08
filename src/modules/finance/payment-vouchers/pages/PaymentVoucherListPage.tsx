@@ -58,7 +58,7 @@ export default function PaymentVoucherListPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Payment Vouchers" description="Per-location payment request — select invoices, get approval, then payment is auto-created per supplier." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Payment Vouchers" description="Per-location payment request — select invoices, get approval, then create and post a payment from the Payments screen." />
       <Card className="p-4">
         <div className="mb-3 font-semibold">Create Voucher — Select Location + Invoices</div>
         <div className="grid gap-3 md:grid-cols-3">

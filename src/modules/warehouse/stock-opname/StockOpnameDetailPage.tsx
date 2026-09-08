@@ -1,5 +1,5 @@
 import { Printer } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
@@ -16,6 +16,11 @@ export default function StockOpnameDetailPage() {
     enabled: Number.isFinite(id),
   });
   const [counts, setCounts] = useState<Record<number, string>>({});
+  const [quickQuery, setQuickQuery] = useState("");
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickItemId, setQuickItemId] = useState<number | null>(null);
+  const [quickQty, setQuickQty] = useState("");
+  const quickQtyRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (query.data)
       setCounts(
@@ -45,6 +50,33 @@ export default function StockOpnameDetailPage() {
     },
     onSuccess: refresh,
   });
+  const saveItem = useMutation({
+    mutationFn: (payload: { item_id: number; physical_quantity: number }) =>
+      stockOpnameApi.count(id, [payload]),
+    onSuccess: () => {
+      setQuickItemId(null);
+      setQuickQty("");
+      setQuickQuery("");
+      refresh();
+    },
+  });
+  const setAllUncountedSystem = useMutation({
+    mutationFn: () => {
+      const pending = (query.data?.items ?? []).filter(
+        (i) => (counts[i.id] ?? "").trim() === "",
+      );
+      if (!pending.length)
+        throw new Error("All items are already counted");
+      return stockOpnameApi.count(
+        id,
+        pending.map((i) => ({
+          item_id: i.id,
+          physical_quantity: Number(i.system_quantity),
+        })),
+      );
+    },
+    onSuccess: refresh,
+  });
   const submit = useMutation({
     mutationFn: () => stockOpnameApi.submit(id),
     onSuccess: refresh,
@@ -61,6 +93,32 @@ export default function StockOpnameDetailPage() {
   if (!d) return <div>Loading...</div>;
   const editable = d.status !== "POSTED";
   const canCount = editable && d.allowed_actions?.can_edit === true;
+
+  const matches = quickQuery.trim()
+    ? d.items
+        .map((i) => ({ i, hay: `${i.product_code ?? ""} ${i.product_name ?? ""}`.toLowerCase() }))
+        .filter((m) => m.hay.includes(quickQuery.trim().toLowerCase()))
+        .slice(0, 50)
+    : [];
+  const counted = d.items.filter((i) => (counts[i.id] ?? "").trim() !== "").length;
+  const varianceTotal = d.items.reduce((sum, i) => sum + Number(i.variance_value ?? 0), 0);
+  const progressPct = d.items.length ? Math.round((counted / d.items.length) * 100) : 0;
+  const canSaveQuick =
+    quickItemId != null &&
+    quickQty.trim() !== "" &&
+    Number.isFinite(Number(quickQty)) &&
+    Number(quickQty) >= 0;
+  const selectItem = (item: any) => {
+    setQuickItemId(item.id);
+    setQuickQty((counts[item.id] ?? "").trim() === "" ? "" : String(counts[item.id] ?? ""));
+    setQuickQuery(`${item.product_code ?? ""} — ${item.product_name ?? ""}`);
+    setQuickOpen(false);
+    requestAnimationFrame(() => quickQtyRef.current?.focus());
+  };
+  const saveQuick = () => {
+    if (!canSaveQuick || quickItemId == null) return;
+    saveItem.mutate({ item_id: quickItemId, physical_quantity: Number(quickQty) });
+  };
   return (
     <div className="space-y-6">
       <PageHeader
@@ -136,6 +194,132 @@ export default function StockOpnameDetailPage() {
           </div>
         </div>
       </Card>
+      {canCount && d.items.length > 0 && (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-semibold">Quick Count Entry</div>
+              <div className="text-xs text-slate-500">
+                Scan or type an item code / name, enter the counted quantity, then press
+                Enter to save that item immediately.
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={setAllUncountedSystem.isPending}
+              onClick={() => setAllUncountedSystem.mutate()}
+            >
+              Set All Uncounted = System
+            </Button>
+          </div>
+          <div className="mt-3">
+            <div className="flex justify-between text-xs text-slate-500">
+              <span>
+                {counted} of {d.items.length} items counted
+              </span>
+              <span>Variance {varianceTotal.toLocaleString("id-ID")}</span>
+            </div>
+            <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto_auto]">
+            <div className="relative">
+              <input
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                placeholder="Scan or type item code / name..."
+                autoComplete="off"
+                autoFocus
+                value={quickQuery}
+                onChange={(event) => {
+                  setQuickQuery(event.target.value);
+                  setQuickOpen(true);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && matches.length) {
+                    event.preventDefault();
+                    selectItem(matches[0].i);
+                  } else if (event.key === "Escape") {
+                    setQuickOpen(false);
+                    if (quickItemId != null) {
+                      const item = d.items.find((i) => i.id === quickItemId);
+                      if (item) setQuickQuery(`${item.product_code ?? ""} — ${item.product_name ?? ""}`);
+                    }
+                  }
+                }}
+              />
+              {quickOpen && matches.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close item options"
+                    className="fixed inset-0 z-[9998] cursor-default"
+                    onMouseDown={() => setQuickOpen(false)}
+                  />
+                  <div className="absolute left-0 top-full z-[9999] mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl">
+                    {matches.map(({ i }) => (
+                      <button
+                        key={i.id}
+                        type="button"
+                        className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-emerald-50"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectItem(i)}
+                      >
+                        <div className="font-medium text-slate-800">
+                          {i.product_code} — {i.product_name}
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">
+                          System {Number(i.system_quantity).toLocaleString("id-ID")} {i.uom}
+                          {i.physical_quantity != null ? ` • Counted ${Number(i.physical_quantity).toLocaleString("id-ID")}` : ""}
+                        </div>
+                      </button>
+                    ))}
+                    {quickQuery.trim() && matches.length === 50 && (
+                      <div className="px-3 py-2 text-xs text-slate-500">
+                        Showing first 50 matches. Keep typing to narrow down.
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <input
+              ref={quickQtyRef}
+              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+              type="number"
+              min="0"
+              step="0.0001"
+              placeholder="Counted qty"
+              value={quickQty}
+              onChange={(event) => setQuickQty(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (canSaveQuick) saveQuick();
+                }
+              }}
+            />
+            <Button
+              variant="outline"
+              disabled={quickItemId == null}
+              onClick={() => {
+                if (quickItemId == null) return;
+                const item = d.items.find((i) => i.id === quickItemId);
+                if (item) setQuickQty(String(item.system_quantity));
+              }}
+            >
+              Count = System
+            </Button>
+            <Button loading={saveItem.isPending} disabled={!canSaveQuick} onClick={saveQuick}>
+              Save This Item
+            </Button>
+          </div>
+        </Card>
+      )}
       {d.items.length === 0 && (
         <Card className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           This Stock Opname has no inventory snapshot. It cannot be counted,
@@ -237,10 +421,10 @@ export default function StockOpnameDetailPage() {
           </table>
         </div>
       </Card>
-      {(save.error || submit.error || post.error || unpost.error) && (
+      {(save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error) && (
         <p className="text-sm text-red-600">
-          {(save.error || submit.error || post.error || unpost.error) instanceof Error
-            ? (save.error || submit.error || post.error || unpost.error)?.message
+          {(save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error) instanceof Error
+            ? (save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error)?.message
             : "Action failed. Refresh and verify the Stock Opname status."}
         </p>
       )}
