@@ -19,6 +19,7 @@ from app.services.approval import (
     approve_current_step,
     get_request,
     reject_current_step,
+    reset_approval,
     start_approval,
 )
 from app.services.document_number import next_document_number
@@ -209,8 +210,10 @@ class StockOpnameService:
         db: Session, *, opname_id: int, data: StockOpnameCountUpdate, current_user: User
     ) -> StockOpname:
         op = StockOpnameService._get(db, opname_id, lock=True)
-        if op.status != "DRAFT":
-            raise HTTPException(409, "Only draft Stock Opname can be counted")
+        if op.status == "POSTED":
+            raise HTTPException(
+                409, "Stock Opname counts cannot be edited once posted"
+            )
         by_id = {i.id: i for i in op.items}
         seen = set()
         for incoming in data.items:
@@ -247,8 +250,8 @@ class StockOpnameService:
     @staticmethod
     def submit(db: Session, *, opname_id: int, current_user: User) -> StockOpname:
         op = StockOpnameService._get(db, opname_id, lock=True)
-        if op.status != "DRAFT":
-            raise HTTPException(409, "Only draft Stock Opname can be submitted")
+        if op.status not in ("DRAFT", "REJECTED"):
+            raise HTTPException(409, "Only draft or rejected Stock Opname can be submitted")
         if not op.items:
             raise HTTPException(409, "Stock Opname has no inventory snapshot")
         missing = [i.product.code for i in op.items if i.physical_quantity is None]
@@ -256,6 +259,8 @@ class StockOpnameService:
             raise HTTPException(
                 409, "Physical count is incomplete: " + ", ".join(missing[:10])
             )
+        if op.status == "REJECTED":
+            reset_approval(db, entity_type="STOCK_OPNAME", entity_id=op.id)
         start_approval(
             db,
             entity_type="STOCK_OPNAME",
@@ -416,6 +421,61 @@ class StockOpnameService:
             entity_type="STOCK_OPNAME",
             entity_id=op.id,
             summary=f"Posted {op.opname_number}",
+            document_type="SO",
+            document_number=op.opname_number,
+            document_status=op.status,
+        )
+        db.commit()
+        db.refresh(op)
+        return op
+
+    @staticmethod
+    def unpost(db: Session, *, opname_id: int, current_user: User) -> StockOpname:
+        op = StockOpnameService._get(db, opname_id, lock=True)
+        if op.status != "POSTED":
+            raise HTTPException(409, "Only posted Stock Opname can be unposted")
+        if op.posted_at is None:
+            raise HTTPException(409, "Stock Opname is not posted")
+        for item in op.items:
+            inv = (
+                db.query(Inventory)
+                .filter(
+                    Inventory.warehouse_id == op.warehouse_id,
+                    Inventory.product_id == item.product_id,
+                )
+                .with_for_update()
+                .first()
+            )
+            if not inv:
+                raise HTTPException(
+                    409, f"Inventory row for {item.product.code} no longer exists"
+                )
+            variance = Decimal(item.variance_quantity or 0)
+            matched = (
+                db.query(StockMovement)
+                .filter(
+                    StockMovement.reference_type == "STOCK_OPNAME",
+                    StockMovement.reference_id == op.id,
+                    StockMovement.product_id == item.product_id,
+                )
+                .order_by(StockMovement.id.desc())
+                .first()
+            )
+            if matched:
+                db.delete(matched)
+            if variance != ZERO:
+                inv.quantity = Decimal(inv.quantity or 0) - variance
+            item.variance_quantity = None
+        op.status = "APPROVED"
+        op.posted_at = None
+        op.posted_by_id = None
+        AuditService.log(
+            db=db,
+            user=current_user,
+            action="UNPOST",
+            entity_type="STOCK_OPNAME",
+            entity_id=op.id,
+            summary=f"Unposted {op.opname_number}",
             document_type="SO",
             document_number=op.opname_number,
             document_status=op.status,

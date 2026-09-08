@@ -71,12 +71,14 @@ class FinancialStatementService:
         account_id=None, parent_account_id=None, location_id=None, department_id=None, business_unit_id=None,
         include_zero_balance=False, include_inactive=False, detail_level="DETAIL",
     ) -> dict:
-        """Yearly balance sheet (Neraca) with Opening (Saldo Awal) and Closing (Saldo Akhir).
+        """Yearly balance sheet (Neraca) with carried balances as of the as-of date.
 
-        Mirrors Coretax Neraca Lampiran L1 Bagian B: a single annual position showing
-        each balance-sheet account's balance at the start of the fiscal year (opening)
-        and at the end of the fiscal year (closing). Results are normal-balance adjusted
-        within the standard Assets / Liabilities & Equity layout.
+        Reflects a running, carried-forward balance: each balance-sheet account shows its
+        current balance as of `as_of_date` (which includes balances carried from prior periods).
+        Retained-earnings accounts are folded into a synthetic carried line, and current-year
+        earnings are reported separately, mirroring the Neraca convention that splits
+        carried retained earnings (Laba Ditahan) from current-year retained earnings
+        (Laba Ditahan Tahun Berjalan).
         """
         if fiscal_year is not None:
             as_of_date = as_of_date or date(fiscal_year, 12, 31)
@@ -105,10 +107,28 @@ class FinancialStatementService:
                 unclassified += 1
             groups[group].append({**row, "opening_amount": opening, "closing_amount": closing})
 
+        def is_retained(row: dict) -> bool:
+            name = (row.get("account_name") or "").lower()
+            code = (row.get("account_code") or "").strip()
+            return code.startswith("3200") or "laba ditahan" in name or "retained earnings" in name
+
+        retained_rows = [row for row in groups["EQUITY"] if is_retained(row)]
+        retained_opening = sum((row["opening_amount"] for row in retained_rows), ZERO)
+        retained_closing = sum((row["closing_amount"] for row in retained_rows), ZERO)
+        if retained_rows:
+            groups["EQUITY"] = [row for row in groups["EQUITY"] if not is_retained(row)]
+            groups["EQUITY"].append({
+                "account_id": None, "account_code": "", "account_name": "Laba Ditahan (Retained Earnings)",
+                "account_type": "EQUITY", "parent_account_id": None,
+                "financial_statement_group": "RETAINED_EARNINGS",
+                "opening_amount": retained_opening, "closing_amount": retained_closing,
+                "is_synthetic": True,
+            })
+
         current_earnings = self.earnings(as_of_date, **filters)
         opening_earnings = self.earnings(year_start, **filters)
         groups["EQUITY"].append({
-            "account_id": None, "account_code": "", "account_name": "Current Period Earnings",
+            "account_id": None, "account_code": "", "account_name": "Laba Ditahan Tahun Berjalan (Current Year Retained Earnings)",
             "account_type": "EQUITY", "parent_account_id": None,
             "financial_statement_group": "CURRENT_PERIOD_EARNINGS",
             "opening_amount": opening_earnings, "closing_amount": current_earnings,

@@ -33,7 +33,7 @@ ACTION_PERMISSIONS = {
     },
     "STOCK_OPNAME": {
         "view": "stock_opname.view", "edit": "stock_opname.manage", "submit": "stock_opname.manage",
-        "approve": "stock_opname.manage", "manage": "stock_opname.manage",
+        "approve": "stock_opname.manage", "manage": "stock_opname.manage", "unpost": "stock_opname.manage",
     },
 }
 
@@ -126,6 +126,12 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         and status == "APPROVED"
         and has_permission(user, "stock_opname.manage")
     )
+    can_unpost = (
+        entity_type == "STOCK_OPNAME"
+        and has_items
+        and status == "POSTED"
+        and has_permission(user, "stock_opname.manage")
+    )
     can_reopen = admin and entity_type in REOPENABLE_WORKFLOW_DOCUMENTS and status != "DRAFT"
     events = db.query(AuditLog).filter(
         AuditLog.entity_type == entity_type,
@@ -135,8 +141,8 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         "is_admin": admin,
         "location_name": _entity_location_name(db, entity_type, entity_id),
         "allowed_actions": {
-            "can_edit": (status == "DRAFT" or (pending and can_edit_approval)) and _can(user, entity_type, "edit"),
-            "can_submit": status == "DRAFT" and has_items and _can(user, entity_type, "submit"),
+            "can_edit": (status == "DRAFT" or (pending and can_edit_approval) or (entity_type == "STOCK_OPNAME" and status != "POSTED")) and _can(user, entity_type, "edit"),
+            "can_submit": status in ("DRAFT", "REJECTED") and has_items and _can(user, entity_type, "submit"),
             "can_approve": pending and has_items and can_decide and _can(user, entity_type, "approve"),
             "can_reject": pending and can_decide and _can(user, entity_type, "approve"),
             "can_reopen": can_reopen and _can(user, entity_type, "manage"),
@@ -146,6 +152,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
             "can_receive": can_receive,
             "can_issue": can_issue,
             "can_post": can_post,
+            "can_unpost": can_unpost,
         },
         "approval_history": [{
             "level": step.step_order,

@@ -78,7 +78,7 @@ def list_inventory(
     health: str | None = Query(default=None, pattern="^(HEALTHY|LOW_STOCK|REORDER|BELOW_MINIMUM)$"),
     search: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=25, ge=1, le=100),
+    page_size: int = Query(default=25, ge=1, le=5000),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):

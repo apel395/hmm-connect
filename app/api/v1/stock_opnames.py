@@ -197,3 +197,10 @@ def post(opname_id: int, db: Session = Depends(get_db), user=Depends(warehouse_u
     return _detail(
         db, StockOpnameService.post(db=db, opname_id=opname_id, current_user=user), user
     )
+
+
+@router.post("/{opname_id}/unpost")
+def unpost(opname_id: int, db: Session = Depends(get_db), user=Depends(warehouse_user)):
+    return _detail(
+        db, StockOpnameService.unpost(db=db, opname_id=opname_id, current_user=user), user
+    )
