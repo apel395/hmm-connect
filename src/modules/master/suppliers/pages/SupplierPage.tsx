@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -141,7 +142,10 @@ export default function SupplierPage() {
 
   return <>
     <div className="space-y-6">
-      <PageHeader title="Suppliers" description="Manage supplier profiles, contacts, banking details, and availability." actions={canCreateSupplier ? <Button onClick={openCreate}>Add Supplier</Button> : undefined}/>
+      <PageHeader title="Suppliers" description="Manage supplier profiles, contacts, banking details, and availability." actions={<>
+canCreateSupplier ? <Button onClick={openCreate}>Add Supplier</Button> : undefined
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>}/>
       <Card>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row">
           <Input type="search" aria-label="Search suppliers" placeholder="Search supplier code or name..." value={search} className="sm:max-w-md" onChange={(event) => setSearch(event.target.value)}/>

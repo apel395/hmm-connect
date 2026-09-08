@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -57,7 +58,8 @@ export default function FiscalPeriodsPage(){
 
   return <div className="space-y-5">
     <FiscalWorkspaceHeader />
-    <PageHeader title="Fiscal Periods" description="Initialize monthly accounting periods, close completed months, and reopen a closed period only with an auditable reason." actions={<div className="flex items-center gap-2"><input className={`${input} w-28`} type="number" min={2000} max={2100} value={year} onChange={event=>setYear(Number(event.target.value)||currentYear)}/><Button disabled={initialize.isPending} onClick={()=>initialize.mutate()}>{initialized?"Complete Missing Periods":"Initialize Fiscal Year"}</Button></div>}/>
+    <PageHeader title="Fiscal Periods" description="Initialize monthly accounting periods, close completed months, and reopen a closed period only with an auditable reason." actions={<div className="flex items-center gap-2"><input className={`${input} w-28`} type="number" min={2000} max={2100} value={year} onChange={event=>setYear(Number(event.target.value)||currentYear)}/><Button disabled={initialize.isPending} onClick={()=>initialize.mutate()}>{initialized?"Complete Missing Periods":"Initialize Fiscal Year"}</Button>  <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</div>}/>
 
     {!initialized&&<Card className="border-amber-200 bg-amber-50 p-5"><div className="font-semibold text-amber-900">Fiscal year {year} is not initialized</div><p className="mt-1 text-sm text-amber-800">Accounting documents dated in {year} cannot post to the General Ledger until a matching open fiscal period exists. Initialize the year to create January through December automatically.</p></Card>}
 

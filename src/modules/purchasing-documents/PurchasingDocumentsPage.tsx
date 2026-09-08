@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Eye, FileSearch, Plus, Upload } from "lucide-react";
+import {Eye, FileSearch, Plus, Upload, Printer} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -178,7 +178,8 @@ export default function PurchasingDocumentsPage() {
         <PageHeader
           title="Purchasing Documents"
           description="Track uploaded Purchase Requisition and Purchase Order papers for audit and future reporting."
-          actions={<div className="flex flex-wrap gap-2"><Button onClick={openCreate}><Plus className="h-4 w-4" /> Create</Button><Button variant="outline" onClick={openCreate}><Upload className="h-4 w-4" /> Import</Button><Button variant="outline" onClick={() => exportCsv("purchasing-documents.csv", ["Document Number","Type","Date","Supplier","Status","Attachments"], (documents.data?.items ?? []).map((item) => [item.document_number,item.document_type,item.document_date,item.supplier_name,item.status,item.attachment_count]))}>Export</Button></div>}
+          actions={<div className="flex flex-wrap gap-2"><Button onClick={openCreate}><Plus className="h-4 w-4" /> Create</Button><Button variant="outline" onClick={openCreate}><Upload className="h-4 w-4" /> Import</Button><Button variant="outline" onClick={() => exportCsv("purchasing-documents.csv", ["Document Number","Type","Date","Supplier","Status","Attachments"], (documents.data?.items ?? []).map((item) => [item.document_number,item.document_type,item.document_date,item.supplier_name,item.status,item.attachment_count]))}>Export</Button>  <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</div>}
         />
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

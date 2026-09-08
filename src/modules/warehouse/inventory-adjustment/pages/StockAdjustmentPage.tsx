@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Eye, Pencil, PlayCircle, Ban, Boxes } from "lucide-react";
+import {Plus, Trash2, Eye, Pencil, PlayCircle, Ban, Boxes, Printer} from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
@@ -261,7 +261,7 @@ export default function StockAdjustmentPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Stock Adjustment" description="Correct warehouse stock for damage, expiry, found surplus or bookkeeping errors. Adjustments are posted to inventory and recorded as stock movements." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Stock Adjustment" description="Correct warehouse stock for damage, expiry, found surplus or bookkeeping errors. Adjustments are posted to inventory and recorded as stock movements." />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Adjustments</div><div className="mt-2 text-2xl font-bold">{num(data.total_items ?? 0)}</div></Card>

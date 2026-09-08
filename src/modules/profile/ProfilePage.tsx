@@ -1,4 +1,5 @@
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 
@@ -10,7 +11,7 @@ return(
 
 <PageHeader
 
-title="My Profile"
+ actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="My Profile"
 
 description="Account Information"
 

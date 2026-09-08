@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
@@ -48,7 +49,7 @@ export default function SupplierAdjustmentsPage() {
   };
 
   return <div className="space-y-6">
-    <PageHeader title="Supplier Credit / Debit Notes" description="Create supplier adjustments and review their accounting impact." />
+    <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Supplier Credit / Debit Notes" description="Create supplier adjustments and review their accounting impact." />
     <Card className="space-y-4">
       <div><h2 className="text-lg font-semibold">New Supplier Adjustment</h2><p className="text-sm text-slate-500">Save the note first, then create its draft journal.</p></div>
       <div className="grid gap-3 md:grid-cols-3">

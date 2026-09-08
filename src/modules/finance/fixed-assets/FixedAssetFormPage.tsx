@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -47,7 +48,10 @@ export default function FixedAssetFormPage() {
   };
 
   return <div className="space-y-4">
-    <PageHeader title="New Fixed Asset" description="Register an asset as draft before capitalization." actions={<Button variant="outline" onClick={() => nav("/fixed-assets")}>Back</Button>} />
+    <PageHeader title="New Fixed Asset" description="Register an asset as draft before capitalization." actions={<>
+<Button variant="outline" onClick={() => nav("/fixed-assets")}>Back</Button>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>} />
     <Card className="grid gap-3 p-4 md:grid-cols-3">
       <label>Asset Name *<input className={`${input} block w-full`} value={f.asset_name} onChange={(e) => set("asset_name", e.target.value)} /></label>
       <label>Category *<select className={`${input} block w-full`} value={f.asset_category_id} onChange={(e) => { const c = cats.data?.find((x: any) => x.id === Number(e.target.value)); setF({ ...f, asset_category_id: e.target.value, useful_life_months: c?.default_useful_life_months || f.useful_life_months, asset_account_id: c?.asset_account_id || "", accumulated_depreciation_account_id: c?.accumulated_depreciation_account_id || "", depreciation_expense_account_id: c?.depreciation_expense_account_id || "", disposal_gain_account_id: c?.disposal_gain_account_id || null, disposal_loss_account_id: c?.disposal_loss_account_id || null }); }}><option value="">Select</option>{cats.data?.map((x: any) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>

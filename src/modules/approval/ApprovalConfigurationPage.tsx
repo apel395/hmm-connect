@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Settings2, Trash2 } from "lucide-react";
+import {Plus, Settings2, Trash2, Printer} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
@@ -44,7 +44,10 @@ export default function ApprovalConfigurationPage() {
   const updateStep = (index: number, patch: Partial<ApprovalWorkflowStep>) => setSteps((current) => current.map((step, i) => i === index ? { ...step, ...patch } : step));
 
   return <div className="space-y-5">
-    <PageHeader title="Approval Configuration" description="Configure sequential and parallel approval stages by document type. Steps with the same stage number run in parallel." actions={<Button onClick={() => open()}><Plus className="h-4 w-4"/> New Workflow</Button>} />
+    <PageHeader title="Approval Configuration" description="Configure sequential and parallel approval stages by document type. Steps with the same stage number run in parallel." actions={<>
+<Button onClick={() => open()}><Plus className="h-4 w-4"/> New Workflow</Button>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>} />
     <Card className="p-0 overflow-hidden">{workflows.isLoading ? <div className="p-10 text-center text-sm text-slate-500">Loading workflows…</div> : <div className="overflow-x-auto"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-3">Workflow</th><th className="p-3">Document</th><th className="p-3">Stages</th><th className="p-3">Status</th><th className="p-3 text-right">Action</th></tr></thead><tbody className="divide-y">{(workflows.data ?? []).map((workflow) => <tr key={workflow.id}><td className="p-3"><div className="font-medium">{workflow.name}</div><div className="text-xs text-slate-500">{workflow.code}</div></td><td className="p-3">{workflow.entity_type.replaceAll("_", " ")}</td><td className="p-3">{new Set(workflow.steps.map((step) => step.step_order)).size} stages · {workflow.steps.length} approvals</td><td className="p-3">{workflow.is_active ? "Active" : "Inactive"}</td><td className="p-3 text-right"><Button size="sm" variant="outline" onClick={() => open(workflow)}><Settings2 className="h-4 w-4"/> Configure</Button></td></tr>)}</tbody></table></div>}</Card>
 
     <Dialog open={editing !== null} onOpenChange={(value) => !value && setEditing(null)}><DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto"><DialogHeader><DialogTitle>{editing === "new" ? "Create Approval Workflow" : "Configure Approval Workflow"}</DialogTitle></DialogHeader><DialogBody className="space-y-5">

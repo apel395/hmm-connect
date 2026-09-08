@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
@@ -166,7 +167,8 @@ export default function ProductPage() {
         actions={<div className="flex items-center gap-2">
           <Button onClick={handleExport} disabled={exportBusy}>{exportLabel}</Button>
           {canCreateProduct && <Button onClick={handleCreate}>New Product</Button>}
-        </div>}
+          <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</div>}
       />
       {exportError && (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

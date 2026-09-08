@@ -1,4 +1,5 @@
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
@@ -30,7 +31,7 @@ return(
 
 <PageHeader
 
-title="Put Away"
+ actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Put Away"
 
 description="Move received stock into warehouse locations"
 

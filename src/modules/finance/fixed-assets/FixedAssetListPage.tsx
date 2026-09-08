@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Calculator, FileBarChart, FolderTree, Plus } from "lucide-react";
+import {Calculator, FileBarChart, FolderTree, Plus, Printer} from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Button from "@/components/ui/Button";
@@ -29,7 +29,10 @@ export default function FixedAssetListPage() {
     <PageHeader
       title="Fixed Assets"
       description="Manage tangible assets, depreciation, and amortizable costs from one finance workspace."
-      actions={<Link to="/fixed-assets/new"><Button><Plus size={16}/> New Fixed Asset</Button></Link>}
+      actions={<>
+<Link to="/fixed-assets/new"><Button><Plus size={16}/> New Fixed Asset</Button></Link>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>}
     />
 
     <div className="grid gap-3 md:grid-cols-4">

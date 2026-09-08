@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { ChevronDown, ChevronRight, Eye, Plus } from "lucide-react";
+import {ChevronDown, ChevronRight, Eye, Plus, Printer} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
@@ -83,7 +83,8 @@ export default function ChartOfAccountPage() {
 
   return <>
     <div className="space-y-6">
-      <PageHeader title="Chart of Accounts" description="Manage the finance account structure and availability." actions={<div className="flex flex-wrap gap-2"><Button onClick={() => openForm()}><Plus size={16}/> Create</Button><Button variant="outline" disabled title="COA import is not available yet">Import</Button><Button variant="outline" onClick={() => exportCsv("chart-of-accounts.csv", ["Code","Name","Type","Normal Balance","Posting","Status"], (accounts.data?.items ?? []).map((item) => [item.account_code,item.account_name,item.account_type,item.normal_balance,item.is_posting ? "Yes" : "No",item.is_active ? "Active" : "Archived"]))}>Export</Button></div>}/>
+      <PageHeader title="Chart of Accounts" description="Manage the finance account structure and availability." actions={<div className="flex flex-wrap gap-2"><Button onClick={() => openForm()}><Plus size={16}/> Create</Button><Button variant="outline" disabled title="COA import is not available yet">Import</Button><Button variant="outline" onClick={() => exportCsv("chart-of-accounts.csv", ["Code","Name","Type","Normal Balance","Posting","Status"], (accounts.data?.items ?? []).map((item) => [item.account_code,item.account_name,item.account_type,item.normal_balance,item.is_posting ? "Yes" : "No",item.is_active ? "Active" : "Archived"]))}>Export</Button>  <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</div>}/>
       <ModuleSummary metrics={[
         {label:"Total Accounts",value:accounts.data?.total_items ?? lookup.data?.length ?? 0},
         {label:"Active Accounts",value:accounts.data?.items.filter((item) => item.is_active).length ?? 0,note:"Visible page"},

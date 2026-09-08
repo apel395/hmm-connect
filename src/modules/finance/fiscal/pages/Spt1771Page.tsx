@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Building2, FileText, Landmark, RefreshCw, Save, Trash2 } from "lucide-react";
+import {Building2, FileText, Landmark, RefreshCw, Save, Trash2, Printer} from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -108,7 +108,8 @@ export default function Spt1771Page() {
           <>
             <Input type="number" className={input + " w-28"} value={taxYear} onChange={(e) => setTaxYear(Number(e.target.value))} />
             <Button variant="outline" onClick={() => q.refetch()} loading={q.isFetching}><RefreshCw className="mr-1 h-4 w-4" />Refresh</Button>
-          </>
+            <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>
         }
       />
 

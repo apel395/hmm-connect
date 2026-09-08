@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
@@ -83,7 +84,8 @@ export default function StockOpnameDetailPage() {
                 Post Adjustment
               </Button>
             )}
-          </div>
+            <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</div>
         }
       />
       <Card className="p-4">

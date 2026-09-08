@@ -105,7 +105,7 @@ export default function PosSalesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Point of Sales" description="History of register sales. Posted sales are deducted from warehouse stock and reflected in the general ledger; draft sales can still be edited." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Point of Sales" description="History of register sales. Posted sales are deducted from warehouse stock and reflected in the general ledger; draft sales can still be edited." />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Sales</div><div className="mt-2 text-2xl font-bold">{num(data.total_items ?? 0)}</div></Card>

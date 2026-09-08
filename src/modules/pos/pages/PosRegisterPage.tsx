@@ -163,7 +163,7 @@ export default function PosRegisterPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Point of Sales" description="Sell items from warehouse stock, record payments and automatically post the sale to inventory and the general ledger." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Point of Sales" description="Sell items from warehouse stock, record payments and automatically post the sale to inventory and the general ledger." />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_390px]">
         <Card className="p-4">

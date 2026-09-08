@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Unlink } from "lucide-react";
+import {Link2, Unlink, Printer} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
@@ -73,7 +73,8 @@ export default function FiscalAccountPage() {
       <PageHeader title="Fiscal Linked Chart of Accounts" description="Commercial (HMM-Connect) accounts with their linked Coretax L1-D Jasa fiscal account. The fiscal COA appears only through its link to the commercial COA; commercial and fiscal figures are reported separately." actions={
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => exportCsv("fiscal-linked-chart-of-accounts.csv", ["Code", "Name", "Type", "Fiscal Code", "Fiscal Name", "Classification", "Status"], items.map((i) => [i.commercial_code, i.commercial_name, i.account_type, i.fiscal_code ?? "", i.fiscal_name ?? "", i.klasifikasi_fiskal ?? "", i.mapping_id != null ? "Linked" : "Unlinked"]))}>Export</Button>
-        </div>
+          <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</div>
       } />
 
       <ModuleSummary metrics={[

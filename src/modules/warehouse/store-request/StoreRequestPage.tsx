@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
@@ -66,7 +67,10 @@ export default function StoreRequestPage() {
   const warehouseOptions=locationWarehouses.map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
 
   return <div className="space-y-6">
-    <PageHeader title="Store Request" description="Internal warehouse stock requests and goods issue tracking." actions={canCreate ? <Button onClick={() => {setShowCreate(true);setBusinessUnitId(undefined);setLocationId(undefined);setDepartmentId(undefined);setWarehouseId(undefined);setItems([{quantity:0}]);setNotes("")}}>Create Store Request</Button> : undefined} />
+    <PageHeader title="Store Request" description="Internal warehouse stock requests and goods issue tracking." actions={<>
+canCreate ? <Button onClick={() => {setShowCreate(true);setBusinessUnitId(undefined);setLocationId(undefined);setDepartmentId(undefined);setWarehouseId(undefined);setItems([{quantity:0}]);setNotes("")}}>Create Store Request</Button> : undefined
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>} />
     <Card className="p-4"><div className="grid gap-3 md:grid-cols-[1fr_220px]"><input className={input} placeholder="Search SR number or requester" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} /><select className={input} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>{statusOptions.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div></Card>
     <Card className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead><tr><th className="px-4 py-3 text-left">SR Number</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-left">Requester</th><th className="px-4 py-3 text-left">Warehouse</th><th className="px-4 py-3 text-left">Department</th><th className="px-4 py-3 text-right">Remaining</th><th className="px-4 py-3 text-left">Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className="border-t whitespace-nowrap"><td className="px-4 py-3 font-medium"><Link className="text-emerald-700 hover:underline" to={`/store-requests/${row.id}`}>{row.sr_number}</Link></td><td className="px-4 py-3">{row.request_date}</td><td className="px-4 py-3">{row.requester_name ?? "—"}</td><td className="px-4 py-3">{row.warehouse_name ?? "—"}</td><td className="px-4 py-3">{row.department_name ?? "—"}</td><td className="px-4 py-3 text-right tabular-nums">{Number(row.total_remaining_quantity ?? 0).toLocaleString("id-ID")}</td><td className="px-4 py-3">{row.status.replaceAll("_", " ")}</td></tr>)}</tbody></table></div><div className="p-4"><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="store requests" onChange={setPage} /></div></Card>
 

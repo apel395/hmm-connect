@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import {Plus, Printer} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
@@ -70,7 +70,10 @@ export default function AmortizationPage() {
   const accountSelect = (key: string) => <select className={inputClass} value={form[key]} onChange={(event) => set(key, event.target.value)}><option value="">Select account</option>{(accounts.data ?? []).map((account: any) => <option key={account.id} value={account.id}>{account.account_number} — {account.account_name}</option>)}</select>;
 
   return <div className="space-y-5">
-    <PageHeader title="Amortization" description="Manage straight-line amortization for intangible assets and other amortizable costs." actions={<Button onClick={() => setShowForm((value) => !value)}><Plus size={16}/> New Amortization</Button>} />
+    <PageHeader title="Amortization" description="Manage straight-line amortization for intangible assets and other amortizable costs." actions={<>
+<Button onClick={() => setShowForm((value) => !value)}><Plus size={16}/> New Amortization</Button>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>} />
     <div className="grid gap-3 md:grid-cols-3"><Card className="p-4"><div className="text-xs uppercase text-slate-500">Active Records</div><div className="mt-2 text-2xl font-semibold">{(records.data ?? []).filter((x: any) => x.status === "ACTIVE").length}</div></Card><Card className="p-4"><div className="text-xs uppercase text-slate-500">Total Net Book Value</div><div className="mt-2 text-2xl font-semibold">{totalNetBookValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div></Card><Card className="p-4"><div className="text-xs uppercase text-slate-500">Method</div><div className="mt-2 text-lg font-semibold">Straight Line</div></Card></div>
 
     {showForm && <Card className="grid gap-4 p-5 md:grid-cols-3">

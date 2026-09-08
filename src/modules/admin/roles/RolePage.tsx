@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import {KeyRound, Pencil, Plus, Search, Trash2, Printer} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
@@ -91,7 +91,10 @@ export default function RolePage() {
   }
 
   return <div className="space-y-6">
-    <PageHeader title="Roles" description="Manage core HMM-Connect roles and additional custom roles." actions={<Button onClick={() => openRole()}><Plus size={16}/> Create Role</Button>}/>
+    <PageHeader title="Roles" description="Manage core HMM-Connect roles and additional custom roles." actions={<>
+<Button onClick={() => openRole()}><Plus size={16}/> Create Role</Button>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>}/>
     <Card>
       <div className="mb-5 relative max-w-md"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400"/><Input value={search} onChange={(event)=>setSearch(event.target.value)} className="pl-9" placeholder="Search roles or permissions..."/></div>
       {roles.isLoading ? <div className="py-12"><Loading/></div> : roles.isError ? <p className="py-10 text-center text-sm text-red-600">Roles could not be loaded.</p> : filtered.length===0 ? <div className="py-12 text-center"><KeyRound className="mx-auto mb-2 h-8 w-8 text-slate-400"/><p className="text-sm text-slate-500">No roles found.</p></div> : <><Table className="min-w-[760px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Role</TH><TH numeric>Users</TH><TH>Permissions</TH><TH numeric>Actions</TH></TR></THead><TBody>{visibleRoles.map((role)=><TR key={role.id}><TD className="max-w-[280px]"><TableCellStack primary={role.name} secondary={role.description || undefined}/></TD><TD numeric className="font-semibold">{role.user_count}</TD><TD><div className="flex max-w-xl flex-wrap gap-1">{role.permissions.map((p)=><Badge key={p.code} variant="outline">{p.code}</Badge>)}</div></TD><TD><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={()=>openRole(role)}><Pencil size={14}/> Edit</Button><Button size="sm" variant="danger" disabled={CORE_ROLES.has(role.name) || role.user_count>0} onClick={()=>{if(window.confirm(`Delete role ${role.name}?`)) remove.mutate(role.id)}}><Trash2 size={14}/> Delete</Button></div></TD></TR>)}</TBody></Table><Pagination page={page} pages={pages} total={filtered.length} pageSize={PAGE_SIZE} noun="roles" onChange={setPage}/></>}

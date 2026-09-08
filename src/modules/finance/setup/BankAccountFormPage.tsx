@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
@@ -50,7 +51,7 @@ export default function BankAccountFormPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title={editingId ? "Edit Bank Account" : "Create Bank Account"} description="Link a real funding account to one posting COA. Use Global / all locations for a corporate account shared by locations in the Business Unit." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title={editingId ? "Edit Bank Account" : "Create Bank Account"} description="Link a real funding account to one posting COA. Use Global / all locations for a corporate account shared by locations in the Business Unit." />
       <Card className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm">Bank Name *<input className={input} value={form.bank_name} onChange={(e)=>setForm({...form,bank_name:e.target.value})}/></label>

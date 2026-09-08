@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import Badge from "@/components/ui/Badge";
 import { inventoryApi } from "../api";
@@ -63,7 +65,7 @@ export default function InventoryReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Inventory Reports" description="Stock valuation and movement insights computed from current warehouse inventory." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Inventory Reports" description="Stock valuation and movement insights computed from current warehouse inventory." />
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">

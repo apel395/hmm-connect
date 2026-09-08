@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -33,7 +34,10 @@ export default function PurchaseRequisitionDetailPage(){
  const act=async(operation:"submit"|"approve"|"reject")=>{try{if(operation==="submit")await submit.mutateAsync(data.id);if(operation==="approve")await approve.mutateAsync({id:data.id,comment:"Approved"});if(operation==="reject"){const comment=window.prompt("Reject reason");if(!comment)return;await reject.mutateAsync({id:data.id,comment});}toast.success(operation==="submit"?"Purchase Requisition submitted.":operation==="approve"?"Approval completed.":"Document rejected.");}catch(error:any){const detail=error?.response?.data?.detail;toast.error(typeof detail==="string"?detail:detail?.message??`${operation} failed.`)}};
  const reopenForCorrection=async()=>{if(!window.confirm("Reopen this purchase requisition for correction? It will return to Draft and require approval again."))return;try{await reopen.mutateAsync(data.id);toast.success("Purchase requisition reopened for correction.");}catch(error:any){toast.error(error?.response?.data?.detail||"Purchase requisition could not be reopened.")}};
  return <div className="space-y-6">
-  <PageHeader title={data.pr_number} description="Purchase Requisition" actions={<Badge variant={badgeVariant(data.status)}>{data.status}</Badge>}/>
+  <PageHeader title={data.pr_number} description="Purchase Requisition" actions={<>
+<Badge variant={badgeVariant(data.status)}>{data.status}</Badge>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>}/>
   <WorkflowHeader document={data} approval={approval}/>
   {canReopen&&<div className="flex justify-end"><Button variant="outline" loading={reopen.isPending} onClick={reopenForCorrection}>Reopen for Correction</Button></div>}
   <WorkflowActionBar document={data} approval={approval} canSubmit={canSubmit} canApprove={canApprove} canReject={canReject} canEdit={canEdit} canPrint={data.allowed_actions?.can_print!==false} submitting={submit.isPending} approving={approve.isPending} rejecting={reject.isPending} onBack={()=>navigate("/purchase-requisitions")} onSubmit={()=>act("submit")} onEdit={()=>setEditing(true)} onApprove={()=>act("approve")} onReject={()=>act("reject")}/>

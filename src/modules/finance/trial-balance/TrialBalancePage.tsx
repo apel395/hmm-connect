@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
@@ -32,7 +33,10 @@ export default function TrialBalancePage() {
   const data = query.data;
 
   return <div className="space-y-5">
-    <PageHeader title="Trial Balance" description="Opening balance, period movements, total movement, and closing balance by COA." actions={<Button variant="outline" disabled={!data} onClick={() => exportTrialBalanceCsv(filters)}>Export CSV</Button>} />
+    <PageHeader title="Trial Balance" description="Opening balance, period movements, total movement, and closing balance by COA." actions={<>
+<Button variant="outline" disabled={!data} onClick={() => exportTrialBalanceCsv(filters)}>Export CSV</Button>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>} />
     <Card><form className="grid gap-3 md:grid-cols-5" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft, page: 1 }); }}>
       <label className="text-sm">From<input className={`${input} mt-1 w-full`} type="date" value={draft.date_from} onChange={(e) => setDraft({ ...draft, date_from: e.target.value })}/></label>
       <label className="text-sm">To<input className={`${input} mt-1 w-full`} type="date" value={draft.date_to} onChange={(e) => setDraft({ ...draft, date_to: e.target.value })}/></label>

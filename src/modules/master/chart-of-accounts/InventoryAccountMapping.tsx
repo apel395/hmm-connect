@@ -1,5 +1,7 @@
 import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import PageHeader from "@/components/common/PageHeader";
+import { Printer } from "lucide-react";
 
 export default function InventoryAccountMapping(){
 
@@ -9,7 +11,7 @@ return(
 
 <PageHeader
 
-title="Inventory COA Mapping"
+ actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Inventory COA Mapping"
 
 description="Product accounting configuration"
 

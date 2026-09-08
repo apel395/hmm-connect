@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
@@ -18,7 +19,10 @@ export default function BankAccountsSetupPage() {
       <PageHeader
         title="Bank Accounts"
         description="Configure bank/cash funding accounts and their linked posting COA."
-        actions={<Button onClick={() => navigate("/finance-setup/bank-accounts/new")}>Create Bank Account</Button>}
+        actions={<>
+<Button onClick={() => navigate("/finance-setup/bank-accounts/new")}>Create Bank Account</Button>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>}
       />
       <Card className="p-0">
         <Table className="min-w-[860px]">

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import {AlertTriangle, RefreshCw, Printer} from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -26,7 +26,10 @@ export default function FinanceDashboardPage() {
   const set = (key: keyof FinanceDashboardFilters, value: string) => setDraft((current) => ({ ...current, [key]: value }));
 
   return <div className="space-y-5">
-    <PageHeader title="Finance Dashboard" description="Cash position, Accounts Payable, purchasing commitments, profitability, and finance exceptions." actions={<Button variant="outline" onClick={() => query.refetch()}><RefreshCw size={15}/> Refresh</Button>} />
+    <PageHeader title="Finance Dashboard" description="Cash position, Accounts Payable, purchasing commitments, profitability, and finance exceptions." actions={<>
+<Button variant="outline" onClick={() => query.refetch()}><RefreshCw size={15}/> Refresh</Button>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>} />
     <Card><form className="grid gap-2 md:grid-cols-3 xl:grid-cols-7" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft }); }}>
       <label className="text-xs text-slate-600">From<input className={`${input} mt-1 w-full`} type="date" value={draft.date_from} onChange={(e) => set("date_from", e.target.value)}/></label>
       <label className="text-xs text-slate-600">To<input className={`${input} mt-1 w-full`} type="date" value={draft.date_to} onChange={(e) => set("date_to", e.target.value)}/></label>

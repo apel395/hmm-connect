@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import {RefreshCw, Printer} from "lucide-react";
 
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
@@ -38,12 +38,15 @@ export default function ReconciliationPage() {
       <PageHeader
         title="Financial Reconciliation"
         description="Read-only control comparing current subledger balances with posted General Ledger balances."
-        actions={
+        actions={<>
+
           <Button variant="secondary" onClick={() => query.refetch()} disabled={query.isFetching}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
-        }
+        
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>}
       />
 
       {query.isError && (

@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -14,7 +15,10 @@ title="Currency"
 
 description="Currency Master"
 
-actions={<Button>New Currency</Button>}
+actions={<>
+<Button>New Currency</Button>
+<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+</>}
 
 />
 
