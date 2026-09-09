@@ -1,15 +1,18 @@
 import { Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { stockOpnameApi } from "./api";
+import useAuthorization from "@/hooks/useAuthorization";
 
 export default function StockOpnameDetailPage() {
   const id = Number(useParams().id);
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { hasPermission } = useAuthorization();
   const query = useQuery({
     queryKey: ["stock-opname", id],
     queryFn: async () => (await stockOpnameApi.detail(id)).data,
@@ -89,6 +92,22 @@ export default function StockOpnameDetailPage() {
     mutationFn: () => stockOpnameApi.unpost(id),
     onSuccess: refresh,
   });
+  const voidIt = useMutation({
+    mutationFn: (reason: string) => stockOpnameApi.void(id, reason),
+    onSuccess: () => {
+      refresh();
+      navigate("/stock-opnames");
+    },
+  });
+  const askVoid = () => {
+    const reason = window.prompt(
+      "Void this Stock Opname? This cancels the count and lets you create a new one. Reason (required):",
+    )?.trim();
+    if (reason == null) return;
+    if (!reason) return window.alert("A void reason is required.");
+    if (!window.confirm(`Void ${d?.opname_number}? This cannot be undone.`)) return;
+    voidIt.mutate(reason);
+  };
   const d = query.data;
   if (!d) return <div>Loading...</div>;
   const editable = d.status !== "POSTED";
@@ -170,6 +189,16 @@ export default function StockOpnameDetailPage() {
                 Unpost
               </Button>
             )}
+            {!["POSTED", "VOID"].includes(d.status) && hasPermission("stock_opname.manage") && (
+              <Button
+                variant="danger"
+                disabled={voidIt.isPending}
+                onClick={askVoid}
+              >
+                Void
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => navigate("/stock-opnames")}>Back</Button>
             <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </div>
         }
@@ -421,10 +450,10 @@ export default function StockOpnameDetailPage() {
           </table>
         </div>
       </Card>
-      {(save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error) && (
+      {(save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error || voidIt.error) && (
         <p className="text-sm text-red-600">
-          {(save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error) instanceof Error
-            ? (save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error)?.message
+          {(save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error || voidIt.error) instanceof Error
+            ? (save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error || voidIt.error)?.message
             : "Action failed. Refresh and verify the Stock Opname status."}
         </p>
       )}

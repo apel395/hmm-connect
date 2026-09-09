@@ -25,4 +25,6 @@ export const stockOpnameApi = {
     api.post<StockOpname>(`/stock-opnames/${id}/reject`, { comment }),
   post: (id: number) => api.post<StockOpname>(`/stock-opnames/${id}/post`),
   unpost: (id: number) => api.post<StockOpname>(`/stock-opnames/${id}/unpost`),
+  void: (id: number, reason: string) =>
+    api.post<StockOpname>(`/stock-opnames/${id}/void`, { reason }),
 };
