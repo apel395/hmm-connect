@@ -430,6 +430,35 @@ class StockOpnameService:
         return op
 
     @staticmethod
+    def void(db: Session, *, opname_id: int, current_user: User, reason: str | None = None) -> StockOpname:
+        op = StockOpnameService._get(db, opname_id, lock=True)
+        if op.status == "POSTED":
+            raise HTTPException(409, "Posted Stock Opname must be unposted before voiding")
+        if op.status == "VOID":
+            raise HTTPException(409, "Stock Opname is already void")
+        if reason is None or not reason.strip():
+            raise HTTPException(422, "A void reason is required")
+        req = get_request(db, "STOCK_OPNAME", op.id, for_update=True)
+        if req and req.status in ("PENDING", "IN_PROGRESS"):
+            reset_approval(db, entity_type="STOCK_OPNAME", entity_id=op.id)
+        op.status = "VOID"
+        op.notes = (op.notes or "") + f"\nVoided ({datetime.now(timezone.utc).isoformat()}). Reason: {reason.strip()}"
+        AuditService.log(
+            db=db,
+            user=current_user,
+            action="VOID",
+            entity_type="STOCK_OPNAME",
+            entity_id=op.id,
+            summary=f"Voided {op.opname_number}",
+            document_type="SO",
+            document_number=op.opname_number,
+            document_status=op.status,
+        )
+        db.commit()
+        db.refresh(op)
+        return op
+
+    @staticmethod
     def unpost(db: Session, *, opname_id: int, current_user: User) -> StockOpname:
         op = StockOpnameService._get(db, opname_id, lock=True)
         if op.status != "POSTED":

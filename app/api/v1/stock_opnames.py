@@ -204,3 +204,20 @@ def unpost(opname_id: int, db: Session = Depends(get_db), user=Depends(warehouse
     return _detail(
         db, StockOpnameService.unpost(db=db, opname_id=opname_id, current_user=user), user
     )
+
+
+@router.post("/{opname_id}/void")
+def void(
+    opname_id: int,
+    body: dict | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(warehouse_user),
+):
+    reason = (body or {}).get("reason") if body else None
+    return _detail(
+        db,
+        StockOpnameService.void(
+            db=db, opname_id=opname_id, current_user=user, reason=reason
+        ),
+        user,
+    )
