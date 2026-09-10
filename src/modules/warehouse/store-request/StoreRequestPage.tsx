@@ -19,7 +19,7 @@ const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text
 
 export default function StoreRequestPage() {
   const { isSuperuser, hasPermission } = useAuthorization();
-  const canCreate = isSuperuser() || hasPermission("store_request.manage");
+  const _canCreate = isSuperuser() || hasPermission("store_request.manage");
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
@@ -68,7 +68,7 @@ export default function StoreRequestPage() {
 
   return <div className="space-y-6">
     <PageHeader title="Store Request" description="Internal warehouse stock requests and goods issue tracking." actions={<>
-canCreate ? <Button onClick={() => {setShowCreate(true);setBusinessUnitId(undefined);setLocationId(undefined);setDepartmentId(undefined);setWarehouseId(undefined);setItems([{quantity:0}]);setNotes("")}}>Create Store Request</Button> : undefined
+_canCreate ? <Button onClick={() => {setShowCreate(true);setBusinessUnitId(undefined);setLocationId(undefined);setDepartmentId(undefined);setWarehouseId(undefined);setItems([{quantity:0}]);setNotes("")}}>Create Store Request</Button> : undefined
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>} />
     <Card className="p-4"><div className="grid gap-3 md:grid-cols-[1fr_220px]"><input className={input} placeholder="Search SR number or requester" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} /><select className={input} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>{statusOptions.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div></Card>

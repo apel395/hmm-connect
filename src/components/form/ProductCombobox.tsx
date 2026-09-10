@@ -65,6 +65,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const requestIdRef = useRef(0);
   const positionRef = useRef<DropdownPosition | null>(null);
+  const positionFrameRef = useRef<number | null>(null);
   const { hasPermission } = useAuthorization();
   const canManageTax = hasPermission("products.manage");
   const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
@@ -94,6 +95,18 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     setPosition(next);
   }, []);
 
+  const schedulePositionUpdate = useCallback(() => {
+    if (positionFrameRef.current !== null) return;
+    positionFrameRef.current = window.requestAnimationFrame(() => {
+      positionFrameRef.current = null;
+      updatePosition();
+    });
+  }, [updatePosition]);
+
+  useEffect(() => () => {
+    if (positionFrameRef.current !== null) window.cancelAnimationFrame(positionFrameRef.current);
+  }, []);
+
   useEffect(() => { setQuery(selectedLabel); }, [selectedLabel]);
 
   useEffect(() => {
@@ -119,10 +132,19 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   useEffect(() => {
     if (!open) return;
     updatePosition();
-    const onResize = () => updatePosition();
+    const onResize = () => schedulePositionUpdate();
+    const onScroll = (event: Event) => {
+      const target = event.target as Node | null;
+      if (target && dropdownRef.current?.contains(target)) return;
+      schedulePositionUpdate();
+    };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [open, updatePosition]);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [open, updatePosition, schedulePositionUpdate]);
 
   useEffect(() => {
     if (!open) return;
@@ -185,7 +207,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   };
 
   const dropdown = open && !disabled && position && typeof document !== "undefined" ? createPortal(
-    <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto overscroll-contain will-change-transform rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
+    <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto overscroll-auto will-change-transform rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
       {loading && visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div> : loadError ? <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div> : visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div> : visibleOptions.map((product, index) => {
         const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
         return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full cursor-pointer border-b border-slate-100 px-3.5 py-2.5 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "bg-amber-50 text-slate-700 hover:bg-amber-100" : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
