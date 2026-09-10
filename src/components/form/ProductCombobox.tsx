@@ -119,23 +119,9 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   useEffect(() => {
     if (!open) return;
     updatePosition();
-    let debounce: number | null = null;
-    const scheduleReposition = (event?: Event) => {
-      const target = event?.target;
-      if (target instanceof Node && dropdownRef.current?.contains(target)) return;
-      if (debounce !== null) window.clearTimeout(debounce);
-      debounce = window.setTimeout(() => {
-        debounce = null;
-        updatePosition();
-      }, 100);
-    };
-    window.addEventListener("resize", scheduleReposition);
-    window.addEventListener("scroll", scheduleReposition, true);
-    return () => {
-      window.removeEventListener("resize", scheduleReposition);
-      window.removeEventListener("scroll", scheduleReposition, true);
-      if (debounce !== null) window.clearTimeout(debounce);
-    };
+    const onResize = () => updatePosition();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, [open, updatePosition]);
 
   useEffect(() => {
