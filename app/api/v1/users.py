@@ -1,8 +1,12 @@
+from datetime import datetime, timezone
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.v1.auth import SESSION_IDLE_TIMEOUT
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.dependencies.auth import get_current_user
@@ -165,6 +169,81 @@ def list_assignable_departments(db: Session = Depends(get_db), _: User = Depends
 @router.get("/locations", response_model=list[LocationSummary])
 def list_assignable_locations(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     return db.query(Location).filter(Location.is_active.is_(True)).order_by(Location.name).all()
+
+
+def _utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+@router.get("/sessions")
+def list_active_sessions(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    rows = (
+        db.query(User)
+        .options(
+            selectinload(User.department),
+            selectinload(User.location),
+            selectinload(User.roles),
+        )
+        .filter(User.active_session_id.is_not(None))
+        .order_by(User.session_last_activity_at.desc().nulls_last(), User.username)
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+    items: list[dict[str, Any]] = []
+    for user in rows:
+        last_activity = _utc(user.session_last_activity_at)
+        idle_seconds = int((now - last_activity).total_seconds()) if last_activity else None
+        is_idle = idle_seconds is not None and idle_seconds > SESSION_IDLE_TIMEOUT.total_seconds()
+        items.append(
+            {
+                "id": user.id,
+                "username": user.username,
+                "full_name": user.full_name,
+                "email": user.email,
+                "is_active": user.is_active,
+                "department": user.department_id and {"id": user.department.id, "code": user.department.code, "name": user.department.name},
+                "location": user.location_id and {"id": user.location.id, "code": user.location.code, "name": user.location.name},
+                "roles": [{"id": role.id, "name": role.name} for role in user.roles],
+                "session_id": user.active_session_id,
+                "session_last_activity_at": last_activity,
+                "idle_seconds": idle_seconds,
+                "is_idle": is_idle,
+            }
+        )
+    return {"items": items, "total_active_sessions": len(items)}
+
+
+@router.post("/{user_id}/clear-session", status_code=204)
+def clear_session(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    user = get_editable_user(db, user_id)
+    if not user.active_session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User has no active session")
+    session_id = user.active_session_id
+    last_activity = user.session_last_activity_at
+    user.active_session_id = None
+    user.session_last_activity_at = None
+    record_audit(
+        db,
+        current_user,
+        "USER_SESSION_CLEARED",
+        "USER",
+        f"Cleared active session for user {user.username}",
+        entity_id=user.id,
+        before_data={
+            "session_id": session_id,
+            "session_last_activity_at": last_activity.isoformat() if last_activity else None,
+        },
+    )
+    db.commit()
+    return None
 
 
 @router.get("/{user_id}", response_model=UserDetailResponse)
