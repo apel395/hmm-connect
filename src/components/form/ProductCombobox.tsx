@@ -45,6 +45,17 @@ function labelFor(product: ProductComboboxOption): string {
   return code ? `${code} - ${name}` : name;
 }
 function taxProfileIncomplete(product: ProductComboboxOption): boolean { return product.tax_category === "REVIEW_REQUIRED"; }
+function getScrollableAncestors(element: HTMLElement): HTMLElement[] {
+  const ancestors: HTMLElement[] = [];
+  let parent = element.parentElement;
+  while (parent) {
+    const style = window.getComputedStyle(parent);
+    const overflow = `${style.overflow} ${style.overflowX} ${style.overflowY}`;
+    if (/(auto|scroll|overlay)/.test(overflow)) ancestors.push(parent);
+    parent = parent.parentElement;
+  }
+  return ancestors;
+}
 async function loadRemoteProducts(search: string, marketOnly: boolean, excludeMarket: boolean): Promise<ProductComboboxOption[]> {
   try {
     const lookup = await productApi.lookup(search, 30, marketOnly, excludeMarket);
@@ -133,16 +144,16 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     if (!open) return;
     updatePosition();
     const onResize = () => schedulePositionUpdate();
-    const onScroll = (event: Event) => {
-      const target = event.target as Node | null;
-      if (target && dropdownRef.current?.contains(target)) return;
-      schedulePositionUpdate();
-    };
+    const onScroll = () => schedulePositionUpdate();
+    const input = inputRef.current;
+    const scrollAncestors = input ? getScrollableAncestors(input) : [];
     window.addEventListener("resize", onResize);
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    scrollAncestors.forEach((ancestor) => ancestor.addEventListener("scroll", onScroll, { passive: true }));
     return () => {
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("scroll", onScroll);
+      scrollAncestors.forEach((ancestor) => ancestor.removeEventListener("scroll", onScroll));
     };
   }, [open, updatePosition, schedulePositionUpdate]);
 
@@ -207,7 +218,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   };
 
   const dropdown = open && !disabled && position && typeof document !== "undefined" ? createPortal(
-    <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto overscroll-auto will-change-transform rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
+    <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-72 overflow-y-auto overscroll-auto rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
       {loading && visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">Loading items...</div> : loadError ? <div className="px-3 py-2 text-xs text-red-600">Unable to load items. Please try again.</div> : visibleOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching items.</div> : visibleOptions.map((product, index) => {
         const taxIncomplete = requireTaxReady && taxProfileIncomplete(product);
         return <button key={product.id} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full cursor-pointer border-b border-slate-100 px-3.5 py-2.5 text-left last:border-b-0 focus:outline-none ${taxIncomplete ? "bg-amber-50 text-slate-700 hover:bg-amber-100" : index === activeIndex ? "bg-emerald-50" : "hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectProduct(product); }}>
