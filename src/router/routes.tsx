@@ -88,6 +88,7 @@ import ChartOfAccountPage from "@/modules/master/chart-of-accounts/pages/ChartOf
 import UserPage from "@/modules/admin/users/UserPage";
 import RolePage from "@/modules/admin/roles/RolePage";
 import SettingPage from "@/modules/admin/settings/SettingPage";
+import ActiveSessionsPage from "@/modules/admin/sessions/ActiveSessionsPage";
 import OrganizationDimensionsPage from "@/modules/admin/organization/OrganizationDimensionsPage";
 import AuditLogPage from "@/modules/audit/AuditLogPage";
 import TraceabilityPage from "@/modules/audit/TraceabilityPage";
@@ -268,6 +269,7 @@ const router = createBrowserRouter([
       { path: "users", element: <UserPage /> },
       { path: "roles", element: <RolePage /> },
       { path: "settings", element: <SettingPage /> },
+      { path: "active-sessions", element: <ActiveSessionsPage /> },
       { path: "organization-dimensions", element: <OrganizationDimensionsPage /> },
       { path: "audit", element: <AuditLogPage /> },
       { path: "traceability/:documentType/:id", element: <TraceabilityPage /> },

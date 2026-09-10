@@ -8,6 +8,7 @@ export const userKeys = {
   roles: () => [...userKeys.all, "roles"] as const,
   departments: () => [...userKeys.all, "departments"] as const,
   locations: () => [...userKeys.all, "locations"] as const,
+  sessions: () => [...userKeys.all, "sessions"] as const,
 };
 
 export function useUsers(params: { page?: number; page_size?: number; search?: string } = {}) {
@@ -47,5 +48,12 @@ export function useAssignableLocations(enabled: boolean) {
     queryKey: userKeys.locations(),
     queryFn: userApi.locations,
     enabled,
+  });
+}
+
+export function useActiveSessions() {
+  return useQuery({
+    queryKey: userKeys.sessions(),
+    queryFn: userApi.sessions,
   });
 }

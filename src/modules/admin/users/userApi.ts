@@ -19,9 +19,35 @@ export type UserListPage = {
   has_previous: boolean;
 };
 
+export type ActiveSessionInfo = {
+  id: number;
+  username: string;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+  department?: { id: number; code: string; name: string } | null;
+  location?: { id: number; code: string; name: string } | null;
+  roles: { id: number; name: string }[];
+  session_id: string;
+  session_last_activity_at: string | null;
+  idle_seconds: number | null;
+  is_idle: boolean;
+};
+
+export type ActiveSessionsResponse = {
+  items: ActiveSessionInfo[];
+  total_active_sessions: number;
+};
+
 export const userApi = {
   async list(params: { page?: number; page_size?: number; search?: string; is_active?: boolean } = {}): Promise<UserListPage> {
     return (await api.get<UserListPage>("/users", { params })).data;
+  },
+  async sessions(): Promise<ActiveSessionsResponse> {
+    return (await api.get<ActiveSessionsResponse>("/users/sessions")).data;
+  },
+  async clearSession(userId: number): Promise<void> {
+    await api.post(`/users/${userId}/clear-session`);
   },
   async create(data: UserCreatePayload): Promise<EditableUser> {
     return (await api.post<EditableUser>("/users", data)).data;

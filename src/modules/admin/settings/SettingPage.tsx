@@ -48,6 +48,7 @@ export default function SettingPage() {
         <KeyRound className="mb-3 h-5 w-5 text-emerald-700"/>
         <h2 className="font-semibold">Authentication</h2>
         <p className="mt-1 text-sm text-slate-500">Self-registration is disabled. Accounts are provisioned by System Administrators.</p>
+        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/active-sessions">Manage Active Sessions</Link>
       </Card>
     </div>
   </div>;
