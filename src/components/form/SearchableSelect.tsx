@@ -53,7 +53,6 @@ export default function SearchableSelect<T extends string | number = number>({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const positionRef = useRef<DropdownPosition | null>(null);
-  const repositionFrameRef = useRef<number | null>(null);
   const selected = options.find((option) => option.id === value);
   const selectedLabel = selected ? optionLabel(selected) : "";
   const [query, setQuery] = useState(selectedLabel);
@@ -109,24 +108,22 @@ export default function SearchableSelect<T extends string | number = number>({
   useEffect(() => {
     if (!open) return;
     updatePosition();
+    let debounce: number | null = null;
     const scheduleReposition = (event?: Event) => {
       const target = event?.target;
       if (target instanceof Node && dropdownRef.current?.contains(target)) return;
-      if (repositionFrameRef.current !== null) return;
-      repositionFrameRef.current = window.requestAnimationFrame(() => {
-        repositionFrameRef.current = null;
+      if (debounce !== null) window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        debounce = null;
         updatePosition();
-      });
+      }, 100);
     };
     window.addEventListener("resize", scheduleReposition);
     window.addEventListener("scroll", scheduleReposition, true);
     return () => {
       window.removeEventListener("resize", scheduleReposition);
       window.removeEventListener("scroll", scheduleReposition, true);
-      if (repositionFrameRef.current !== null) {
-        window.cancelAnimationFrame(repositionFrameRef.current);
-        repositionFrameRef.current = null;
-      }
+      if (debounce !== null) window.clearTimeout(debounce);
     };
   }, [open, updatePosition]);
 
