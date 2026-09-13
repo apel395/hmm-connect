@@ -17,6 +17,7 @@ class ProductCreate(BaseModel):
     usage_uom: str
     conversion: Decimal = Decimal("1")
     description: str | None = None
+    item_type: Literal["BUY", "SELL"] = "BUY"
     cost_price: Decimal = Decimal("0")
     selling_price: Decimal = Decimal("0")
     tax_category: TaxCategory = "REVIEW_REQUIRED"
@@ -51,6 +52,7 @@ class ProductUpdate(BaseModel):
     usage_uom: str | None = None
     conversion: Decimal | None = None
     description: str | None = None
+    item_type: Literal["BUY", "SELL"] | None = None
     cost_price: Decimal | None = None
     selling_price: Decimal | None = None
     tax_category: TaxCategory | None = None

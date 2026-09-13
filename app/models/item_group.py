@@ -19,7 +19,14 @@ class ItemGroup(Base, TimestampMixin):
 
     name: Mapped[str] = mapped_column(
         String(100),
-        unique=True,
+        index=True,
+    )
+
+    item_type: Mapped[str] = mapped_column(
+        String(4),
+        default="BUY",
+        nullable=False,
+        index=True,
     )
 
     is_active: Mapped[bool] = mapped_column(
