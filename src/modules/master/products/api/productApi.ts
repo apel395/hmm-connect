@@ -1,5 +1,7 @@
 import api from "@/api/client";
 
+import type { ItemType } from "../types";
+
 import type {
   ProductCreateRequest,
   ProductUpdateRequest,
@@ -18,6 +20,7 @@ export type ProductClassificationGroup = {
   id: number;
   code: string;
   name: string;
+  item_type: ItemType;
   subgroups: Array<{ id: number; code: string; name: string }>;
 };
 

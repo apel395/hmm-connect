@@ -185,6 +185,6 @@ export default function ProductPage() {
         </>}
       </Card>
     </div>
-    <ProductForm open={formOpen} product={selected} products={classificationProducts} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
+    <ProductForm open={formOpen} product={selected} groups={classification.data ?? []} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
   </>;
 }

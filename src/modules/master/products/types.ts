@@ -1,4 +1,5 @@
 export type TaxCategory = "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL" | "REVIEW_REQUIRED";
+export type ItemType = "BUY" | "SELL";
 
 export interface Product {
   id: number;
@@ -11,6 +12,9 @@ export interface Product {
   uom: string;
   usage_uom: string;
   conversion: string | number;
+  item_type: ItemType;
+  cost_price: string | number;
+  selling_price: string | number;
   tax_category: TaxCategory;
   is_taxable: boolean;
   tax_rate: string | number;
@@ -24,6 +28,14 @@ export interface Product {
   is_active: boolean;
 }
 
+export interface ProductGroup {
+  id: number;
+  code: string;
+  name: string;
+  item_type: ItemType;
+  subgroups: { id: number; code: string; name: string }[];
+}
+
 export interface ProductCreateRequest {
   code: string;
   name: string;
@@ -34,6 +46,9 @@ export interface ProductCreateRequest {
   uom: string;
   usage_uom: string;
   conversion: number;
+  item_type: ItemType;
+  cost_price: number;
+  selling_price: number;
   tax_category: TaxCategory;
   is_taxable: boolean;
   tax_rate: number;
