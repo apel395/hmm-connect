@@ -9,12 +9,6 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface LoginResponse {
-  access_token: string;
-  refresh_token?: string;
-  token_type: string;
-}
-
 export interface Permission {
   id?: number;
   code: string;
@@ -40,6 +34,13 @@ export interface User {
   default_department_id?: number | null;
   default_location_id?: number | null;
   roles?: Role[];
+}
+
+export interface LoginResponse {
+  access_token: string;
+  refresh_token?: string;
+  token_type: string;
+  user: User;
 }
 
 interface AuthState {
@@ -134,14 +135,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       else localStorage.removeItem("refresh_token");
       localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
 
-      const me = await api.get<User>("/auth/me");
-      adoptWorkspaceOwner(me.data);
-      localStorage.setItem("user", JSON.stringify(me.data));
+      adoptWorkspaceOwner(data.user);
+      localStorage.setItem("user", JSON.stringify(data.user));
 
       set({
         accessToken: data.access_token,
         refreshToken: data.refresh_token ?? null,
-        user: me.data,
+        user: data.user,
         authenticated: true,
         loading: false,
       });
