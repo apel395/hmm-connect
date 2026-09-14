@@ -1,4 +1,5 @@
 from math import ceil
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
@@ -74,7 +75,7 @@ def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict
 
 
 @router.get("")
-def list_products(active_only: bool = True, market_only: bool = False, exclude_market: bool = False, item_type: str | None = Query(default=None, pattern="^(BUY|SELL)$"), search: str | None = Query(default=None, max_length=100), page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_products(active_only: bool = True, market_only: bool = False, exclude_market: bool = False, item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None, search: Annotated[str | None, Query(max_length=100)] = None, page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
     query = _apply_filters(db.query(Product), active_only=active_only, search=search, market_only=market_only, exclude_market=exclude_market)
     if item_type:
         query = query.filter(Product.item_type == item_type)
@@ -85,7 +86,7 @@ def list_products(active_only: bool = True, market_only: bool = False, exclude_m
 
 
 @router.get("/classification-master")
-def classification_master(item_type: str | None = Query(default=None, pattern="^(BUY|SELL)$"), db: Session = Depends(get_db), _=Depends(get_current_user)):
+def classification_master(item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
     query = db.query(ItemGroup).options(selectinload(ItemGroup.subgroups)).filter(ItemGroup.is_active.is_(True))
     if item_type:
         query = query.filter(ItemGroup.item_type == item_type)
@@ -107,7 +108,7 @@ def classification_master(item_type: str | None = Query(default=None, pattern="^
 
 
 @router.get("/lookup")
-def lookup_products(search: str = Query(default="", max_length=100), market_only: bool = False, exclude_market: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
+def lookup_products(search: Annotated[str, Query(max_length=100)] = "", market_only: bool = False, exclude_market: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
     query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only, exclude_market=exclude_market)
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
     price_history = _last_purchase_prices(db, [row.id for row in rows])
