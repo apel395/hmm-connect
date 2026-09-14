@@ -1,11 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
 class PermissionSummary(BaseModel):
     id: int
     code: str
@@ -22,6 +17,7 @@ class RoleSummary(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
 class UserSummary(BaseModel):
     id: int
     username: str
@@ -37,6 +33,12 @@ class UserSummary(BaseModel):
     roles: list[RoleSummary] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserSummary
 
 
 class RegistrationRequest(BaseModel):
