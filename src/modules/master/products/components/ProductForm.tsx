@@ -61,7 +61,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
       if (!exists) list.push({code:product.group_code, name:product.group_name});
     }
     return list.sort((a,b) => a.code.localeCompare(b.code)).map((item) => ({id:item.code, label:`${item.code} — ${item.name}`, keywords:[item.code,item.name]}));
-  }, [groups, form.item_type, product]);
+  }, [groups, form.item_type, form.group_code, product]);
 
   const subGroupOptions = useMemo(() => {
     const selected = groups.find((group) => group.code === form.group_code);
