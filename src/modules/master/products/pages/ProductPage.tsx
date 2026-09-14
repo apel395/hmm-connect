@@ -1,5 +1,5 @@
 import { Printer } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
@@ -44,15 +44,6 @@ export default function ProductPage() {
   const rows: Product[] = data.items ?? [];
   const pages = Math.max(Number(data.total_pages ?? 0), 1);
   const total = Number(data.total_items ?? 0);
-
-  const classificationProducts = useMemo(() => (classification.data ?? []).flatMap((group) =>
-    group.subgroups.map((subgroup) => ({
-      group_code: group.code,
-      group_name: group.name,
-      subgroup_code: subgroup.code,
-      subgroup_name: subgroup.name,
-    } as Product)),
-  ), [classification.data]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
