@@ -31,6 +31,50 @@ def _utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
+def _user_summary(db: Session, user: User) -> UserSummary:
+    resolved_location = user.default_location or user.location
+    resolved_department = user.default_department or user.department
+
+    if resolved_location:
+        resolved_business_unit_id = resolved_location.business_unit_id
+    elif resolved_department and resolved_department.business_unit_id is not None:
+        resolved_business_unit_id = resolved_department.business_unit_id
+    else:
+        resolved_business_unit_id = user.default_business_unit_id
+
+    resolved_department_id = user.default_department_id or user.department_id
+    if resolved_department and resolved_business_unit_id is not None:
+        invalid_business_unit = resolved_department.business_unit_id not in {None, resolved_business_unit_id}
+        invalid_location = False
+        if resolved_location and not invalid_business_unit:
+            invalid_location = (
+                db.query(LocationDepartment)
+                .filter(
+                    LocationDepartment.location_id == resolved_location.id,
+                    LocationDepartment.department_id == resolved_department.id,
+                )
+                .first()
+                is None
+            )
+        if invalid_business_unit or invalid_location:
+            resolved_department_id = None
+
+    return UserSummary(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        business_unit_id=resolved_business_unit_id,
+        department_id=resolved_department_id,
+        location_id=user.default_location_id or user.location_id,
+        default_business_unit_id=user.default_business_unit_id,
+        default_department_id=user.default_department_id,
+        default_location_id=user.default_location_id,
+        roles=user.roles,
+    )
+
+
 @router.post("/register", response_model=RegistrationResponse, status_code=201)
 def register(
     data: RegistrationRequest,
@@ -120,12 +164,14 @@ def login(
     user.active_session_id = session_id
     user.session_last_activity_at = now
     db.commit()
-    return TokenResponse(access_token=create_access_token(user.username, session_id=session_id))
+    return TokenResponse(
+        access_token=create_access_token(user.username, session_id=session_id),
+        user=_user_summary(db, user),
+    )
 
 
 @router.post("/activity", status_code=204)
 def activity(_: User = Depends(get_current_user)):
-    # get_current_user validates the session and refreshes server-side activity.
     return None
 
 
@@ -134,12 +180,6 @@ def logout(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
-    # Logout must be able to release a server-side session even when the
-    # normal authenticated-user dependency would reject the request first.
-    # Decode the presented session directly and clear it only when the token's
-    # session id still owns the user's active session. The operation is
-    # intentionally idempotent: stale/already-logged-out tokens return 204
-    # without affecting a newer active session.
     claims = decode_access_token_claims(token) or {}
     username = claims.get("sub")
     session_id = claims.get("sid")
@@ -161,50 +201,4 @@ def logout(
 
 @router.get("/me", response_model=UserSummary)
 def current_user(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    # Work location is the authoritative operational dimension.  A stale
-    # default_business_unit_id must never override the Business Unit that owns
-    # the assigned/default location, otherwise forms can load an impossible
-    # combination such as Hotel + Batam Catering.
-    resolved_location = user.default_location or user.location
-    resolved_department = user.default_department or user.department
-
-    if resolved_location:
-        resolved_business_unit_id = resolved_location.business_unit_id
-    elif resolved_department and resolved_department.business_unit_id is not None:
-        resolved_business_unit_id = resolved_department.business_unit_id
-    else:
-        resolved_business_unit_id = user.default_business_unit_id
-
-    resolved_department_id = user.default_department_id or user.department_id
-    if resolved_department and resolved_business_unit_id is not None:
-        invalid_business_unit = resolved_department.business_unit_id not in {None, resolved_business_unit_id}
-        invalid_location = False
-        if resolved_location and not invalid_business_unit:
-            invalid_location = (
-                db.query(LocationDepartment)
-                .filter(
-                    LocationDepartment.location_id == resolved_location.id,
-                    LocationDepartment.department_id == resolved_department.id,
-                )
-                .first()
-                is None
-            )
-        if invalid_business_unit or invalid_location:
-            # Location is the pivot. Let the UI select a department that is
-            # actually mapped to this work location.
-            resolved_department_id = None
-
-    return {
-        "id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "full_name": user.full_name,
-        "is_active": user.is_active,
-        "business_unit_id": resolved_business_unit_id,
-        "department_id": resolved_department_id,
-        "location_id": user.default_location_id or user.location_id,
-        "default_business_unit_id": user.default_business_unit_id,
-        "default_department_id": user.default_department_id,
-        "default_location_id": user.default_location_id,
-        "roles": user.roles,
-    }
+    return _user_summary(db, user)
