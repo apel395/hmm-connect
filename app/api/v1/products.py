@@ -15,14 +15,11 @@ from app.models.purchase_order_item import PurchaseOrderItem
 from app.schemas.product import ProductCreate, ProductTaxProfileUpdate, ProductUpdate
 from app.services.direct_coa_service import DirectCoaService
 
-
 router = APIRouter(prefix="/products", tags=["Products"])
 MARKET_SUBGROUPS = {"VEGETABLES", "FRUIT"}
 
-
 def _is_market_subgroup(subgroup_name: str | None) -> bool:
     return (subgroup_name or "").strip().upper() in MARKET_SUBGROUPS
-
 
 def _apply_filters(query, *, active_only: bool, search: str | None, market_only: bool = False, exclude_market: bool = False):
     if active_only:
@@ -31,14 +28,11 @@ def _apply_filters(query, *, active_only: bool, search: str | None, market_only:
     if market_only:
         query = query.filter(subgroup.in_(MARKET_SUBGROUPS))
     elif exclude_market:
-        query = query.filter(
-            or_(Product.subgroup_name.is_(None), ~subgroup.in_(MARKET_SUBGROUPS))
-        )
+        query = query.filter(or_(Product.subgroup_name.is_(None), ~subgroup.in_(MARKET_SUBGROUPS)))
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
     return query
-
 
 def _validate_coa_mappings(db: Session, payload: dict, product: Product | None = None) -> None:
     resolver = DirectCoaService(db)
@@ -56,23 +50,15 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
             if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
                 raise HTTPException(422, f"Item {label} COA must be a debit-balance expense")
 
-
 def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict]:
     if not product_ids:
         return {}
-    rows = (
-        db.query(PurchaseOrderItem.product_id, PurchaseOrderItem.unit_price, PurchaseOrder.order_date, PurchaseOrder.po_number)
-        .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
-        .filter(PurchaseOrderItem.product_id.in_(product_ids), PurchaseOrder.status.notin_(("DRAFT", "REJECTED", "CANCELLED", "EXPIRED")))
-        .order_by(PurchaseOrderItem.product_id, PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc(), PurchaseOrderItem.id.desc())
-        .all()
-    )
+    rows = (db.query(PurchaseOrderItem.product_id, PurchaseOrderItem.unit_price, PurchaseOrder.order_date, PurchaseOrder.po_number).join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id).filter(PurchaseOrderItem.product_id.in_(product_ids), PurchaseOrder.status.notin_(("DRAFT", "REJECTED", "CANCELLED", "EXPIRED"))).order_by(PurchaseOrderItem.product_id, PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc(), PurchaseOrderItem.id.desc()).all())
     latest: dict[int, dict] = {}
     for product_id, unit_price, order_date, po_number in rows:
         if product_id not in latest:
             latest[product_id] = {"last_purchase_price": unit_price, "last_purchase_date": order_date, "last_purchase_po_number": po_number}
     return latest
-
 
 @router.get("")
 def list_products(active_only: bool = True, market_only: bool = False, exclude_market: bool = False, item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None, search: Annotated[str | None, Query(max_length=100)] = None, page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -84,28 +70,13 @@ def list_products(active_only: bool = True, market_only: bool = False, exclude_m
     total_pages = ceil(total / page_size) if total else 0
     return {"items": rows, "page": page, "page_size": page_size, "total_items": total, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
 
-
 @router.get("/classification-master")
 def classification_master(item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
     query = db.query(ItemGroup).options(selectinload(ItemGroup.subgroups)).filter(ItemGroup.is_active.is_(True))
     if item_type:
         query = query.filter(ItemGroup.item_type == item_type)
     groups = query.order_by(ItemGroup.code).all()
-    return [
-        {
-            "id": group.id,
-            "code": group.code,
-            "name": group.name,
-            "item_type": group.item_type,
-            "subgroups": [
-                {"id": subgroup.id, "code": subgroup.code, "name": subgroup.name}
-                for subgroup in sorted(group.subgroups, key=lambda item: item.code)
-                if subgroup.is_active
-            ],
-        }
-        for group in groups
-    ]
-
+    return [{"id": group.id, "code": group.code, "name": group.name, "item_type": group.item_type, "subgroups": [{"id": subgroup.id, "code": subgroup.code, "name": subgroup.name} for subgroup in sorted(group.subgroups, key=lambda item: item.code) if subgroup.is_active]} for group in groups]
 
 @router.get("/lookup")
 def lookup_products(search: Annotated[str, Query(max_length=100)] = "", market_only: bool = False, exclude_market: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -113,7 +84,6 @@ def lookup_products(search: Annotated[str, Query(max_length=100)] = "", market_o
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
     price_history = _last_purchase_prices(db, [row.id for row in rows])
     return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "is_market_item": _is_market_subgroup(row.subgroup_name), **price_history.get(row.id, {"last_purchase_price": None, "last_purchase_date": None, "last_purchase_po_number": None})} for row in rows]
-
 
 @router.post("", status_code=201)
 def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -123,14 +93,9 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     normalized_name = " ".join(data.name.strip().lower().split())
     if db.query(Product).filter(func.upper(func.trim(Product.code)) == normalized_code).first():
         raise HTTPException(status_code=409, detail="Product code already exists")
-    duplicate_name = db.query(Product).filter(
-        func.lower(func.regexp_replace(func.trim(Product.name), r"\s+", " ", "g")) == normalized_name
-    ).first()
+    duplicate_name = db.query(Product).filter(func.lower(func.regexp_replace(func.trim(Product.name), r"\s+", " ", "g")) == normalized_name).first()
     if duplicate_name:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Product name duplicates existing item {duplicate_name.code} — {duplicate_name.name}",
-        )
+        raise HTTPException(status_code=409, detail=f"Product name duplicates existing item {duplicate_name.code} — {duplicate_name.name}")
     payload = data.model_dump()
     payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
     _validate_coa_mappings(db, payload)
@@ -140,14 +105,8 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     db.refresh(product)
     return product
 
-
 @router.patch("/{product_id}/tax-profile")
-def update_product_tax_profile(
-    product_id: int,
-    data: ProductTaxProfileUpdate,
-    db: Session = Depends(get_db),
-    _=Depends(require_permission("products.manage")),
-):
+def update_product_tax_profile(product_id: int, data: ProductTaxProfileUpdate, db: Session = Depends(get_db), _=Depends(require_permission("products.manage"))):
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -159,7 +118,6 @@ def update_product_tax_profile(
     db.commit()
     db.refresh(product)
     return product
-
 
 @router.patch("/{product_id}")
 def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
