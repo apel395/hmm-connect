@@ -178,7 +178,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
             <Input className="mt-1" type="number" min="0" step="1000" value={form.cost_price} placeholder="0" onChange={(event) => update("cost_price", Number(event.target.value))} />
           </label>
           <label className="text-sm font-medium">Selling Price
-            <Input className="mt-1" type="number" min="0" step="1000" value={form.selling_price} placeholder="0" onChange={(event) => update("selling_price", Number(event.target.value)} />
+            <Input className="mt-1" type="number" min="0" step="1000" value={form.selling_price} placeholder="0" onChange={(event) => update("selling_price", Number(event.target.value))} />
           </label>
           <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="mb-3 font-semibold text-slate-900">Direct COA Mapping</div>
