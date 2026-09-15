@@ -6,6 +6,8 @@ const tabs = [
   { label: "AP Aging", to: "/accounts-payable/aging" },
   { label: "Supplier Invoices", to: "/accounts-payable/invoices" },
   { label: "Payments", to: "/accounts-payable/payments" },
+  { label: "Payment Vouchers", to: "/finance/payment-vouchers" },
+  { label: "Opening Balances", to: "/finance-setup/opening-balances" },
   { label: "Credit / Debit Notes", to: "/accounts-payable/adjustments" },
 ];
 
@@ -13,7 +15,7 @@ export default function APWorkspaceHeader() {
   return (
     <ModuleWorkspaceHeader
       title="Accounts Payable"
-      description="Review supplier liabilities, payments, aging, invoices, and adjustments from one workspace."
+      description="Review supplier liabilities, payments, vouchers, opening balances, aging, invoices, and adjustments from one workspace."
       tabs={tabs}
     />
   );
