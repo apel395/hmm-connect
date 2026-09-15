@@ -238,6 +238,18 @@ def upgrade() -> None:
             "COA cleanup will not proceed."
         )
 
+    # Multiple operational petty-cash records may intentionally share the
+    # consolidated 100-100-100 GL account. The old bank_accounts schema made
+    # coa_account_id globally unique, which encoded the old location-specific
+    # COA design and prevents this consolidation. Bank accounts themselves are
+    # still distinct by bank_name + account_number.
+    bind.execute(
+        sa.text(
+            "ALTER TABLE public.bank_accounts "
+            "DROP CONSTRAINT IF EXISTS uq_bank_account_coa"
+        )
+    )
+
     for old_code, canonical_code in ACCOUNT_MAPPINGS:
         old_id = bind.execute(
             sa.text(
