@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -14,8 +16,20 @@ def _require_access(user):
         raise HTTPException(status_code=403, detail="Finance access required")
 
 
-def _filters(customer_id: int | None, search: str | None):
-    return {"customer_id": customer_id, "search": search}
+def _filters(
+    customer_id: int | None,
+    search: str | None,
+    date_from: date | None,
+    date_to: date | None,
+):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="date_from cannot be after date_to")
+    return {
+        "customer_id": customer_id,
+        "search": search,
+        "date_from": date_from,
+        "date_to": date_to,
+    }
 
 
 @router.get("/summary")
@@ -24,6 +38,8 @@ def summary(
     page_size: int = Query(20, ge=1, le=100),
     customer_id: int | None = None,
     search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -31,7 +47,7 @@ def summary(
     return ARReportingService(db).summary(
         page=page,
         page_size=page_size,
-        **_filters(customer_id, search),
+        **_filters(customer_id, search, date_from, date_to),
     )
 
 
@@ -42,6 +58,8 @@ def detail(
     status: str | None = Query(None, pattern="^(PAID|PARTIALLY_PAID|UNPAID)$"),
     customer_id: int | None = None,
     search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -50,7 +68,7 @@ def detail(
         page=page,
         page_size=page_size,
         status=status,
-        **_filters(customer_id, search),
+        **_filters(customer_id, search, date_from, date_to),
     )
 
 
@@ -60,6 +78,8 @@ def aging(
     page_size: int = Query(20, ge=1, le=100),
     customer_id: int | None = None,
     search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -67,5 +87,5 @@ def aging(
     return ARReportingService(db).aging(
         page=page,
         page_size=page_size,
-        **_filters(customer_id, search),
+        **_filters(customer_id, search, date_from, date_to),
     )
