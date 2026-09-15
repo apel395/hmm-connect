@@ -119,6 +119,40 @@ CANONICAL_NAMES = {
 }
 
 
+def _remap_fiscal_account_mappings(bind, old_id: int, new_id: int) -> None:
+    """Merge fiscal/commercial mappings when the canonical pair already exists.
+
+    fiscal_account_mappings has a legitimate unique constraint on
+    (fiscal_account_id, commercial_account_id). During COA consolidation,
+    multiple location-specific commercial accounts can therefore collapse into
+    the same canonical pair. The mapping rows contain no attributes beyond
+    those keys, so an existing canonical pair makes the old row redundant.
+    """
+    bind.execute(
+        sa.text(
+            """
+            DELETE FROM public.fiscal_account_mappings old_map
+            USING public.fiscal_account_mappings canonical_map
+            WHERE old_map.commercial_account_id = :old_id
+              AND canonical_map.commercial_account_id = :new_id
+              AND canonical_map.fiscal_account_id = old_map.fiscal_account_id
+            """
+        ),
+        {"old_id": old_id, "new_id": new_id},
+    )
+
+    bind.execute(
+        sa.text(
+            """
+            UPDATE public.fiscal_account_mappings
+            SET commercial_account_id = :new_id
+            WHERE commercial_account_id = :old_id
+            """
+        ),
+        {"old_id": old_id, "new_id": new_id},
+    )
+
+
 def _remap_foreign_keys(bind, old_id: int, new_id: int) -> None:
     rows = bind.execute(
         sa.text(
@@ -151,6 +185,10 @@ def _remap_foreign_keys(bind, old_id: int, new_id: int) -> None:
         column_name = row["column_name"]
 
         if table_name == "chart_of_accounts" and column_name == "id":
+            continue
+
+        if table_name == "fiscal_account_mappings" and column_name == "commercial_account_id":
+            _remap_fiscal_account_mappings(bind, old_id, new_id)
             continue
 
         qualified_table = (
