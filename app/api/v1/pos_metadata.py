@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.sales_transaction import SalesTransaction
 from app.models.user import User
+from app.services.document_number import next_document_number
 from app.services.location_access import apply_warehouse_scope
 from app.services.sales_transaction_service import SalesTransactionService
 
@@ -37,9 +38,16 @@ def update_pos_metadata(
         raise HTTPException(409, "Only draft POS sales can be configured")
     if data.transaction_type == "POS" and not data.table_number:
         raise HTTPException(422, "Table number is required for POS sales")
+
     transaction.transaction_type = data.transaction_type
     transaction.table_number = data.table_number if data.transaction_type == "POS" else None
-    transaction.queue_number = data.queue_number or transaction.transaction_number
+
+    if data.transaction_type == "INVOICE":
+        transaction.transaction_number = next_document_number(db, "INV", digits=5, day=True)
+        transaction.queue_number = transaction.transaction_number
+    else:
+        transaction.queue_number = data.queue_number or transaction.transaction_number
+
     db.commit()
     db.refresh(transaction)
     return {
