@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
+import DateRangeFilter from "@/components/common/DateRangeFilter";
 import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -26,14 +27,40 @@ export default function SupplierAdjustmentsPage() {
   const [form, setForm] = useState<any>(emptyForm());
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
 
   const refreshFinance = () => {
     queryClient.invalidateQueries({ queryKey: ["supplier-adjustments"] }); queryClient.invalidateQueries({ queryKey: ["supplier-invoices"] }); queryClient.invalidateQueries({ queryKey: ["eligible-payment-invoices"] }); queryClient.invalidateQueries({ queryKey: ["accounts-payable-aging"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] }); queryClient.invalidateQueries({ queryKey: ["journal-entries"] }); queryClient.invalidateQueries({ queryKey: ["general-ledger"] }); queryClient.invalidateQueries({ queryKey: ["trial-balance"] }); queryClient.invalidateQueries({ queryKey: ["balance-sheet"] }); queryClient.invalidateQueries({ queryKey: ["profit-loss"] });
   };
 
-  const adjustments = useQuery({ queryKey: ["supplier-adjustments", typeFilter, statusFilter], queryFn: () => listSupplierAdjustments({ page: 1, page_size: 100, adjustment_type: typeFilter || undefined, status: statusFilter || undefined }) });
+  const adjustments = useQuery({
+    queryKey: ["supplier-adjustments", typeFilter, statusFilter, appliedFromDate, appliedToDate],
+    queryFn: () => listSupplierAdjustments({
+      page: 1,
+      page_size: 100,
+      adjustment_type: typeFilter || undefined,
+      status: statusFilter || undefined,
+      date_from: appliedFromDate || undefined,
+      date_to: appliedToDate || undefined,
+    }),
+  });
   const invoices = useQuery({ queryKey: ["posted-supplier-invoices-for-adjustment"], queryFn: () => listInvoices({ page: 1, page_size: 100, status: "POSTED" }) });
   const accounts = useQuery({ queryKey: ["supplier-adjustment-accounts"], queryFn: () => getAccountLookup({ is_active: true, is_posting: true }) });
+
+  const applyDates = () => {
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+  };
+
+  const clearDates = () => {
+    setFromDate("");
+    setToDate("");
+    setAppliedFromDate("");
+    setAppliedToDate("");
+  };
 
   const selectedInvoice = invoices.data?.items?.find((invoice: any) => invoice.id === Number(form.supplier_invoice_id));
   const create = useMutation({ mutationFn: () => createSupplierAdjustment(form), onSuccess: () => { toast.success(form.adjustment_type === "CREDIT_NOTE" ? "Supplier credit note created" : "Supplier debit note created"); setForm(emptyForm()); refreshFinance(); }, onError: (error: any) => toast.error(error.response?.data?.detail || "Supplier adjustment could not be created") });
@@ -49,7 +76,7 @@ export default function SupplierAdjustmentsPage() {
   };
 
   return <div className="space-y-6">
-    <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Supplier Credit / Debit Notes" description="Create supplier adjustments and review their accounting impact." />
+    <PageHeader actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Supplier Credit / Debit Notes" description="Create supplier adjustments and review their accounting impact." />
     <Card className="space-y-4">
       <div><h2 className="text-lg font-semibold">New Supplier Adjustment</h2><p className="text-sm text-slate-500">Save the note first, then create its draft journal.</p></div>
       <div className="grid gap-3 md:grid-cols-3">
@@ -67,6 +94,7 @@ export default function SupplierAdjustmentsPage() {
 
     <Card className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Supplier Adjustments</h2><p className="text-sm text-slate-500">Draft journals appear in Journal for review.</p></div><div className="flex gap-2"><select className={input} value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="">All types</option><option value="CREDIT_NOTE">Credit Notes</option><option value="DEBIT_NOTE">Debit Notes</option></select><select className={input} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="POSTED">Posted</option><option value="VOID">Void</option></select></div></div>
+      <DateRangeFilter from={fromDate} to={toDate} onFromChange={setFromDate} onToChange={setToDate} onApply={applyDates} onClear={clearDates} fromLabel="Adjustment Date From" toLabel="Adjustment Date To" />
       <div className="overflow-x-auto"><table className="min-w-[1120px] w-full text-sm"><thead><tr><th className="text-left">Number</th><th>Type</th><th>Supplier</th><th>Invoice</th><th>Date</th><th className="w-40 text-right">Amount</th><th>Adjustment Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>{adjustments.data?.items?.map((row: any) => <tr key={row.id} className="border-t"><td>{row.adjustment_number}</td><td>{row.adjustment_type === "CREDIT_NOTE" ? "Credit Note" : "Debit Note"}</td><td>{row.supplier_name}</td><td><Link className="text-emerald-700" to={`/supplier-invoices/${row.supplier_invoice_id}`}>{row.invoice_number}</Link></td><td>{row.adjustment_date}</td><td className="w-40 text-right tabular-nums">{money(row.amount)}</td><td>{row.adjustment_account_code} — {row.adjustment_account_name}</td><td><Badge variant={(row.status === "POSTED" ? "success" : row.status === "VOID" ? "danger" : "warning") as any}>{row.status}</Badge></td><td className="space-x-2">{row.allowed_actions?.can_generate_journal && <Button size="xs" onClick={() => action.mutate({ id: row.id, name: "generate-journal" })}>Create Journal</Button>}{row.allowed_actions?.can_void && <Button size="xs" variant="danger" onClick={() => { if (window.confirm(`Void ${row.adjustment_number}?`)) action.mutate({ id: row.id, name: "void" }); }}>Void</Button>}{row.journal_entry_id && <Link className="text-emerald-700" to={`/journal-entries/${row.journal_entry_id}`}>{row.status === "DRAFT" ? "Review Journal" : admin ? "Journal" : "Journal"}</Link>}</td></tr>)}</tbody></table></div>
     </Card>
   </div>;

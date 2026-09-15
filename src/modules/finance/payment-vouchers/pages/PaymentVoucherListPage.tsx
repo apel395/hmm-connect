@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
+import DateRangeFilter from "@/components/common/DateRangeFilter";
 import { Printer } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -20,14 +21,40 @@ export default function PaymentVoucherListPage() {
   const [locationId, setLocationId] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [page, setPage] = useState(1);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
 
-  const vouchers = useQuery({ queryKey: ["payment-vouchers", page], queryFn: async () => (await listVouchers({ page, page_size: 20 })).data });
+  const vouchers = useQuery({
+    queryKey: ["payment-vouchers", page, appliedFromDate, appliedToDate],
+    queryFn: async () => (await listVouchers({
+      page,
+      page_size: 20,
+      date_from: appliedFromDate || undefined,
+      date_to: appliedToDate || undefined,
+    })).data,
+  });
   const locations = useQuery({ queryKey: ["pv-locations"], queryFn: () => listLocations({ is_active: true }) });
   const eligible = useQuery({
     queryKey: ["pv-eligible", locationId],
     queryFn: async () => (await listEligibleInvoices(locationId!)).data,
     enabled: !!locationId,
   });
+
+  const applyDates = () => {
+    setPage(1);
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+  };
+
+  const clearDates = () => {
+    setPage(1);
+    setFromDate("");
+    setToDate("");
+    setAppliedFromDate("");
+    setAppliedToDate("");
+  };
 
   const create = useMutation({
     mutationFn: async () => {
@@ -58,7 +85,7 @@ export default function PaymentVoucherListPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Payment Vouchers" description="Per-location payment request — select invoices, get approval, then create and post a payment from the Payments screen." />
+      <PageHeader actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Payment Vouchers" description="Per-location payment request — select invoices, get approval, then create and post a payment from the Payments screen." />
       <Card className="p-4">
         <div className="mb-3 font-semibold">Create Voucher — Select Location + Invoices</div>
         <div className="grid gap-3 md:grid-cols-3">
@@ -83,6 +110,19 @@ export default function PaymentVoucherListPage() {
             </table>
           </div>
         )}
+      </Card>
+
+      <Card className="p-4">
+        <DateRangeFilter
+          from={fromDate}
+          to={toDate}
+          onFromChange={setFromDate}
+          onToChange={setToDate}
+          onApply={applyDates}
+          onClear={clearDates}
+          fromLabel="Voucher Date From"
+          toLabel="Voucher Date To"
+        />
       </Card>
 
       <Card className="p-0">

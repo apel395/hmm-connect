@@ -11,10 +11,10 @@ async function invalidatePO(queryClient: ReturnType<typeof useQueryClient>, id?:
   ]);
 }
 
-export function usePurchaseOrders(scope: "active" | "history" | "all" = "all", page = 1, pageSize = 20, status?: string, search?: string) {
+export function usePurchaseOrders(scope: "active" | "history" | "all" = "all", page = 1, pageSize = 20, status?: string, search?: string, dateFrom?: string, dateTo?: string) {
   return useQuery({
-    queryKey: ["purchase-orders", scope, page, pageSize, status, search],
-    queryFn: async () => (await purchaseOrderApi.list({ scope, page, page_size: pageSize, status, search: search?.trim() || undefined })).data,
+    queryKey: ["purchase-orders", scope, page, pageSize, status, search, dateFrom, dateTo],
+    queryFn: async () => (await purchaseOrderApi.list({ scope, page, page_size: pageSize, status, search: search?.trim() || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined })).data,
     placeholderData: (previous) => previous,
   });
 }

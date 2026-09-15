@@ -23,7 +23,7 @@ export interface PurchaseOrderCreatePayload {
 }
 
 export const purchaseOrderApi = {
-  list: (params: { scope?: "active" | "history" | "all"; status?: string; search?: string; page?: number; page_size?: number } = {}) => api.get("/purchase-orders", { params }),
+  list: (params: { scope?: "active" | "history" | "all"; status?: string; search?: string; page?: number; page_size?: number; date_from?: string; date_to?: string } = {}) => api.get("/purchase-orders", { params }),
   detail: (id: number) => api.get(`/purchase-orders/${id}`),
   create: (payload: PurchaseOrderCreatePayload) => api.post("/purchase-orders", payload),
   update: (id: number, payload: PurchaseOrderCreatePayload) => api.put(`/purchase-orders/${id}`, payload),
