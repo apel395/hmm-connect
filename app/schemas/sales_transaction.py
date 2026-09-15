@@ -13,6 +13,9 @@ class SalesTransactionItemIn(BaseModel):
 
 class SalesTransactionCreate(BaseModel):
     warehouse_id: int
+    transaction_type: Literal["POS", "INVOICE"] = "POS"
+    table_number: str | None = Field(default=None, max_length=30)
+    queue_number: str | None = Field(default=None, max_length=50)
     sale_date: date | None = None
     customer_id: int | None = None
     business_unit_id: int | None = None
@@ -23,6 +26,9 @@ class SalesTransactionCreate(BaseModel):
 
 
 class SalesTransactionUpdate(BaseModel):
+    transaction_type: Literal["POS", "INVOICE"] | None = None
+    table_number: str | None = Field(default=None, max_length=30)
+    queue_number: str | None = Field(default=None, max_length=50)
     sale_date: date | None = None
     customer_id: int | None = None
     notes: str | None = None
