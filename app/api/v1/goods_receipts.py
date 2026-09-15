@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from decimal import Decimal
 from math import ceil
 
@@ -179,7 +180,7 @@ def serialize_receipt_summary(receipt: GoodsReceipt, approval: ApprovalRequest |
         "business_unit_id": receipt.business_unit_id,
         "business_unit_name": receipt.business_unit.name if receipt.business_unit else None,
         "location_id": receipt.location_id,
-        "location_name": receipt.location.name if receipt.location else None,
+        "location_name": receipt.location_name if hasattr(receipt, "location_name") else None,
         "department_id": receipt.department_id,
         "department_name": receipt.department.name if receipt.department else None,
         "subtotal": receipt.subtotal,
@@ -222,12 +223,16 @@ def list_receipts(
     destination_type: str | None = None,
     status: str | None = None,
     approval_status: str | None = None,
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     search: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
     user=Depends(receiving_view_user),
 ):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "date_from must be on or before date_to")
     query = apply_location_scope(
         db.query(GoodsReceipt),
         GoodsReceipt.location_id,
@@ -247,6 +252,10 @@ def list_receipts(
         query = query.filter(GoodsReceipt.destination_type == destination_type.upper())
     if status:
         query = query.filter(GoodsReceipt.status == status.upper())
+    if date_from:
+        query = query.filter(GoodsReceipt.received_at >= date_from)
+    if date_to:
+        query = query.filter(GoodsReceipt.received_at < date_to + timedelta(days=1))
     if approval_status:
         query = query.join(
             ApprovalRequest,
