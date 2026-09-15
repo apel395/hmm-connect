@@ -70,17 +70,29 @@ export type ARAging = Page<ARAgingRow> & {
   }>;
 };
 
-const params = (page: number, pageSize: number, search: string) => ({
+export type ARReportDateParams = {
+  date_from?: string;
+  date_to?: string;
+};
+
+const params = (
+  page: number,
+  pageSize: number,
+  search: string,
+  dates: ARReportDateParams = {},
+) => ({
   page,
   page_size: pageSize,
   search: search.trim() || undefined,
+  date_from: dates.date_from || undefined,
+  date_to: dates.date_to || undefined,
 });
 
 export const arReportingApi = {
-  summary: async (page = 1, pageSize = 20, search = "") =>
-    (await api.get<ARSummary>("/ar-reporting/summary", { params: params(page, pageSize, search) })).data,
-  detail: async (page = 1, pageSize = 20, search = "") =>
-    (await api.get<Page<ARDetail>>("/ar-reporting/detail", { params: params(page, pageSize, search) })).data,
-  aging: async (page = 1, pageSize = 20, search = "") =>
-    (await api.get<ARAging>("/ar-reporting/aging", { params: params(page, pageSize, search) })).data,
+  summary: async (page = 1, pageSize = 20, search = "", dates: ARReportDateParams = {}) =>
+    (await api.get<ARSummary>("/ar-reporting/summary", { params: params(page, pageSize, search, dates) })).data,
+  detail: async (page = 1, pageSize = 20, search = "", dates: ARReportDateParams = {}) =>
+    (await api.get<Page<ARDetail>>("/ar-reporting/detail", { params: params(page, pageSize, search, dates) })).data,
+  aging: async (page = 1, pageSize = 20, search = "", dates: ARReportDateParams = {}) =>
+    (await api.get<ARAging>("/ar-reporting/aging", { params: params(page, pageSize, search, dates) })).data,
 };
