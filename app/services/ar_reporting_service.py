@@ -40,7 +40,14 @@ class ARReportingService:
     def __init__(self, db: Session):
         self.db = db
 
-    def _query(self, *, customer_id: int | None = None, search: str | None = None):
+    def _query(
+        self,
+        *,
+        customer_id: int | None = None,
+        search: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ):
         query = (
             self.db.query(AccountReceivable)
             .options(joinedload(AccountReceivable.customer))
@@ -56,6 +63,10 @@ class ARReportingService:
                     Customer.customer_name.ilike(token),
                 )
             )
+        if date_from:
+            query = query.filter(AccountReceivable.invoice_date >= date_from)
+        if date_to:
+            query = query.filter(AccountReceivable.invoice_date <= date_to)
         return query
 
     def _rows(self, **filters) -> list[dict]:
