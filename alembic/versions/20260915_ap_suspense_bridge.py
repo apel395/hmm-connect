@@ -90,19 +90,22 @@ def upgrade() -> None:
         )
     )
 
-    # Keep the existing GRNI setting compatible with the new bridge semantics.
+    # Keep the existing GRNI key compatible with the posting validator and
+    # migrate it to the same bridge account. This also creates the key when a
+    # legacy database never had an explicit GRNI setting.
     bind.execute(
         sa.text(
             """
-            UPDATE accounting_settings
-            SET account_id = :account_id,
-                description = :description
-            WHERE setting_key = :setting_key
+            INSERT INTO accounting_settings (setting_key, account_id, description)
+            VALUES (:setting_key, :account_id, :description)
+            ON CONFLICT (setting_key) DO UPDATE
+            SET account_id = EXCLUDED.account_id,
+                description = EXCLUDED.description
             """
         ).bindparams(
+            setting_key=LEGACY_GRNI_SETTING,
             account_id=account_id,
             description="Legacy GRNI key mapped to the AP Suspense bridge account.",
-            setting_key=LEGACY_GRNI_SETTING,
         )
     )
 
