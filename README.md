@@ -227,18 +227,6 @@ Location
 
 Location is part of the operational identity context used by audit and approval rules.
 
-## Trial users
-
-| Username | Password | Role |
-|---|---|---|
-| `admin` | `admin123` | ADMIN |
-| `requester` | `requester123` | REQUESTER |
-| `purchasing` | `purchasing123` | PURCHASING |
-| `warehouse` | `warehouse123` | WAREHOUSE |
-| `finance` | `finance123` | FINANCE |
-| `manager` | `manager123` | MANAGER |
-| `section` | `section123` | SECTION_APPROVER |
-
 The default approval workflow also includes `SECTION_APPROVER` as a configurable role. The `section` trial user is included so the layered PR and PO approval flow can be tested immediately.
 
 ## Architecture
