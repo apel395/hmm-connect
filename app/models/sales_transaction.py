@@ -12,6 +12,9 @@ class SalesTransaction(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     transaction_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    transaction_type: Mapped[str] = mapped_column(String(20), default="POS", nullable=False, index=True)
+    table_number: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    queue_number: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(20), default="DRAFT", nullable=False, index=True)
     sale_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     warehouse_id: Mapped[int] = mapped_column(
