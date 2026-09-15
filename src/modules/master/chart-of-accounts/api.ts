@@ -33,7 +33,7 @@ export async function getAccountLookup(params: {
     params: {
       ...params,
       page: params.page ?? 1,
-      page_size: params.page_size ?? 50,
+      page_size: Math.min(params.page_size ?? 50, 50),
     },
   });
   return data;
