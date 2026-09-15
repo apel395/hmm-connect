@@ -145,9 +145,13 @@ def listing(
     status: str | None = None,
     location_id: int | None = None,
     search: str | None = None,
+    date_from: date | None = Query(None, description="Voucher date from (inclusive)"),
+    date_to: date | None = Query(None, description="Voucher date to (inclusive)"),
     db: Session = Depends(get_db),
     user=Depends(view_user),
 ):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "date_from must be on or before date_to")
     q = apply_location_scope(db.query(PaymentVoucher), PaymentVoucher, user)
     if status:
         q = q.filter(PaymentVoucher.status == status)
@@ -155,6 +159,10 @@ def listing(
         q = q.filter(PaymentVoucher.location_id == location_id)
     if search:
         q = q.filter(PaymentVoucher.voucher_number.ilike(f"%{search}%"))
+    if date_from:
+        q = q.filter(PaymentVoucher.voucher_date >= date_from)
+    if date_to:
+        q = q.filter(PaymentVoucher.voucher_date <= date_to)
     total = q.count()
     rows = q.order_by(PaymentVoucher.id.desc()).offset((page-1)*page_size).limit(page_size).all()
     return {
@@ -218,16 +226,3 @@ def reject(voucher_id: int, body: dict | None = None, db: Session = Depends(get_
 def void(voucher_id: int, db: Session = Depends(get_db), user=Depends(manage_user)):
     v = svc.void(db, voucher_id, user)
     return serialize(v)
-
-
-@router.get("/{voucher_id}/print")
-def printable(voucher_id: int, db: Session = Depends(get_db), user=Depends(view_user)):
-    v = db.get(PaymentVoucher, voucher_id)
-    if not v:
-        raise HTTPException(404, "Voucher not found")
-    from app.services.location_access import enforce_location_access
-    enforce_location_access(user, v.location_id)
-    data = serialize(v)
-    data.update(print_metadata(user))
-    data["document_type"] = "Payment Voucher"
-    return data
