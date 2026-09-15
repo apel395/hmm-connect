@@ -7,7 +7,7 @@ from app.api.v1 import (
     document_attachments, document_drilldown, document_events, exports, financial_reconciliation, fiscal, fiscal_balance_sheet, fiscal_periods,
     fixed_assets_core, general_ledger, goods_receipts, inventory, journal_detail, journals, market_lists,
     organization_dimensions, payment_eligibility, payment_vouchers, payments, products, profit_loss, purchase_orders,
-    purchase_requisitions, purchasing_documents, purchasing_reports, roles, sales, stock_adjustments, stock_opnames, store_requests, supplier_adjustments, supplier_invoice_sources,
+    purchase_requisitions, purchasing_documents, purchasing_reports, roles, sales, pos_metadata, stock_adjustments, stock_opnames, store_requests, supplier_adjustments, supplier_invoice_sources,
     supplier_invoices, supplier_products, suppliers, system_capabilities, spt_1771, trial_balance, users, warehouses,
     year_end, opening_balances,
 )
@@ -30,6 +30,7 @@ for router in (
     store_requests.router,
     stock_adjustments.router,
     sales.router,
+    pos_metadata.router,
     stock_opnames.router,
     inventory.router,
     dashboard.router,
