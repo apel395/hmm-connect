@@ -123,13 +123,18 @@ class DirectCoaService:
             raise HTTPException(409, "Input VAT COA must be a debit-balance asset")
         return account
 
-    def grni_account(self) -> ChartOfAccount:
-        account = self.setting_account("GRNI_ACCOUNT", "GRNI")
+    def ap_suspense_account(self) -> ChartOfAccount:
+        """Return the common Receiving -> Supplier Invoice liability bridge."""
+        account = self.setting_account("AP_SUSPENSE_ACCOUNT", "AP Suspense")
         if account is None:
-            raise HTTPException(409, "GRNI requires an active direct COA mapping")
+            raise HTTPException(409, "AP Suspense requires an active direct COA mapping")
         if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
-            raise HTTPException(409, "GRNI COA must be a credit-balance liability")
+            raise HTTPException(409, "AP Suspense COA must be a credit-balance liability")
         return account
+
+    def grni_account(self) -> ChartOfAccount:
+        """Backward-compatible alias for the Receiving -> Invoice bridge."""
+        return self.ap_suspense_account()
 
     def purchase_discount_account(self) -> ChartOfAccount:
         account = self.setting_account(
