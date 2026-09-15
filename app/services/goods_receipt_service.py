@@ -182,23 +182,25 @@ class GoodsReceiptService:
         receipt: GoodsReceipt,
         user,
     ) -> JournalEntry | None:
-        if receipt.destination_type != "WAREHOUSE":
-            return None
-
         resolver = DirectCoaService(db)
-        grni = resolver.grni_account()
+        ap_suspense = resolver.ap_suspense_account()
         grouped: dict[int, Decimal] = {}
+
         for item in receipt.items:
-            inventory_account = resolver.inventory_account(
-                item.product,
-                receipt.location_id,
-            )
+            if receipt.destination_type == "WAREHOUSE":
+                debit_account = resolver.inventory_account(
+                    item.product,
+                    receipt.location_id,
+                )
+                description = f"Inventory received via {receipt.receipt_number}"
+            else:
+                debit_account = resolver.expense_account(item.product)
+                description = f"Direct consumption received via {receipt.receipt_number}"
+
             amount = (
                 Decimal(item.quantity or 0) * Decimal(item.unit_cost or 0)
             ).quantize(MONEY, rounding=ROUND_HALF_UP)
-            grouped[inventory_account.id] = (
-                grouped.get(inventory_account.id, ZERO) + amount
-            )
+            grouped[debit_account.id] = grouped.get(debit_account.id, ZERO) + amount
 
         subtotal = sum(grouped.values(), ZERO).quantize(
             MONEY,
@@ -247,13 +249,17 @@ class GoodsReceiptService:
 
         line_number = 1
         for account_id, amount in sorted(grouped.items()):
+            if receipt.destination_type == "WAREHOUSE":
+                description = f"Inventory received via {receipt.receipt_number}"
+            else:
+                description = f"Direct consumption received via {receipt.receipt_number}"
             journal.lines.append(
                 JournalLine(
                     line_number=line_number,
                     account_id=account_id,
                     debit=amount,
                     credit=ZERO,
-                    description=f"Inventory received via {receipt.receipt_number}",
+                    description=description,
                     business_unit_id=receipt.business_unit_id,
                     location_id=receipt.location_id,
                     department_id=receipt.department_id,
@@ -265,10 +271,10 @@ class GoodsReceiptService:
         journal.lines.append(
             JournalLine(
                 line_number=line_number,
-                account_id=grni.id,
+                account_id=ap_suspense.id,
                 debit=ZERO,
                 credit=subtotal,
-                description=f"GRNI for {receipt.receipt_number}",
+                description=f"AP Suspense for {receipt.receipt_number}",
                 business_unit_id=receipt.business_unit_id,
                 location_id=receipt.location_id,
                 department_id=receipt.department_id,
@@ -568,7 +574,7 @@ class GoodsReceiptService:
         journal = cls._sync_accounting_journal(db, receipt=receipt, user=user)
         if receipt.destination_type == "WAREHOUSE" and journal is not None:
             resolver = DirectCoaService(db)
-            grni = resolver.grni_account()
+            ap_suspense = resolver.ap_suspense_account()
             for movement in (
                 db.query(StockMovement)
                 .filter(
@@ -580,7 +586,7 @@ class GoodsReceiptService:
             ):
                 product = db.get(Product, movement.product_id)
                 movement.inventory_account_id = resolver.inventory_account(product, receipt.location_id).id
-                movement.offset_account_id = grni.id
+                movement.offset_account_id = ap_suspense.id
                 movement.journal_entry_id = journal.id
         if purchase_order:
             purchase_order.status = "RECEIVED" if all(Decimal(item.received_quantity or 0) >= Decimal(item.quantity) for item in purchase_order.items) else "PARTIALLY_RECEIVED"
