@@ -34,7 +34,19 @@ export type EligiblePaymentSupplier = {
   is_active: boolean;
 };
 
-export const listPayments = async (params: any = {}) => (await api.get("/payments", { params })).data;
+export type PaymentListParams = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  supplier_id?: number;
+  status?: string;
+  payment_method?: string;
+  payment_date_from?: string;
+  payment_date_to?: string;
+  location_id?: number;
+};
+
+export const listPayments = async (params: PaymentListParams = {}) => (await api.get("/payments", { params })).data;
 export const getPayment = async (id: number) => (await api.get<Payment>(`/payments/${id}`)).data;
 export const eligibleSuppliers = async (currency = "IDR", include_supplier_id?: number) =>
   (await api.get<EligiblePaymentSupplier[]>("/payments/eligible-suppliers", {
