@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -199,12 +200,16 @@ def purchase_order_result(db: Session, purchase_order: PurchaseOrder, user):
 def list_purchase_orders(
     status: str | None = None,
     scope: str = Query(default="all", pattern="^(active|history|all)$"),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     search: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     user=Depends(po_view_user),
 ):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "date_from must be on or before date_to")
     base_query = apply_location_scope(
         db.query(PurchaseOrder).outerjoin(Supplier, Supplier.id == PurchaseOrder.supplier_id),
         PurchaseOrder.location_id,
@@ -214,6 +219,10 @@ def list_purchase_orders(
         base_query = base_query.filter(PurchaseOrder.status.in_(ACTIVE_STATUSES))
     elif scope == "history":
         base_query = base_query.filter(PurchaseOrder.status.in_(HISTORY_STATUSES))
+    if date_from:
+        base_query = base_query.filter(PurchaseOrder.order_date >= date_from)
+    if date_to:
+        base_query = base_query.filter(PurchaseOrder.order_date < date_to + timedelta(days=1))
     if search and search.strip():
         term = f"%{search.strip()}%"
         base_query = base_query.filter(or_(PurchaseOrder.po_number.ilike(term), PurchaseOrder.external_reference.ilike(term), Supplier.name.ilike(term)))
