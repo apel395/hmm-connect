@@ -1,14 +1,14 @@
 """Add POS table and direct invoice metadata.
 
 Revision ID: 20260915_pos_table_invoice
-Revises: 20260915_ap_suspense_bridge
+Revises: 20260915_coa_cleanup
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 revision = "20260915_pos_table_invoice"
-down_revision = "20260915_ap_suspense_bridge"
+down_revision = "20260915_coa_cleanup"
 branch_labels = None
 depends_on = None
 
