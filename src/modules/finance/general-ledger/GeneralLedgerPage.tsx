@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
-import { Printer } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
@@ -10,14 +10,21 @@ import { TABLE_UI } from "@/config/tableUi";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listLocations } from "@/modules/admin/organization/api";
-import { getAccountSummary, listLedger } from "./api";
+import { createLedgerExport, getAccountSummary, getExport, listLedger } from "./api";
 
 const amount = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID");
+const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
+const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
+const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function GeneralLedgerPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<any>({ search: searchParams.get("search") || "", account_id: searchParams.get("account_id") || "", date_from: searchParams.get("date_from") || "", date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
+  const [exportJobId, setExportJobId] = useState<string | null>(null);
+  const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
+  const [exportError, setExportError] = useState<string | null>(null);
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: 20 }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
   const locations = useQuery({ queryKey: ["ledger-filter-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
@@ -26,7 +33,96 @@ export default function GeneralLedgerPage() {
   const change = (key: string, value: string) => { setFilters({ ...filters, [key]: value }); setPage(1); };
   const input = "h-10 rounded border px-3";
 
-  return <div className="space-y-6"><PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="General Ledger" description="Read-only posted journal activity with server-calculated balances."/>
+  useEffect(() => {
+    if (!exportJobId) return;
+
+    let cancelled = false;
+    let timer: number | undefined;
+    let pollAttempt = 0;
+    const startedAt = Date.now();
+
+    const scheduleNextPoll = (poll: () => Promise<void>) => {
+      if (cancelled) return;
+      const foregroundDelay = EXPORT_POLL_DELAYS_MS[Math.min(pollAttempt, EXPORT_POLL_DELAYS_MS.length - 1)];
+      const delay = document.visibilityState === "hidden"
+        ? EXPORT_BACKGROUND_POLL_DELAY_MS
+        : foregroundDelay;
+      pollAttempt += 1;
+      timer = window.setTimeout(poll, delay);
+    };
+
+    const poll = async () => {
+      if (cancelled) return;
+      if (Date.now() - startedAt >= EXPORT_POLL_TIMEOUT_MS) {
+        setExportStatus("failed");
+        setExportJobId(null);
+        setExportError("Export is taking longer than expected. Please try again later.");
+        return;
+      }
+      try {
+        const job = await getExport(exportJobId);
+        if (cancelled) return;
+        if (job.status === "READY" && job.download_url) {
+          setExportStatus("idle");
+          setExportJobId(null);
+          setExportError(null);
+          window.location.assign(job.download_url);
+          return;
+        }
+        if (job.status === "FAILED") {
+          setExportStatus("failed");
+          setExportJobId(null);
+          setExportError(job.error_message || "Export failed");
+          return;
+        }
+        setExportStatus("processing");
+        scheduleNextPoll(poll);
+      } catch (error: any) {
+        if (cancelled) return;
+        setExportStatus("failed");
+        setExportJobId(null);
+        setExportError(error?.response?.data?.detail || "Unable to check export status");
+      }
+    };
+
+    scheduleNextPoll(poll);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [exportJobId]);
+
+  const printParams = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
+  const handlePrint = () => {
+    const qs = new URLSearchParams(printParams as Record<string, string>).toString();
+    navigate(`/general-ledger/print${qs ? `?${qs}` : ""}`);
+  };
+
+  const handleExport = async () => {
+    setExportError(null);
+    setExportStatus("starting");
+    try {
+      const job = await createLedgerExport(printParams);
+      setExportJobId(job.job_id);
+      setExportStatus("processing");
+    } catch (error: any) {
+      setExportStatus("failed");
+      setExportError(error?.response?.data?.detail || "Unable to start export");
+    }
+  };
+
+  const exportBusy = exportStatus === "starting" || exportStatus === "processing";
+  const exportLabel = exportStatus === "starting"
+    ? "Starting export..."
+    : exportStatus === "processing"
+      ? "Preparing XLS..."
+      : "Download XLS";
+
+  return <div className="space-y-6"><PageHeader actions={<div className="flex items-center gap-2">
+    <Button onClick={handleExport} disabled={exportBusy}><Download size={16} /> {exportLabel}</Button>
+    <Button variant="outline" onClick={handlePrint}><Printer size={16} /> Print</Button>
+  </div>} title="General Ledger" description="Read-only posted journal activity with server-calculated balances."/>
+    {exportError && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div>}
     <Card><div className="grid gap-3 md:grid-cols-4"><input className={input} placeholder="Search journal, document, description" value={filters.search} onChange={event => change("search", event.target.value)}/><select className={input} value={filters.account_id} onChange={event => change("account_id", event.target.value)}><option value="">All accounts</option>{accounts.data?.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select><input className={input} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/><input className={input} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/><select className={input} value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select><input className={input} placeholder="Supplier ID" value={filters.supplier_id} onChange={event => change("supplier_id", event.target.value)}/><input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/><div><SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} /></div></div></Card>
     {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Total Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Total Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
     <Card>
