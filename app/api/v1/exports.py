@@ -11,17 +11,19 @@ from app.models.user import User
 
 
 router = APIRouter(prefix="/exports", tags=["Exports"])
-SUPPORTED_EXPORTS = {"products"}
+SUPPORTED_EXPORTS = {"products", "general_ledger"}
 
 
 class ExportRequest(BaseModel):
     export_type: str
+    params: dict | None = None
 
 
 def _serialize(job: ExportJob) -> dict:
     payload = {
         "job_id": job.id,
         "export_type": job.export_type,
+        "params": job.params,
         "status": job.status,
         "filename": job.filename,
         "error_message": job.error_message,
@@ -62,7 +64,7 @@ def create_export(
     if export_type not in SUPPORTED_EXPORTS:
         raise HTTPException(status_code=400, detail=f"Unsupported export type: {export_type}")
 
-    job = ExportJob(user_id=current_user.id, export_type=export_type, status="PENDING")
+    job = ExportJob(user_id=current_user.id, export_type=export_type, params=data.params, status="PENDING")
     db.add(job)
     db.commit()
     db.refresh(job)

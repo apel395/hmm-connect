@@ -10,6 +10,13 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.export_job import ExportJob
 from app.models.product import Product
+from app.models.user import User
+from app.services.general_ledger_report import (
+    build_ledger_query,
+    ledger_rows_with_balance,
+    ledger_totals,
+)
+from app.services.location_access import resolve_location_id
 
 
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -66,6 +73,79 @@ def _generate_products_xlsx(db, output_path: Path) -> None:
     wb.save(output_path)
 
 
+def _generate_general_ledger_xlsx(db, output_path: Path, params: dict | None) -> None:
+    data = params or {}
+
+    def _date(value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value)).date()
+        except (TypeError, ValueError):
+            return None
+
+    def _int(value):
+        if value in (None, ""):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _string(value):
+        value = str(value or "")
+        return value.strip() or None
+
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet("General Ledger")
+    ws.append([
+        "Date",
+        "Journal No",
+        "Account",
+        "Description",
+        "Document Number",
+        "Location",
+        "Department",
+        "Supplier",
+        "Business Unit",
+        "Debit",
+        "Credit",
+        "Running Balance",
+    ])
+
+    q = build_ledger_query(
+        db,
+        account_id=_int(data.get("account_id")),
+        date_from=_date(data.get("date_from")),
+        date_to=_date(data.get("date_to")),
+        reference_type=_string(data.get("reference_type")),
+        supplier_id=_int(data.get("supplier_id")),
+        department_id=_int(data.get("department_id")),
+        location_id=_int(data.get("location_id")),
+        business_unit_id=_int(data.get("business_unit_id")),
+        search=_string(data.get("search")),
+    )
+    for line, balance in ledger_rows_with_balance(q).yield_per(1000):
+        ws.append([
+            line.journal_entry.posting_date,
+            line.journal_entry.journal_number,
+            f"{line.account.account_number} - {line.account.account_name}",
+            line.description,
+            line.journal_entry.document_number,
+            line.location.name if line.location else None,
+            line.department.name if line.department else None,
+            line.supplier.name if line.supplier else None,
+            line.business_unit.name if line.business_unit else None,
+            float(line.debit or 0),
+            float(line.credit or 0),
+            float(balance or 0),
+        ])
+    total_debit, total_credit = ledger_totals(q)
+    ws.append([])
+    ws.append(["", "", "", "", "", "", "", "TOTAL", float(total_debit), float(total_credit), ""])
+    wb.save(output_path)
+
+
 def run_job(job_id: str) -> None:
     db = SessionLocal()
     output_path: Path | None = None
@@ -81,6 +161,8 @@ def run_job(job_id: str) -> None:
 
         if job.export_type == "products":
             filename = f"HMM-Master-Products-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.xlsx"
+        elif job.export_type == "general_ledger":
+            filename = f"HMM-General-Ledger-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.xlsx"
         else:
             raise ValueError(f"Unsupported export type: {job.export_type}")
 
@@ -90,6 +172,12 @@ def run_job(job_id: str) -> None:
 
         if job.export_type == "products":
             _generate_products_xlsx(db, output_path)
+        elif job.export_type == "general_ledger":
+            params = dict(job.params or {})
+            user = db.get(User, job.user_id)
+            if user:
+                params["location_id"] = resolve_location_id(user, params.get("location_id"))
+            _generate_general_ledger_xlsx(db, output_path, params)
 
         bucket = settings.EXPORT_S3_BUCKET or settings.S3_BUCKET
         if not bucket:
