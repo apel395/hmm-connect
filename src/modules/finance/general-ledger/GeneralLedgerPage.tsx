@@ -2,8 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
-import { Download, Printer } from "lucide-react";
+import { Download } from "lucide-react";
 import Button from "@/components/ui/Button";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import { TABLE_UI } from "@/config/tableUi";
@@ -92,9 +93,8 @@ export default function GeneralLedgerPage() {
   }, [exportJobId]);
 
   const printParams = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
-  const handlePrint = () => {
-    window.print();
-  };
+  const printQuery = new URLSearchParams(printParams as Record<string, string>).toString();
+  const printSrc = `/general-ledger/print${printQuery ? `?${printQuery}` : ""}`;
 
   const handleExport = async () => {
     setExportError(null);
@@ -129,7 +129,7 @@ export default function GeneralLedgerPage() {
     <div className="print:hidden space-y-6">
     <PageHeader actions={<div className="flex items-center gap-2">
     <Button onClick={handleExport} disabled={exportBusy}><Download size={16} /> {exportLabel}</Button>
-    <Button variant="outline" onClick={handlePrint}><Printer size={16} /> Print</Button>
+    <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" />
   </div>} title="General Ledger" description="Read-only posted journal activity with server-calculated balances."/>
     {exportError && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div>}
     <Card><div className="grid gap-3 md:grid-cols-4"><input className={input} placeholder="Search journal, document, description" value={filters.search} onChange={event => change("search", event.target.value)}/><select className={input} value={filters.account_id} onChange={event => change("account_id", event.target.value)}><option value="">All accounts</option>{accounts.data?.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select><input className={input} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/><input className={input} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/><select className={input} value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select><input className={input} placeholder="Supplier ID" value={filters.supplier_id} onChange={event => change("supplier_id", event.target.value)}/><input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/><div><SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} /></div></div></Card>
