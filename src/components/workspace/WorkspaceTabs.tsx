@@ -147,7 +147,7 @@ export default function WorkspaceTabs() {
   const activeWillCloseToRight = tabsToRight.some((tab) => tab.id === currentPath && !tab.pinned);
 
   return (
-    <div className="flex h-10 shrink-0 items-stretch border-b border-[#DCD6CB] bg-[#F3F0EA]">
+    <div className="flex h-10 shrink-0 items-stretch border-b border-[#DCD6CB] bg-[#F3F0EA] print:hidden">
       <div ref={stripRef} className="min-w-0 flex-1 overflow-hidden">
         <div className="flex h-full min-w-0 items-stretch">
           {visibleTabs.map(tabElement)}

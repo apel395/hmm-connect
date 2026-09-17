@@ -112,19 +112,31 @@ export default function GeneralLedgerPage() {
   };
 
   const exportBusy = exportStatus === "starting" || exportStatus === "processing";
+  const printHeader = (() => {
+    const parts: string[] = [];
+    if (filters.date_from || filters.date_to) parts.push(`${filters.date_from || "…"} to ${filters.date_to || "…"}`);
+    if (filters.account_id) {
+      const account = accounts.data?.find((a: any) => String(a.id) === String(filters.account_id));
+      if (account) parts.push(`${account.account_code} — ${account.account_name}`);
+    }
+    return parts.join(" · ");
+  })();
   const exportLabel = exportStatus === "starting"
     ? "Starting export..."
     : exportStatus === "processing"
       ? "Preparing XLS..."
       : "Download XLS";
 
-  return <div className="space-y-6"><PageHeader actions={<div className="flex items-center gap-2">
+  return <div className="print-document space-y-6"><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
+    <div className="print:hidden space-y-6">
+    <PageHeader actions={<div className="flex items-center gap-2">
     <Button onClick={handleExport} disabled={exportBusy}><Download size={16} /> {exportLabel}</Button>
     <Button variant="outline" onClick={handlePrint}><Printer size={16} /> Print</Button>
   </div>} title="General Ledger" description="Read-only posted journal activity with server-calculated balances."/>
     {exportError && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div>}
     <Card><div className="grid gap-3 md:grid-cols-4"><input className={input} placeholder="Search journal, document, description" value={filters.search} onChange={event => change("search", event.target.value)}/><select className={input} value={filters.account_id} onChange={event => change("account_id", event.target.value)}><option value="">All accounts</option>{accounts.data?.map(account => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select><input className={input} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/><input className={input} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/><select className={input} value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select><input className={input} placeholder="Supplier ID" value={filters.supplier_id} onChange={event => change("supplier_id", event.target.value)}/><input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/><div><SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} /></div></div></Card>
     {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Total Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Total Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
+    </div>
     <Card>
       <Table variant="grid" stickyHeader className="min-w-[980px]" containerClassName="border-0 shadow-none">
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
@@ -144,7 +156,7 @@ export default function GeneralLedgerPage() {
           </TR>;
         })}</TBody>
       </Table>
-      <div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div>
+      <div className="mt-4 flex justify-end gap-2 print:hidden"><Button variant="outline" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div>
     </Card>
   </div>;
 }
