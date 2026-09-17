@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import { Download, Printer } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -19,7 +19,6 @@ const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function GeneralLedgerPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<any>({ search: searchParams.get("search") || "", account_id: searchParams.get("account_id") || "", date_from: searchParams.get("date_from") || "", date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
   const [exportJobId, setExportJobId] = useState<string | null>(null);
@@ -94,8 +93,7 @@ export default function GeneralLedgerPage() {
 
   const printParams = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
   const handlePrint = () => {
-    const qs = new URLSearchParams(printParams as Record<string, string>).toString();
-    navigate(`/general-ledger/print${qs ? `?${qs}` : ""}`);
+    window.print();
   };
 
   const handleExport = async () => {
@@ -127,7 +125,7 @@ export default function GeneralLedgerPage() {
       ? "Preparing XLS..."
       : "Download XLS";
 
-  return <div className="print-document space-y-6"><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
+  return <div className="print-document space-y-6"><style>{`@page{size:landscape;margin:10mm}`}</style><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
     <div className="print:hidden space-y-6">
     <PageHeader actions={<div className="flex items-center gap-2">
     <Button onClick={handleExport} disabled={exportBusy}><Download size={16} /> {exportLabel}</Button>

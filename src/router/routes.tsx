@@ -40,7 +40,6 @@ import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
 import PaymentListPage from "@/modules/finance/payments/PaymentListPage";
 import PaymentDetailPage from "@/modules/finance/payments/PaymentDetailPage";
 import GeneralLedgerPage from "@/modules/finance/general-ledger/GeneralLedgerPage";
-import GeneralLedgerPrintPage from "@/modules/finance/general-ledger/GeneralLedgerPrintPage";
 import CashFlowDashboardPage from "@/modules/finance/cash-flow/CashFlowDashboardPage";
 import CashAccountsPage from "@/modules/finance/cash-flow/CashAccountsPage";
 import CashAccountActivityPage from "@/modules/finance/cash-flow/CashAccountActivityPage";
@@ -201,7 +200,6 @@ const router = createBrowserRouter([
       { path: "journal-entries/:id", element: <JournalDetailPage /> },
       { path: "journal-entries/:id/print", element: <AccountingPrintPage kind="journal-entries" /> },
       { path: "general-ledger", element: <GeneralLedgerPage /> },
-      { path: "general-ledger/print", element: <GeneralLedgerPrintPage /> },
       { path: "trial-balance", element: <TrialBalancePage /> },
 
       { path: "fixed-assets", element: <FixedAssetsWorkspacePage section="assets" /> },
