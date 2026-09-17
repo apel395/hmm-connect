@@ -9,13 +9,16 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
+from app.models.business_unit import BusinessUnit
 from app.models.chart_of_account import ChartOfAccount
+from app.models.department import Department
 from app.models.journal_entry import JournalEntry
+from app.models.location import Location
 from app.services.document_context import print_metadata
 from app.services.general_ledger_report import (
     build_ledger_query,
+    ledger_grouped_report,
     ledger_rows_with_balance,
-    ledger_totals,
     serialize_ledger_item,
 )
 from app.services.location_access import resolve_location_id
@@ -36,6 +39,13 @@ def _search_pattern(search: str | None) -> str | None:
 
 def _item(line, balance):
     return serialize_ledger_item(line, balance)
+
+
+def _dimension_name(db: Session, model, value: int | None) -> str | None:
+    if not value:
+        return None
+    entity = db.get(model, value)
+    return entity.name if entity else None
 
 
 @router.get("")
@@ -97,7 +107,7 @@ def printable(
 ):
     access(user)
     location_id = resolve_location_id(user, location_id)
-    q = build_ledger_query(
+    accounts, control_debit, control_credit = ledger_grouped_report(
         db,
         account_id=account_id,
         date_from=date_from,
@@ -106,27 +116,33 @@ def printable(
         supplier_id=supplier_id,
         department_id=department_id,
         location_id=location_id,
-        search=search,
         business_unit_id=business_unit_id,
+        search=search,
     )
-    rows = [_item(line, balance) for line, balance in ledger_rows_with_balance(q).all()]
-    total_debit, total_credit = ledger_totals(q)
+    account = db.get(ChartOfAccount, account_id) if account_id else None
     return {
         "document_type": "General Ledger",
-        "items": rows,
+        "period": {"date_from": date_from, "date_to": date_to},
         "filters": {
             "account_id": account_id,
-            "date_from": date_from,
-            "date_to": date_to,
+            "account_code": account.account_number if account else None,
+            "account_name": account.account_name if account else None,
+            "business_unit_id": business_unit_id,
+            "business_unit_name": _dimension_name(db, BusinessUnit, business_unit_id),
+            "location_id": location_id,
+            "location_name": _dimension_name(db, Location, location_id),
+            "department_id": department_id,
+            "department_name": _dimension_name(db, Department, department_id),
             "reference_type": reference_type,
             "supplier_id": supplier_id,
-            "department_id": department_id,
-            "location_id": location_id,
-            "business_unit_id": business_unit_id,
             "search": search,
         },
-        "total_debit": total_debit,
-        "total_credit": total_credit,
+        "accounts": accounts,
+        "control": {
+            "total_debit": control_debit,
+            "total_credit": control_credit,
+            "difference": control_debit - control_credit,
+        },
         **print_metadata(user),
     }
 
