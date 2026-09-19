@@ -2,7 +2,7 @@
 
 HMM Connect is an ERP prototype focused on controlled purchasing, document traceability, inventory, finance, and auditability.
 
-This project is currently in **trial / pre-production mode**, but its deployment architecture is already split into production frontend, production backend, and an EC2 data-processing layer.
+This project is currently in **trial / pre-production mode**. The source-of-truth workflow is temporarily distributed as a project snapshot while the company evaluates the system.
 
 ## Business flow
 
@@ -227,137 +227,60 @@ Location
 
 Location is part of the operational identity context used by audit and approval rules.
 
+## Trial users
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `admin123` | ADMIN |
+| `requester` | `requester123` | REQUESTER |
+| `purchasing` | `purchasing123` | PURCHASING |
+| `warehouse` | `warehouse123` | WAREHOUSE |
+| `finance` | `finance123` | FINANCE |
+| `manager` | `manager123` | MANAGER |
+| `section` | `section123` | SECTION_APPROVER |
+
 The default approval workflow also includes `SECTION_APPROVER` as a configurable role. The `section` trial user is included so the layered PR and PO approval flow can be tested immediately.
-
-## Architecture
-
-HMM Connect is deployed as separate frontend, backend, and data-processing layers.
-
-```text
-                              GitHub
-                                 │
-                 ┌───────────────┴───────────────┐
-                 │                               │
-               main                           backend
-                 │                               │
-                 ▼                               ▼
-              Vercel                        AWS Lambda
-             Frontend                         FastAPI
-                 │                               │
-                 └───────────────┬───────────────┘
-                                 │
-                                 ▼
-                            PostgreSQL
-                               EC2
-                                 │
-                                 └── Heavy processing
-                                     XLS / XLSX imports
-                                     database migrations
-```
-
-### Frontend
-
-- Repository branch: `main`
-- Deployment platform: **Vercel**
-- The `main` branch is the production frontend source of truth.
-- Commits pushed to `main` trigger the Vercel deployment workflow.
-
-### Backend
-
-- Repository branch: `backend`
-- Runtime: **AWS Lambda**
-- Application: **FastAPI**
-- The `backend` branch is the production backend source of truth.
-- Commits pushed to `backend` trigger the Lambda deployment workflow.
-- Lambda is intentionally kept lightweight; heavy file processing does not belong in the Lambda runtime.
-
-### Database and processing
-
-- Database: **PostgreSQL**
-- PostgreSQL runs on the **EC2** host.
-- EC2 also provides the heavy-processing environment for operations such as XLS/XLSX imports.
-- Database migrations are executed on EC2 using Alembic.
-
-The production responsibilities are therefore separated:
-
-```text
-Vercel
-  └── Frontend
-
-AWS Lambda
-  └── FastAPI backend / API
-
-EC2
-  ├── PostgreSQL
-  ├── Alembic migrations
-  └── Heavy processing / XLS-XLSX imports
-```
-
-## Deployment model
-
-Production deployments are branch-driven:
-
-```text
-Frontend change
-      ↓
-   push main
-      ↓
-   Vercel
-      ↓
-Production frontend
-```
-
-```text
-Backend change
-      ↓
- push backend
-      ↓
- AWS Lambda
-      ↓
-Production API
-```
-
-Database changes follow the migration workflow on EC2:
-
-```text
-Migration code
-      ↓
-     EC2
-      ↓
- alembic upgrade head
-      ↓
- PostgreSQL
-```
-
-Frontend and backend can therefore be deployed independently while sharing the same production database.
-
-## Demo environment
-
-The EC2 host may also contain a separate **demo** deployment used for testing and investigation. The demo environment is not the production backend.
-
-```text
-Production
-  ├── Vercel
-  └── AWS Lambda
-
-Demo / processing environment
-  └── EC2
-      └── separate demo application
-```
-
-Do not treat the EC2 demo Uvicorn application as the production API. Production backend traffic is served through AWS Lambda.
 
 ## Database migration
 
-Migrations are maintained with Alembic and executed from the backend environment on EC2.
+From the backend directory:
 
 ```bash
 alembic upgrade head
 ```
 
-The migration workflow must be completed against the production PostgreSQL database before deploying backend code that depends on new database structures.
+The layered approval migration is:
 
-## Frontend development
+```text
+20260720_approval_workflows
+```
+
+## Seeding supplier invoices from PO workbooks
+
+Monthly PO workbooks (e.g. `PO MINAS Januari 2026.xlsx`, `PO PEDADA Januari 2026.xlsx`) can be loaded end-to-end with:
+
+```text
+WB: workbook → Goods Receipt → Supplier Invoice → Posted Journal
+```
+
+Run from the backend directory:
+
+```bash
+python3 scripts/seed_po_minas_receiving_invoice.py \
+  --workbook "PO MINAS Januari 2026.xlsx" \
+  --department-code WAREHOUSE \
+  --create-missing-products \
+  --create-missing-suppliers \
+  --apply
+```
+
+Omit `--apply` (or pass `--dry-run`) to preview without writing. One summary GR/invoice/PO is created per detail sheet; receipts are direct (no PO link) and destination is `WAREHOUSE` by default (`--destination-type DIRECT_USE` for direct consumption). Invoice due date defaults to PO date + 30 days (`--invoice-terms-days`).
+
+Idempotency: sheets whose `external_reference` already has a GR are skipped by default (`--skip-existing`), so re-running after a partial commit only fills the missing documents. `--verbose` prints per-sheet detail.
+
+Workbook repair: if any sheet cell holds the Excel epoch (`1900-01-24`), repair the workbook first (load with `openpyxl.load_workbook(..., data_only=True)` so cached formula results are preserved, save to a new file) and run the seed against the repaired copy. Repairing without `data_only=True` wipes cached values (qty/amount become `None`).
+
+## Frontend
 
 ```bash
 npm install
@@ -365,11 +288,20 @@ npm run lint
 npm run build
 ```
 
-## Development principles
+## Current architecture direction
 
-- Keep production frontend and backend deployment paths independent.
-- Keep Lambda lightweight and suitable for API execution.
-- Perform heavy XLS/XLSX processing on EC2 rather than inside Lambda.
-- Run database migrations on EC2 against PostgreSQL.
-- Treat auditability and document traceability as core ERP requirements.
-- Keep the backend API and database model as the source of truth for frontend behavior.
+The project is intentionally moving toward:
+
+```text
+HMM Connect
+    ↓
+GitHub
+    ↓
+develop branch
+    ↓
+Terraform
+    ↓
+Cloud deployment
+```
+
+The current focus is making the ERP comfortable and correct for the company trial before production infrastructure is finalized.
