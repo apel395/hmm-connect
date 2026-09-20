@@ -114,3 +114,101 @@ export const recreateCurrentPeriod = async () =>
       ledger_rows_recreated: number;
     }>("/journal-entries/bulk/recreate-current-period")
   ).data;
+
+
+export type JournalImportJob = {
+  id: number;
+  batch_number: string;
+  batch_name: string;
+  status: string;
+  original_file_name?: string | null;
+  total_rows: number;
+  valid_rows: number;
+  warning_rows: number;
+  error_rows: number;
+  imported_rows: number;
+  failed_rows: number;
+  total_documents: number;
+  success_count: number;
+  failed_count: number;
+  period_from?: string | null;
+  period_to?: string | null;
+  worker_error_message?: string | null;
+  created_at?: string | null;
+  imported_at?: string | null;
+};
+
+export const createJournalImport = async (batch_name: string) =>
+  (await api.post<JournalImportJob>("/journal-imports", { batch_name })).data;
+
+export const getJournalImportUploadUrl = async (
+  id: number,
+  filename: string,
+  content_type: string,
+) =>
+  (
+    await api.post<{ upload_url: string; content_type: string }>(
+      `/journal-imports/${id}/upload-url`,
+      { filename, content_type },
+    )
+  ).data;
+
+export const completeJournalImportUpload = async (id: number) =>
+  (await api.post<JournalImportJob>(`/journal-imports/${id}/complete`)).data;
+
+export const startJournalImport = async (id: number) =>
+  (await api.post<JournalImportJob>(`/journal-imports/${id}/start`)).data;
+
+export const getJournalImport = async (id: number) =>
+  (await api.get<JournalImportJob>(`/journal-imports/${id}`)).data;
+
+export const getJournalImportErrors = async (id: number) =>
+  (
+    await api.get<{
+      job_id: number;
+      rows: Array<{
+        row_number: number;
+        sheet_name?: string | null;
+        document_number?: string | null;
+        status: string;
+        errors: string[];
+        warnings: string[];
+      }>;
+    }>(`/journal-imports/${id}/errors`)
+  ).data;
+
+export const downloadJournalImportTemplate = async () => {
+  const response = await api.get<{
+    filename: string;
+    content: string;
+  }>("/journal-imports/template");
+  const blob = new Blob([response.data.content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = response.data.filename || "hmm-journal-import-template.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+export const uploadJournalImport = async (file: File, batchName: string) => {
+  const job = await createJournalImport(batchName);
+  const contentType =
+    file.type ||
+    (file.name.toLowerCase().endsWith(".csv")
+      ? "text/csv"
+      : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  const upload = await getJournalImportUploadUrl(job.id, file.name, contentType);
+
+  const response = await fetch(upload.upload_url, {
+    method: "PUT",
+    headers: { "Content-Type": upload.content_type },
+    body: file,
+  });
+  if (!response.ok) {
+    throw new Error(`S3 upload failed: HTTP ${response.status}`);
+  }
+
+  await completeJournalImportUpload(job.id);
+  return startJournalImport(job.id);
+};
