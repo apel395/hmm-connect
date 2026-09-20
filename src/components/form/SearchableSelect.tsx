@@ -18,6 +18,7 @@ interface Props<T extends string | number = number> {
   placeholder?: string;
   required?: boolean;
   className?: string;
+  maxOptions?: number;
   onChange: (value: T | undefined) => void;
 }
 
@@ -46,6 +47,7 @@ export default function SearchableSelect<T extends string | number = number>({
   placeholder = "Type to search...",
   required = false,
   className = "",
+  maxOptions = 50,
   onChange,
 }: Props<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -84,9 +86,9 @@ export default function SearchableSelect<T extends string | number = number>({
   const filteredOptions = useMemo(() => {
     const raw = query.trim().toLowerCase();
     const effective = selected && raw === selectedLabel.toLowerCase() ? "" : raw;
-    if (!effective) return options.slice(0, 50);
-    return options.filter((option) => searchableText(option).includes(effective)).slice(0, 50);
-  }, [options, query, selected, selectedLabel]);
+    if (!effective) return options.slice(0, maxOptions);
+    return options.filter((option) => searchableText(option).includes(effective)).slice(0, maxOptions);
+  }, [options, query, selected, selectedLabel, maxOptions]);
 
   useEffect(() => {
     if (!open || filteredOptions.length === 0) {
