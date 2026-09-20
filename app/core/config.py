@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     EXPORT_DOWNLOAD_URL_EXPIRES_SECONDS: int = Field(default=300, ge=60, le=3600)
     EXPORT_TMP_DIR: str = "/tmp/hmm-connect-exports"
 
+    JOURNAL_IMPORT_S3_PREFIX: str = "journal-imports"
+    JOURNAL_IMPORT_UPLOAD_URL_EXPIRES_SECONDS: int = Field(default=900, ge=60, le=3600)
+    JOURNAL_IMPORT_MAX_SIZE_MB: int = Field(default=25, gt=0, le=100)
+
     @property
     def allowed_document_mime_types(self) -> set[str]:
         return {
