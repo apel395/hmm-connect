@@ -6,7 +6,7 @@ from app.api.v1 import (
     cash_flow, chart_of_accounts, customer_payments, dashboard,
     document_attachments, document_drilldown, document_events, exports, financial_reconciliation, fiscal, fiscal_balance_sheet, fiscal_periods,
     fixed_assets_core, general_ledger, goods_receipts, inventory, journal_detail, journals, market_lists,
-    organization_dimensions, payment_eligibility, payment_vouchers, payments, products, profit_loss, purchase_orders,
+    organization_dimensions, payment_eligibility, payment_vouchers, payments, products, profit_loss, purchase_orders, journal_imports,
     purchase_requisitions, purchasing_documents, purchasing_reports, roles, sales, pos_metadata, stock_adjustments, stock_opnames, store_requests, supplier_adjustments, supplier_invoice_sources,
     supplier_invoices, supplier_products, suppliers, system_capabilities, spt_1771, trial_balance, users, warehouses,
     year_end, opening_balances,
