@@ -13,8 +13,11 @@
     {
       "Sid": "ReadExportObjectsForPresignedDownload",
       "Effect": "Allow",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::${EXPORT_S3_BUCKET}/${EXPORT_S3_PREFIX}/*"
+      "Action": ["s3:GetObject", "s3:PutObject"],
+      "Resource": [
+        "arn:aws:s3:::${EXPORT_S3_BUCKET}/${EXPORT_S3_PREFIX}/*",
+        "arn:aws:s3:::${EXPORT_S3_BUCKET}/journal-imports/*"
+      ]
     }
   ]
 }
