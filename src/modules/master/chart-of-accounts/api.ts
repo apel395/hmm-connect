@@ -38,6 +38,33 @@ export async function getAccountLookup(params: {
   });
   return data;
 }
+
+export async function getAllAccountLookup(params: {
+  search?: string;
+  account_type?: AccountType;
+  account_subtype?: AccountSubtype | AccountSubtype[];
+  is_posting?: boolean;
+  is_active?: boolean;
+} = {}) {
+  const pageSize = 50;
+  const allAccounts: AccountLookup[] = [];
+  let page = 1;
+
+  while (true) {
+    const accounts = await getAccountLookup({
+      ...params,
+      page,
+      page_size: pageSize,
+    });
+
+    allAccounts.push(...accounts);
+
+    if (accounts.length < pageSize) break;
+    page += 1;
+  }
+
+  return allAccounts;
+}
 export async function createAccount(payload: AccountPayload) {
   const { data } = await api.post<ChartOfAccount>("/chart-of-accounts", payload);
   return data;
