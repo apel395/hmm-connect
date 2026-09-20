@@ -41,6 +41,7 @@ for router in (
     supplier_adjustments.router,
     general_ledger.router,
     journals.router,
+    journal_imports.router,
     journal_detail.router,
     fiscal_periods.router,
     payment_eligibility.router,
