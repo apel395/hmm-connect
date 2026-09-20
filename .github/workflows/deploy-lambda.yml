@@ -69,6 +69,7 @@ jobs:
           rm -f build/app/api/v1/budgets.py build/app/api/v1/fixed_assets.py
           rm -f build/app/scripts/create_historical_import_samples.py
           rm -f build/app/scripts/export_worker.py
+          rm -f build/app/scripts/journal_import_worker.py
           rm -f build/app/services/historical_import_service.py
           if find build -type f -name '*.py' -print0 | xargs -0 grep -Eiq '(^|[[:space:]])(from|import)[[:space:]]+(openpyxl|pandas|xlsxwriter|xlrd|xlwt|pyarrow|polars|numpy)(\.|[[:space:]]|$)'; then
             echo "Worker-only spreadsheet/dataframe imports found in Lambda build."
