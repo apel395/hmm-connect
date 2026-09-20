@@ -32,7 +32,9 @@ with SessionLocal() as db:
 print('openpyxl:', openpyxl.__version__)
 print('aws region:', settings.AWS_REGION or boto3.session.Session().region_name)
 print('export bucket:', settings.EXPORT_S3_BUCKET or settings.S3_BUCKET)
-print('EC2 export worker prerequisites OK')
+import app.scripts.journal_import_worker
+print('journal import worker import: OK')
+print('EC2 export/import worker prerequisites OK')
 PY
 
 sudo tee "${SERVICE_FILE}" >/dev/null <<EOF
