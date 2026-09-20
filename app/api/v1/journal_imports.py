@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -62,9 +63,6 @@ def _serialize(batch: ImportBatch) -> dict:
         "status": batch.status,
         "source": batch.source,
         "original_file_name": batch.original_file_name,
-        "file_size_bytes": (
-            batch.notes and None
-        ),
         "total_rows": batch.total_rows,
         "valid_rows": batch.valid_rows,
         "warning_rows": batch.warning_rows,
@@ -256,7 +254,7 @@ def start_job(
     except Exception as exc:
         batch.status = "FAILED"
         batch.worker_error_message = str(exc)[:2000]
-        batch.worker_completed_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        batch.worker_completed_at = datetime.now(timezone.utc)
         db.commit()
         raise HTTPException(503, "Journal import worker could not be triggered") from exc
 
