@@ -28,7 +28,7 @@ export default function GeneralLedgerPage() {
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: 20 }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
   const locations = useQuery({ queryKey: ["ledger-filter-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
-  const accounts = useQuery({ queryKey: ["ledger-accounts"], queryFn: () => getAccountLookup({ is_posting: true, is_active: true }) });
+  const accounts = useQuery({ queryKey: ["ledger-accounts"], queryFn: () => getAccountLookup({ is_active: true }) });
   const summary = useQuery({ queryKey: ["ledger-summary", filters.account_id, filters.date_from, filters.date_to], queryFn: () => getAccountSummary(Number(filters.account_id), { date_from: filters.date_from || undefined, date_to: filters.date_to || undefined }), enabled: !!filters.account_id });
   const change = (key: string, value: string) => { setFilters({ ...filters, [key]: value }); setPage(1); };
   const input = "h-10 rounded border px-3";
