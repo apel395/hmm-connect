@@ -64,6 +64,14 @@ def text(value) -> str:
     return str(value).strip() if value is not None else ""
 
 
+def json_safe(value):
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
+
+
 def header(value) -> str:
     value = text(value).lower().replace("-", "_").replace(" ", "_")
     return HEADER_ALIASES.get(value, value)
@@ -123,7 +131,7 @@ def read_rows(path: str, original_name: str) -> list[tuple[int, str, dict]]:
                     (
                         row_number,
                         "CSV",
-                        {key: value for key, value in zip(headers, values) if key},
+                        {key: json_safe(value) for key, value in zip(headers, values) if key},
                     )
                 )
     elif suffix == ".xlsx":
@@ -142,7 +150,7 @@ def read_rows(path: str, original_name: str) -> list[tuple[int, str, dict]]:
                         (
                             row_number,
                             sheet.title,
-                            {key: value for key, value in zip(headers, cells) if key},
+                            {key: json_safe(value) for key, value in zip(headers, cells) if key},
                         )
                     )
         finally:
