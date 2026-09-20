@@ -416,10 +416,11 @@ def run_job(job_id: int) -> None:
 
         if total_errors:
             batch.status = "FAILED"
-            batch.failed_count = len(groups) - sum(
+            batch.failed_count = sum(
                 1 for rows in groups.values()
                 if any(row.status == "ERROR" for row in rows)
             )
+            batch.success_count = 0
             batch.worker_error_message = (
                 f"Validation failed for {batch.error_rows} spreadsheet rows."
             )
