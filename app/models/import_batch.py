@@ -127,6 +127,11 @@ class ImportBatch(Base):
     validated_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
 
+    worker_command_id: Mapped[str | None] = mapped_column(String(100))
+    worker_started_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True))
+    worker_completed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True))
+    worker_error_message: Mapped[str | None] = mapped_column(Text)
+
     created_by = relationship("User", foreign_keys=[created_by_id])
     rows = relationship("ImportRow", back_populates="batch", cascade="all, delete-orphan")
 
