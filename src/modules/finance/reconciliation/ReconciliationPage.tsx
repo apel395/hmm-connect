@@ -10,6 +10,7 @@ const labels: Record<string, string> = {
   ACCOUNTS_PAYABLE: "Accounts Payable",
   ACCOUNTS_RECEIVABLE: "Accounts Receivable",
   INVENTORY: "Inventory Valuation",
+  CLEARING_SUSPENSE: "Clearing / Suspense",
 };
 
 const money = (value: number) =>
@@ -108,7 +109,7 @@ export default function ReconciliationPage() {
                           <span className="text-slate-400">Posting rule not configured</span>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.source_balance)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">{row.status==="NOT_CONFIGURED"?<span className="text-slate-400">Unavailable</span>:money(row.source_balance)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.gl_balance)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-medium">{money(row.difference)}</td>
                       <td className="whitespace-nowrap px-4 py-3">
