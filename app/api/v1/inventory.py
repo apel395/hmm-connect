@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.chart_of_account import ChartOfAccount
 from app.models.inventory import Inventory
+from app.models.location import Location
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
 from app.models.warehouse import Warehouse
@@ -70,6 +71,7 @@ def _inventory_base(db: Session, user, warehouse_id: int | None = None):
         .join(Product, Product.id == Inventory.product_id)
         .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
         .outerjoin(ChartOfAccount, ChartOfAccount.id == Product.inventory_account_id)
+        .outerjoin(Location, Location.id == Warehouse.location_id)
         .filter(Product.is_active.is_(True), Warehouse.is_active.is_(True))
     )
     query = apply_warehouse_scope(query, user)
@@ -124,9 +126,10 @@ def list_inventory(
         ChartOfAccount.account_number,
         ChartOfAccount.account_name,
         Warehouse.location_id,
+        Location.name,
         func.coalesce(func.sum(quantity), 0),
         func.coalesce(func.sum(quantity * func.coalesce(Inventory.average_cost, 0)), 0),
-    ).group_by(ChartOfAccount.id, ChartOfAccount.account_number, ChartOfAccount.account_name, Warehouse.location_id).order_by(ChartOfAccount.account_number, Warehouse.location_id).all()
+    ).group_by(ChartOfAccount.id, ChartOfAccount.account_number, ChartOfAccount.account_name, Warehouse.location_id, Location.name).order_by(ChartOfAccount.account_number, Warehouse.location_id).all()
 
     rows = query.add_entity(ChartOfAccount).order_by(Product.code, Warehouse.code).offset((page - 1) * page_size).limit(page_size).all()
     result = _paged([inventory_row(inventory, product, warehouse, account) for inventory, product, warehouse, account in rows], page=page, page_size=page_size, total=total)
@@ -145,8 +148,9 @@ def list_inventory(
             "account_code": row[1],
             "account_name": row[2],
             "location_id": row[3],
-            "quantity": row[4] or 0,
-            "stock_value": row[5] or 0,
+            "location_name": row[4],
+            "quantity": row[5] or 0,
+            "stock_value": row[6] or 0,
         }
         for row in grouped_rows
     ]
