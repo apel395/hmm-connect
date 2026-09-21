@@ -97,20 +97,20 @@ def _xlsx_text_cell(ref: str, value: str) -> str:
 def _build_journal_template_xlsx() -> bytes:
     headers = [
         "document_number", "posting_date", "description", "reference_type",
-        "reference_id", "business_unit_code", "department_code", "location_code",
-        "account_code", "line_description", "debit", "credit", "supplier_code",
-        "external_reference", "status",
+        "reference_id", "business_unit", "department (optional)", "location",
+        "account_code", "line_description", "debit", "credit", "supplier (optional)",
+        "external_reference (optional)", "status",
     ]
     rows = [
         [
             "TEST-BULK-001", "2026-01-15", "Example balanced journal", "MANUAL",
-            "0", "001", "005", "001", "100-100-100", "Example debit line",
-            "100000", "0", "", "TEST-001", "DRAFT",
+            "0", "Hotel", "Admin and General", "Batam", "100-100-100", "Example debit line",
+            "100000", "0", "", "", "DRAFT",
         ],
         [
             "TEST-BULK-001", "2026-01-15", "Example balanced journal", "MANUAL",
-            "0", "001", "005", "001", "100-110-100", "Example credit line",
-            "0", "100000", "", "TEST-001", "DRAFT",
+            "0", "Hotel", "Admin and General", "Batam", "100-110-100", "Example credit line",
+            "0", "100000", "", "", "DRAFT",
         ],
     ]
 
@@ -186,8 +186,9 @@ def template(user: User = Depends(journal_import_user)):
         "notes": [
             "Repeat document_number for every line belonging to the same journal.",
             "Each journal must be balanced: total debit equals total credit.",
-            "Business unit and location codes must exist and be active.",
-            "Department and supplier codes are optional; when supplied they must exist.",
+            "Business unit and location names must exist and be active.",
+            "Department and supplier are optional; when supplied, use the master-data name.",
+            "external_reference is optional; use it for invoice, bank, payroll, or other external document/reference numbers.",
             "Account code must be an active posting account.",
             "Status must be DRAFT or POSTED and defaults to DRAFT.",
             "Maximum 5,000 rows and 500 journal documents per import.",
