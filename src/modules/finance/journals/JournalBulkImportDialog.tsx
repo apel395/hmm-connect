@@ -106,9 +106,9 @@ export default function JournalBulkImportDialog({
           {!jobId ? (
             <>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                Upload one XLSX or CSV file. Repeat the same <strong>document_number</strong> for
-                every line belonging to one journal. The EC2 worker validates the entire file
-                before creating any journal.
+                Upload one XLSX or CSV file. <strong>document_number is optional</strong>; leave it blank
+                and ERP will generate it automatically. Consecutive blank rows belong to the same journal.
+                The EC2 worker validates the entire file before creating any journal.
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -144,6 +144,8 @@ export default function JournalBulkImportDialog({
                 <ul className="list-disc space-y-1 pl-5 text-slate-600">
                   <li>Every journal must balance debit = credit.</li>
                   <li>Account, business unit and location codes must exist.</li>
+                  <li>Document number is optional. Leave it blank for automatic ERP numbering.</li>
+                  <li>If supplied, repeat the same document number for every line of that journal.</li>
                   <li>Existing journal document numbers are rejected.</li>
                   <li>Status DRAFT keeps the journal unposted; POSTED posts it to GL.</li>
                   <li>Maximum 5,000 rows / 500 journals per import.</li>
