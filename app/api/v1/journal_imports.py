@@ -141,12 +141,14 @@ def template(user: User = Depends(journal_import_user)):
             "DRAFT",
         ],
     ]
-    # UTF-8 BOM helps Excel on Windows detect the CSV encoding.\n    output = io.StringIO()\n    writer = csv.writer(output)
+    # UTF-8 BOM helps Excel on Windows detect the CSV encoding.
+    output = io.StringIO()
+    writer = csv.writer(output)
     writer.writerow(headers)
     writer.writerows(samples)
     return {
         "filename": "hmm-journal-import-template.csv",
-        "content": "\\ufeff" + output.getvalue(),
+        "content": "\ufeff" + output.getvalue(),
         "format": "CSV",
         "notes": [
             "Repeat document_number for every line belonging to the same journal.",
