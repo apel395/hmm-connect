@@ -137,10 +137,10 @@ def _build_journal_template_xlsx() -> bytes:
     worksheet = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        f'<cols>{cols}</cols><sheetData>{"".join(sheet_rows)}</sheetData>'
-        '<autoFilter ref="A1:O3"/>'
         '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" '
         'activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+        f'<cols>{cols}</cols><sheetData>{"".join(sheet_rows)}</sheetData>'
+        '<autoFilter ref="A1:O3"/>'
         '</worksheet>'
     )
 
