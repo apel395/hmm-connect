@@ -75,6 +75,8 @@ def json_safe(value):
 
 def header(value) -> str:
     value = text(value).lower().replace("-", "_").replace(" ", "_")
+    if value.endswith("_(optional)"):
+        value = value[:-11]
     return HEADER_ALIASES.get(value, value)
 
 
@@ -471,20 +473,40 @@ def run_job(job_id: int) -> None:
 
         for document_number, rows in groups.items():
             first = rows[0].normalized_data_json or {}
-            business_unit = db.query(BusinessUnit).filter(
-                BusinessUnit.code == text(first["business_unit_code"]).upper()
-            ).one()
-            location = db.query(Location).filter(
-                Location.code == text(first["location_code"]).upper()
-            ).one()
+            business_unit_name = text(first.get("business_unit"))
+            business_unit_code = text(first.get("business_unit_code")).upper()
+            if business_unit_name:
+                business_unit = db.query(BusinessUnit).filter(
+                    func.lower(BusinessUnit.name) == business_unit_name.lower()
+                ).one()
+            else:
+                business_unit = db.query(BusinessUnit).filter(
+                    BusinessUnit.code == business_unit_code
+                ).one()
+
+            location_name = text(first.get("location"))
+            location_code = text(first.get("location_code")).upper()
+            if location_name:
+                location = db.query(Location).filter(
+                    func.lower(Location.name) == location_name.lower()
+                ).one()
+            else:
+                location = db.query(Location).filter(
+                    Location.code == location_code
+                ).one()
+
+            department_name = text(first.get("department"))
             department_code = text(first.get("department_code")).upper()
-            department = (
-                db.query(Department)
-                .filter(Department.code == department_code)
-                .one()
-                if department_code
-                else None
-            )
+            if department_name:
+                department = db.query(Department).filter(
+                    func.lower(Department.name) == department_name.lower()
+                ).one()
+            elif department_code:
+                department = db.query(Department).filter(
+                    Department.code == department_code
+                ).one()
+            else:
+                department = None
             status = text(first.get("status") or "DRAFT").upper()
             imported_at = datetime.now(timezone.utc)
 
