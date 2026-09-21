@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 
 import boto3
 from openpyxl import load_workbook
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -47,15 +48,15 @@ HEADER_ALIASES = {
     "reference": "reference_type",
     "ref_type": "reference_type",
     "ref_id": "reference_id",
-    "business_unit": "business_unit_code",
-    "bu_code": "business_unit_code",
-    "department": "department_code",
-    "location": "location_code",
+    "business_unit_name": "business_unit",
+    "bu_name": "business_unit",
+    "department_name": "department",
+    "location_name": "location",
     "account": "account_code",
     "account_number": "account_code",
     "line_description": "line_description",
     "description_line": "line_description",
-    "supplier": "supplier_code",
+    "supplier_name": "supplier",
     "external_ref": "external_reference",
 }
 
@@ -172,13 +173,17 @@ def normalize(raw: dict) -> dict:
         "description": text(raw.get("description")),
         "reference_type": text(raw.get("reference_type")).upper() or "MANUAL",
         "reference_id": text(raw.get("reference_id")) or "0",
+        "business_unit": text(raw.get("business_unit")),
         "business_unit_code": text(raw.get("business_unit_code")).upper(),
+        "department": text(raw.get("department")),
         "department_code": text(raw.get("department_code")).upper(),
+        "location": text(raw.get("location")),
         "location_code": text(raw.get("location_code")).upper(),
         "account_code": text(raw.get("account_code")).upper(),
         "line_description": text(raw.get("line_description")),
         "debit": text(raw.get("debit")) or "0",
         "credit": text(raw.get("credit")) or "0",
+        "supplier": text(raw.get("supplier")),
         "supplier_code": text(raw.get("supplier_code")).upper(),
         "external_reference": text(raw.get("external_reference")),
         "status": text(raw.get("status")).upper() or "DRAFT",
@@ -216,38 +221,47 @@ def validate_group(
         errors.append(str(exc))
         reference_id = 0
 
+    business_unit_name = text(first.get("business_unit"))
     business_unit_code = text(first.get("business_unit_code")).upper()
+    location_name = text(first.get("location"))
     location_code = text(first.get("location_code")).upper()
+    department_name = text(first.get("department"))
     department_code = text(first.get("department_code")).upper()
 
-    business_unit = (
-        db.query(BusinessUnit).filter(BusinessUnit.code == business_unit_code).first()
-        if business_unit_code
-        else None
-    )
+    business_unit = None
+    if business_unit_name:
+        business_unit = db.query(BusinessUnit).filter(
+            func.lower(BusinessUnit.name) == business_unit_name.lower()
+        ).first()
+    elif business_unit_code:
+        business_unit = db.query(BusinessUnit).filter(BusinessUnit.code == business_unit_code).first()
     if not business_unit:
-        errors.append(f"Unknown business_unit_code: {business_unit_code}")
+        errors.append(f"Unknown business_unit: {business_unit_name or business_unit_code}")
 
-    location = (
-        db.query(Location).filter(Location.code == location_code).first()
-        if location_code
-        else None
-    )
+    location = None
+    if location_name:
+        location = db.query(Location).filter(
+            func.lower(Location.name) == location_name.lower()
+        ).first()
+    elif location_code:
+        location = db.query(Location).filter(Location.code == location_code).first()
     if not location:
-        errors.append(f"Unknown location_code: {location_code}")
+        errors.append(f"Unknown location: {location_name or location_code}")
     else:
         try:
             enforce_location_access(user, location.id)
         except Exception as exc:
             errors.append(str(exc))
 
-    department = (
-        db.query(Department).filter(Department.code == department_code).first()
-        if department_code
-        else None
-    )
-    if department_code and not department:
-        errors.append(f"Unknown department_code: {department_code}")
+    department = None
+    if department_name:
+        department = db.query(Department).filter(
+            func.lower(Department.name) == department_name.lower()
+        ).first()
+    elif department_code:
+        department = db.query(Department).filter(Department.code == department_code).first()
+    if (department_name or department_code) and not department:
+        errors.append(f"Unknown department: {department_name or department_code}")
 
     if document_number and db.query(JournalEntry).filter(
         JournalEntry.document_number == document_number
@@ -258,8 +272,11 @@ def validate_group(
         "posting_date",
         "reference_type",
         "reference_id",
+        "business_unit",
         "business_unit_code",
+        "department",
         "department_code",
+        "location",
         "location_code",
         "status",
     ]
@@ -308,11 +325,22 @@ def validate_group(
         if not account or not account.is_active or not account.is_posting:
             errors.append(f"Row {row.row_number}: invalid posting account {account_code}")
 
+        supplier_name = text(data.get("supplier"))
         supplier_code = text(data.get("supplier_code")).upper()
-        if supplier_code:
-            supplier = db.query(Supplier).filter(Supplier.code == supplier_code).first()
+        if supplier_name or supplier_code:
+            if supplier_name:
+                suppliers = db.query(Supplier).filter(
+                    func.lower(Supplier.name) == supplier_name.lower()
+                ).all()
+                if len(suppliers) > 1:
+                    errors.append(f"Row {row.row_number}: ambiguous supplier name {supplier_name}")
+                    supplier = None
+                else:
+                    supplier = suppliers[0] if suppliers else None
+            else:
+                supplier = db.query(Supplier).filter(Supplier.code == supplier_code).first()
             if not supplier:
-                errors.append(f"Row {row.row_number}: unknown supplier_code {supplier_code}")
+                errors.append(f"Row {row.row_number}: unknown supplier {supplier_name or supplier_code}")
 
     if debit_total != credit_total:
         errors.append(
@@ -488,12 +516,16 @@ def run_job(job_id: int) -> None:
                 account = db.query(ChartOfAccount).filter(
                     ChartOfAccount.account_number == text(data["account_code"]).upper()
                 ).one()
+                supplier_name = text(data.get("supplier"))
                 supplier_code = text(data.get("supplier_code")).upper()
-                supplier = (
-                    db.query(Supplier).filter(Supplier.code == supplier_code).one()
-                    if supplier_code
-                    else None
-                )
+                if supplier_name:
+                    supplier = db.query(Supplier).filter(
+                        func.lower(Supplier.name) == supplier_name.lower()
+                    ).one()
+                elif supplier_code:
+                    supplier = db.query(Supplier).filter(Supplier.code == supplier_code).one()
+                else:
+                    supplier = None
                 journal.lines.append(
                     JournalLine(
                         line_number=line_number,
