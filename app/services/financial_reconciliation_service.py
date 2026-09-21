@@ -162,6 +162,7 @@ class FinancialReconciliationService:
             "account_code": account["account_code"] if account else None,
             "account_name": account["account_name"] if account else None,
             "external_statement": source,
+            "source_balance": source,
             "gl_balance": gl,
             "variance": difference,
             "status": status,
