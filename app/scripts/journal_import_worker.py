@@ -31,7 +31,6 @@ from app.api.v1.journals import post_locked_journal
 
 
 REQUIRED_HEADERS = {
-    "document_number",
     "posting_date",
     "account_code",
     "debit",
@@ -202,8 +201,6 @@ def validate_group(
     first = rows[0].normalized_data_json or {}
 
     document_number = text(first.get("document_number"))
-    if not document_number:
-        errors.append("document_number is required")
 
     try:
         posting_date = parse_date(first.get("posting_date"), "posting_date")
@@ -411,8 +408,25 @@ def run_job(job_id: int) -> None:
         db.flush()
 
         groups: dict[str, list[ImportRow]] = defaultdict(list)
+        generated_document_number: str | None = None
+        previous_explicit_document_number: str | None = None
         for row_number, sheet_name, raw in source_rows:
             normalized = normalize(raw)
+            document_number = normalized["document_number"]
+            if document_number:
+                previous_explicit_document_number = document_number
+                generated_document_number = None
+            elif previous_explicit_document_number:
+                # A blank document number continues the preceding explicit journal.
+                document_number = previous_explicit_document_number
+            else:
+                # If the file starts with blanks, treat consecutive blank rows as
+                # one journal and allocate a stable ERP document number for it.
+                if generated_document_number is None:
+                    generated_document_number = next_document_number(db, "JIMP", digits=6)
+                document_number = generated_document_number
+
+            normalized["document_number"] = document_number
             row = ImportRow(
                 import_batch_id=batch.id,
                 row_number=row_number,
@@ -421,10 +435,10 @@ def run_job(job_id: int) -> None:
                 raw_data_json=raw,
                 normalized_data_json=normalized,
                 status="PENDING",
-                document_number=normalized["document_number"] or None,
+                document_number=document_number,
             )
             db.add(row)
-            groups[normalized["document_number"]].append(row)
+            groups[document_number].append(row)
 
         db.flush()
 
