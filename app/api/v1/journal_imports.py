@@ -141,7 +141,7 @@ def template(user: User = Depends(journal_import_user)):
             "DRAFT",
         ],
     ]
-    # UTF-8 BOM makes Excel on Windows detect the CSV correctly and keeps\n    # leading-zero master codes such as 001/005 as text when possible.\n    output = io.StringIO()\n    writer = csv.writer(output)
+    # UTF-8 BOM helps Excel on Windows detect the CSV encoding.\n    output = io.StringIO()\n    writer = csv.writer(output)
     writer.writerow(headers)
     writer.writerows(samples)
     return {
