@@ -105,27 +105,46 @@ def template(user: User = Depends(journal_import_user)):
         "external_reference",
         "status",
     ]
-    sample = [
-        "SALARY-2026-08",
-        "2026-08-31",
-        "Salary journal August 2026",
-        "PAYROLL",
-        "0",
-        "002",
-        "01",
-        "MINAS",
-        "500-100-100",
-        "Salary expense",
-        "1000000",
-        "0",
-        "",
-        "PAYROLL-2026-08",
-        "DRAFT",
+    samples = [
+        [
+            "TEST-BULK-001",
+            "2026-01-15",
+            "Example balanced journal",
+            "MANUAL",
+            "0",
+            "001",
+            "005",
+            "001",
+            "100-100-100",
+            "Example debit line",
+            "100000",
+            "0",
+            "",
+            "TEST-001",
+            "DRAFT",
+        ],
+        [
+            "TEST-BULK-001",
+            "2026-01-15",
+            "Example balanced journal",
+            "MANUAL",
+            "0",
+            "001",
+            "005",
+            "001",
+            "100-110-100",
+            "Example credit line",
+            "0",
+            "100000",
+            "",
+            "TEST-001",
+            "DRAFT",
+        ],
     ]
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(headers)
-    writer.writerow(sample)
+    writer.writerows(samples)
     return {
         "filename": "hmm-journal-import-template.csv",
         "content": output.getvalue(),
@@ -133,8 +152,13 @@ def template(user: User = Depends(journal_import_user)):
         "notes": [
             "Repeat document_number for every line belonging to the same journal.",
             "Each journal must be balanced: total debit equals total credit.",
-            "Account, business unit, department and location codes must already exist in master data.",
-            "Status defaults to DRAFT; use POSTED only when the complete journal should be posted immediately.",
+            "Each row must contain either debit or credit, never both.",
+            "Business unit and location codes must exist and be active.",
+            "Department and supplier codes are optional; when supplied they must exist.",
+            "Account code must be an active posting account.",
+            "Status must be DRAFT or POSTED and defaults to DRAFT.",
+            "Accepted posting dates: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY.",
+            "Maximum 5,000 rows and 500 journal documents per import.",
             "The worker, not Lambda, reads XLSX/CSV files.",
         ],
     }
@@ -249,6 +273,12 @@ def start_job(
     if batch.status != "UPLOADED":
         raise HTTPException(409, "Complete the file upload before starting the import")
 
+    # Persist QUEUED before SSM dispatch so a fast EC2 worker cannot observe
+    # the previous UPLOADED state and exit before processing starts.
+    batch.status = "QUEUED"
+    batch.worker_error_message = None
+    db.commit()
+
     try:
         command_id = trigger_journal_import_job(job_id)
     except Exception as exc:
@@ -258,9 +288,7 @@ def start_job(
         db.commit()
         raise HTTPException(503, "Journal import worker could not be triggered") from exc
 
-    batch.status = "QUEUED"
     batch.worker_command_id = command_id
-    batch.worker_error_message = None
     db.commit()
     db.refresh(batch)
     return _serialize(batch)
