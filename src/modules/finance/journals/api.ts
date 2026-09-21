@@ -180,14 +180,28 @@ export const getJournalImportErrors = async (id: number) =>
 export const downloadJournalImportTemplate = async () => {
   const response = await api.get<{
     filename: string;
-    content: string;
+    content_base64: string;
+    content_type: string;
   }>("/journal-imports/template");
-  const blob = new Blob([response.data.content], { type: "text/csv;charset=utf-8" });
+
+  const binary = atob(response.data.content_base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  const blob = new Blob([bytes], {
+    type:
+      response.data.content_type ||
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = response.data.filename || "hmm-journal-import-template.csv";
+  link.download = response.data.filename || "hmm-journal-import-template.xlsx";
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   URL.revokeObjectURL(url);
 };
 
