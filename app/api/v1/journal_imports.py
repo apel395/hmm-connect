@@ -1,5 +1,7 @@
-import csv
+import base64
 import io
+import zipfile
+from xml.sax.saxutils import escape
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -85,82 +87,110 @@ def _serialize(batch: ImportBatch) -> dict:
     }
 
 
+def _xlsx_text_cell(ref: str, value: str) -> str:
+    return (
+        f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">'
+        f'{escape(str(value))}</t></is></c>'
+    )
+
+
+def _build_journal_template_xlsx() -> bytes:
+    headers = [
+        "document_number", "posting_date", "description", "reference_type",
+        "reference_id", "business_unit_code", "department_code", "location_code",
+        "account_code", "line_description", "debit", "credit", "supplier_code",
+        "external_reference", "status",
+    ]
+    rows = [
+        [
+            "TEST-BULK-001", "2026-01-15", "Example balanced journal", "MANUAL",
+            "0", "001", "005", "001", "100-100-100", "Example debit line",
+            "100000", "0", "", "TEST-001", "DRAFT",
+        ],
+        [
+            "TEST-BULK-001", "2026-01-15", "Example balanced journal", "MANUAL",
+            "0", "001", "005", "001", "100-110-100", "Example credit line",
+            "0", "100000", "", "TEST-001", "DRAFT",
+        ],
+    ]
+
+    def col_name(index: int) -> str:
+        result = ""
+        while index:
+            index, remainder = divmod(index - 1, 26)
+            result = chr(65 + remainder) + result
+        return result
+
+    sheet_rows = []
+    for row_index, row in enumerate([headers, *rows], start=1):
+        cells = "".join(
+            _xlsx_text_cell(f"{col_name(col_index)}{row_index}", value)
+            for col_index, value in enumerate(row, start=1)
+        )
+        sheet_rows.append(f'<row r="{row_index}">{cells}</row>')
+
+    widths = [20, 14, 28, 16, 12, 20, 18, 16, 18, 24, 14, 14, 16, 20, 12]
+    cols = "".join(
+        f'<col min="{i}" max="{i}" width="{width}" customWidth="1"/>'
+        for i, width in enumerate(widths, start=1)
+    )
+    worksheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<cols>{cols}</cols><sheetData>{"".join(sheet_rows)}</sheetData>'
+        '<autoFilter ref="A1:O3"/>'
+        '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" '
+        'activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+        '</worksheet>'
+    )
+
+    content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>'''
+    root_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>'''
+    workbook = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Journal Import" sheetId="1" r:id="rId1"/></sheets>
+</workbook>'''
+    workbook_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>'''
+
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", root_rels)
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        archive.writestr("xl/worksheets/sheet1.xml", worksheet)
+    return output.getvalue()
+
+
 @router.get("/template")
 def template(user: User = Depends(journal_import_user)):
     del user
-    headers = [
-        "document_number",
-        "posting_date",
-        "description",
-        "reference_type",
-        "reference_id",
-        "business_unit_code",
-        "department_code",
-        "location_code",
-        "account_code",
-        "line_description",
-        "debit",
-        "credit",
-        "supplier_code",
-        "external_reference",
-        "status",
-    ]
-    samples = [
-        [
-            "TEST-BULK-001",
-            "2026-01-15",
-            "Example balanced journal",
-            "MANUAL",
-            "0",
-            "001",
-            "005",
-            "001",
-            "100-100-100",
-            "Example debit line",
-            "100000",
-            "0",
-            "",
-            "TEST-001",
-            "DRAFT",
-        ],
-        [
-            "TEST-BULK-001",
-            "2026-01-15",
-            "Example balanced journal",
-            "MANUAL",
-            "0",
-            "001",
-            "005",
-            "001",
-            "100-110-100",
-            "Example credit line",
-            "0",
-            "100000",
-            "",
-            "TEST-001",
-            "DRAFT",
-        ],
-    ]
-    # UTF-8 BOM helps Excel on Windows detect the CSV encoding.
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(headers)
-    writer.writerows(samples)
+    payload = _build_journal_template_xlsx()
     return {
-        "filename": "hmm-journal-import-template.csv",
-        "content": "\ufeff" + output.getvalue(),
-        "format": "CSV",
+        "filename": "hmm-journal-import-template.xlsx",
+        "content_base64": base64.b64encode(payload).decode("ascii"),
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "format": "XLSX",
         "notes": [
             "Repeat document_number for every line belonging to the same journal.",
             "Each journal must be balanced: total debit equals total credit.",
-            "Each row must contain either debit or credit, never both.",
             "Business unit and location codes must exist and be active.",
             "Department and supplier codes are optional; when supplied they must exist.",
             "Account code must be an active posting account.",
             "Status must be DRAFT or POSTED and defaults to DRAFT.",
-            "Accepted posting dates: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY.",
             "Maximum 5,000 rows and 500 journal documents per import.",
-            "The worker, not Lambda, reads XLSX/CSV files.",
         ],
     }
 
