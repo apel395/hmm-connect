@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.models.chart_of_account import ChartOfAccount
 from app.models.inventory import Inventory
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
@@ -30,7 +31,7 @@ def _paged(rows, *, page: int, page_size: int, total: int):
     }
 
 
-def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse):
+def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse, account: ChartOfAccount | None = None):
     quantity = Decimal(inventory.quantity or 0)
     average_cost = Decimal(inventory.average_cost or 0)
     minimum_stock = Decimal(product.minimum_stock or 0)
@@ -42,6 +43,10 @@ def inventory_row(inventory: Inventory, product: Product, warehouse: Warehouse):
         "product_id": product.id,
         "product_code": product.code,
         "product_name": product.name,
+        "inventory_account_id": product.inventory_account_id,
+        "inventory_account_code": account.account_number if account else None,
+        "inventory_account_name": account.account_name if account else None,
+        "location_id": warehouse.location_id,
         "uom": product.uom,
         "warehouse_id": warehouse.id,
         "warehouse_code": warehouse.code,
@@ -64,6 +69,7 @@ def _inventory_base(db: Session, user, warehouse_id: int | None = None):
         db.query(Inventory, Product, Warehouse)
         .join(Product, Product.id == Inventory.product_id)
         .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
+        .outerjoin(ChartOfAccount, ChartOfAccount.id == Product.inventory_account_id)
         .filter(Product.is_active.is_(True), Warehouse.is_active.is_(True))
     )
     query = apply_warehouse_scope(query, user)
@@ -75,6 +81,8 @@ def _inventory_base(db: Session, user, warehouse_id: int | None = None):
 @router.get("")
 def list_inventory(
     warehouse_id: int | None = None,
+    account_id: int | None = None,
+    location_id: int | None = None,
     health: str | None = Query(default=None, pattern="^(HEALTHY|LOW_STOCK|REORDER|BELOW_MINIMUM)$"),
     search: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
@@ -88,14 +96,20 @@ def list_inventory(
     low_stock = monitored & (quantity <= minimum)
 
     user = _
-    summary_rows = _inventory_base(db, user, warehouse_id).with_entities(
+    scoped = _inventory_base(db, user, warehouse_id)
+    if account_id:
+        scoped = scoped.filter(Product.inventory_account_id == account_id)
+    if location_id:
+        scoped = scoped.filter(Warehouse.location_id == location_id)
+
+    summary_rows = scoped.with_entities(
         func.count(Inventory.id),
         func.coalesce(func.sum(quantity * func.coalesce(Inventory.average_cost, 0)), 0),
         func.coalesce(func.sum(case((monitored, 1), else_=0)), 0),
         func.coalesce(func.sum(case((low_stock, 1), else_=0)), 0),
     ).one()
 
-    query = _inventory_base(db, user, warehouse_id)
+    query = scoped
     # REORDER and BELOW_MINIMUM remain accepted as compatibility aliases.
     if health in {"LOW_STOCK", "REORDER", "BELOW_MINIMUM"}:
         query = query.filter(minimum > 0, quantity <= minimum)
@@ -105,8 +119,17 @@ def list_inventory(
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term), Warehouse.name.ilike(term)))
     total = query.count()
-    rows = query.order_by(Product.code, Warehouse.code).offset((page - 1) * page_size).limit(page_size).all()
-    result = _paged([inventory_row(*row) for row in rows], page=page, page_size=page_size, total=total)
+    grouped_rows = query.with_entities(
+        ChartOfAccount.id,
+        ChartOfAccount.account_number,
+        ChartOfAccount.account_name,
+        Warehouse.location_id,
+        func.coalesce(func.sum(quantity), 0),
+        func.coalesce(func.sum(quantity * func.coalesce(Inventory.average_cost, 0)), 0),
+    ).group_by(ChartOfAccount.id, ChartOfAccount.account_number, ChartOfAccount.account_name, Warehouse.location_id).order_by(ChartOfAccount.account_number, Warehouse.location_id).all()
+
+    rows = query.add_entity(ChartOfAccount).order_by(Product.code, Warehouse.code).offset((page - 1) * page_size).limit(page_size).all()
+    result = _paged([inventory_row(inventory, product, warehouse, account) for inventory, product, warehouse, account in rows], page=page, page_size=page_size, total=total)
     result["summary"] = {
         "stock_lines": int(summary_rows[0] or 0),
         "stock_value": summary_rows[1] or 0,
@@ -116,6 +139,17 @@ def list_inventory(
         "needs_reorder": int(summary_rows[3] or 0),
         "below_minimum": int(summary_rows[3] or 0),
     }
+    result["totals_by_account_location"] = [
+        {
+            "account_id": row[0],
+            "account_code": row[1],
+            "account_name": row[2],
+            "location_id": row[3],
+            "quantity": row[4] or 0,
+            "stock_value": row[5] or 0,
+        }
+        for row in grouped_rows
+    ]
     return result
 
 
