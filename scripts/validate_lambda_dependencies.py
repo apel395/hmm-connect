@@ -10,6 +10,7 @@ BLOCKED_MODULES = {"openpyxl", "pandas", "xlsxwriter", "xlrd", "xlwt", "pyarrow"
 WORKER_ONLY_FILES = {
     Path("scripts/create_historical_import_samples.py"),
     Path("scripts/export_worker.py"),
+    Path("scripts/journal_import_worker.py"),
     Path("services/historical_import_service.py"),
 }
 
