@@ -5,6 +5,8 @@ export type InventoryListParams = {
   page_size?: number;
   search?: string;
   warehouse_id?: number;
+  account_id?: number;
+  location_id?: number;
   health?: "HEALTHY" | "LOW_STOCK";
 };
 
