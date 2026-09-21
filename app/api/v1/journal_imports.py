@@ -103,12 +103,12 @@ def _build_journal_template_xlsx() -> bytes:
     ]
     rows = [
         [
-            "TEST-BULK-001", "2026-01-15", "Example balanced journal", "MANUAL",
+            "", "2026-01-15", "Example balanced journal", "MANUAL",
             "0", "Hotel", "Admin and General", "Batam", "100-100-100", "Example debit line",
             "100000", "0", "", "", "DRAFT",
         ],
         [
-            "TEST-BULK-001", "2026-01-15", "Example balanced journal", "MANUAL",
+            "", "2026-01-15", "Example balanced journal", "MANUAL",
             "0", "Hotel", "Admin and General", "Batam", "100-110-100", "Example credit line",
             "0", "100000", "", "", "DRAFT",
         ],
@@ -184,7 +184,7 @@ def template(user: User = Depends(journal_import_user)):
         "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "format": "XLSX",
         "notes": [
-            "Repeat document_number for every line belonging to the same journal.",
+            "document_number is optional. Leave it blank to let ERP generate it automatically; consecutive blank rows are treated as one journal. If supplied, repeat it for every line belonging to the same journal.",
             "Each journal must be balanced: total debit equals total credit.",
             "Business unit and location names must exist and be active.",
             "Department and supplier are optional; when supplied, use the master-data name.",
