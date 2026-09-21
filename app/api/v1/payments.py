@@ -17,6 +17,7 @@ from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.payment import Payment, PaymentAllocation, PaymentFundingLine
 from app.models.payment_voucher import PaymentVoucher
+from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.payment import PaymentAllocationInput, PaymentCreate, PaymentUpdate
 from app.services.direct_coa_service import DirectCoaService
@@ -377,8 +378,22 @@ def listing(
     query = apply_location_scope(db.query(Payment), Payment, user)
     if location_id:
         query = query.filter(Payment.location_id == location_id)
-    if search:
-        query = query.filter(or_(Payment.payment_number.ilike(f"%{search}%"), Payment.reference_number.ilike(f"%{search}%")))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(
+            Payment.payment_number.ilike(term),
+            Payment.reference_number.ilike(term),
+            Payment.cheque_number.ilike(term),
+            Payment.external_reference.ilike(term),
+            Payment.notes.ilike(term),
+            Payment.supplier.has(or_(Supplier.code.ilike(term), Supplier.name.ilike(term))),
+            Payment.allocations.any(
+                PaymentAllocation.supplier_invoice.has(or_(
+                    SupplierInvoice.internal_invoice_number.ilike(term),
+                    SupplierInvoice.supplier_invoice_number.ilike(term),
+                ))
+            ),
+        ))
     if supplier_id:
         query = query.filter(Payment.supplier_id == supplier_id)
     if status:
