@@ -8,7 +8,7 @@ export type ReconciliationAccount = {
 };
 
 export type ReconciliationRow = {
-  control: "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "INVENTORY";
+  control: "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "CLEARING_SUSPENSE" | "INVENTORY";
   source_balance: number;
   gl_balance: number;
   difference: number;
