@@ -375,6 +375,22 @@ def main():
             stats["posted_blocks"]+=1
             stats["posted_lines"]+=len(invoice_lines)
         if not dry:
+            # Validate historical invoice evidence before creating any invoices.
+            # SupplierInvoiceService.create() commits internally, so all evidence
+            # checks must happen first to avoid a partially-created batch.
+            for key,bucket in pending_invoices.items():
+                supplier=bucket["supplier"]
+                source_row=bucket["blocks"][0]["row"]
+                if text(supplier.name).upper() in {"PT.SUKANDA DJAYA","PT SUKANDA DJAYA","SUKANDA DJAYA"} and source_row in SUKANDA_INVOICE_OVERRIDES:
+                    subtotal=sum((Decimal(line.quantity)*Decimal(line.unit_price) for line in bucket["lines"]),ZERO)
+                    expected_subtotal,_,_=SUKANDA_INVOICE_OVERRIDES[source_row]
+                    # Source invoice evidence may differ slightly from reconstructed
+                    # receiving detail. Keep that discrepancy explicit.
+                    if subtotal != expected_subtotal:
+                        raise RuntimeError(
+                            f"Sukanda row {source_row} receiving subtotal={subtotal}, invoice evidence subtotal={expected_subtotal}, "
+                            f"difference={expected_subtotal-subtotal}. Resolve historical adjustment before posting."
+                        )
             svc=SupplierInvoiceService(db)
             for key,bucket in pending_invoices.items():
                 supplier=bucket["supplier"]; bu=bucket["bu"]; dept=bucket["dept"]; loc=bucket["loc"]
@@ -391,8 +407,6 @@ def main():
                 source_row=source_blocks[0]["row"]
                 if text(supplier.name).upper() in {"PT.SUKANDA DJAYA","PT SUKANDA DJAYA","SUKANDA DJAYA"} and source_row in SUKANDA_INVOICE_OVERRIDES:
                     expected_subtotal,tax_amount,total_amount=SUKANDA_INVOICE_OVERRIDES[source_row]
-                    if subtotal != expected_subtotal:
-                        raise RuntimeError(f"Sukanda row {source_row} subtotal mismatch: workbook={subtotal} evidence={expected_subtotal}")
                 inv=svc.create(SupplierInvoiceInput(
                     supplier_invoice_number=invoice_number,supplier_id=supplier.id,
                     invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
