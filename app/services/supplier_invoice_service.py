@@ -281,7 +281,11 @@ class SupplierInvoiceService:
                 data.goods_receipt_id=None
 
         subtotal = sum((Decimal(line.quantity) * Decimal(line.unit_price) for line in data.lines), ZERO)
-        tax_amount = sum((Decimal(line.tax_amount or 0) for line in data.lines), ZERO)
+        tax_amount = (
+            Decimal(data.tax_amount or 0)
+            if data.source_type == "HISTORICAL_IMPORT"
+            else sum((Decimal(line.tax_amount or 0) for line in data.lines), ZERO)
+        )
         data.tax_amount = tax_amount
         total = subtotal - Decimal(data.discount_amount) + tax_amount - Decimal(data.withholding_tax_amount)
         if data.total_amount is not None and Decimal(data.total_amount) != total:
@@ -335,6 +339,37 @@ class SupplierInvoiceService:
 
         for line in invoice.lines:
             receipt_item = receipt_items.get(line.goods_receipt_item_id) if line.goods_receipt_item_id else None
+            if (
+                invoice.source_type == "HISTORICAL_IMPORT"
+                and not receipt_item
+                and line.account_id
+                and not line.product_id
+            ):
+                line_results.append({
+                    "invoice_line_id": line.id,
+                    "product_id": None,
+                    "product_code": None,
+                    "product_name": line.description,
+                    "receipt_item_id": None,
+                    "purchase_order_item_id": None,
+                    "received_quantity": ZERO,
+                    "previously_invoiced_quantity": ZERO,
+                    "available_quantity": ZERO,
+                    "invoice_quantity": Decimal(line.quantity),
+                    "po_unit_price": None,
+                    "invoice_unit_price": Decimal(line.unit_price),
+                    "price_difference": None,
+                    "is_taxable": line.is_taxable,
+                    "tax_rate": line.tax_rate,
+                    "tax_amount": line.tax_amount,
+                    "reference_taxable": None,
+                    "reference_tax_rate": None,
+                    "uom": line.uom,
+                    "reference_uom": None,
+                    "status": "MATCHED",
+                    "issues": [],
+                })
+                continue
             po_item = None
             if line.purchase_order_item_id:
                 po_item = po_items.get(line.purchase_order_item_id)
@@ -513,10 +548,11 @@ class SupplierInvoiceService:
         if Decimal(invoice.tax_amount or 0) > ZERO:
             if not invoice.supplier.is_pkp:
                 raise HTTPException(409, "Invoice contains PPN but supplier is not marked as PKP")
-            if not (invoice.tax_invoice_number or "").strip():
-                raise HTTPException(409, "Tax invoice number is required for a supplier invoice containing PPN")
-            if not invoice.tax_invoice_date:
-                raise HTTPException(409, "Tax invoice date is required for a supplier invoice containing PPN")
+            if invoice.source_type != "HISTORICAL_IMPORT":
+                if not (invoice.tax_invoice_number or "").strip():
+                    raise HTTPException(409, "Tax invoice number is required for a supplier invoice containing PPN")
+                if not invoice.tax_invoice_date:
+                    raise HTTPException(409, "Tax invoice date is required for a supplier invoice containing PPN")
 
         invoice.status = "VERIFIED"
         invoice.verified_at = datetime.now(timezone.utc)
@@ -568,7 +604,15 @@ class SupplierInvoiceService:
         grouped = {}
         if uses_grni:
             grni_account = resolver.grni_account()
-            grouped[grni_account.id] = Decimal(invoice.subtotal or 0)
+            for line in invoice.lines:
+                if line.goods_receipt_item_id:
+                    account = grni_account
+                else:
+                    account = resolver.snapshot_invoice_line(invoice, line)
+                grouped[account.id] = (
+                    grouped.get(account.id, ZERO)
+                    + Decimal(line.line_amount or 0)
+                )
         else:
             for line in invoice.lines:
                 account = resolver.snapshot_invoice_line(invoice, line)
