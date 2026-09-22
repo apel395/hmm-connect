@@ -57,7 +57,11 @@ class SupplierInvoiceInput(BaseModel):
     def calculate_totals(self):
         if not self.lines:
             raise ValueError("Invoice must contain at least one line")
-        self.tax_amount = sum((Decimal(line.tax_amount) for line in self.lines), Decimal("0"))
+        if not (
+            self.source_type == "HISTORICAL_IMPORT"
+            and "tax_amount" in self.model_fields_set
+        ):
+            self.tax_amount = sum((Decimal(line.tax_amount) for line in self.lines), Decimal("0"))
         subtotal = sum((Decimal(line.quantity) * Decimal(line.unit_price) for line in self.lines), Decimal("0"))
         calculated_total = subtotal - Decimal(self.discount_amount) + self.tax_amount - Decimal(self.withholding_tax_amount)
         if self.total_amount is not None and Decimal(self.total_amount) != calculated_total:
