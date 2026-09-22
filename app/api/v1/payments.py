@@ -5,7 +5,7 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, lazyload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
@@ -563,7 +563,7 @@ def update(payment_id: int, data: PaymentUpdate, db: Session = Depends(get_db), 
 
 @router.post("/{payment_id}/approve")
 def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
-    payment = db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
+    payment = (db.query(Payment).options(lazyload(Payment.payment_voucher)).filter(Payment.id == payment_id).with_for_update().first())
     if not payment or payment.status != "DRAFT":
         raise HTTPException(409, "Only draft payments can be approved")
     enforce_location_access(user, payment.location_id)
@@ -595,6 +595,7 @@ def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(payment
 def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
     payment = (
         db.query(Payment)
+        .options(lazyload(Payment.payment_voucher))
         .filter(Payment.id == payment_id)
         .populate_existing()
         .with_for_update()
@@ -681,7 +682,7 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(paymen
 
 @router.post("/{payment_id}/post")
 def post(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
-    payment = db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
+    payment = (db.query(Payment).options(lazyload(Payment.payment_voucher)).filter(Payment.id == payment_id).with_for_update().first())
     if not payment or payment.status != "APPROVED" or not payment.journal_entry_id:
         raise HTTPException(409, "Approved payment with draft journal required")
     enforce_location_access(user, payment.location_id)
