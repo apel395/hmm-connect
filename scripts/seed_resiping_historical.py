@@ -133,18 +133,17 @@ def resolve_department(db, location, override_code=None):
             {"location_id": location.id},
         ).all()
     ]
-    if not linked_ids:
-        return None
-
     # Project Catering locations use operational department first. Head Office
     # uses Head Office when linked; otherwise fall back to the first active,
     # explicitly linked department.
     preferred=["02","01","OPR"] if location.location_type=="HEAD_OFFICE" else ["01","OPR","02","03"]
-    departments=db.query(Department).filter(
-        Department.id.in_(linked_ids),
+    q=db.query(Department).filter(
         Department.business_unit_id==location.business_unit_id,
         Department.is_active.is_(True),
-    ).all()
+    )
+    if linked_ids:
+        q=q.filter(Department.id.in_(linked_ids))
+    departments=q.all()
     by_code={d.code:d for d in departments}
     for code in preferred:
         if code in by_code:
@@ -194,9 +193,12 @@ def parse(ws):
         item_name=text(d)
         description=text(e)
         qty=dec(g); price=dec(h)
+        row_date=as_date(a)
+        if row_date:
+            current["header_date"]=row_date
         # A detail row has an item identity and at least qty/price evidence.
         if (item_name or description) and (qty is not None or price is not None):
-            current["items"].append({"row":row_no,"date":as_date(a) or current["header_date"],
+            current["items"].append({"row":row_no,"date":row_date or current["header_date"],
                 "name":item_name or description,"description":description,"uom":text(f),
                 "qty":qty,"price":price})
     return blocks
