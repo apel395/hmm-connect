@@ -236,7 +236,7 @@ SUKANDA_INVOICE_OVERRIDES={
 }
 
 def invoice_group_key(block, supplier):
-    if normalize(supplier.name)=="SUHARTI" and block["row"] in SUHARTI_BLOCK_ROWS:
+    if text(supplier.name).upper()=="SUHARTI" and block["row"] in SUHARTI_BLOCK_ROWS:
         return ("SUHARTI-CONSOLIDATED", supplier.id)
     return ("BLOCK", supplier.id, block["row"])
 
@@ -389,7 +389,7 @@ def main():
                 tax_amount=ZERO
                 total_amount=None
                 source_row=source_blocks[0]["row"]
-                if normalize(supplier.name) in {"PT SUKANDA DJAYA","SUKANDA DJAYA"} and source_row in SUKANDA_INVOICE_OVERRIDES:
+                if text(supplier.name).upper() in {"PT.SUKANDA DJAYA","PT SUKANDA DJAYA","SUKANDA DJAYA"} and source_row in SUKANDA_INVOICE_OVERRIDES:
                     expected_subtotal,tax_amount,total_amount=SUKANDA_INVOICE_OVERRIDES[source_row]
                     if subtotal != expected_subtotal:
                         raise RuntimeError(f"Sukanda row {source_row} subtotal mismatch: workbook={subtotal} evidence={expected_subtotal}")
