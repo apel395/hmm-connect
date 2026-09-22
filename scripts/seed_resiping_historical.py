@@ -101,11 +101,14 @@ def resolve_location(db, raw):
     # Historical source aliases. BSP PEDADA was a source-label mistake; the real
     # production site is Zamped/Zamrud (location id 4 / code 003).
     aliases={
-        "DURI": ("name", "DURI"),
-        "MINAS": ("code", "MINAS"),
-        "HEAD OFFICE": ("name", "PEKANBARU"),
-        "BSP PEDADA": ("name", "ZAMPED"),
-        "PEDADA": ("name", "ZAMPED"),
+        # Historical workbook label -> current app-managed stable location code.
+        "MINAS": ("code", "005"),       # Rumin
+        "RUMBAI": ("code", "005"),      # Rumin
+        "HEAD OFFICE": ("code", "002"), # Pekanbaru
+        "BSP PEDADA": ("code", "003"),  # Zamped / Zamrud
+        "PEDADA": ("code", "003"),      # historical source-label mistake
+        "DURI": ("code", "006"),        # Duri
+        "NKL": ("code", "007"),         # Kalimantan / Sanga-sanga
     }
     if key in aliases:
         field, value=aliases[key]
