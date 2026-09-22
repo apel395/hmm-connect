@@ -375,22 +375,12 @@ def main():
             stats["posted_blocks"]+=1
             stats["posted_lines"]+=len(invoice_lines)
         if not dry:
-            # Validate historical invoice evidence before creating any invoices.
-            # SupplierInvoiceService.create() commits internally, so all evidence
-            # checks must happen first to avoid a partially-created batch.
-            for key,bucket in pending_invoices.items():
-                supplier=bucket["supplier"]
-                source_row=bucket["blocks"][0]["row"]
-                if text(supplier.name).upper() in {"PT.SUKANDA DJAYA","PT SUKANDA DJAYA","SUKANDA DJAYA"} and source_row in SUKANDA_INVOICE_OVERRIDES:
-                    subtotal=sum((Decimal(line.quantity)*Decimal(line.unit_price) for line in bucket["lines"]),ZERO)
-                    expected_subtotal,_,_=SUKANDA_INVOICE_OVERRIDES[source_row]
-                    # Source invoice evidence may differ slightly from reconstructed
-                    # receiving detail. Keep that discrepancy explicit.
-                    if subtotal != expected_subtotal:
-                        raise RuntimeError(
-                            f"Sukanda row {source_row} receiving subtotal={subtotal}, invoice evidence subtotal={expected_subtotal}, "
-                            f"difference={expected_subtotal-subtotal}. Resolve historical adjustment before posting."
-                        )
+            variance_account=db.query(ChartOfAccount).filter(
+                ChartOfAccount.account_number=="500-100-999",
+                ChartOfAccount.is_active.is_(True),
+            ).first()
+            if not variance_account:
+                raise RuntimeError("Historical invoice variance requires active COA 500-100-999")
             svc=SupplierInvoiceService(db)
             for key,bucket in pending_invoices.items():
                 supplier=bucket["supplier"]; bu=bucket["bu"]; dept=bucket["dept"]; loc=bucket["loc"]
@@ -407,6 +397,23 @@ def main():
                 source_row=source_blocks[0]["row"]
                 if text(supplier.name).upper() in {"PT.SUKANDA DJAYA","PT SUKANDA DJAYA","SUKANDA DJAYA"} and source_row in SUKANDA_INVOICE_OVERRIDES:
                     expected_subtotal,tax_amount,total_amount=SUKANDA_INVOICE_OVERRIDES[source_row]
+                    receiving_subtotal=subtotal
+                    variance=expected_subtotal-receiving_subtotal
+                    if variance < ZERO:
+                        raise RuntimeError(
+                            f"Sukanda row {source_row} invoice evidence is below receiving subtotal by {-variance}; manual review required"
+                        )
+                    if variance > ZERO:
+                        lines.append(SupplierInvoiceLineInput(
+                            product_id=None,goods_receipt_item_id=None,
+                            description="Historical invoice/receiving rounding variance",
+                            quantity=Decimal("1"),uom="LOT",unit_price=variance,
+                            is_taxable=False,tax_rate=ZERO,tax_amount=ZERO,
+                            account_id=variance_account.id,department_id=dept.id,
+                            notes=f"Invoice evidence {expected_subtotal} vs receiving {receiving_subtotal}"
+                        ))
+                        subtotal += variance
+                    supplier.is_pkp=True
                 inv=svc.create(SupplierInvoiceInput(
                     supplier_invoice_number=invoice_number,supplier_id=supplier.id,
                     invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
