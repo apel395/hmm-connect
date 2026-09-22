@@ -136,7 +136,9 @@ def resolve_department(db, location, override_code=None):
     # Project Catering locations use operational department first. Head Office
     # uses Head Office when linked; otherwise fall back to the first active,
     # explicitly linked department.
-    preferred=["02","01","OPR"] if location.location_type=="HEAD_OFFICE" else ["01","OPR","02","03"]
+    # Business rule: Head Office uses department 02; every other
+    # Project Catering location uses Operational department 01.
+    preferred=["02"] if location.location_type=="HEAD_OFFICE" else ["01","OPR"]
     q=db.query(Department).filter(
         Department.business_unit_id==location.business_unit_id,
         Department.is_active.is_(True),
