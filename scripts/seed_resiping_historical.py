@@ -322,42 +322,60 @@ def main():
                 stats["dry_lines"]+=sum(len(g) for g in receipt_groups)
                 continue
 
+            invoice_lines=[]
+            receipt_dates=[]
             for group_no,ready_group in enumerate(receipt_groups,1):
                 receipt_date=min(x["date"] for x,_ in ready_group)
                 ext=f"RESIPING-{block['row']}-{supplier.id}-{loc.id}-{group_no}"
-                existing=db.query(GoodsReceipt).filter(GoodsReceipt.external_reference==ext).first()
-                if existing:
-                    stats["skipped"]+=1; continue
-                gr=GoodsReceiptService.create(db,data=GoodsReceiptCreate(
-                    supplier_id=supplier.id,business_unit_id=bu.id,location_id=loc.id,
-                    department_id=dept.id,received_at=datetime.combine(receipt_date,datetime.min.time(),tzinfo=timezone.utc),
-                    source_type="HISTORICAL_IMPORT",external_reference=ext,destination_type="WAREHOUSE",
-                    warehouse_id=warehouse.id if warehouse else None,
-                    notes=f"RESIPING historical import rows from {block['row']}",
-                    items=[GoodsReceiptItemCreate(product_id=p.id,quantity=x["qty"],unit_cost=x["price"],
-                           is_taxable=False,tax_rate=ZERO) for x,p in ready_group]),user=user)
-                gr=GoodsReceiptService.post(db,receipt_id=gr.id,user=user)
-                if journals is not None:
-                    j=db.query(JournalEntry).filter(JournalEntry.reference_type=="GOODS_RECEIPT",
-                        JournalEntry.reference_id==gr.id).first()
-                    if j and j.status=="DRAFT": journals.post(j.id,db,user)
-                inv_date=block["invoice_date"] or receipt_date
-                svc=SupplierInvoiceService(db)
-                inv=svc.create(SupplierInvoiceInput(
-                    supplier_invoice_number=f"HIST-RESIPING-{block['row']}-{group_no}",supplier_id=supplier.id,
-                    invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
-                    goods_receipt_id=gr.id,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,
-                    currency="IDR",discount_amount=ZERO,tax_amount=ZERO,withholding_tax_amount=ZERO,
-                    notes=f"RESIPING historical import rows from {block['row']}",source_type="HISTORICAL_IMPORT",
-                    lines=[SupplierInvoiceLineInput(product_id=p.id,goods_receipt_item_id=gr.items[i].id,
+                gr=db.query(GoodsReceipt).filter(GoodsReceipt.external_reference==ext).first()
+                if not gr:
+                    gr=GoodsReceiptService.create(db,data=GoodsReceiptCreate(
+                        supplier_id=supplier.id,business_unit_id=bu.id,location_id=loc.id,
+                        department_id=dept.id,received_at=datetime.combine(receipt_date,datetime.min.time(),tzinfo=timezone.utc),
+                        source_type="HISTORICAL_IMPORT",external_reference=ext,destination_type="WAREHOUSE",
+                        warehouse_id=warehouse.id,
+                        notes=f"RESIPING historical import rows from {block['row']}",
+                        items=[GoodsReceiptItemCreate(product_id=p.id,quantity=x["qty"],unit_cost=x["price"],
+                               is_taxable=False,tax_rate=ZERO) for x,p in ready_group]),user=user)
+                    gr=GoodsReceiptService.post(db,receipt_id=gr.id,user=user)
+                    if journals is not None:
+                        j=db.query(JournalEntry).filter(JournalEntry.reference_type=="GOODS_RECEIPT",
+                            JournalEntry.reference_id==gr.id).first()
+                        if j and j.status=="DRAFT": journals.post(j.id,db,user)
+                else:
+                    stats["skipped"]+=1
+                receipt_dates.append(receipt_date)
+                for i,(x,p) in enumerate(ready_group):
+                    gri=gr.items[i]
+                    invoice_lines.append(SupplierInvoiceLineInput(
+                        product_id=p.id,goods_receipt_item_id=gri.id,
                         description=x["description"] or x["name"],quantity=x["qty"],uom=p.uom or "PCS",
                         unit_price=x["price"],is_taxable=False,tax_rate=ZERO,tax_amount=ZERO,
-                        account_id=None,department_id=dept.id) for i,(x,p) in enumerate(ready_group)]),user)
+                        account_id=None,department_id=dept.id))
+
+            # One source supplier block is one reconstructed supplier invoice.
+            # Technical GR splitting must never manufacture extra invoices.
+            invoice_number=f"HIST-RESIPING-{block['row']}"
+            svc=SupplierInvoiceService(db)
+            inv=db.query(SupplierInvoice).filter(
+                SupplierInvoice.supplier_id==supplier.id,
+                func.lower(SupplierInvoice.supplier_invoice_number)==invoice_number.lower(),
+            ).first()
+            if not inv:
+                inv_date=block["invoice_date"] or min(receipt_dates)
+                inv=svc.create(SupplierInvoiceInput(
+                    supplier_invoice_number=invoice_number,supplier_id=supplier.id,
+                    invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
+                    goods_receipt_id=None,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,
+                    currency="IDR",discount_amount=ZERO,tax_amount=ZERO,withholding_tax_amount=ZERO,
+                    notes=f"RESIPING historical import rows from {block['row']}",source_type="HISTORICAL_IMPORT",
+                    lines=invoice_lines),user)
                 inv=svc.verify(inv,user)
                 if journals is not None:
                     j=svc.generate_journal(inv,user)
                     if j.status=="DRAFT": journals.post(j.id,db,user)
-                stats["posted_blocks"]+=1; stats["posted_lines"]+=len(ready_group)
+            stats["posted_blocks"]+=1
+            stats["posted_lines"]+=len(invoice_lines)
         if dry: db.rollback()
         else: db.commit()
         print("MODE:", "DRY RUN" if dry else "APPLIED")
