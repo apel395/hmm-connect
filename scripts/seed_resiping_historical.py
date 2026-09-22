@@ -251,13 +251,27 @@ def main():
             if not dept:
                 blocked.append((block["row"],"DEPARTMENT",f"{block['location']} / location_id={loc.id}")); continue
             supplier=resolve_supplier(db,block["supplier"],supplier_cache,stats)
+            # Historical receipts must land in the warehouse belonging to
+            # their resolved location. Never fall back to another location.
             warehouse=None
             if a.warehouse_code:
-                warehouse=db.query(Warehouse).filter(Warehouse.code==a.warehouse_code).first()
+                warehouse=db.query(Warehouse).filter(
+                    Warehouse.code==a.warehouse_code,
+                    Warehouse.location_id==loc.id,
+                    Warehouse.is_active.is_(True),
+                ).first()
+                if not warehouse:
+                    blocked.append((block["row"],"WAREHOUSE",
+                        f"{block['location']} / requested={a.warehouse_code}"))
+                    continue
+            else:
+                warehouse=db.query(Warehouse).filter(
+                    Warehouse.location_id==loc.id,
+                    Warehouse.is_active.is_(True),
+                ).order_by(Warehouse.id).first()
             if not warehouse:
-                warehouse=db.query(Warehouse).filter(Warehouse.location_id==loc.id).first()
-            if not warehouse:
-                warehouse=db.query(Warehouse).filter(Warehouse.code=="MAIN").first()
+                blocked.append((block["row"],"WAREHOUSE",block["location"]))
+                continue
 
             ready=[]
             for x in block["items"]:
