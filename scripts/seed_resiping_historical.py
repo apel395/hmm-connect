@@ -344,7 +344,7 @@ def main():
                 inv_date=block["invoice_date"] or receipt_date
                 svc=SupplierInvoiceService(db)
                 inv=svc.create(SupplierInvoiceInput(
-                    supplier_invoice_number=f"HIST-RESIPING-{block['row']}",supplier_id=supplier.id,
+                    supplier_invoice_number=f"HIST-RESIPING-{block['row']}-{group_no}",supplier_id=supplier.id,
                     invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
                     goods_receipt_id=gr.id,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,
                     currency="IDR",discount_amount=ZERO,tax_amount=ZERO,withholding_tax_amount=ZERO,
