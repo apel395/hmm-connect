@@ -287,43 +287,77 @@ def main():
                 p=resolve_product(db,x["name"],x["description"],x["uom"],occupied,product_cache,stats)
                 ready.append((x,p))
             if not ready: continue
+
+            # Direct Goods Receipts require each product only once. Historical
+            # spreadsheets can repeat the same product in one supplier/location
+            # block (for example daily food deliveries). Preserve value and
+            # quantity by consolidating identical product/date/cost lines.
+            grouped={}
+            for x,p in ready:
+                key=(p.id,x["date"],x["price"],text(x["uom"]).upper())
+                if key not in grouped:
+                    grouped[key]=(dict(x),p)
+                else:
+                    gx,gp=grouped[key]
+                    gx["qty"] += x["qty"]
+                    gx["description"] = gx["description"] or x["description"]
+            ready=list(grouped.values())
+
+            # A single GR still cannot contain the same product at different
+            # dates/costs. Split the historical block into receipt groups so
+            # each resulting direct receipt contains a product only once.
+            receipt_groups=[]
+            current=[]
+            seen=set()
+            for x,p in sorted(ready,key=lambda xp:(xp[0]["date"],xp[0]["row"])):
+                if p.id in seen:
+                    receipt_groups.append(current)
+                    current=[]; seen=set()
+                current.append((x,p)); seen.add(p.id)
+            if current:
+                receipt_groups.append(current)
+
             if dry:
-                stats["dry_blocks"]+=1; stats["dry_lines"]+=len(ready); continue
-            receipt_date=min(x["date"] for x,_ in ready)
-            ext=f"RESIPING-{block['row']}-{supplier.id}-{loc.id}"
-            existing=db.query(GoodsReceipt).filter(GoodsReceipt.external_reference==ext).first()
-            if existing:
-                stats["skipped"]+=1; continue
-            gr=GoodsReceiptService.create(db,data=GoodsReceiptCreate(
-                supplier_id=supplier.id,business_unit_id=bu.id,location_id=loc.id,
-                department_id=dept.id,received_at=datetime.combine(receipt_date,datetime.min.time(),tzinfo=timezone.utc),
-                source_type="HISTORICAL_IMPORT",external_reference=ext,destination_type="WAREHOUSE",
-                warehouse_id=warehouse.id if warehouse else None,
-                notes=f"RESIPING historical import rows from {block['row']}",
-                items=[GoodsReceiptItemCreate(product_id=p.id,quantity=x["qty"],unit_cost=x["price"],
-                       is_taxable=False,tax_rate=ZERO) for x,p in ready]),user=user)
-            gr=GoodsReceiptService.post(db,receipt_id=gr.id,user=user)
-            if journals is not None:
-                j=db.query(JournalEntry).filter(JournalEntry.reference_type=="GOODS_RECEIPT",
-                    JournalEntry.reference_id==gr.id).first()
-                if j and j.status=="DRAFT": journals.post(j.id,db,user)
-            inv_date=block["invoice_date"] or receipt_date
-            svc=SupplierInvoiceService(db)
-            inv=svc.create(SupplierInvoiceInput(
-                supplier_invoice_number=f"HIST-RESIPING-{block['row']}",supplier_id=supplier.id,
-                invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
-                goods_receipt_id=gr.id,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,
-                currency="IDR",discount_amount=ZERO,tax_amount=ZERO,withholding_tax_amount=ZERO,
-                notes=f"RESIPING historical import rows from {block['row']}",source_type="HISTORICAL_IMPORT",
-                lines=[SupplierInvoiceLineInput(product_id=p.id,goods_receipt_item_id=gr.items[i].id,
-                    description=x["description"] or x["name"],quantity=x["qty"],uom=p.uom or "PCS",
-                    unit_price=x["price"],is_taxable=False,tax_rate=ZERO,tax_amount=ZERO,
-                    account_id=None,department_id=dept.id) for i,(x,p) in enumerate(ready)]),user)
-            inv=svc.verify(inv,user)
-            if journals is not None:
-                j=svc.generate_journal(inv,user)
-                if j.status=="DRAFT": journals.post(j.id,db,user)
-            stats["posted_blocks"]+=1; stats["posted_lines"]+=len(ready)
+                stats["dry_blocks"]+=len(receipt_groups)
+                stats["dry_lines"]+=sum(len(g) for g in receipt_groups)
+                continue
+
+            for group_no,ready_group in enumerate(receipt_groups,1):
+                receipt_date=min(x["date"] for x,_ in ready_group)
+                ext=f"RESIPING-{block['row']}-{supplier.id}-{loc.id}-{group_no}"
+                existing=db.query(GoodsReceipt).filter(GoodsReceipt.external_reference==ext).first()
+                if existing:
+                    stats["skipped"]+=1; continue
+                gr=GoodsReceiptService.create(db,data=GoodsReceiptCreate(
+                    supplier_id=supplier.id,business_unit_id=bu.id,location_id=loc.id,
+                    department_id=dept.id,received_at=datetime.combine(receipt_date,datetime.min.time(),tzinfo=timezone.utc),
+                    source_type="HISTORICAL_IMPORT",external_reference=ext,destination_type="WAREHOUSE",
+                    warehouse_id=warehouse.id if warehouse else None,
+                    notes=f"RESIPING historical import rows from {block['row']}",
+                    items=[GoodsReceiptItemCreate(product_id=p.id,quantity=x["qty"],unit_cost=x["price"],
+                           is_taxable=False,tax_rate=ZERO) for x,p in ready_group]),user=user)
+                gr=GoodsReceiptService.post(db,receipt_id=gr.id,user=user)
+                if journals is not None:
+                    j=db.query(JournalEntry).filter(JournalEntry.reference_type=="GOODS_RECEIPT",
+                        JournalEntry.reference_id==gr.id).first()
+                    if j and j.status=="DRAFT": journals.post(j.id,db,user)
+                inv_date=block["invoice_date"] or receipt_date
+                svc=SupplierInvoiceService(db)
+                inv=svc.create(SupplierInvoiceInput(
+                    supplier_invoice_number=f"HIST-RESIPING-{block['row']}",supplier_id=supplier.id,
+                    invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
+                    goods_receipt_id=gr.id,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,
+                    currency="IDR",discount_amount=ZERO,tax_amount=ZERO,withholding_tax_amount=ZERO,
+                    notes=f"RESIPING historical import rows from {block['row']}",source_type="HISTORICAL_IMPORT",
+                    lines=[SupplierInvoiceLineInput(product_id=p.id,goods_receipt_item_id=gr.items[i].id,
+                        description=x["description"] or x["name"],quantity=x["qty"],uom=p.uom or "PCS",
+                        unit_price=x["price"],is_taxable=False,tax_rate=ZERO,tax_amount=ZERO,
+                        account_id=None,department_id=dept.id) for i,(x,p) in enumerate(ready_group)]),user)
+                inv=svc.verify(inv,user)
+                if journals is not None:
+                    j=svc.generate_journal(inv,user)
+                    if j.status=="DRAFT": journals.post(j.id,db,user)
+                stats["posted_blocks"]+=1; stats["posted_lines"]+=len(ready_group)
         if dry: db.rollback()
         else: db.commit()
         print("MODE:", "DRY RUN" if dry else "APPLIED")
