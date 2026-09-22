@@ -374,6 +374,36 @@ def main():
             bucket["blocks"].append(block)
             stats["posted_blocks"]+=1
             stats["posted_lines"]+=len(invoice_lines)
+        if not dry:
+            svc=SupplierInvoiceService(db)
+            for key,bucket in pending_invoices.items():
+                supplier=bucket["supplier"]; bu=bucket["bu"]; dept=bucket["dept"]; loc=bucket["loc"]
+                source_blocks=bucket["blocks"]
+                invoice_number=("HIST-RESIPING-SUHARTI" if key[0]=="SUHARTI-CONSOLIDATED" else f"HIST-RESIPING-{source_blocks[0]['row']}")
+                existing=db.query(SupplierInvoice).filter(SupplierInvoice.supplier_id==supplier.id,func.lower(SupplierInvoice.supplier_invoice_number)==invoice_number.lower()).first()
+                if existing:
+                    continue
+                inv_date=next((b["invoice_date"] for b in source_blocks if b["invoice_date"]),None) or min(bucket["dates"])
+                lines=bucket["lines"]
+                subtotal=sum((Decimal(line.quantity)*Decimal(line.unit_price) for line in lines),ZERO)
+                tax_amount=ZERO
+                total_amount=None
+                source_row=source_blocks[0]["row"]
+                if normalize(supplier.name) in {"PT SUKANDA DJAYA","SUKANDA DJAYA"} and source_row in SUKANDA_INVOICE_OVERRIDES:
+                    expected_subtotal,tax_amount,total_amount=SUKANDA_INVOICE_OVERRIDES[source_row]
+                    if subtotal != expected_subtotal:
+                        raise RuntimeError(f"Sukanda row {source_row} subtotal mismatch: workbook={subtotal} evidence={expected_subtotal}")
+                inv=svc.create(SupplierInvoiceInput(
+                    supplier_invoice_number=invoice_number,supplier_id=supplier.id,
+                    invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
+                    goods_receipt_id=None,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,
+                    currency="IDR",discount_amount=ZERO,tax_amount=tax_amount,withholding_tax_amount=ZERO,total_amount=total_amount,
+                    notes="RESIPING historical import rows "+",".join(str(b["row"]) for b in source_blocks),
+                    source_type="HISTORICAL_IMPORT",lines=lines),user)
+                inv=svc.verify(inv,user)
+                if journals is not None:
+                    j=svc.generate_journal(inv,user)
+                    if j.status=="DRAFT": journals.post(j.id,db,user)
         if dry: db.rollback()
         else: db.commit()
         print("MODE:", "DRY RUN" if dry else "APPLIED")
