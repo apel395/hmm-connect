@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
-from app.models.goods_receipt import GoodsReceipt
+from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.purchase_order import PurchaseOrder
@@ -159,29 +159,54 @@ class SupplierInvoiceService:
 
         return purchase_order.location_id if purchase_order else None
 
+    def _receipts_for_line_ids(self, line_ids) -> list[GoodsReceipt]:
+        ids={int(x) for x in line_ids if x}
+        if not ids:
+            return []
+        items=self.db.query(GoodsReceiptItem).filter(GoodsReceiptItem.id.in_(ids)).all()
+        if len(items) != len(ids):
+            raise HTTPException(400, "One or more invoice receipt lines do not exist")
+        receipt_ids={item.goods_receipt_id for item in items}
+        return self.db.query(GoodsReceipt).filter(GoodsReceipt.id.in_(receipt_ids)).all()
+
+    def _invoice_receipts(self, invoice: SupplierInvoice) -> list[GoodsReceipt]:
+        ids={line.goods_receipt_item_id for line in invoice.lines if line.goods_receipt_item_id}
+        receipts=self._receipts_for_line_ids(ids)
+        if invoice.goods_receipt_id and all(r.id != invoice.goods_receipt_id for r in receipts):
+            receipt=self.db.get(GoodsReceipt, invoice.goods_receipt_id)
+            if receipt:
+                receipts.append(receipt)
+        return receipts
+
+    @staticmethod
+    def _validate_receipt_set(receipts, supplier_id, business_unit_id, location_id, department_id):
+        for receipt in receipts:
+            if receipt.status != "POSTED":
+                raise HTTPException(409, "Supplier invoice can only use posted receipts")
+            source_supplier_id=receipt.supplier_id or (receipt.purchase_order.supplier_id if receipt.purchase_order else None)
+            if source_supplier_id and source_supplier_id != supplier_id:
+                raise HTTPException(400, "All receipt lines on an invoice must belong to the same supplier")
+            if receipt.business_unit_id != business_unit_id or receipt.location_id != location_id or receipt.department_id != department_id:
+                raise HTTPException(409, "All receipt lines on an invoice must share Business Unit, Location, and Department")
+
     def _ensure_invoice_location(self, invoice: SupplierInvoice) -> int:
-        """Repair a uniquely resolvable legacy location, otherwise block finance actions."""
-        purchase_order = invoice.purchase_order
-        receipt = invoice.goods_receipt
-        resolved = self._source_location_id(receipt, purchase_order)
-
+        """Resolve invoice location from its header receipt or line-level receipts."""
+        purchase_order=invoice.purchase_order
+        receipt=invoice.goods_receipt
+        receipts=self._invoice_receipts(invoice)
+        resolved=self._source_location_id(receipt, purchase_order)
+        if resolved is None and receipts:
+            locations={self._source_location_id(r, r.purchase_order) for r in receipts}
+            if len(locations) != 1:
+                raise HTTPException(409, "Supplier invoice receipt lines span multiple locations")
+            resolved=locations.pop()
         if resolved is None:
-            raise HTTPException(
-                409,
-                "Supplier invoice has no resolvable work location. Repair its source transaction before finance processing.",
-            )
-
+            raise HTTPException(409, "Supplier invoice has no resolvable work location. Repair its source transaction before finance processing.")
         if invoice.location_id is not None and invoice.location_id != resolved:
-            raise HTTPException(
-                409,
-                "Supplier invoice location does not match its source transaction",
-            )
-
-        invoice.location_id = resolved
-        if receipt and receipt.location_id is None:
-            receipt.location_id = resolved
-        if purchase_order and purchase_order.location_id is None:
-            purchase_order.location_id = resolved
+            raise HTTPException(409, "Supplier invoice location does not match its source transaction")
+        invoice.location_id=resolved
+        if receipts:
+            self._validate_receipt_set(receipts, invoice.supplier_id, invoice.business_unit_id, resolved, invoice.department_id)
         return resolved
 
     def ensure_location(self, invoice: SupplierInvoice) -> int:
@@ -245,10 +270,15 @@ class SupplierInvoiceService:
             raise HTTPException(400, "Purchase order does not belong to selected supplier")
         if receipt and receipt.purchase_order_id and purchase_order and receipt.purchase_order_id != purchase_order.id:
             raise HTTPException(400, "Receipt does not belong to selected purchase order")
-        if receipt:
-            receipt_item_ids = {item.id for item in receipt.items}
-            if any(line.goods_receipt_item_id and line.goods_receipt_item_id not in receipt_item_ids for line in data.lines):
-                raise HTTPException(400, "Invoice line does not belong to selected receipt")
+        line_receipts=self._receipts_for_line_ids(line.goods_receipt_item_id for line in data.lines)
+        if line_receipts:
+            self._validate_receipt_set(
+                line_receipts, data.supplier_id, data.business_unit_id, data.location_id, data.department_id
+            )
+            if receipt and any(r.id != receipt.id for r in line_receipts):
+                # Multiple receipts are represented by line-level receipt links;
+                # the legacy single header FK must not misrepresent the source.
+                data.goods_receipt_id=None
 
         subtotal = sum((Decimal(line.quantity) * Decimal(line.unit_price) for line in data.lines), ZERO)
         tax_amount = sum((Decimal(line.tax_amount or 0) for line in data.lines), ZERO)
@@ -271,7 +301,8 @@ class SupplierInvoiceService:
         return Decimal(query.scalar() or 0)
 
     def match_summary(self, invoice: SupplierInvoice) -> dict:
-        if not invoice.goods_receipt_id:
+        linked_receipts=self._invoice_receipts(invoice)
+        if not invoice.goods_receipt_id and not linked_receipts:
             return {
                 "status": "NOT_APPLICABLE",
                 "can_verify": True,
@@ -284,21 +315,23 @@ class SupplierInvoiceService:
             }
 
         receipt = invoice.goods_receipt
+        receipts=linked_receipts or ([receipt] if receipt else [])
         purchase_order = invoice.purchase_order or (receipt.purchase_order if receipt else None)
         issues: list[str] = []
         line_results = []
-        supplier_match = bool(
-            receipt
-            and invoice.supplier_id == (receipt.supplier_id or (receipt.purchase_order.supplier_id if receipt.purchase_order else None))
-            and (not purchase_order or invoice.supplier_id == purchase_order.supplier_id)
+        supplier_match=bool(receipts) and all(
+            invoice.supplier_id == (r.supplier_id or (r.purchase_order.supplier_id if r.purchase_order else None))
+            for r in receipts
         )
         if not supplier_match:
-            issues.append("Supplier does not match the receipt/purchase order.")
-        if not receipt or receipt.status != "POSTED":
-            issues.append("Goods receipt must be posted before invoice verification.")
+            issues.append("Supplier does not match one or more receipts.")
+        if any(r.status != "POSTED" for r in receipts):
+            issues.append("All goods receipts must be posted before invoice verification.")
 
-        receipt_items = {item.id: item for item in receipt.items} if receipt else {}
-        po_items = {item.id: item for item in purchase_order.items} if purchase_order else {}
+        receipt_items={item.id:item for r in receipts for item in r.items}
+        po_items={item.id:item for r in receipts if r.purchase_order for item in r.purchase_order.items}
+        if purchase_order:
+            po_items.update({item.id:item for item in purchase_order.items})
 
         for line in invoice.lines:
             receipt_item = receipt_items.get(line.goods_receipt_item_id) if line.goods_receipt_item_id else None
