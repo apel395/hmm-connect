@@ -183,19 +183,29 @@ class DirectCoaService:
             raise HTTPException(409, f"Supplier invoice line requires a debit-balance {label} COA")
 
     def receipt_uses_grni(self, invoice: SupplierInvoice) -> bool:
-        receipt_id = getattr(invoice, "goods_receipt_id", None)
-        if not receipt_id:
+        receipt_ids=set()
+        receipt_id=getattr(invoice, "goods_receipt_id", None)
+        if receipt_id:
+            receipt_ids.add(receipt_id)
+        for line in getattr(invoice, "lines", []) or []:
+            item=getattr(line, "goods_receipt_item_id", None)
+            if item:
+                from app.models.goods_receipt import GoodsReceiptItem
+                receipt_item=self.db.get(GoodsReceiptItem, item)
+                if receipt_item:
+                    receipt_ids.add(receipt_item.goods_receipt_id)
+        if not receipt_ids:
             return False
-        journal = (
+        journal_count=(
             self.db.query(JournalEntry)
             .filter(
                 JournalEntry.reference_type == "GOODS_RECEIPT",
-                JournalEntry.reference_id == receipt_id,
+                JournalEntry.reference_id.in_(receipt_ids),
                 JournalEntry.status != "VOID",
             )
-            .first()
+            .count()
         )
-        return journal is not None
+        return journal_count == len(receipt_ids)
 
     def supplier_invoice_readiness(self, invoice: SupplierInvoice) -> dict:
         """Return every accounting prerequisite without mutating the invoice."""
