@@ -229,6 +229,17 @@ def parse(ws):
                 "qty":qty,"price":price})
     return blocks
 
+SUHARTI_BLOCK_ROWS={14,26,46,67}
+SUKANDA_INVOICE_OVERRIDES={
+    70: (Decimal("2381819"), Decimal("262000"), Decimal("2643819")),
+    83: (Decimal("3035419"), Decimal("333896"), Decimal("3369315")),
+}
+
+def invoice_group_key(block, supplier):
+    if normalize(supplier.name)=="SUHARTI" and block["row"] in SUHARTI_BLOCK_ROWS:
+        return ("SUHARTI-CONSOLIDATED", supplier.id)
+    return ("BLOCK", supplier.id, block["row"])
+
 def main():
     a=args(); dry=not a.apply
     wb=load_workbook(a.workbook,read_only=True,data_only=True)
@@ -240,6 +251,7 @@ def main():
     try:
         user=db.query(User).filter(User.username==a.user).first()
         if not user: raise RuntimeError(f"user {a.user!r} not found")
+        pending_invoices={}
         for n,block in enumerate(blocks,1):
             loc=resolve_location(db,block["location"])
             if not loc:
@@ -353,27 +365,13 @@ def main():
                         unit_price=x["price"],is_taxable=False,tax_rate=ZERO,tax_amount=ZERO,
                         account_id=None,department_id=dept.id))
 
-            # One source supplier block is one reconstructed supplier invoice.
-            # Technical GR splitting must never manufacture extra invoices.
-            invoice_number=f"HIST-RESIPING-{block['row']}"
-            svc=SupplierInvoiceService(db)
-            inv=db.query(SupplierInvoice).filter(
-                SupplierInvoice.supplier_id==supplier.id,
-                func.lower(SupplierInvoice.supplier_invoice_number)==invoice_number.lower(),
-            ).first()
-            if not inv:
-                inv_date=block["invoice_date"] or min(receipt_dates)
-                inv=svc.create(SupplierInvoiceInput(
-                    supplier_invoice_number=invoice_number,supplier_id=supplier.id,
-                    invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
-                    goods_receipt_id=None,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,
-                    currency="IDR",discount_amount=ZERO,tax_amount=ZERO,withholding_tax_amount=ZERO,
-                    notes=f"RESIPING historical import rows from {block['row']}",source_type="HISTORICAL_IMPORT",
-                    lines=invoice_lines),user)
-                inv=svc.verify(inv,user)
-                if journals is not None:
-                    j=svc.generate_journal(inv,user)
-                    if j.status=="DRAFT": journals.post(j.id,db,user)
+            key=invoice_group_key(block,supplier)
+            bucket=pending_invoices.setdefault(key,{"supplier":supplier,"bu":bu,"dept":dept,"loc":loc,"lines":[],"dates":[],"blocks":[]})
+            if (bucket["bu"].id,bucket["dept"].id,bucket["loc"].id)!=(bu.id,dept.id,loc.id):
+                raise RuntimeError(f"Invoice group {key} spans organization dimensions")
+            bucket["lines"].extend(invoice_lines)
+            bucket["dates"].extend(receipt_dates)
+            bucket["blocks"].append(block)
             stats["posted_blocks"]+=1
             stats["posted_lines"]+=len(invoice_lines)
         if dry: db.rollback()
