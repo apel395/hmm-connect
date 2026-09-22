@@ -183,24 +183,48 @@ def resolve_product(db, name, description, uom, occupied, cache, stats):
     db.add(p); db.flush(); cache[key]=p; stats["products"]+=1
     return p
 
+def parse_source_date(v):
+    d=as_date(v)
+    if d:
+        return d
+    raw=text(v).upper()
+    if not raw:
+        return None
+    months={
+        "JANUARY":1,"JANUARI":1,"FEBRUARY":2,"FEBRUARI":2,"MARCH":3,"MARET":3,
+        "APRIL":4,"MAY":5,"MEI":5,"JUNE":6,"JUNI":6,"JULY":7,"JULI":7,
+        "AUGUST":8,"AGUSTUS":8,"SEPTEMBER":9,"SEPTEMBER":9,"OCTOBER":10,"OKTOBER":10,
+        "NOVEMBER":11,"NOVEMBER":11,"DECEMBER":12,"DESEMBER":12,
+    }
+    m=re.search(r"(\\d{1,2})(?:\\s*-\\s*\\d{1,2})?\\s+([A-Z]+)\\s+(20\\d{2})",raw)
+    if not m:
+        return None
+    day=int(m.group(1)); month=months.get(m.group(2)); year=int(m.group(3))
+    if not month:
+        return None
+    try:
+        return date(year,month,day)
+    except ValueError:
+        return None
+
 def parse(ws):
     blocks=[]; current=None
     for row_no,row in enumerate(ws.iter_rows(min_row=2,values_only=True),start=2):
         a,b,c,d,e,f,g,h,i,_,tax,total=(list(row)+[None]*12)[:12]
+        source_date=parse_source_date(a)
         if b:
             current={"row":row_no,"supplier":text(b),"location":text(c),
-                     "header_date":as_date(a),"invoice_date":as_date(i),"items":[]}
+                     "header_date":source_date,"invoice_date":as_date(i),"items":[]}
             blocks.append(current)
-        if current is None: continue
+        if current is None:
+            continue
+        if source_date:
+            current["header_date"]=source_date
         item_name=text(d)
         description=text(e)
         qty=dec(g); price=dec(h)
-        row_date=as_date(a)
-        if row_date:
-            current["header_date"]=row_date
-        # A detail row has an item identity and at least qty/price evidence.
         if (item_name or description) and (qty is not None or price is not None):
-            current["items"].append({"row":row_no,"date":row_date or current["header_date"],
+            current["items"].append({"row":row_no,"date":source_date or current["header_date"],
                 "name":item_name or description,"description":description,"uom":text(f),
                 "qty":qty,"price":price})
     return blocks
@@ -241,8 +265,8 @@ def main():
                 if x["qty"] is None or x["qty"]<=0: blocked.append((x["row"],"QTY",x["name"])); continue
                 if x["price"] is None or x["price"]<=0: blocked.append((x["row"],"PRICE",x["name"])); continue
                 # Laundry is service expense and PC is a fixed asset; do not create stock GR for them.
-                upper=x["name"].upper()
-                if "LAUNDRY" in upper or "PC RAKITAN" in upper:
+                upper=(x["name"]+" "+x["description"]).upper()
+                if "LAUNDRY" in upper or "PC RAKITAN" in upper or "INTEL I5-4590" in upper:
                     blocked.append((x["row"],"DIRECT_INVOICE_REQUIRED",x["name"])); continue
                 p=resolve_product(db,x["name"],x["description"],x["uom"],occupied,product_cache,stats)
                 ready.append((x,p))
