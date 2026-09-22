@@ -261,13 +261,15 @@ def main():
 
             ready=[]
             for x in block["items"]:
-                if not x["date"]: blocked.append((x["row"],"DATE",x["name"])); continue
-                if x["qty"] is None or x["qty"]<=0: blocked.append((x["row"],"QTY",x["name"])); continue
-                if x["price"] is None or x["price"]<=0: blocked.append((x["row"],"PRICE",x["name"])); continue
-                # Laundry is service expense and PC is a fixed asset; do not create stock GR for them.
+                # Laundry is service expense and PC is a fixed asset; classify
+                # these before receipt-date validation because they never belong
+                # in an inventory Goods Receipt.
                 upper=(x["name"]+" "+x["description"]).upper()
                 if "LAUNDRY" in upper or "PC RAKITAN" in upper or "INTEL I5-4590" in upper:
                     blocked.append((x["row"],"DIRECT_INVOICE_REQUIRED",x["name"])); continue
+                if not x["date"]: blocked.append((x["row"],"DATE",x["name"])); continue
+                if x["qty"] is None or x["qty"]<=0: blocked.append((x["row"],"QTY",x["name"])); continue
+                if x["price"] is None or x["price"]<=0: blocked.append((x["row"],"PRICE",x["name"])); continue
                 p=resolve_product(db,x["name"],x["description"],x["uom"],occupied,product_cache,stats)
                 ready.append((x,p))
             if not ready: continue
