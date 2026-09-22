@@ -97,7 +97,10 @@ def _sync_supplier_invoice_balance(session, _flush_context, _instances):
                     status_code=409,
                     detail="Supplier invoice contains PPN but supplier is not marked as PKP",
                 )
-            if not invoice.tax_invoice_number or not invoice.tax_invoice_date:
+            if (
+                invoice.source_type != "HISTORICAL_IMPORT"
+                and (not invoice.tax_invoice_number or not invoice.tax_invoice_date)
+            ):
                 raise HTTPException(
                     status_code=409,
                     detail="Tax invoice number and tax invoice date are required before verifying an invoice with PPN",
