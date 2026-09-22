@@ -21,7 +21,7 @@ from pathlib import Path
 os.environ.setdefault("SECRET_KEY", "resiping-historical-seed-local-0123456789abcdef")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import func
+from sqlalchemy import func, text as sql_text
 
 from app.core.database import SessionLocal
 from app.models.business_unit import BusinessUnit
@@ -64,7 +64,8 @@ def args():
     p=argparse.ArgumentParser()
     p.add_argument("--workbook", required=True)
     p.add_argument("--user", default="admin")
-    p.add_argument("--department-code", default="WAREHOUSE")
+    p.add_argument("--department-code", default=None,
+                   help="Optional override. Default resolves a department linked to each location.")
     p.add_argument("--warehouse-code", default=None)
     p.add_argument("--apply", action="store_true")
     return p.parse_args()
@@ -97,10 +98,55 @@ def product_accounts(db, cls):
 
 def resolve_location(db, raw):
     key=text(raw).upper()
-    aliases={"RUMBAI":"RUMBAI","MINAS":"MINAS","DURI":"DURI","NKL":"NKL","BSP PEDADA":"PEDADA","HEAD OFFICE":"HEAD OFFICE"}
-    needle=aliases.get(key,key)
-    return db.query(Location).filter(func.upper(Location.name).contains(needle)).first() or \
-           db.query(Location).filter(func.upper(Location.code)==needle).first()
+    # Historical source aliases. BSP PEDADA was a source-label mistake; the real
+    # production site is Zamped/Zamrud (location id 4 / code 003).
+    aliases={
+        "DURI": ("name", "DURI"),
+        "MINAS": ("code", "MINAS"),
+        "HEAD OFFICE": ("name", "PEKANBARU"),
+        "BSP PEDADA": ("name", "ZAMPED"),
+        "PEDADA": ("name", "ZAMPED"),
+    }
+    if key in aliases:
+        field, value=aliases[key]
+        col=Location.code if field=="code" else Location.name
+        return db.query(Location).filter(func.upper(col)==value).first()
+    # Do not guess unresolved historical sites such as RUMBAI/NKL.
+    return db.query(Location).filter(func.upper(Location.name)==key).first() or \
+           db.query(Location).filter(func.upper(Location.code)==key).first()
+
+def resolve_department(db, location, override_code=None):
+    if override_code:
+        dept=db.query(Department).filter(
+            Department.code==override_code,
+            Department.business_unit_id==location.business_unit_id,
+            Department.is_active.is_(True),
+        ).first()
+        return dept
+
+    linked_ids=[
+        row[0] for row in db.execute(
+            sql_text("SELECT department_id FROM location_departments WHERE location_id=:location_id"),
+            {"location_id": location.id},
+        ).all()
+    ]
+    if not linked_ids:
+        return None
+
+    # Project Catering locations use operational department first. Head Office
+    # uses Head Office when linked; otherwise fall back to the first active,
+    # explicitly linked department.
+    preferred=["02","01","OPR"] if location.location_type=="HEAD_OFFICE" else ["01","OPR","02","03"]
+    departments=db.query(Department).filter(
+        Department.id.in_(linked_ids),
+        Department.business_unit_id==location.business_unit_id,
+        Department.is_active.is_(True),
+    ).all()
+    by_code={d.code:d for d in departments}
+    for code in preferred:
+        if code in by_code:
+            return by_code[code]
+    return sorted(departments,key=lambda d:d.id)[0] if departments else None
 
 def resolve_supplier(db, raw, cache, stats):
     key=supplier_key(raw)
@@ -163,8 +209,6 @@ def main():
     try:
         user=db.query(User).filter(User.username==a.user).first()
         if not user: raise RuntimeError(f"user {a.user!r} not found")
-        dept=db.query(Department).filter(Department.code==a.department_code).first()
-        if not dept: raise RuntimeError(f"department {a.department_code!r} not found")
         for n,block in enumerate(blocks,1):
             loc=resolve_location(db,block["location"])
             if not loc:
@@ -172,6 +216,9 @@ def main():
             bu=db.get(BusinessUnit,loc.business_unit_id) if loc.business_unit_id else None
             if not bu:
                 blocked.append((block["row"],"BUSINESS_UNIT",block["location"])); continue
+            dept=resolve_department(db,loc,a.department_code)
+            if not dept:
+                blocked.append((block["row"],"DEPARTMENT",f"{block['location']} / location_id={loc.id}")); continue
             supplier=resolve_supplier(db,block["supplier"],supplier_cache,stats)
             warehouse=None
             if a.warehouse_code:
