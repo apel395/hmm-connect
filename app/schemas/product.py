@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-TaxCategory = Literal["STANDARD", "EXEMPT", "NON_VAT", "SPECIAL", "REVIEW_REQUIRED"]
+TaxCategory = Literal["STANDARD", "EXEMPT", "NON_TAXABLE", "SPECIAL", "REVIEW_REQUIRED"]
 InventoryTreatment = Literal["STOCK", "DIRECT_USE", "FIXED_ASSET", "NON_STOCK", "REVIEW_REQUIRED"]
 
 
@@ -39,7 +39,7 @@ class ProductCreate(BaseModel):
     def validate_tax_profile(self):
         if not self.is_taxable:
             self.tax_rate = Decimal("0")
-        if self.tax_category in {"EXEMPT", "NON_VAT", "REVIEW_REQUIRED"}:
+        if self.tax_category in {"EXEMPT", "NON_TAXABLE", "REVIEW_REQUIRED"}:
             self.is_taxable = False
             self.tax_rate = Decimal("0")
         return self
@@ -82,7 +82,7 @@ class ProductTaxProfileUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validate_tax_profile(self):
-        if self.tax_category in {"EXEMPT", "NON_VAT", "REVIEW_REQUIRED"}:
+        if self.tax_category in {"EXEMPT", "NON_TAXABLE", "REVIEW_REQUIRED"}:
             self.is_taxable = False
             self.tax_rate = Decimal("0")
             return self
