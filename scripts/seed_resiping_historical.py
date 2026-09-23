@@ -500,11 +500,11 @@ def main():
             # Detect legacy split invoices before touching this group. TOTAL
             # INVOICE now means one SI, so old per-block SIs must not survive.
             canonical_invoice_number=(
-                "HIST-RESIPING-SUHARTI"
+                "HIST-INVOICE-SUHARTI"
                 if supplier_key(first["supplier"])=="SUHARTI" and source_row==14
-                else f"HIST-RESIPING-{source_row}"
+                else f"HIST-INVOICE-{source_row}"
             )
-            legacy_numbers={f"HIST-RESIPING-{b['row']}" for b in source_blocks}
+            legacy_numbers={f"HIST-INVOICE-{b['row']}" for b in source_blocks}
             legacy_numbers.add(canonical_invoice_number)
             existing_rows=db.query(SupplierInvoice).filter(
                 SupplierInvoice.supplier_id==supplier.id,
@@ -649,7 +649,7 @@ def main():
 
                 for group_no,ready_group in enumerate(receipt_groups,1):
                     receipt_date=min(x["date"] for x,_ in ready_group)
-                    ext=f"RESIPING-{block['row']}-{supplier.id}-{loc.id}-{group_no}"
+                    ext=f"HIST-RECEIVING-{block['row']}-{supplier.id}-{loc.id}-{group_no}"
                     gr=db.query(GoodsReceipt).filter(GoodsReceipt.external_reference==ext).first()
                     if not gr:
                         gr=GoodsReceiptService.create(
@@ -666,7 +666,7 @@ def main():
                                 external_reference=ext,
                                 destination_type="WAREHOUSE",
                                 warehouse_id=warehouse.id,
-                                notes=f"RESIPING historical import invoice row {source_row}; source block {block['row']}",
+                                notes=f"Historical receiving import invoice row {source_row}; source block {block['row']}",
                                 items=[
                                     GoodsReceiptItemCreate(
                                         product_id=p.id,
@@ -770,7 +770,7 @@ def main():
                     tax_amount=invoice_tax,
                     withholding_tax_amount=ZERO,
                     total_amount=invoice_total,
-                    notes="RESIPING historical import; TOTAL INVOICE row "
+                    notes="Historical receiving import; TOTAL INVOICE row "
                           f"{source_row}; source blocks "
                           + ",".join(str(b["row"]) for b in source_blocks),
                     source_type="HISTORICAL_IMPORT",
