@@ -1,45 +1,145 @@
 # HMM Connect ERP
 
-HMM Connect is an ERP prototype focused on controlled purchasing, document traceability, inventory, finance, and auditability.
+HMM Connect is the operational ERP for Hotel Mutiara Merdeka and Project Catering. The system covers purchasing, receiving, inventory, POS, finance, fiscal reporting, administration, approvals, and audit traceability.
 
-This project is currently in **trial / pre-production mode**. The source-of-truth workflow is temporarily distributed as a project snapshot while the company evaluates the system.
+This README is the **current module snapshot**. Keep it updated when a module, workflow, permission, or accounting rule changes so the next maintenance/fix session starts from the same picture.
 
-## Business flow
+## Repository / deployment
 
-```text
-User
-  ↓
-Purchase Requisition (PR)
-  ↓
-Configurable approval layers
-  ↓
-Approved PR
-  ↓
-Purchase Order (PO)
-  ↓
-Configurable approval layers
-  ↓
-Approved PO
-  ↓
-Goods Receipt
-  ├── Inventory
-  └── Direct Consumption
+- Frontend source and Vercel deployment branch: `main`
+- Backend / Lambda source branch: `backend`
+- Production frontend: `https://connect.mutiaramerdekahotel.com`
+- Backend: FastAPI + SQLAlchemy + PostgreSQL
+- Frontend: React + Vite + React Router + TanStack Query
+
+Frontend:
+
+```bash
+npm install
+npm run lint
+npm run build
 ```
 
-## Procurement flow
+Backend migrations:
 
-### 1. Purchase Requisition (PR)
+```bash
+alembic upgrade head
+```
 
-A requester creates a PR with:
+## Access model
 
-- Product
-- Quantity
-- Estimated price
-- Notes
+Access is permission-based with role fallbacks for legacy mappings.
 
-The estimated price is an **estimate only**. It is not the final purchasing cost.
+Core roles currently include:
 
-PR lifecycle:
+- `SYSTEM_ADMINISTRATOR`
+- `GENERAL_MANAGER`
+- `GENERAL MANAGER`
+- `PURCHASING`
+- `HO PURCHASING`
+- `WAREHOUSE`
+- `STORE`
+- `CHEF`
+- `PM/CAMP BOSS`
+- `FINANCE`
+- `AP`
+- `DEPARTMENT`
+- `AUDITOR`
+- `VIEWER`
+
+The `AP` role is intentionally restricted to the Accounts Payable workspace and AP-related permissions.
+
+There are **no documented default/trial users or passwords** in this repository. User accounts are managed from Administration > Users.
+
+## Module snapshot
+
+### Dashboard
+
+Route: `/dashboard`
+
+Purpose:
+
+- operational overview
+- role/permission-aware entry point
+- summary metrics from purchasing, inventory, and finance
+
+Permission: `dashboard.view`
+
+### Approval Center
+
+Route: `/approval-center`
+
+Purpose:
+
+- centralized approval queue
+- PR / Market List / PO / Receiving and other configured approval workflows
+- ordered workflow steps with role, department, and location scope
+- approval history remains attached to the document
+
+Permission: `approval.view`
+
+Approval configuration is data-driven rather than hardcoded into each module.
+
+### Master Data
+
+#### Items
+
+Route: `/products`
+
+Purpose:
+
+- product/item master
+- classification and accounting defaults used by purchasing, receiving, inventory, and finance
+- active/inactive lifecycle
+
+Permission: `products.view`
+
+#### Suppliers
+
+Route: `/suppliers`
+
+Purpose:
+
+- supplier master
+- supplier banking and payable information
+- used by PO, supplier invoice, AP, payment voucher, and payment flows
+
+Permission: `suppliers.view`
+
+#### Warehouses
+
+Route: `/warehouses`
+
+Purpose:
+
+- warehouse master
+- warehouse-to-location mapping
+- stock ownership / storage context
+
+Permission: `warehouse.view`
+
+#### Business Units / Departments / Locations
+
+Routes:
+
+- `/organization-dimensions?section=business-units`
+- `/organization-dimensions?section=departments`
+- `/organization-dimensions?section=locations`
+
+Purpose:
+
+- organizational dimensions used by workflow, inventory, journals, reports, and audit context
+- location is the main operational scope dimension
+
+Administration permission: `admin.settings.manage`
+
+### Purchasing
+
+#### Purchase Requisition
+
+Route: `/purchase-requisitions`
+
+Core flow:
 
 ```text
 DRAFT
@@ -47,100 +147,469 @@ DRAFT
 PENDING_APPROVAL
   ↓
 APPROVED
-```
-
-A PR can also be rejected.
-
-### 2. Layered PR approval
-
-Approval is **not hardcoded as `Section → Manager` in application code**.
-
-The workflow is configurable:
-
-```text
-PR_APPROVAL
-  1. Section Approval
-  2. Manager Approval
-```
-
-Each approval step can be configured by:
-
-- Role
-- Department (optional)
-- Location (optional)
-
-Example:
-
-```text
-Step 1
-Role: SECTION_APPROVER
-Department: Operations
-
-Step 2
-Role: MANAGER
-```
-
-A workflow can be changed without changing the PR business logic.
-
-### 3. Purchase Order (PO)
-
-A PO can combine **multiple approved PRs**.
-
-```text
-PR-000001 ─┐
-            ├── PO-000001
-PR-000002 ─┘
-```
-
-PO stores:
-
-- Supplier
-- PO items
-- Final unit price
-- Expected date
-- Expiry date
-- Receipt tolerance
-
-The PO price is separate from the PR estimated price.
-
-### 4. Layered PO approval
-
-Default trial workflow:
-
-```text
-PO_APPROVAL
-  1. Section Approval
-  2. Manager Approval
-  3. Finance Approval
-```
-
-The same configurable approval engine is used for PR and PO.
-
-### 5. Goods Receipt
-
-A PO is received only after approval.
-
-```text
-Approved PO
   ↓
+Convert to PO
+```
+
+Purpose:
+
+- request product/service demand
+- estimated price only; final purchasing cost belongs to the PO
+- configurable approval workflow
+
+Permission family: `pr.*`
+
+#### Market List
+
+Route: `/market-lists`
+
+Purpose:
+
+- operational purchasing requests
+- approval flow separate from PR where required
+
+Permission family: `market_list.*`
+
+#### Purchase Order
+
+Route: `/purchase-orders`
+
+Purpose:
+
+- supplier commitment
+- may combine approved requisitions
+- final unit price
+- expected / expiry dates
+- receipt tolerance
+- approval workflow
+
+Permission family: `po.*`
+
+#### Receiving
+
+Route: `/receiving`
+
+Core accounting flow for warehouse receiving:
+
+```text
 Goods Receipt
+Dr Inventory / Expense
+Cr AP Suspense
 ```
 
-The receiving user chooses the destination:
+Purpose:
+
+- PO-based and supported direct receiving
+- warehouse or direct-use destination
+- quantity and cost evidence
+- creates stock movement
+- creates accounting journal for posted receipt
+
+Permission family: `receiving.*`
+
+### Inventory
+
+#### Stock
+
+Route: `/inventory`
+
+Purpose:
+
+- on-hand quantity by product / warehouse
+- average cost state
+
+Permission: `inventory.view`
+
+#### Stock Movement
+
+Route: `/inventory/movements`
+
+Purpose:
+
+- movement history
+- links to receipts and operational documents
+- quantity / unit cost evidence
+
+Permission: `inventory.view`
+
+#### Store Request
+
+Route: `/store-requests`
+
+Purpose:
+
+- internal stock request / issue workflow
+
+Permission: `store_request.view`
+
+#### Stock Opname
+
+Route: `/stock-opnames`
+
+Purpose:
+
+- physical stock count
+- variance handling and audit trail
+
+Permission: `stock_opname.view`
+
+#### Stock Adjustment
+
+Route: `/stock-adjustments`
+
+Purpose:
+
+- controlled stock correction
+- adjustment history
+
+Permission: `inventory.view`
+
+### Point of Sales
+
+#### Register
+
+Route: `/pos`
+
+Purpose:
+
+- point-of-sale transaction entry
+
+Permission: `pos.view`
+
+#### Sales
+
+Route: `/pos/sales`
+
+Purpose:
+
+- sales transaction history / review
+
+Permission: `pos.view`
+
+### Finance
+
+#### Finance Dashboard
+
+Route: `/finance-dashboard`
+
+Purpose:
+
+- finance operational summary
+
+Permission: `finance.view`
+
+#### Accounts Payable workspace
+
+Route: `/accounts-payable`
+
+The AP workspace contains the payable flow in this order:
 
 ```text
-Inventory
+Supplier Invoice
+      ↓
+Payment Voucher   (preferred, not mandatory)
+      ↓
+Payment
+      ↓
+Journal
+      ↓
+Bank / GL
 ```
 
-or
+Direct payment without a Payment Voucher remains supported.
+
+Permission: `ap.view`
+
+##### Supplier Invoice
+
+Main behavior:
+
+- supplier invoice can be sourced from one or multiple Goods Receipts
+- supplier filter supports supplier name search
+- posting clears AP Suspense / GRNI and creates AP liability
+- VAT / tax lines are supported
+- invoice balances drive payment eligibility
+
+Accounting:
 
 ```text
-Direct Consumption
+Dr AP Suspense / GRNI
+Dr Input VAT / variance when applicable
+Cr Accounts Payable
 ```
 
-Receipt cost is derived from the PO and is not manually changed during receiving.
+Permission family: `supplier_invoice.*`
 
-The PO receipt tolerance controls how much quantity variance is allowed.
+##### Payment Voucher
+
+Purpose:
+
+- internal AP payment approval / preparation document
+- preferred workflow before payment
+- does **not** itself create GL entries
+- payment may still be created directly without a voucher
+
+Permission family: `payment.*`
+
+##### Payment
+
+Purpose:
+
+- allocate payment to posted supplier invoices
+- funding source must be a valid active payment-enabled bank/cash account
+- approval creates/prepares the payment journal
+- final accounting comes from the posted journal
+
+Accounting:
+
+```text
+Dr Accounts Payable
+Cr Bank / Cash
+```
+
+Print document label is **Payment**, not Payment Request.
+
+Permission family: `payment.*`
+
+#### Accounts Receivable
+
+Route: `/accounts-receivable`
+
+Purpose:
+
+- receivable monitoring and finance operations
+
+Permission: `finance.view`
+
+#### Cash & Bank
+
+Route: `/cash-bank`
+
+Purpose:
+
+- cash / bank operational view
+- funding account integration
+
+Bank Accounts are configured in Finance Setup and linked to posting COAs with subtype:
+
+- `BANK`
+- `CASH`
+- `PETTY_CASH`
+
+A funding account must be active and `is_payment_account = true`.
+
+#### Journal
+
+Route: `/journal`
+
+Sub-workspaces include:
+
+- Journal
+- General Ledger
+- Trial Balance
+
+General Ledger account filter is searchable by account code or account name and loads all active accounts.
+
+Trial Balance calculation:
+
+```text
+Opening Balance = all POSTED journal activity before date_from
+Period Movement = POSTED activity from date_from through date_to
+Closing Balance = Opening + Period Movement
+```
+
+Only posted journals affect financial statements and ledger reports.
+
+AP Suspense is expected to clear when the receipt and supplier-invoice sides are complete:
+
+```text
+Receipt:
+Dr Inventory / Expense
+Cr AP Suspense
+
+Supplier Invoice:
+Dr AP Suspense
+Cr Accounts Payable
+```
+
+Permission: `journal.view`
+
+#### Accounting Periods
+
+Route: `/finance-setup/accounting-periods`
+
+Purpose:
+
+- fiscal/accounting posting controls
+- initialize fiscal year
+- close / reopen periods
+- Finance posting-date validation
+
+Current finance rule: an open accounting period permits posting on that period and earlier dates. A date later than every open period is not automatically allowed.
+
+Permission: `finance.manage`
+
+#### Reconciliation
+
+Route: `/financial-reconciliation`
+
+Purpose:
+
+- finance control / reconciliation workflow
+
+Permission: `finance.view`
+
+#### Fixed Assets
+
+Route: `/fixed-assets`
+
+Purpose:
+
+- fixed-asset accounting workflow
+
+Permission: `finance.view`
+
+### Fiscal
+
+#### Fiscal COA
+
+Route: `/finance/fiscal/coa`
+
+Purpose:
+
+- fiscal account mapping
+
+#### Fiscal Reconciliation
+
+Route: `/finance/fiscal/reconciliation`
+
+Purpose:
+
+- fiscal reconciliation workflow
+
+#### Lampiran 1D
+
+Route: `/finance/fiscal/lampiran-1d`
+
+Purpose:
+
+- fiscal reporting output
+
+#### SPT Tahunan 1771
+
+Route: `/finance/fiscal/spt-1771`
+
+Purpose:
+
+- annual corporate tax reporting workflow
+
+Permission family: `fiscal.*`
+
+### Reports
+
+#### Purchasing Reports
+
+Route: `/reports/purchasing`
+
+Permission: `reports.purchasing`
+
+#### Inventory Reports
+
+Route: `/reports/inventory`
+
+Permission: `inventory.view`
+
+#### Cash Flow Statement
+
+Route: `/cash-flow-statement`
+
+Permission: `reports.view`
+
+#### Balance Sheet
+
+Route: `/balance-sheet`
+
+Permission: `reports.view`
+
+#### Profit & Loss
+
+Route: `/profit-loss`
+
+Permission: `reports.view`
+
+Financial reports are based on posted journal activity rather than document status alone.
+
+### Administration
+
+#### Users
+
+Route: `/users`
+
+Purpose:
+
+- create / update users
+- role assignment
+- organizational assignment
+
+Permission: `admin.users.manage`
+
+#### Roles
+
+Route: `/roles`
+
+Purpose:
+
+- role administration
+- permission assignment
+- core-role bootstrap
+
+Permission: `admin.roles.manage`
+
+#### Finance Setup
+
+Route: `/finance-setup`
+
+Purpose includes:
+
+- Chart of Accounts
+- Bank Accounts
+- accounting setup used by Finance
+
+Permission: `finance.manage`
+
+#### System Settings
+
+Route: `/settings`
+
+Permission: `admin.settings.manage`
+
+## Accounting / document flow
+
+The main purchasing-to-payment accounting chain is:
+
+```text
+Purchase Requisition
+        ↓
+Purchase Order
+        ↓
+Goods Receipt
+        ↓
+Inventory / Expense
+        ↓
+AP Suspense
+        ↓
+Supplier Invoice
+        ↓
+Accounts Payable
+        ↓
+Payment Voucher (preferred / optional)
+        ↓
+Payment
+        ↓
+Bank / Cash
+```
+
+Payment Voucher is an internal AP approval document and does not post GL by itself.
 
 ## Approval engine
 
@@ -156,114 +625,71 @@ Approval Request
 Approval Request Steps
 ```
 
-### Workflow definition
+Workflow steps can be scoped by:
 
-Defines the business flow:
+- role
+- department
+- location
 
-```text
-PR_APPROVAL
-PO_APPROVAL
-```
-
-### Workflow steps
-
-Defines the ordered approval layers.
-
-### Approval request
-
-Created when a document is submitted.
-
-The request stores the workflow used by the document.
-
-### Approval request steps
-
-The workflow configuration is copied into the document approval instance.
-
-This is intentional.
-
-If the company changes the workflow next month, an old PR must still show the approval chain that was required when it was submitted.
+The workflow configuration is copied into each approval request so historical approvals preserve the rules that applied when the document was submitted.
 
 ## Audit principle
 
 Audit is a core ERP feature.
 
-Every important action records:
+Important actions preserve actor and document context such as:
 
 ```text
 User
+Actor name
 Department
 Location
 Roles
 Action
 Document
+Workflow
 Timestamp
-Details
+Before / After details
+Source / import batch
 ```
 
-Example:
+Snapshot fields are intentional: changing a user's current department, location, or roles must not rewrite historical audit context.
 
-```text
-Advan
-Purchasing
-Jakarta Office
-PURCHASING
+## Historical-data / reconciliation notes
 
-SUBMITTED PR-000001
-```
+Historical finance reconstruction may be driven from bank evidence, invoice evidence, and receiving evidence, but each accounting event keeps its actual business date.
 
-The user identity context is snapshotted in the audit log. If the user later changes department, location, or role, historical audit records remain correct.
+Rules:
 
-## User / role / department / location
+- Bank statement is authoritative for cash movement.
+- Receiving / physical evidence is authoritative for stock quantity and cost.
+- Bank movement alone must not invent missing receiving quantities.
+- Historical corrections must preserve explicit source references.
+- Missing operational documents should be represented as controlled historical reconstruction, not fabricated live workflow documents.
 
-```text
-User
-  ↓
-Roles
-  ↓
-Department
-  ↓
-Location
-```
+Current known historical work has included:
 
-Location is part of the operational identity context used by audit and approval rules.
-
-## Trial users
-
-| Username | Password | Role |
-|---|---|---|
-| `admin` | `admin123` | ADMIN |
-| `requester` | `requester123` | REQUESTER |
-| `purchasing` | `purchasing123` | PURCHASING |
-| `warehouse` | `warehouse123` | WAREHOUSE |
-| `finance` | `finance123` | FINANCE |
-| `manager` | `manager123` | MANAGER |
-| `section` | `section123` | SECTION_APPROVER |
-
-The default approval workflow also includes `SECTION_APPROVER` as a configurable role. The `section` trial user is included so the layered PR and PO approval flow can be tested immediately.
-
-## Database migration
-
-From the backend directory:
-
-```bash
-alembic upgrade head
-```
-
-The layered approval migration is:
-
-```text
-20260720_approval_workflows
-```
+- January 2026 purchasing / receiving / supplier invoice reconstruction
+- AP Suspense reconciliation
+- supplier invoice tax reconstruction where source evidence exists
+- cash / bank registration from active COA
+- payment and GL reconciliation
 
 ## Seeding supplier invoices from PO workbooks
 
-Monthly PO workbooks (e.g. `PO MINAS Januari 2026.xlsx`, `PO PEDADA Januari 2026.xlsx`) can be loaded end-to-end with:
+Monthly PO workbooks can be loaded end-to-end with:
 
 ```text
-WB: workbook → Goods Receipt → Supplier Invoice → Posted Journal
+Workbook
+  ↓
+Goods Receipt
+  ↓
+Supplier Invoice
+  ↓
+Journal
 ```
 
-Run from the backend directory:
+Example:
 
 ```bash
 python3 scripts/seed_po_minas_receiving_invoice.py \
@@ -274,34 +700,17 @@ python3 scripts/seed_po_minas_receiving_invoice.py \
   --apply
 ```
 
-Omit `--apply` (or pass `--dry-run`) to preview without writing. One summary GR/invoice/PO is created per detail sheet; receipts are direct (no PO link) and destination is `WAREHOUSE` by default (`--destination-type DIRECT_USE` for direct consumption). Invoice due date defaults to PO date + 30 days (`--invoice-terms-days`).
+Omit `--apply` or use the script's dry-run mode when available to preview before writing.
 
-Idempotency: sheets whose `external_reference` already has a GR are skipped by default (`--skip-existing`), so re-running after a partial commit only fills the missing documents. `--verbose` prints per-sheet detail.
+Historical import scripts should be treated as controlled migration/reconciliation tools, not routine live-entry APIs.
 
-Workbook repair: if any sheet cell holds the Excel epoch (`1900-01-24`), repair the workbook first (load with `openpyxl.load_workbook(..., data_only=True)` so cached formula results are preserved, save to a new file) and run the seed against the repaired copy. Repairing without `data_only=True` wipes cached values (qty/amount become `None`).
+## Maintenance rule
 
-## Frontend
+When fixing or extending HMM Connect:
 
-```bash
-npm install
-npm run lint
-npm run build
-```
-
-## Current architecture direction
-
-The project is intentionally moving toward:
-
-```text
-HMM Connect
-    ↓
-GitHub
-    ↓
-develop branch
-    ↓
-Terraform
-    ↓
-Cloud deployment
-```
-
-The current focus is making the ERP comfortable and correct for the company trial before production infrastructure is finalized.
+1. Use the current backend behavior / API contract as the source of truth for frontend changes.
+2. Preserve organization scope: Business Unit, Department, Location.
+3. Preserve auditability and source references.
+4. Never silently bypass closed-document or posted-journal controls.
+5. Prefer batching frontend fixes on a working branch and merging once to `main` to reduce unnecessary Vercel deployments.
+6. Update this README when a module, role, accounting rule, or workflow changes.
