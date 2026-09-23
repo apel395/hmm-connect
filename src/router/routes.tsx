@@ -77,6 +77,7 @@ import StoreRequestPrintPage from "@/modules/warehouse/store-request/StoreReques
 import PutAwayPage from "@/modules/warehouse/put-away/pages/PutAwayPage";
 import StockOpnamePage from "@/modules/warehouse/stock-opname/StockOpnamePage";
 import StockOpnameDetailPage from "@/modules/warehouse/stock-opname/StockOpnameDetailPage";
+import StockOpnamePrintPage from "@/modules/warehouse/stock-opname/StockOpnamePrintPage";
 import StockAdjustmentPage from "@/modules/warehouse/inventory-adjustment/pages/StockAdjustmentPage";
 import PosRegisterPage from "@/modules/pos/pages/PosRegisterPage";
 import PosSalesPage from "@/modules/pos/pages/PosSalesPage";
@@ -261,6 +262,7 @@ const router = createBrowserRouter([
       { path: "store-requests/:id/print", element: <StoreRequestPrintPage /> },
       { path: "stock-opnames", element: <StockOpnamePage /> },
       { path: "stock-opnames/:id", element: <StockOpnameDetailPage /> },
+      { path: "stock-opnames/:id/print", element: <StockOpnamePrintPage /> },
       { path: "put-away", element: <PutAwayPage /> },
       { path: "pos", element: <PermissionGuard permission="pos.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PosRegisterPage /></PermissionGuard> },
       { path: "pos/sales", element: <PermissionGuard permission="pos.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PosSalesPage /></PermissionGuard> },
