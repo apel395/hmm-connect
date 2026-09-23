@@ -114,6 +114,36 @@ SUPPLIER_ALIASES={
     "ROTI JALA DAN REMPEYELK":"ROTI JALA DAN REMPEYEK",
 }
 
+ITEM_ALIASES={
+    "BAKSO IKAN 1 KG":"FISH BALL",
+    "BEEF SAUSAGE 1KG":"BEEF SAUSAGE",
+    "CHICKEN SAUSAGE 1 KG":"CHICKEN SAUSAGE",
+    "CHEESE MOZARELLA {250GR]":"MOZZARELLA CHEESE",
+    "CORN KERNEL 1 KG":"CORN KERNEL",
+    "FRENCH FRIES CRINKLE CUT 1 KG":"FRENCH FRIES CRINKLE CUT",
+    "FRENCH FRIES SHOESTRING 1 GR":"FRENCH FRIES SHOESTRING",
+    "ICE CREAM VANILLA 8 L":"VANILLA ICE CREAM",
+    "ICE CREAM REG. CUP VANILLA 75 ML @24":"VANILLA ICE CREAM CUP",
+    "ICE CREAM REG. CUP VANILLA 75 ML @25":"VANILLA ICE CREAM CUP",
+    "ICE CREAM REG. CUP VANILLA 75 ML @26":"VANILLA ICE CREAM CUP",
+    "MIX VEGETABLE FROZEN 1 KG":"MIXED VEGETABLES FROZEN",
+    "PUFF PASTRY SHEET 750 GR":"PUFF PASTRY SHEET",
+    "BAKSO SAPI HALUS":"BEEF BALL",
+    "BUTTER UNSALTED 200 GR":"UNSALTED BUTTER",
+    "GREEN PEAS 1 KG":"GREEN PEAS",
+    "MAYONNAISE 4L":"MAYONNAISE",
+    "SUSU FULLCREAM 1 LITER @12":"FULL CREAM MILK",
+    "BEEF MINCED":"MINCED BEEF",
+    "ICE CREAM 3 RASA 8 L":"ICE CREAM 3 FLAVORS",
+    "BEEF BALL 1 KG":"BEEF BALL",
+    "DC AIR GALON":"DC AIR GALON",
+    "DC AIR MINERAL 600 ML":"DC AIR MINERAL",
+}
+
+def canonical_item_name(name):
+    key=text(name).upper()
+    return ITEM_ALIASES.get(key,key)
+
 def supplier_key(name):
     n=SUPPLIER_ALIASES.get(text(name).upper(), text(name).upper())
     for prefix in ("PT. ","PT ","CV. ","CV ","UD. ","UD ","TOKO "):
@@ -202,7 +232,7 @@ def resolve_supplier(db, raw, cache, stats):
     return s
 
 def resolve_product(db, name, description, uom, occupied, cache, stats):
-    key=text(name).upper()
+    key=canonical_item_name(name)
     if key in cache: return cache[key]
     p=db.query(Product).filter(func.upper(Product.name)==key).first()
     if p: cache[key]=p; return p
@@ -216,7 +246,8 @@ def resolve_product(db, name, description, uom, occupied, cache, stats):
         conversion=Decimal("1"),cost_price=ZERO,selling_price=ZERO,
         minimum_stock=ZERO,reorder_level=ZERO,maximum_stock=ZERO,lead_time_days=0,
         inventory_account_id=inv,purchase_account_id=pur,cogs_account_id=cogs,
-        tax_category="NON_TAXABLE",is_taxable=False,tax_rate=ZERO,is_active=True)
+        tax_category="NON_TAXABLE",is_taxable=False,tax_rate=ZERO,
+        inventory_treatment="REVIEW_REQUIRED",is_active=True)
     db.add(p); db.flush(); cache[key]=p; stats["products"]+=1
     return p
 
@@ -487,6 +518,7 @@ def main():
             group_blocked=False
             invoice_tax=ZERO
             projected_invoice_subtotal=ZERO
+            source_invoice_subtotal=ZERO
             excluded_rows=set()
             block_ready=[]
             group_receipt_dates=[]
@@ -503,6 +535,11 @@ def main():
                         stats["not_received"]+=1
                         deferred.append((x["row"],"NOT_RECEIVED",x["name"]))
                         continue
+
+                    if x["row"] not in excluded_rows:
+                        source_invoice_subtotal += item_value(x)
+                    else:
+                        stats["received_not_invoiced"]+=1
 
                     if is_direct_invoice_item(x):
                         stats["direct_invoice"]+=1
@@ -547,7 +584,7 @@ def main():
                     block_ready.append((block,ready))
                     group_receipt_dates.extend(x["date"] for x,_ in ready)
 
-            projected_total=projected_invoice_subtotal+invoice_tax
+            projected_total=source_invoice_subtotal+invoice_tax
             variance=invoice_total-projected_total
             if variance < ZERO:
                 blocked.append((
@@ -562,7 +599,7 @@ def main():
                 "supplier":supplier.name,
                 "location":loc.name,
                 "invoice_total":invoice_total,
-                "receiving_subtotal":projected_invoice_subtotal,
+                "receiving_subtotal":source_invoice_subtotal,
                 "tax":invoice_tax,
                 "variance":variance,
                 "excluded_rows":sorted(excluded_rows),
