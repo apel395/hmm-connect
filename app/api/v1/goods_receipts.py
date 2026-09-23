@@ -473,4 +473,9 @@ def get_allowed_actions(receipt_id: int, db: Session = Depends(get_db), user=Dep
 
 @router.get("/{receipt_id}/print")
 def print_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_view_user)):
-    return {**get_receipt(receipt_id, db, user), "document_type": "Receiving Report", **print_metadata(user)}
+    receipt = _scoped_receipt(db, receipt_id, user)
+    payload = get_receipt(receipt_id, db, user)
+    remaining = remaining_items(receipt.purchase_order) if receipt.purchase_order else []
+    payload["is_partial_receipt"] = bool(receipt.purchase_order and remaining)
+    payload["remaining_items"] = remaining
+    return {**payload, "document_type": "Receiving Report", **print_metadata(user)}
