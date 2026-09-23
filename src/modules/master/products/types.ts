@@ -1,4 +1,4 @@
-export type TaxCategory = "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL" | "REVIEW_REQUIRED";
+export type TaxCategory = "STANDARD" | "EXEMPT" | "NON_TAXABLE" | "SPECIAL" | "REVIEW_REQUIRED";
 export type ItemType = "BUY" | "SELL";
 export type InventoryTreatment = "STOCK" | "DIRECT_USE" | "FIXED_ASSET" | "NON_STOCK" | "REVIEW_REQUIRED";
 
