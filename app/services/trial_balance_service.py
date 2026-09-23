@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from math import ceil
 
-from sqlalchemy import func, or_
+from sqlalchemy import exists, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
@@ -93,11 +93,13 @@ class TrialBalanceService:
         if date_from > date_to:
             raise ValueError("date_from must be on or before date_to")
 
-        # Trial Balance reports every posting account with activity. A valid
-        # posting account must not disappear merely because it also has child
-        # accounts in the COA hierarchy (common for imported Cash/Bank trees).
+        # Trial Balance reports only leaf/posting accounts. Parent/header COA
+        # remains in the COA hierarchy but must not appear as a separate row.
+        child = ChartOfAccount.__table__.alias("trial_balance_child")
+        has_child = exists().where(child.c.parent_account_id == ChartOfAccount.id)
         accounts_query = self.db.query(ChartOfAccount).filter(
             ChartOfAccount.is_posting.is_(True),
+            ~has_child,
         )
         if not include_inactive:
             accounts_query = accounts_query.filter(ChartOfAccount.is_active.is_(True))
