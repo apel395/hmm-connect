@@ -316,8 +316,14 @@ def parse(ws):
                 source_date=source_date.replace(year=period_date.year)
             current["header_date"]=source_date
 
-        item_name=text(e) or text(d)
-        description=text(e)
+        d_text=text(d)
+        e_text=text(e)
+        category_headers={"FOOD","DRY GOODS","MONOUSE","BAVERAGE","BEVERAGE","VEGETABLE","FRUITS","FRESH/FROZEN"}
+        if supplier_header and d_text and d_text.upper() not in category_headers and (dec(g) is not None or dec(h) is not None):
+            item_name=d_text
+        else:
+            item_name=e_text or d_text
+        description=e_text
         qty=dec(g)
         price=dec(h)
         if item_name and (qty is not None or price is not None):
