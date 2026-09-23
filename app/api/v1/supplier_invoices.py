@@ -13,6 +13,7 @@ from app.models.goods_receipt import GoodsReceipt
 from app.models.purchase_order import PurchaseOrder
 from app.models.warehouse import Warehouse
 from app.models.location import Location
+from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.services.audit import record_audit
@@ -119,7 +120,12 @@ def listing(
     if location_id:
         query = query.filter(SupplierInvoice.location_id == location_id)
     if search:
-        query = query.filter(or_(SupplierInvoice.internal_invoice_number.ilike(f"%{search}%"), SupplierInvoice.supplier_invoice_number.ilike(f"%{search}%")))
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(
+            SupplierInvoice.internal_invoice_number.ilike(term),
+            SupplierInvoice.supplier_invoice_number.ilike(term),
+            SupplierInvoice.supplier.has(Supplier.name.ilike(term)),
+        ))
     if supplier_id:
         query = query.filter(SupplierInvoice.supplier_id == supplier_id)
     if status:
