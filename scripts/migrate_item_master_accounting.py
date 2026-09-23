@@ -4,9 +4,9 @@ Preview by default. Use --apply to write.
 
 Rules are intentionally conservative:
 - GRESORIS is normalized to GROCERIES.
-- Existing explicit inventory mappings into 100-300-* can be classified STOCK.
+- Existing 100-300-* inventory mappings are reported as STOCK candidates only.
 - Direct-use/non-stock/fixed-asset treatment is NOT guessed from product name/group.
-- Everything else remains REVIEW_REQUIRED for manual review.
+- No existing product is auto-classified; every treatment must be explicitly confirmed.
 """
 from __future__ import annotations
 
@@ -103,11 +103,11 @@ def preview(db):
     print("=== ITEM MASTER MIGRATION PREVIEW ===")
     print(f"GRESORIS product rows : {typo_products}")
     print(f"GRESORIS subgroup rows: {typo_subgroups}")
-    print(f"Safe STOCK candidates : {len(stock_candidates)}")
+    print(f"Possible STOCK candidates: {len(stock_candidates)}")
     print(f"Still needs review     : {len(unresolved)}")
 
     if stock_candidates:
-        print("\n=== SAFE STOCK CANDIDATES ===")
+        print("\n=== POSSIBLE STOCK CANDIDATES (REVIEW ONLY) ===")
         for row in stock_candidates:
             print(
                 f"{row['code']:<16} | {row['name']:<40} | "
@@ -142,25 +142,12 @@ def apply(db):
         WHERE UPPER(TRIM(name)) = 'GRESORIS'
     """))
 
-    stock_result = db.execute(text("""
-        UPDATE products p
-        SET inventory_treatment = 'STOCK'
-        FROM chart_of_accounts coa
-        WHERE coa.id = p.inventory_account_id
-          AND COALESCE(p.inventory_treatment, 'REVIEW_REQUIRED') = 'REVIEW_REQUIRED'
-          AND coa.is_active = TRUE
-          AND coa.is_posting = TRUE
-          AND coa.account_type = 'ASSET'
-          AND coa.normal_balance = 'DEBIT'
-          AND coa.account_number LIKE '100-300-%'
-    """))
-
     db.commit()
     print("\n=== APPLIED ===")
     print(f"Products renamed GRESORIS -> GROCERIES: {product_result.rowcount}")
     print(f"Subgroups renamed GRESORIS -> GROCERIES: {subgroup_result.rowcount}")
-    print(f"Products classified STOCK from explicit 100-300-* mapping: {stock_result.rowcount}")
-    print("All other products remain REVIEW_REQUIRED until explicitly classified.")
+    print("Existing products were NOT auto-classified.")
+    print("All treatments remain REVIEW_REQUIRED until explicitly confirmed in Item Master.")
 
 
 def main():
