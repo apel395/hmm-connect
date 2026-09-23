@@ -186,7 +186,7 @@ export default function ProductPage() {
             <option value="REVIEW_REQUIRED">Tax Review Required</option>
             <option value="STANDARD">Standard PPN</option>
             <option value="EXEMPT">PPN Exempt</option>
-            <option value="NON_VAT">Non PPN</option>
+            <option value="NON_TAXABLE">Non PPN</option>
             <option value="SPECIAL">Special Tax</option>
           </select>
         </div>
