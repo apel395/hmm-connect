@@ -289,6 +289,7 @@ def parse(ws):
                 "supplier":block_supplier,
                 "location":block_location,
                 "header_date":source_date,
+                "period_date":source_date,
                 "invoice_date":as_date(i),
                 "invoice_group_id":active_invoice["id"] if active_invoice else None,
                 "invoice_total":active_invoice["total"] if active_invoice else None,
@@ -302,6 +303,17 @@ def parse(ws):
         if current is None:
             continue
         if source_date:
+            period_date=current.get("period_date")
+            # Correct an obvious source-year typo only when month/day are in the
+            # header period's month (e.g. Suharti Dec-2026 rows under a Dec-2025
+            # period header).  Cross-month anomalies are never guessed.
+            if (
+                period_date
+                and source_date.year != period_date.year
+                and source_date.month == period_date.month
+                and abs(source_date.year-period_date.year) == 1
+            ):
+                source_date=source_date.replace(year=period_date.year)
             current["header_date"]=source_date
 
         item_name=text(e) or text(d)
@@ -330,6 +342,36 @@ def invoice_group_key(block, supplier):
     group_id=block.get("invoice_group_id")
     return ("TOTAL_INVOICE", supplier.id, group_id) if group_id else None
 
+
+DIRECT_INVOICE_KEYWORDS=("LAUNDRY","PC RAKITAN","INTEL I5-4590","GOJEK","UANG SAMPAH","BIAYA ADMIN")
+
+def item_value(item):
+    if item.get("qty") is None or item.get("price") is None:
+        return None
+    return Decimal(item["qty"])*Decimal(item["price"])
+
+def exact_invoice_exclusion_rows(block):
+    """Find a single received line explicitly outside the block invoice total.
+
+    Used only when the source block total + tax proves that one line is not
+    part of that invoice (Sukanda row 94 is the known case).
+    """
+    declared=block.get("declared_block_total")
+    if declared is None:
+        return set()
+    tax=tax_dec(block.get("tax_raw"))
+    valid=[item for item in block["items"] if item_value(item) is not None and item["qty"] > 0 and item["price"] > 0]
+    received=sum((item_value(item) for item in valid),ZERO)
+    target_subtotal=Decimal(declared)-Decimal(tax)
+    excess=received-target_subtotal
+    if excess <= ZERO:
+        return set()
+    matches=[item["row"] for item in valid if item_value(item)==excess]
+    return {matches[0]} if len(matches)==1 else set()
+
+def is_direct_invoice_item(item):
+    upper=(item["name"]+" "+item["description"]).upper()
+    return any(keyword in upper for keyword in DIRECT_INVOICE_KEYWORDS)
 
 def main():
     a=args(); dry=not a.apply
