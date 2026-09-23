@@ -195,6 +195,12 @@ def detail(voucher_id: int, db: Session = Depends(get_db), user=Depends(view_use
     return data
 
 
+@router.get("/{voucher_id}/print")
+def printable(voucher_id: int, db: Session = Depends(get_db), user=Depends(view_user)):
+    data = detail(voucher_id, db, user)
+    return {**data, "document_type": "Payment Voucher", **print_metadata(user)}
+
+
 @router.post("", status_code=201)
 def create(data: PaymentVoucherCreate, db: Session = Depends(get_db), user=Depends(manage_user)):
     v = svc.create(db, data, user)
