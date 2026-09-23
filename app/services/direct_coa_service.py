@@ -69,13 +69,18 @@ class DirectCoaService:
         return "INVENTORY_MATERIAL"
 
     def inventory_account(self, product, location_id: int | None = None) -> ChartOfAccount:
-        account = self.location_account(
-            location_id,
-            self.inventory_role(product),
-            f"Item {product.code} inventory for location {location_id}",
-        )
+        # Item Master is authoritative for stock accounting. Location mappings
+        # remain a legacy fallback only for records not yet migrated.
+        account_id = getattr(product, "inventory_account_id", None)
+        account = self.account(account_id, f"Item {product.code} inventory") if account_id else None
         if account is None:
-            account = self.account(getattr(product, "inventory_account_id", None), f"Item {product.code} inventory")
+            account = self.location_account(
+                location_id,
+                self.inventory_role(product),
+                f"Item {product.code} inventory for location {location_id}",
+            )
+        if account is None:
+            raise HTTPException(409, f"Item {product.code} requires an Inventory Asset COA in Item Master")
         if account.account_type != "ASSET" or account.normal_balance != "DEBIT" or account.account_subtype in self.BANK_SUBTYPES:
             raise HTTPException(409, f"Item {product.code} inventory COA must be a debit-balance non-cash asset")
         return account
