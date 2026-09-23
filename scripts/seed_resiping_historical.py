@@ -73,19 +73,52 @@ def args():
 def text(v): return re.sub(r"\s+", " ", str(v or "").strip())
 
 def dec(v):
-    if v in (None, ""): return None
-    try: return Decimal(str(v).replace(",", "").strip())
-    except (InvalidOperation, ValueError): return None
+    if v in (None, ""):
+        return None
+    if isinstance(v, Decimal):
+        return v
+    if isinstance(v, (int, float)):
+        return Decimal(str(v))
+    raw=str(v).strip().replace(" ", "")
+    # Workbook uses both 28,000.00 and 3,566,400,00.  The latter means
+    # 3,566,400.00, not 356,640,000.
+    if re.fullmatch(r"-?\d{1,3}(?:,\d{3})+,\d{2}", raw):
+        raw=raw.rsplit(",",1)[0].replace(",", "")+"."+raw.rsplit(",",1)[1]
+    else:
+        raw=raw.replace(",", "")
+    try:
+        return Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return None
+
+def tax_dec(v):
+    value=dec(v)
+    if value is None:
+        return ZERO
+    raw=text(v)
+    # Historical tax cells such as 262 and 333.896 mean 262,000 and
+    # 333,896 rupiah.  Keep ordinary values >= 1,000 unchanged.
+    if value > ZERO and value < Decimal("1000"):
+        if "." in raw or value == value.to_integral():
+            return (value*Decimal("1000")).quantize(Decimal("1"))
+    return value
 
 def as_date(v):
     if isinstance(v, datetime): return v.date()
     if isinstance(v, date): return v
     return None
 
+SUPPLIER_ALIASES={
+    "IBU ERMY":"IBU ERNY",
+    "PEMPEKL WENNY":"PEMPEK WENNY",
+    "ROTI JALA DAN REMPEYELK":"ROTI JALA DAN REMPEYEK",
+}
+
 def supplier_key(name):
-    n=text(name).upper()
+    n=SUPPLIER_ALIASES.get(text(name).upper(), text(name).upper())
     for prefix in ("PT. ","PT ","CV. ","CV ","UD. ","UD ","TOKO "):
-        if n.startswith(prefix): return n[len(prefix):]
+        if n.startswith(prefix):
+            return n[len(prefix):]
     return n
 
 def coa_id(db, number):
@@ -104,11 +137,15 @@ def resolve_location(db, raw):
         # Historical workbook label -> current app-managed stable location code.
         "MINAS": ("code", "005"),       # Rumin
         "RUMBAI": ("code", "005"),      # Rumin
+        "RUMBAI MINAS": ("code", "005"),# Rumin
+        "RUMBAI MINUS": ("code", "005"),# source typo for Rumbai/Minas
         "HEAD OFFICE": ("code", "002"), # Pekanbaru
         "BSP PEDADA": ("code", "003"),  # Zamped / Zamrud
         "PEDADA": ("code", "003"),      # historical source-label mistake
         "DURI": ("code", "006"),        # Duri
         "NKL": ("code", "007"),         # Kalimantan / Sanga-sanga
+        "SANGASANGA": ("code", "007"),  # Kalimantan
+        "SANGA-SANGA": ("code", "007"), # Kalimantan
     }
     if key in aliases:
         field, value=aliases[key]
@@ -208,37 +245,91 @@ def parse_source_date(v):
         return None
 
 def parse(ws):
-    blocks=[]; current=None
+    """Parse source blocks and preserve TOTAL INVOICE as the invoice boundary.
+
+    A non-empty column M starts one invoice.  Later header rows with the same
+    supplier/location and blank column M are additional receiving blocks for
+    that same invoice.  A supplier change without TOTAL INVOICE is deliberately
+    left ungrouped and is not attached to the previous invoice.
+    """
+    blocks=[]
+    current=None
+    active_invoice=None
+    invoice_seq=0
     for row_no,row in enumerate(ws.iter_rows(min_row=2,values_only=True),start=2):
-        a,b,c,d,e,f,g,h,i,_,tax,total=(list(row)+[None]*12)[:12]
+        values=list(row)+[None]*13
+        a,b,c,d,e,f,g,h,i,_,tax,total,total_invoice=values[:13]
         source_date=parse_source_date(a)
-        if b:
-            current={"row":row_no,"supplier":text(b),"location":text(c),
-                     "header_date":source_date,"invoice_date":as_date(i),"items":[]}
+        if not source_date and isinstance(b,(date,datetime)):
+            source_date=as_date(b)
+
+        supplier_header=bool(b and not isinstance(b,(date,datetime)) and text(b))
+        if supplier_header:
+            block_supplier=text(b)
+            block_location=text(c)
+            invoice_total=dec(total_invoice)
+            if invoice_total is not None:
+                invoice_seq+=1
+                active_invoice={
+                    "id":invoice_seq,
+                    "supplier_key":supplier_key(block_supplier),
+                    "location":block_location.upper(),
+                    "total":invoice_total,
+                    "start_row":row_no,
+                }
+            elif not (
+                active_invoice
+                and supplier_key(block_supplier)==active_invoice["supplier_key"]
+                and block_location.upper()==active_invoice["location"]
+            ):
+                active_invoice=None
+
+            current={
+                "row":row_no,
+                "supplier":block_supplier,
+                "location":block_location,
+                "header_date":source_date,
+                "invoice_date":as_date(i),
+                "invoice_group_id":active_invoice["id"] if active_invoice else None,
+                "invoice_total":active_invoice["total"] if active_invoice else None,
+                "invoice_start_row":active_invoice["start_row"] if active_invoice else None,
+                "declared_block_total":dec(total),
+                "tax_raw":tax,
+                "items":[],
+            }
             blocks.append(current)
+
         if current is None:
             continue
         if source_date:
             current["header_date"]=source_date
-        item_name=text(d)
+
+        item_name=text(e) or text(d)
         description=text(e)
-        qty=dec(g); price=dec(h)
-        if (item_name or description) and (qty is not None or price is not None):
-            current["items"].append({"row":row_no,"date":source_date or current["header_date"],
-                "name":item_name or description,"description":description,"uom":text(f),
-                "qty":qty,"price":price})
+        qty=dec(g)
+        price=dec(h)
+        if item_name and (qty is not None or price is not None):
+            current["items"].append({
+                "row":row_no,
+                "date":source_date or current["header_date"],
+                "name":item_name,
+                "description":description,
+                "uom":text(f),
+                "qty":qty,
+                "price":price,
+                "tax_raw":tax,
+                "declared_total":dec(total),
+            })
+            if dec(total) is not None:
+                current["declared_block_total"]=dec(total)
+            if tax not in (None,""):
+                current["tax_raw"]=tax
     return blocks
 
-SUHARTI_BLOCK_ROWS={14,26,46,67}
-SUKANDA_INVOICE_OVERRIDES={
-    70: (Decimal("2381819"), Decimal("262000"), Decimal("2643819")),
-    83: (Decimal("3035419"), Decimal("333896"), Decimal("3369315")),
-}
-
 def invoice_group_key(block, supplier):
-    if text(supplier.name).upper()=="SUHARTI" and block["row"] in SUHARTI_BLOCK_ROWS:
-        return ("SUHARTI-CONSOLIDATED", supplier.id)
-    return ("BLOCK", supplier.id, block["row"])
+    group_id=block.get("invoice_group_id")
+    return ("TOTAL_INVOICE", supplier.id, group_id) if group_id else None
+
 
 def main():
     a=args(); dry=not a.apply
