@@ -80,10 +80,26 @@ def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict
     return latest
 
 @router.get("")
-def list_products(active_only: bool = True, market_only: bool = False, exclude_market: bool = False, item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None, search: Annotated[str | None, Query(max_length=100)] = None, page: int = Query(default=1, ge=1), page_size: int = Query(default=25, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_products(
+    active_only: bool = True,
+    market_only: bool = False,
+    exclude_market: bool = False,
+    item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None,
+    inventory_treatment: Annotated[str | None, Query(pattern="^(STOCK|DIRECT_USE|FIXED_ASSET|NON_STOCK|REVIEW_REQUIRED)$")] = None,
+    tax_category: Annotated[str | None, Query(pattern="^(STANDARD|EXEMPT|NON_VAT|SPECIAL|REVIEW_REQUIRED)$")] = None,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
     query = _apply_filters(db.query(Product), active_only=active_only, search=search, market_only=market_only, exclude_market=exclude_market)
     if item_type:
         query = query.filter(Product.item_type == item_type)
+    if inventory_treatment:
+        query = query.filter(Product.inventory_treatment == inventory_treatment)
+    if tax_category:
+        query = query.filter(Product.tax_category == tax_category)
     total = query.count()
     rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
     total_pages = ceil(total / page_size) if total else 0
