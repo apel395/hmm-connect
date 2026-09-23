@@ -5,8 +5,8 @@ const tabs = [
   { label: "Payables Detail", to: "/accounts-payable/detail" },
   { label: "AP Aging", to: "/accounts-payable/aging" },
   { label: "Supplier Invoices", to: "/accounts-payable/invoices" },
-  { label: "Payments", to: "/accounts-payable/payments" },
   { label: "Payment Vouchers", to: "/finance/payment-vouchers" },
+  { label: "Payments", to: "/accounts-payable/payments" },
   { label: "Credit / Debit Notes", to: "/accounts-payable/adjustments" },
 ];
 
