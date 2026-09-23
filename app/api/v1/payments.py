@@ -501,11 +501,10 @@ def detail(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_
 
 @router.post("", status_code=201)
 def create(data: PaymentCreate, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
-    # TEMPORARY: bypass Payment Voucher workflow.
-    # Supplier payments may be created directly from posted supplier invoices.
-    # Ignore voucher_id even if an older client still sends it.
+    # Payment Voucher is the preferred workflow, but remains optional.
     voucher = None
-    data.voucher_id = None
+    if data.voucher_id:
+        voucher = _apply_voucher(db, data, user)
     validate_data(db, data, user)
     payment = Payment(
         payment_number=next_document_number(db, "PAY"),
