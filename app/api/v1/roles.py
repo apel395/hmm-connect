@@ -77,7 +77,6 @@ CORE_ROLE_DESCRIPTIONS = {
 
 AP_DEFAULT_PERMISSIONS = {
     "ap.view", "ap.manage",
-    "suppliers.view",
     "supplier_invoice.view", "supplier_invoice.create", "supplier_invoice.edit",
     "supplier_invoice.verify", "supplier_invoice.reject", "supplier_invoice.post",
     "supplier_invoice.void", "supplier_invoice.manage",
