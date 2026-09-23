@@ -38,6 +38,8 @@ class Product(Base, TimestampMixin):
     inventory_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
     purchase_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
     cogs_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    asset_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    inventory_treatment: Mapped[str] = mapped_column(String(20), default="REVIEW_REQUIRED", nullable=False, index=True)
     is_market_item: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     item_type: Mapped[str] = mapped_column(String(4), default="BUY", nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
