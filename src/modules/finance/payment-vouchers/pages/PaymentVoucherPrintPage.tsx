@@ -17,7 +17,7 @@ export default function PaymentVoucherPrintPage() {
   const v: any = q.data;
 
   const rows = (v.groups ?? []).map((g: any, idx: number) => ({ ...g, row_number: idx + 1 }));
-  const approvalSignatures = (v.approval_history ?? []).filter((step: any) => step.status === "APPROVED").map((step: any) => ({
+  const approvalSignatures: any[] = (v.approval_history ?? []).filter((step: any) => step.status === "APPROVED").map((step: any) => ({
     label: step.signature_label || step.name || ("Approval Level " + step.level),
     name: step.signature_name || step.approver_name || "Approved",
     imageSrc: step.signature_image || undefined,
