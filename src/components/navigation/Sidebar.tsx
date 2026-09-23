@@ -39,9 +39,9 @@ const groups: Group[] = [
     { title: "Register", url: "/pos", exact: true, permission: "pos.view", roles: POS_ROLES },
     { title: "Sales", url: "/pos/sales", permission: "pos.view", roles: POS_ROLES },
   ] },
-  { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
+  { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Finance Dashboard", url: "/finance-dashboard", permission: "finance.view" },
-    { title: "Accounts Payable", url: "/accounts-payable", permission: "ap.view" },
+    { title: "Accounts Payable", url: "/accounts-payable", permission: "ap.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Accounts Receivable", url: "/accounts-receivable", permission: "finance.view" },
     { title: "Cash & Bank", url: "/cash-bank", permission: "finance.view" },
     { title: "Journal", url: "/journal", permission: "journal.view" },
