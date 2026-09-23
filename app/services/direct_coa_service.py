@@ -80,6 +80,15 @@ class DirectCoaService:
             raise HTTPException(409, f"Item {product.code} inventory COA must be a debit-balance non-cash asset")
         return account
 
+    def fixed_asset_account(self, product) -> ChartOfAccount:
+        account = self.account(
+            getattr(product, "asset_account_id", None),
+            f"Item {product.code} fixed asset",
+        )
+        if account.account_type != "ASSET" or account.normal_balance != "DEBIT" or account.account_subtype in self.BANK_SUBTYPES:
+            raise HTTPException(409, f"Item {product.code} fixed asset COA must be a debit-balance non-cash asset")
+        return account
+
     def expense_account(self, product) -> ChartOfAccount:
         account = self.account(
             getattr(product, "purchase_account_id", None),
