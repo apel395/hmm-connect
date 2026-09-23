@@ -108,10 +108,34 @@ export default function DocumentPrintTemplate<Row>({
 
     <section className="avoid-break mt-7"><div className="font-semibold">NOTES:</div><div className="mt-1 min-h-14 border-b border-black py-2">{notes || "—"}</div></section>
 
-    {!!signatures?.length && <section className={`avoid-break mt-12 grid gap-10 text-center ${signatures.length >= 3 ? "grid-cols-3" : signatures.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
-      {signatures.map((signature, index) => <div key={`${signature.label}-${index}`}><div className="flex h-14 items-end justify-center">{signature.imageSrc && <img src={signature.imageSrc} alt="" className="max-h-14 max-w-full object-contain" />}</div><div className="border-t border-black pt-2 font-semibold">{signature.label}</div><div className="mt-1 text-[11px]">{signature.name ?? ""}</div></div>)}
+    {!!signatures?.length && <section className={`avoid-break mt-10 grid gap-6 text-center ${signatures.length >= 4 ? "grid-cols-4" : signatures.length === 3 ? "grid-cols-3" : signatures.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+      {signatures.map((signature, index) => (
+        <div key={`${signature.label}-${index}`}>
+          <div className="flex h-14 items-end justify-center">
+            {signature.imageSrc
+              ? <img src={signature.imageSrc} alt="" className="max-h-14 max-w-full object-contain" />
+              : <div className="pb-1 text-[12px] font-semibold">{signature.name ?? ""}</div>}
+          </div>
+          <div className="border-t border-black pt-2 font-semibold">{signature.label}</div>
+          {signature.imageSrc && <div className="mt-1 text-[11px] font-medium">{signature.name ?? ""}</div>}
+          {signature.status != null && <div className="mt-0.5 text-[10px] uppercase text-slate-600">{signature.status}</div>}
+          {signature.signedAt && <div className="mt-0.5 text-[10px] text-slate-600">{timestamp(signature.signedAt)}</div>}
+        </div>
+      ))}
     </section>}
 
-    {footer && <footer className="mt-8 border-t pt-2 text-[10px] text-slate-600">{footer}</footer>}
+    {!!visibleAuthenticity.length && <section className="avoid-break mt-8 border border-slate-400 p-3 text-[10px]">
+      <div className="mb-2 font-bold tracking-wide">DOCUMENT AUTHENTICITY</div>
+      <div className="grid grid-cols-2 gap-x-8 gap-y-1">
+        {visibleAuthenticity.map((field, index) => (
+          <div key={`${field.label}-${index}`} className="grid grid-cols-[105px_1fr] gap-2">
+            <span className="font-semibold">{field.label}</span>
+            <span>{field.value}</span>
+          </div>
+        ))}
+      </div>
+    </section>}
+
+    {footer && <footer className="mt-5 border-t pt-2 text-[10px] text-slate-600">{footer}</footer>}
   </article>;
 }
