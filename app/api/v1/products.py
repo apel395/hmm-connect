@@ -55,6 +55,20 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
         if account.account_type != "ASSET" or account.normal_balance != "DEBIT" or account.account_subtype in resolver.BANK_SUBTYPES:
             raise HTTPException(422, "Item fixed asset COA must be a debit-balance non-cash asset")
 
+def _validate_treatment(payload: dict, product: Product | None = None) -> None:
+    treatment = payload.get("inventory_treatment", getattr(product, "inventory_treatment", "REVIEW_REQUIRED") if product else "REVIEW_REQUIRED")
+    inventory_account_id = payload.get("inventory_account_id", product.inventory_account_id if product else None)
+    purchase_account_id = payload.get("purchase_account_id", product.purchase_account_id if product else None)
+    asset_account_id = payload.get("asset_account_id", getattr(product, "asset_account_id", None) if product else None)
+
+    if treatment == "STOCK" and not inventory_account_id:
+        raise HTTPException(422, "STOCK items require an Inventory Asset COA")
+    if treatment in {"DIRECT_USE", "NON_STOCK"} and not purchase_account_id:
+        raise HTTPException(422, f"{treatment} items require an Expense / Consumption COA")
+    if treatment == "FIXED_ASSET" and not asset_account_id:
+        raise HTTPException(422, "FIXED_ASSET items require a Fixed Asset COA")
+
+
 def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict]:
     if not product_ids:
         return {}
@@ -102,7 +116,10 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     if duplicate_name:
         raise HTTPException(status_code=409, detail=f"Product name duplicates existing item {duplicate_name.code} — {duplicate_name.name}")
     payload = data.model_dump()
+    if str(payload.get("subgroup_name") or "").strip().upper() == "GRESORIS":
+        payload["subgroup_name"] = "GROCERIES"
     payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
+    _validate_treatment(payload)
     _validate_coa_mappings(db, payload)
     product = Product(**payload)
     db.add(product)
@@ -130,6 +147,9 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     payload = data.model_dump(exclude_unset=True)
+    if str(payload.get("subgroup_name") or "").strip().upper() == "GRESORIS":
+        payload["subgroup_name"] = "GROCERIES"
+    _validate_treatment(payload, product)
     _validate_coa_mappings(db, payload, product)
     for field, value in payload.items():
         if field != "is_market_item":
