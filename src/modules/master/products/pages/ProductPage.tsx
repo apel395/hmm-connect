@@ -15,6 +15,7 @@ import { exportApi } from "../api/exportApi";
 import { useProducts, useCreateProduct, useUpdateProduct } from "../hooks/useProducts";
 import { useAuthStore } from "@/store/auth";
 import { isSuperuser } from "@/lib/access";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 
 const PAGE_SIZE = 25;
 const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
@@ -38,6 +39,7 @@ export default function ProductPage() {
     queryKey: ["product-classification-master"],
     queryFn: async () => (await productApi.classificationMaster()).data,
   });
+  const accountLookup = useQuery({ queryKey: ["product-page-account-lookup", "all-active-posting"], queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }) });
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
   const data = query.data ?? {};
@@ -171,7 +173,7 @@ export default function ProductPage() {
           <SearchBox value={search} onChange={setSearch} placeholder="Search item code or name..." />
         </div>
         {query.isLoading ? <Loading/> : <>
-          <ProductTable rows={rows} onEdit={handleEdit}/>
+          <ProductTable rows={rows} accounts={accountLookup.data ?? []} onEdit={handleEdit}/>
           <Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="products" onChange={setPage}/>
         </>}
       </Card>
