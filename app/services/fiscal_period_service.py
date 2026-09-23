@@ -27,19 +27,33 @@ class FiscalPeriodService:
             .first()
         )
 
-        if not period:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"No fiscal period configured for {posting_date.isoformat()}. "
-                    f"Initialize fiscal year {posting_date.year} in Finance > Fiscal Periods before posting."
-                ),
+        # Finance rule: an OPEN accounting period opens that period and all
+        # earlier posting dates. This supports historical finance entry without
+        # requiring every older month to be reopened individually.
+        latest_open = (
+            db.query(FiscalPeriod)
+            .filter(
+                FiscalPeriod.is_open.is_(True),
+                FiscalPeriod.is_closed.is_(False),
+                FiscalPeriod.end_date >= posting_date,
             )
+            .order_by(FiscalPeriod.end_date.desc())
+            .first()
+        )
 
-        if not period.is_open or period.is_closed:
+        if latest_open:
+            return period or latest_open
+
+        if period:
             raise HTTPException(
                 status_code=400,
                 detail=f"Fiscal period {period.period_name} is closed. Reopen it with a reason before posting.",
             )
 
-        return period
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No open accounting period covers or follows {posting_date.isoformat()}. "
+                "Open a Finance accounting period before posting this date."
+            ),
+        )
