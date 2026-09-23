@@ -1,46 +1,104 @@
 import { Table, THead, TBody, TR, TH, TD, TableCellStack } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import type { AccountLookup } from "@/modules/master/chart-of-accounts/types";
 import type { Product } from "../types";
 
 interface Props {
   rows?: Product[];
+  accounts?: AccountLookup[];
   onEdit?: (product: Product) => void;
 }
 
 const taxLabel = (row: Product) => {
-  if (row.tax_category === "REVIEW_REQUIRED") return "Review Required";
+  if (row.tax_category === "REVIEW_REQUIRED") return "Tax Review";
   if (!row.is_taxable) return row.tax_category === "EXEMPT" ? "Exempt" : "Non PPN";
   return `PPN ${Number(row.tax_rate || 0).toLocaleString()}%`;
 };
 
-export default function ProductTable({ rows = [], onEdit }: Props) {
+const treatmentLabel = (value: Product["inventory_treatment"]) => ({
+  STOCK: "Stock",
+  DIRECT_USE: "Direct Use",
+  FIXED_ASSET: "Fixed Asset",
+  NON_STOCK: "Non-stock",
+  REVIEW_REQUIRED: "Review",
+}[value] ?? value);
+
+const treatmentVariant = (value: Product["inventory_treatment"]) =>
+  value === "REVIEW_REQUIRED" ? "warning" : value === "STOCK" ? "success" : "secondary";
+
+export default function ProductTable({ rows = [], accounts = [], onEdit }: Props) {
+  const byId = new Map(accounts.map((account) => [account.id, account]));
+
+  const mappedAccount = (row: Product) => {
+    const id =
+      row.inventory_treatment === "STOCK" ? row.inventory_account_id :
+      row.inventory_treatment === "FIXED_ASSET" ? row.asset_account_id :
+      ["DIRECT_USE", "NON_STOCK"].includes(row.inventory_treatment) ? row.purchase_account_id :
+      null;
+    return id ? byId.get(id) : undefined;
+  };
+
+  const readiness = (row: Product) => {
+    const taxReady = row.tax_category !== "REVIEW_REQUIRED";
+    const accountingReady =
+      row.inventory_treatment === "STOCK" ? Boolean(row.inventory_account_id) :
+      row.inventory_treatment === "FIXED_ASSET" ? Boolean(row.asset_account_id) :
+      ["DIRECT_USE", "NON_STOCK"].includes(row.inventory_treatment) ? Boolean(row.purchase_account_id) :
+      false;
+    if (!taxReady) return "Tax Review";
+    if (!accountingReady) return row.inventory_treatment === "REVIEW_REQUIRED" ? "Treatment Review" : "Missing COA";
+    return "Ready";
+  };
+
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="overflow-x-auto">
-        <Table>
+        <Table className="min-w-[1180px]">
           <THead>
             <TR>
-              <TH>Product</TH><TH>Classification</TH><TH>UOM</TH><TH numeric>Minimum Stock</TH><TH>PPN</TH><TH>Status</TH><TH numeric>Actions</TH>
+              <TH>Product</TH>
+              <TH>Classification</TH>
+              <TH>Treatment</TH>
+              <TH>UOM</TH>
+              <TH>PPN</TH>
+              <TH>Accounting COA</TH>
+              <TH>Readiness</TH>
+              <TH>Status</TH>
+              <TH numeric>Actions</TH>
             </TR>
           </THead>
           <TBody>
             {rows.length === 0 ? (
-              <TR><TD colSpan={7} className="py-10 text-center">No Products</TD></TR>
-            ) : rows.map((row) => (
-              <TR key={row.id}>
-                <TD><TableCellStack primary={row.name} secondary={row.code}/></TD><TD><TableCellStack primary={row.group_name} secondary={row.subgroup_name}/></TD><TD><TableCellStack primary={row.uom} secondary={`${row.usage_uom} · ×${Number(row.conversion).toLocaleString("id-ID")}`}/></TD>
-                <TD numeric>{Number(row.minimum_stock ?? 0).toLocaleString("id-ID")}</TD>
-                <TD>
-                  <div className="space-y-1">
-                    <Badge variant={row.tax_category === "REVIEW_REQUIRED" ? "warning" : row.is_taxable ? "info" : "secondary"}>{taxLabel(row)}</Badge>
-                    {row.tax_reason ? <div className="max-w-56 truncate text-xs text-slate-500" title={row.tax_reason}>{row.tax_reason}</div> : null}
-                  </div>
-                </TD>
-                <TD><Badge variant={row.is_active ? "success" : "secondary"}>{row.is_active ? "Active" : "Inactive"}</Badge></TD>
-                <TD><div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => onEdit?.(row)}>Edit</Button></div></TD>
-              </TR>
-            ))}
+              <TR><TD colSpan={9} className="py-10 text-center">No Products</TD></TR>
+            ) : rows.map((row) => {
+              const account = mappedAccount(row);
+              const state = readiness(row);
+              const subgroup = row.subgroup_name === "GRESORIS" ? "GROCERIES" : row.subgroup_name;
+              return (
+                <TR key={row.id}>
+                  <TD><TableCellStack primary={row.name} secondary={row.code}/></TD>
+                  <TD><TableCellStack primary={row.group_name} secondary={subgroup}/></TD>
+                  <TD><Badge variant={treatmentVariant(row.inventory_treatment)}>{treatmentLabel(row.inventory_treatment)}</Badge></TD>
+                  <TD><TableCellStack primary={row.uom} secondary={`${row.usage_uom} · ×${Number(row.conversion).toLocaleString("id-ID")}`}/></TD>
+                  <TD>
+                    <Badge variant={row.tax_category === "REVIEW_REQUIRED" ? "warning" : row.is_taxable ? "info" : "secondary"}>
+                      {taxLabel(row)}
+                    </Badge>
+                  </TD>
+                  <TD>
+                    {account
+                      ? <TableCellStack primary={account.account_name} secondary={account.account_code}/>
+                      : <span className="text-sm text-slate-400">—</span>}
+                  </TD>
+                  <TD>
+                    <Badge variant={state === "Ready" ? "success" : "warning"}>{state}</Badge>
+                  </TD>
+                  <TD><Badge variant={row.is_active ? "success" : "secondary"}>{row.is_active ? "Active" : "Inactive"}</Badge></TD>
+                  <TD><div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => onEdit?.(row)}>Edit</Button></div></TD>
+                </TR>
+              );
+            })}
           </TBody>
         </Table>
       </div>

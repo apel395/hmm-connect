@@ -1,5 +1,6 @@
 export type TaxCategory = "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL" | "REVIEW_REQUIRED";
 export type ItemType = "BUY" | "SELL";
+export type InventoryTreatment = "STOCK" | "DIRECT_USE" | "FIXED_ASSET" | "NON_STOCK" | "REVIEW_REQUIRED";
 
 export interface Product {
   id: number;
@@ -24,6 +25,8 @@ export interface Product {
   inventory_account_id?: number | null;
   purchase_account_id?: number | null;
   cogs_account_id?: number | null;
+  asset_account_id?: number | null;
+  inventory_treatment: InventoryTreatment;
   is_market_item: boolean;
   is_active: boolean;
 }
@@ -58,6 +61,8 @@ export interface ProductCreateRequest {
   inventory_account_id?: number | null;
   purchase_account_id?: number | null;
   cogs_account_id?: number | null;
+  asset_account_id?: number | null;
+  inventory_treatment: InventoryTreatment;
   is_market_item: boolean;
 }
 
