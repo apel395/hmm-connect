@@ -40,6 +40,7 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
         "inventory_account_id": payload.get("inventory_account_id", product.inventory_account_id if product else None),
         "purchase_account_id": payload.get("purchase_account_id", product.purchase_account_id if product else None),
         "cogs_account_id": payload.get("cogs_account_id", product.cogs_account_id if product else None),
+        "asset_account_id": payload.get("asset_account_id", getattr(product, "asset_account_id", None) if product else None),
     }
     if values["inventory_account_id"]:
         probe = type("ProductProbe", (), {"code": payload.get("code") or (product.code if product else "new"), **values})()
@@ -49,6 +50,10 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
             account = resolver.account(values[field], f"Item {label}")
             if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
                 raise HTTPException(422, f"Item {label} COA must be a debit-balance expense")
+    if values["asset_account_id"]:
+        account = resolver.account(values["asset_account_id"], "Item fixed asset")
+        if account.account_type != "ASSET" or account.normal_balance != "DEBIT" or account.account_subtype in resolver.BANK_SUBTYPES:
+            raise HTTPException(422, "Item fixed asset COA must be a debit-balance non-cash asset")
 
 def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict]:
     if not product_ids:
@@ -83,7 +88,7 @@ def lookup_products(search: Annotated[str, Query(max_length=100)] = "", market_o
     query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only, exclude_market=exclude_market)
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
     price_history = _last_purchase_prices(db, [row.id for row in rows])
-    return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "is_market_item": _is_market_subgroup(row.subgroup_name), **price_history.get(row.id, {"last_purchase_price": None, "last_purchase_date": None, "last_purchase_po_number": None})} for row in rows]
+    return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "inventory_treatment": row.inventory_treatment, "inventory_account_id": row.inventory_account_id, "purchase_account_id": row.purchase_account_id, "cogs_account_id": row.cogs_account_id, "asset_account_id": row.asset_account_id, "is_market_item": _is_market_subgroup(row.subgroup_name), **price_history.get(row.id, {"last_purchase_price": None, "last_purchase_date": None, "last_purchase_po_number": None})} for row in rows]
 
 @router.post("", status_code=201)
 def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
