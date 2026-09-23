@@ -11,7 +11,7 @@ from app.dependencies.authorization import require_permission
 from app.models.stock_opname import StockOpname
 from app.schemas.approval import ApprovalDecisionRequest
 from app.schemas.stock_opname import StockOpnameCountUpdate, StockOpnameCreate
-from app.services.document_context import document_context
+from app.services.document_context import document_context, print_metadata
 from app.services.location_access import apply_location_scope, enforce_location_access
 from app.services.stock_opname_service import StockOpnameService
 
@@ -124,6 +124,15 @@ def detail(
         raise HTTPException(404, "Stock Opname not found")
     enforce_location_access(user, opname.location_id)
     return _detail(db, opname, user)
+
+
+@router.get("/{opname_id}/print")
+def printable(opname_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    opname = db.get(StockOpname, opname_id)
+    if not opname:
+        raise HTTPException(404, "Stock Opname not found")
+    enforce_location_access(user, opname.location_id)
+    return {**_detail(db, opname, user), "document_type": "Stock Opname", **print_metadata(user)}
 
 
 @router.post("", status_code=201)
