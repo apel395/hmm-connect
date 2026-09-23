@@ -380,30 +380,72 @@ def is_direct_invoice_item(item):
     return any(keyword in upper for keyword in DIRECT_INVOICE_KEYWORDS)
 
 def main():
-    a=args(); dry=not a.apply
+    a=args()
+    dry=not a.apply
     wb=load_workbook(a.workbook,read_only=True,data_only=True)
     ws=wb[wb.sheetnames[0]]
     blocks=parse(ws)
     db=SessionLocal()
-    stats=defaultdict(int); blocked=[]; supplier_cache={}; product_cache={}
+    stats=defaultdict(int)
+    blocked=[]
+    deferred=[]
+    supplier_cache={}
+    product_cache={}
     occupied={str(x[0]).upper() for x in db.query(Product.code).all() if x[0]}
+
+    # TOTAL INVOICE is the source-of-truth invoice boundary.
+    grouped_blocks=defaultdict(list)
+    for block in blocks:
+        group_id=block.get("invoice_group_id")
+        if group_id is None:
+            stats["without_total_invoice"]+=1
+            deferred.append((block["row"],"NO_TOTAL_INVOICE",f"{block['supplier']} / {block['location']}"))
+            continue
+        grouped_blocks[group_id].append(block)
+
     try:
         user=db.query(User).filter(User.username==a.user).first()
-        if not user: raise RuntimeError(f"user {a.user!r} not found")
-        pending_invoices={}
-        for n,block in enumerate(blocks,1):
-            loc=resolve_location(db,block["location"])
+        if not user:
+            raise RuntimeError(f"user {a.user!r} not found")
+
+        variance_account=db.query(ChartOfAccount).filter(
+            ChartOfAccount.account_number=="500-100-999",
+            ChartOfAccount.is_active.is_(True),
+        ).first()
+        if not variance_account:
+            raise RuntimeError("Historical invoice reconciliation requires active COA 500-100-999")
+
+        svc=SupplierInvoiceService(db)
+        preview_rows=[]
+
+        for group_id in sorted(grouped_blocks):
+            source_blocks=grouped_blocks[group_id]
+            first=source_blocks[0]
+            source_row=int(first["invoice_start_row"] or first["row"])
+            raw_location=text(first["location"]).upper()
+
+            if raw_location=="OPERATIONAL":
+                stats["skipped_operational"]+=1
+                deferred.append((source_row,"SKIP_OPERATIONAL",first["supplier"]))
+                continue
+
+            loc=resolve_location(db,first["location"])
             if not loc:
-                blocked.append((block["row"],"LOCATION",block["location"])); continue
+                blocked.append((source_row,"LOCATION",first["location"]))
+                continue
             bu=db.get(BusinessUnit,loc.business_unit_id) if loc.business_unit_id else None
             if not bu:
-                blocked.append((block["row"],"BUSINESS_UNIT",block["location"])); continue
+                blocked.append((source_row,"BUSINESS_UNIT",first["location"]))
+                continue
             dept=resolve_department(db,loc,a.department_code)
             if not dept:
-                blocked.append((block["row"],"DEPARTMENT",f"{block['location']} / location_id={loc.id}")); continue
-            supplier=resolve_supplier(db,block["supplier"],supplier_cache,stats)
-            # Historical receipts must land in the warehouse belonging to
-            # their resolved location. Never fall back to another location.
+                blocked.append((source_row,"DEPARTMENT",f"{first['location']} / location_id={loc.id}"))
+                continue
+
+            supplier=resolve_supplier(db,first["supplier"],supplier_cache,stats)
+            key=invoice_group_key(first,supplier)
+            invoice_total=Decimal(first["invoice_total"] or ZERO)
+
             warehouse=None
             if a.warehouse_code:
                 warehouse=db.query(Warehouse).filter(
@@ -411,174 +453,342 @@ def main():
                     Warehouse.location_id==loc.id,
                     Warehouse.is_active.is_(True),
                 ).first()
-                if not warehouse:
-                    blocked.append((block["row"],"WAREHOUSE",
-                        f"{block['location']} / requested={a.warehouse_code}"))
-                    continue
             else:
                 warehouse=db.query(Warehouse).filter(
                     Warehouse.location_id==loc.id,
                     Warehouse.is_active.is_(True),
                 ).order_by(Warehouse.id).first()
             if not warehouse:
-                blocked.append((block["row"],"WAREHOUSE",block["location"]))
+                blocked.append((source_row,"WAREHOUSE",first["location"]))
                 continue
 
-            ready=[]
-            for x in block["items"]:
-                # Laundry is service expense and PC is a fixed asset; classify
-                # these before receipt-date validation because they never belong
-                # in an inventory Goods Receipt.
-                upper=(x["name"]+" "+x["description"]).upper()
-                if "LAUNDRY" in upper or "PC RAKITAN" in upper or "INTEL I5-4590" in upper:
-                    blocked.append((x["row"],"DIRECT_INVOICE_REQUIRED",x["name"])); continue
-                if not x["date"]: blocked.append((x["row"],"DATE",x["name"])); continue
-                if x["qty"] is None or x["qty"]<=0: blocked.append((x["row"],"QTY",x["name"])); continue
-                if x["price"] is None or x["price"]<=0: blocked.append((x["row"],"PRICE",x["name"])); continue
-                p=resolve_product(db,x["name"],x["description"],x["uom"],occupied,product_cache,stats)
-                ready.append((x,p))
-            if not ready: continue
+            # Detect legacy split invoices before touching this group. TOTAL
+            # INVOICE now means one SI, so old per-block SIs must not survive.
+            canonical_invoice_number=(
+                "HIST-RESIPING-SUHARTI"
+                if supplier_key(first["supplier"])=="SUHARTI" and source_row==14
+                else f"HIST-RESIPING-{source_row}"
+            )
+            legacy_numbers={f"HIST-RESIPING-{b['row']}" for b in source_blocks}
+            legacy_numbers.add(canonical_invoice_number)
+            existing_rows=db.query(SupplierInvoice).filter(
+                SupplierInvoice.supplier_id==supplier.id,
+                SupplierInvoice.supplier_invoice_number.in_(sorted(legacy_numbers)),
+            ).all()
+            existing_numbers=sorted({row.supplier_invoice_number for row in existing_rows})
+            if len(existing_numbers)>1:
+                blocked.append((
+                    source_row,
+                    "LEGACY_SPLIT_INVOICES",
+                    f"{first['supplier']}: {', '.join(existing_numbers)}",
+                ))
+                continue
 
-            # Direct Goods Receipts require each product only once. Historical
-            # spreadsheets can repeat the same product in one supplier/location
-            # block (for example daily food deliveries). Preserve value and
-            # quantity by consolidating identical product/date/cost lines.
-            grouped={}
-            for x,p in ready:
-                key=(p.id,x["date"],x["price"],text(x["uom"]).upper())
-                if key not in grouped:
-                    grouped[key]=(dict(x),p)
+            group_blocked=False
+            invoice_tax=ZERO
+            projected_invoice_subtotal=ZERO
+            excluded_rows=set()
+            block_ready=[]
+            group_receipt_dates=[]
+
+            for block in source_blocks:
+                invoice_tax += tax_dec(block.get("tax_raw"))
+                block_exclusions=exact_invoice_exclusion_rows(block)
+                excluded_rows.update(block_exclusions)
+                ready=[]
+
+                for x in block["items"]:
+                    # Missing quantity or price means the item was not received.
+                    if x["qty"] is None or x["price"] is None or x["qty"]<=0 or x["price"]<=0:
+                        stats["not_received"]+=1
+                        deferred.append((x["row"],"NOT_RECEIVED",x["name"]))
+                        continue
+
+                    if is_direct_invoice_item(x):
+                        stats["direct_invoice"]+=1
+                        blocked.append((x["row"],"DIRECT_INVOICE_ACCOUNT_REQUIRED",x["name"]))
+                        group_blocked=True
+                        continue
+
+                    if not x["date"]:
+                        blocked.append((x["row"],"DATE",x["name"]))
+                        group_blocked=True
+                        continue
+
+                    period_date=first.get("period_date")
+                    if period_date and abs((x["date"]-period_date).days)>120:
+                        blocked.append((x["row"],"DATE_OUTLIER",f"{x['name']} / {x['date']}"))
+                        group_blocked=True
+                        continue
+
+                    p=resolve_product(
+                        db,x["name"],x["description"],x["uom"],
+                        occupied,product_cache,stats,
+                    )
+                    treatment=getattr(p,"inventory_treatment","REVIEW_REQUIRED") or "REVIEW_REQUIRED"
+                    if treatment!="STOCK":
+                        blocked.append((
+                            x["row"],
+                            "TREATMENT_REVIEW",
+                            f"{p.code} {p.name} / {treatment}",
+                        ))
+                        group_blocked=True
+                        continue
+                    if not p.inventory_account_id:
+                        blocked.append((x["row"],"INVENTORY_ACCOUNT",f"{p.code} {p.name}"))
+                        group_blocked=True
+                        continue
+
+                    ready.append((x,p))
+                    if x["row"] not in excluded_rows:
+                        projected_invoice_subtotal += item_value(x)
+
+                if ready:
+                    block_ready.append((block,ready))
+                    group_receipt_dates.extend(x["date"] for x,_ in ready)
+
+            projected_total=projected_invoice_subtotal+invoice_tax
+            variance=invoice_total-projected_total
+            if variance < ZERO:
+                blocked.append((
+                    source_row,
+                    "INVOICE_BELOW_RECEIVING",
+                    f"invoice={invoice_total} projected={projected_total} difference={variance}",
+                ))
+                group_blocked=True
+
+            preview_rows.append({
+                "row":source_row,
+                "supplier":supplier.name,
+                "location":loc.name,
+                "invoice_total":invoice_total,
+                "receiving_subtotal":projected_invoice_subtotal,
+                "tax":invoice_tax,
+                "variance":variance,
+                "excluded_rows":sorted(excluded_rows),
+                "status":"BLOCKED" if group_blocked else "READY",
+            })
+
+            if dry or group_blocked:
+                if group_blocked:
+                    stats["blocked_groups"]+=1
                 else:
-                    gx,gp=grouped[key]
-                    gx["qty"] += x["qty"]
-                    gx["description"] = gx["description"] or x["description"]
-            ready=list(grouped.values())
-
-            # A single GR still cannot contain the same product at different
-            # dates/costs. Split the historical block into receipt groups so
-            # each resulting direct receipt contains a product only once.
-            receipt_groups=[]
-            current=[]
-            seen=set()
-            for x,p in sorted(ready,key=lambda xp:(xp[0]["date"],xp[0]["row"])):
-                if p.id in seen:
-                    receipt_groups.append(current)
-                    current=[]; seen=set()
-                current.append((x,p)); seen.add(p.id)
-            if current:
-                receipt_groups.append(current)
-
-            if dry:
-                stats["dry_blocks"]+=len(receipt_groups)
-                stats["dry_lines"]+=sum(len(g) for g in receipt_groups)
+                    stats["ready_groups"]+=1
                 continue
 
             invoice_lines=[]
             receipt_dates=[]
-            for group_no,ready_group in enumerate(receipt_groups,1):
-                receipt_date=min(x["date"] for x,_ in ready_group)
-                ext=f"RESIPING-{block['row']}-{supplier.id}-{loc.id}-{group_no}"
-                gr=db.query(GoodsReceipt).filter(GoodsReceipt.external_reference==ext).first()
-                if not gr:
-                    gr=GoodsReceiptService.create(db,data=GoodsReceiptCreate(
-                        supplier_id=supplier.id,business_unit_id=bu.id,location_id=loc.id,
-                        department_id=dept.id,received_at=datetime.combine(receipt_date,datetime.min.time(),tzinfo=timezone.utc),
-                        source_type="HISTORICAL_IMPORT",external_reference=ext,destination_type="WAREHOUSE",
-                        warehouse_id=warehouse.id,
-                        notes=f"RESIPING historical import rows from {block['row']}",
-                        items=[GoodsReceiptItemCreate(product_id=p.id,quantity=x["qty"],unit_cost=x["price"],
-                               is_taxable=False,tax_rate=ZERO) for x,p in ready_group]),user=user)
-                    gr=GoodsReceiptService.post(db,receipt_id=gr.id,user=user)
-                    if journals is not None:
-                        j=db.query(JournalEntry).filter(JournalEntry.reference_type=="GOODS_RECEIPT",
-                            JournalEntry.reference_id==gr.id).first()
-                        if j and j.status=="DRAFT": journals.post(j.id,db,user)
-                else:
-                    stats["skipped"]+=1
-                receipt_dates.append(receipt_date)
-                for i,(x,p) in enumerate(ready_group):
-                    gri=gr.items[i]
-                    invoice_lines.append(SupplierInvoiceLineInput(
-                        product_id=p.id,goods_receipt_item_id=gri.id,
-                        description=x["description"] or x["name"],quantity=x["qty"],uom=p.uom or "PCS",
-                        unit_price=x["price"],is_taxable=False,tax_rate=ZERO,tax_amount=ZERO,
-                        account_id=None,department_id=dept.id))
+            for block,ready in block_ready:
+                # Consolidate identical product/date/cost lines first.
+                consolidated={}
+                for x,p in ready:
+                    item_key=(p.id,x["date"],x["price"],text(x["uom"]).upper())
+                    if item_key not in consolidated:
+                        consolidated[item_key]=(dict(x),p)
+                    else:
+                        gx,_=consolidated[item_key]
+                        gx["qty"] += x["qty"]
+                        gx["description"] = gx["description"] or x["description"]
+                ready=list(consolidated.values())
 
-            key=invoice_group_key(block,supplier)
-            bucket=pending_invoices.setdefault(key,{"supplier":supplier,"bu":bu,"dept":dept,"loc":loc,"lines":[],"dates":[],"blocks":[]})
-            if (bucket["bu"].id,bucket["dept"].id,bucket["loc"].id)!=(bu.id,dept.id,loc.id):
-                raise RuntimeError(f"Invoice group {key} spans organization dimensions")
-            bucket["lines"].extend(invoice_lines)
-            bucket["dates"].extend(receipt_dates)
-            bucket["blocks"].append(block)
-            stats["posted_blocks"]+=1
-            stats["posted_lines"]+=len(invoice_lines)
-        if not dry:
-            variance_account=db.query(ChartOfAccount).filter(
-                ChartOfAccount.account_number=="500-100-999",
-                ChartOfAccount.is_active.is_(True),
-            ).first()
-            if not variance_account:
-                raise RuntimeError("Historical invoice variance requires active COA 500-100-999")
-            svc=SupplierInvoiceService(db)
-            for key,bucket in pending_invoices.items():
-                supplier=bucket["supplier"]; bu=bucket["bu"]; dept=bucket["dept"]; loc=bucket["loc"]
-                source_blocks=bucket["blocks"]
-                invoice_number=("HIST-RESIPING-SUHARTI" if key[0]=="SUHARTI-CONSOLIDATED" else f"HIST-RESIPING-{source_blocks[0]['row']}")
-                existing=db.query(SupplierInvoice).filter(SupplierInvoice.supplier_id==supplier.id,func.lower(SupplierInvoice.supplier_invoice_number)==invoice_number.lower()).first()
-                if existing:
-                    continue
-                inv_date=next((b["invoice_date"] for b in source_blocks if b["invoice_date"]),None) or min(bucket["dates"])
-                lines=bucket["lines"]
-                subtotal=sum((Decimal(line.quantity)*Decimal(line.unit_price) for line in lines),ZERO)
-                tax_amount=ZERO
-                total_amount=None
-                source_row=source_blocks[0]["row"]
-                if text(supplier.name).upper() in {"PT.SUKANDA DJAYA","PT SUKANDA DJAYA","SUKANDA DJAYA"} and source_row in SUKANDA_INVOICE_OVERRIDES:
-                    expected_subtotal,tax_amount,total_amount=SUKANDA_INVOICE_OVERRIDES[source_row]
-                    receiving_subtotal=subtotal
-                    variance=expected_subtotal-receiving_subtotal
-                    if variance < ZERO:
-                        raise RuntimeError(
-                            f"Sukanda row {source_row} invoice evidence is below receiving subtotal by {-variance}; manual review required"
+                # Direct GR requires each product once per document. Split when
+                # the same product reappears at a different date/cost.
+                receipt_groups=[]
+                current=[]
+                seen=set()
+                for x,p in sorted(ready,key=lambda xp:(xp[0]["date"],xp[0]["row"])):
+                    if p.id in seen:
+                        receipt_groups.append(current)
+                        current=[]
+                        seen=set()
+                    current.append((x,p))
+                    seen.add(p.id)
+                if current:
+                    receipt_groups.append(current)
+
+                for group_no,ready_group in enumerate(receipt_groups,1):
+                    receipt_date=min(x["date"] for x,_ in ready_group)
+                    ext=f"RESIPING-{block['row']}-{supplier.id}-{loc.id}-{group_no}"
+                    gr=db.query(GoodsReceipt).filter(GoodsReceipt.external_reference==ext).first()
+                    if not gr:
+                        gr=GoodsReceiptService.create(
+                            db,
+                            data=GoodsReceiptCreate(
+                                supplier_id=supplier.id,
+                                business_unit_id=bu.id,
+                                location_id=loc.id,
+                                department_id=dept.id,
+                                received_at=datetime.combine(
+                                    receipt_date,datetime.min.time(),tzinfo=timezone.utc,
+                                ),
+                                source_type="HISTORICAL_IMPORT",
+                                external_reference=ext,
+                                destination_type="WAREHOUSE",
+                                warehouse_id=warehouse.id,
+                                notes=f"RESIPING historical import invoice row {source_row}; source block {block['row']}",
+                                items=[
+                                    GoodsReceiptItemCreate(
+                                        product_id=p.id,
+                                        quantity=x["qty"],
+                                        unit_cost=x["price"],
+                                        is_taxable=False,
+                                        tax_rate=ZERO,
+                                    )
+                                    for x,p in ready_group
+                                ],
+                            ),
+                            user=user,
                         )
-                    if variance > ZERO:
-                        lines.append(SupplierInvoiceLineInput(
-                            product_id=None,goods_receipt_item_id=None,
-                            description="Historical invoice/receiving rounding variance",
-                            quantity=Decimal("1"),uom="LOT",unit_price=variance,
-                            is_taxable=False,tax_rate=ZERO,tax_amount=ZERO,
-                            account_id=variance_account.id,department_id=dept.id,
-                            notes=f"Invoice evidence {expected_subtotal} vs receiving {receiving_subtotal}"
+                        gr=GoodsReceiptService.post(db,receipt_id=gr.id,user=user)
+                        if journals is not None:
+                            journal=db.query(JournalEntry).filter(
+                                JournalEntry.reference_type=="GOODS_RECEIPT",
+                                JournalEntry.reference_id==gr.id,
+                            ).first()
+                            if journal and journal.status=="DRAFT":
+                                journals.post(journal.id,db,user)
+                    else:
+                        stats["existing_receipts"]+=1
+
+                    receipt_dates.append(receipt_date)
+                    for idx,(x,p) in enumerate(ready_group):
+                        # The source can prove a received item is outside the
+                        # supplier invoice (known example: Sukanda source row 94).
+                        if x["row"] in excluded_rows:
+                            stats["received_not_invoiced"]+=1
+                            continue
+                        gri=gr.items[idx]
+                        invoice_lines.append(SupplierInvoiceLineInput(
+                            product_id=p.id,
+                            goods_receipt_item_id=gri.id,
+                            description=x["description"] or x["name"],
+                            quantity=x["qty"],
+                            uom=p.uom or "PCS",
+                            unit_price=x["price"],
+                            is_taxable=False,
+                            tax_rate=ZERO,
+                            tax_amount=ZERO,
+                            account_id=None,
+                            department_id=dept.id,
                         ))
-                        subtotal += variance
-                    supplier.is_pkp=True
-                inv=svc.create(SupplierInvoiceInput(
-                    supplier_invoice_number=invoice_number,supplier_id=supplier.id,
-                    invoice_date=inv_date,received_date=inv_date,due_date=inv_date+timedelta(days=30),
-                    goods_receipt_id=None,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,
-                    currency="IDR",discount_amount=ZERO,tax_amount=tax_amount,withholding_tax_amount=ZERO,total_amount=total_amount,
-                    notes="RESIPING historical import rows "+",".join(str(b["row"]) for b in source_blocks),
-                    source_type="HISTORICAL_IMPORT",lines=lines),user)
-                inv=svc.verify(inv,user)
-                if journals is not None:
-                    j=svc.generate_journal(inv,user)
-                    if j.status=="DRAFT": journals.post(j.id,db,user)
-        if dry: db.rollback()
-        else: db.commit()
+
+            if existing_rows:
+                stats["existing_invoices"]+=1
+                continue
+
+            subtotal=sum(
+                (Decimal(line.quantity)*Decimal(line.unit_price) for line in invoice_lines),
+                ZERO,
+            )
+            reconciliation=invoice_total-(subtotal+invoice_tax)
+            if reconciliation < ZERO:
+                raise RuntimeError(
+                    f"Invoice row {source_row} total is below linked receiving by {-reconciliation}"
+                )
+            if reconciliation > ZERO:
+                invoice_lines.append(SupplierInvoiceLineInput(
+                    product_id=None,
+                    goods_receipt_item_id=None,
+                    description="Historical source invoice reconciliation",
+                    quantity=Decimal("1"),
+                    uom="LOT",
+                    unit_price=reconciliation,
+                    is_taxable=False,
+                    tax_rate=ZERO,
+                    tax_amount=ZERO,
+                    account_id=variance_account.id,
+                    department_id=dept.id,
+                    notes=f"TOTAL INVOICE {invoice_total}; receiving/tax evidence {subtotal+invoice_tax}",
+                ))
+                subtotal += reconciliation
+                stats["invoice_variances"]+=1
+
+            inv_date=(
+                next((b["invoice_date"] for b in source_blocks if b["invoice_date"]),None)
+                or (min(receipt_dates) if receipt_dates else first.get("period_date"))
+            )
+            if not inv_date:
+                raise RuntimeError(f"Invoice row {source_row} has no usable date")
+
+            if invoice_tax>ZERO:
+                supplier.is_pkp=True
+
+            inv=svc.create(
+                SupplierInvoiceInput(
+                    supplier_invoice_number=canonical_invoice_number,
+                    supplier_id=supplier.id,
+                    invoice_date=inv_date,
+                    received_date=inv_date,
+                    due_date=inv_date+timedelta(days=30),
+                    goods_receipt_id=None,
+                    business_unit_id=bu.id,
+                    department_id=dept.id,
+                    location_id=loc.id,
+                    currency="IDR",
+                    discount_amount=ZERO,
+                    tax_amount=invoice_tax,
+                    withholding_tax_amount=ZERO,
+                    total_amount=invoice_total,
+                    notes="RESIPING historical import; TOTAL INVOICE row "
+                          f"{source_row}; source blocks "
+                          + ",".join(str(b["row"]) for b in source_blocks),
+                    source_type="HISTORICAL_IMPORT",
+                    lines=invoice_lines,
+                ),
+                user,
+            )
+            inv=svc.verify(inv,user)
+            if journals is not None:
+                journal=svc.generate_journal(inv,user)
+                if journal.status=="DRAFT":
+                    journals.post(journal.id,db,user)
+            stats["posted_invoices"]+=1
+
+        if dry:
+            db.rollback()
+        else:
+            db.commit()
+
         print("MODE:", "DRY RUN" if dry else "APPLIED")
-        print("blocks:",len(blocks),"products_new:",stats["products"],"suppliers_new:",stats["suppliers"])
-        print("ready_blocks:",stats["dry_blocks"] if dry else stats["posted_blocks"],
-              "ready_lines:",stats["dry_lines"] if dry else stats["posted_lines"],"skipped:",stats["skipped"])
-        print("BLOCKED:",len(blocked))
+        print(
+            "invoice_groups:",len(grouped_blocks),
+            "ready_groups:",stats["ready_groups"],
+            "blocked_groups:",stats["blocked_groups"],
+            "skipped_operational:",stats["skipped_operational"],
+            "without_total_invoice:",stats["without_total_invoice"],
+        )
+        print(
+            "products_new:",stats["products"],
+            "suppliers_new:",stats["suppliers"],
+            "not_received:",stats["not_received"],
+            "received_not_invoiced:",stats["received_not_invoiced"],
+        )
+        print("\n=== INVOICE CONTROL ===")
+        for row in preview_rows:
+            print(
+                f"row {row['row']:>3} | {row['status']:<7} | "
+                f"{row['supplier'][:28]:<28} | {row['location'][:12]:<12} | "
+                f"invoice={row['invoice_total']} receiving={row['receiving_subtotal']} "
+                f"tax={row['tax']} variance={row['variance']} "
+                f"excluded={row['excluded_rows']}"
+            )
+
+        print("\n=== DEFERRED / SKIPPED ===")
+        for row,reason,value in deferred:
+            print(f"  row {row}: {reason}: {value}")
+
+        print("\n=== BLOCKED ===",len(blocked))
         for row,reason,value in blocked:
             print(f"  row {row}: {reason}: {value}")
         if blocked:
-            print("Blocked rows were NOT posted. Fix evidence/classification before importing them.")
+            print("Blocked groups are not safe to apply yet. Resolve Item Master/account/date conflicts first.")
+
     except Exception:
-        db.rollback(); raise
+        db.rollback()
+        raise
     finally:
-        db.close(); wb.close()
+        db.close()
+        wb.close()
 
 if __name__=="__main__":
     main()
