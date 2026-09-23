@@ -199,7 +199,7 @@ export default function StockOpnameDetailPage() {
               </Button>
             )}
             <Button variant="outline" onClick={() => navigate("/stock-opnames")}>Back</Button>
-            <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+            <Button variant="outline" onClick={() => navigate(`/stock-opnames/${id}/print`)}><Printer size={16}/> Print</Button>
 </div>
         }
       />
