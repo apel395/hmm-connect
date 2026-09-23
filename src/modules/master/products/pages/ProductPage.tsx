@@ -9,7 +9,7 @@ import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import ProductTable from "../components/ProductTable";
 import ProductForm from "../components/ProductForm";
-import type { Product } from "../types";
+import type { InventoryTreatment, Product, TaxCategory } from "../types";
 import { productApi } from "../api/productApi";
 import { exportApi } from "../api/exportApi";
 import { useProducts, useCreateProduct, useUpdateProduct } from "../hooks/useProducts";
@@ -30,11 +30,13 @@ export default function ProductPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [treatmentFilter, setTreatmentFilter] = useState<InventoryTreatment | "">("");
+  const [taxFilter, setTaxFilter] = useState<TaxCategory | "">("");
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const query = useProducts({ page, page_size: PAGE_SIZE, search: debouncedSearch || undefined });
+  const query = useProducts({ page, page_size: PAGE_SIZE, search: debouncedSearch || undefined, inventory_treatment: treatmentFilter || undefined, tax_category: taxFilter || undefined });
   const classification = useQuery({
     queryKey: ["product-classification-master"],
     queryFn: async () => (await productApi.classificationMaster()).data,
@@ -52,7 +54,7 @@ export default function ProductPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => setPage(1), [debouncedSearch]);
+  useEffect(() => setPage(1), [debouncedSearch, treatmentFilter, taxFilter]);
 
   useEffect(() => {
     if (!query.isFetching && data.total_pages != null && page > pages) setPage(pages);
@@ -169,8 +171,24 @@ export default function ProductPage() {
         </div>
       )}
       <Card>
-        <div className="mb-4 max-w-md">
+        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(260px,1fr)_220px_220px]">
           <SearchBox value={search} onChange={setSearch} placeholder="Search item code or name..." />
+          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={treatmentFilter} onChange={(event) => setTreatmentFilter(event.target.value as InventoryTreatment | "")}>
+            <option value="">All treatments</option>
+            <option value="REVIEW_REQUIRED">Treatment Review Required</option>
+            <option value="STOCK">Stock / Warehouse</option>
+            <option value="DIRECT_USE">Direct Use</option>
+            <option value="FIXED_ASSET">Fixed Asset</option>
+            <option value="NON_STOCK">Non-stock / Service</option>
+          </select>
+          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={taxFilter} onChange={(event) => setTaxFilter(event.target.value as TaxCategory | "")}>
+            <option value="">All tax profiles</option>
+            <option value="REVIEW_REQUIRED">Tax Review Required</option>
+            <option value="STANDARD">Standard PPN</option>
+            <option value="EXEMPT">PPN Exempt</option>
+            <option value="NON_VAT">Non PPN</option>
+            <option value="SPECIAL">Special Tax</option>
+          </select>
         </div>
         {query.isLoading ? <Loading/> : <>
           <ProductTable rows={rows} accounts={accountLookup.data ?? []} onEdit={handleEdit}/>
