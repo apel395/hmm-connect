@@ -51,6 +51,7 @@ CORE_ROLE_NAMES = {
     "CHEF",
     "PM/CAMP BOSS",
     "FINANCE",
+    "AP",
     "DEPARTMENT",
     "AUDITOR",
     "VIEWER",
@@ -67,11 +68,21 @@ CORE_ROLE_DESCRIPTIONS = {
     "CHEF": "Location operational approver for PR, Market List, and Receiving workflows.",
     "PM/CAMP BOSS": "Location senior approver for PR, Market List, and Receiving workflows.",
     "FINANCE": "Accounts payable, supplier invoices, payments, journals, and finance reporting.",
+    "AP": "Accounts Payable operations only: supplier invoices, payment vouchers, payments, and AP review.",
     "DEPARTMENT": "Department requester for PR, Market List, and Store Request within assigned scope.",
     "AUDITOR": "Read-only audit and cross-module reporting access.",
     "VIEWER": "Read-only dashboard and reporting access.",
 }
 
+
+AP_DEFAULT_PERMISSIONS = {
+    "ap.view", "ap.manage",
+    "suppliers.view",
+    "supplier_invoice.view", "supplier_invoice.create", "supplier_invoice.edit",
+    "supplier_invoice.verify", "supplier_invoice.reject", "supplier_invoice.post",
+    "supplier_invoice.void", "supplier_invoice.manage",
+    "payment.view", "payment.manage",
+}
 
 class RoleInput(BaseModel):
     name: str = Field(min_length=1, max_length=50)
@@ -101,7 +112,10 @@ def _ensure_core_roles(db: Session) -> None:
     for name in sorted(CORE_ROLE_NAMES):
         role = db.query(Role).filter(Role.name == name).first()
         if not role:
-            db.add(Role(name=name, description=CORE_ROLE_DESCRIPTIONS[name]))
+            role = Role(name=name, description=CORE_ROLE_DESCRIPTIONS[name])
+            if name == "AP":
+                role.permissions = [_ensure_permission(db, code) for code in sorted(AP_DEFAULT_PERMISSIONS)]
+            db.add(role)
     db.commit()
 
 
