@@ -21,6 +21,8 @@ export interface PrintSignature {
   label: string;
   name?: ReactNode;
   imageSrc?: string;
+  signedAt?: string | null;
+  status?: ReactNode;
 }
 
 interface Props<Row> {
@@ -37,14 +39,22 @@ interface Props<Row> {
   notes?: ReactNode;
   extraAfterTable?: ReactNode;
   signatures?: PrintSignature[];
+  authenticity?: PrintField[];
   footer?: ReactNode;
 }
 
 const alignClass = { left: "text-left", center: "text-center", right: "text-right" } as const;
 
+const timestamp = (value?: string | null) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString("id-ID", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false });
+};
+
 export default function DocumentPrintTemplate<Row>({
   title,
-  showLogo,
+  showLogo = true,
   documentNumber,
   documentDate,
   status,
@@ -56,12 +66,15 @@ export default function DocumentPrintTemplate<Row>({
   notes,
   extraAfterTable,
   signatures,
+  authenticity = [],
   footer,
 }: Props<Row>) {
+  const visibleAuthenticity = authenticity.filter((field) => field.value !== undefined && field.value !== null && field.value !== "");
   return <article className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
+    <style>{`@page{size:A4 portrait;margin:10mm}@media print{body{background:#fff!important}.print-document{max-width:none!important;min-height:auto!important;padding:0!important}.print-document thead{display:table-header-group}.print-document tr{break-inside:avoid;page-break-inside:avoid}.avoid-break{break-inside:avoid;page-break-inside:avoid}}`}</style>
     <header className="grid grid-cols-[1.35fr_1fr] items-center gap-8 border-b border-black pb-4">
       <div className="flex items-center gap-4">
-        {showLogo && <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-14 w-auto shrink-0 object-contain" />}
+        {showLogo && <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-16 w-auto shrink-0 object-contain" />}
         <div className="leading-5">
           <div className="text-[17px] font-bold tracking-wide">PT. MUTIARA MERDEKA HOTEL</div>
           <div>Jalan Yos Sudarso No 12 A PO Box 1129</div>
