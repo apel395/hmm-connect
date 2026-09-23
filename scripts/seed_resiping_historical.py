@@ -83,7 +83,11 @@ def dec(v):
     # Workbook uses both 28,000.00 and 3,566,400,00.  The latter means
     # 3,566,400.00, not 356,640,000.
     if re.fullmatch(r"-?\d{1,3}(?:,\d{3})+,\d{2}", raw):
-        raw=raw.rsplit(",",1)[0].replace(",", "")+"."+raw.rsplit(",",1)[1]
+        left,right=raw.rsplit(",",1)
+        raw=left.replace(",", "")+"."+right
+    elif re.fullmatch(r"-?\d{1,3}(?:\.\d{3})+\.\d{2}", raw):
+        left,right=raw.rsplit(".",1)
+        raw=left.replace(".", "")+"."+right
     else:
         raw=raw.replace(",", "")
     try:
