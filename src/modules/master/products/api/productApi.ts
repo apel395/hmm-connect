@@ -1,6 +1,6 @@
 import api from "@/api/client";
 
-import type { ItemType } from "../types";
+import type { InventoryTreatment, ItemType, TaxCategory } from "../types";
 
 import type {
   ProductCreateRequest,
@@ -14,6 +14,8 @@ export type ProductListParams = {
   active_only?: boolean;
   market_only?: boolean;
   exclude_market?: boolean;
+  inventory_treatment?: InventoryTreatment;
+  tax_category?: TaxCategory;
 };
 
 export type ProductClassificationGroup = {
