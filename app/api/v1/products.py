@@ -86,7 +86,7 @@ def list_products(
     exclude_market: bool = False,
     item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None,
     inventory_treatment: Annotated[str | None, Query(pattern="^(STOCK|DIRECT_USE|FIXED_ASSET|NON_STOCK|REVIEW_REQUIRED)$")] = None,
-    tax_category: Annotated[str | None, Query(pattern="^(STANDARD|EXEMPT|NON_VAT|SPECIAL|REVIEW_REQUIRED)$")] = None,
+    tax_category: Annotated[str | None, Query(pattern="^(STANDARD|EXEMPT|NON_TAXABLE|SPECIAL|REVIEW_REQUIRED)$")] = None,
     search: Annotated[str | None, Query(max_length=100)] = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
