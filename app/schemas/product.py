@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 TaxCategory = Literal["STANDARD", "EXEMPT", "NON_VAT", "SPECIAL", "REVIEW_REQUIRED"]
+InventoryTreatment = Literal["STOCK", "DIRECT_USE", "FIXED_ASSET", "NON_STOCK", "REVIEW_REQUIRED"]
 
 
 class ProductCreate(BaseModel):
@@ -29,6 +30,8 @@ class ProductCreate(BaseModel):
     inventory_account_id: int | None = None
     purchase_account_id: int | None = None
     cogs_account_id: int | None = None
+    asset_account_id: int | None = None
+    inventory_treatment: InventoryTreatment = "REVIEW_REQUIRED"
     is_market_item: bool = False
     is_active: bool = True
 
@@ -64,6 +67,8 @@ class ProductUpdate(BaseModel):
     inventory_account_id: int | None = None
     purchase_account_id: int | None = None
     cogs_account_id: int | None = None
+    asset_account_id: int | None = None
+    inventory_treatment: InventoryTreatment | None = None
     is_market_item: bool | None = None
     is_active: bool | None = None
 
