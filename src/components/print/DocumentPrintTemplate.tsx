@@ -21,6 +21,8 @@ export interface PrintSignature {
   label: string;
   name?: ReactNode;
   imageSrc?: string;
+  signedAt?: string | null;
+  status?: ReactNode;
 }
 
 interface Props<Row> {
@@ -37,14 +39,22 @@ interface Props<Row> {
   notes?: ReactNode;
   extraAfterTable?: ReactNode;
   signatures?: PrintSignature[];
+  authenticity?: PrintField[];
   footer?: ReactNode;
 }
 
 const alignClass = { left: "text-left", center: "text-center", right: "text-right" } as const;
 
+const timestamp = (value?: string | null) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString("id-ID", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false });
+};
+
 export default function DocumentPrintTemplate<Row>({
   title,
-  showLogo,
+  showLogo = true,
   documentNumber,
   documentDate,
   status,
@@ -56,12 +66,15 @@ export default function DocumentPrintTemplate<Row>({
   notes,
   extraAfterTable,
   signatures,
+  authenticity = [],
   footer,
 }: Props<Row>) {
+  const visibleAuthenticity = authenticity.filter((field) => field.value !== undefined && field.value !== null && field.value !== "");
   return <article className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
+    <style>{`@page{size:A4 portrait;margin:10mm}@media print{body{background:#fff!important}.print-document{max-width:none!important;min-height:auto!important;padding:0!important}.print-document thead{display:table-header-group}.print-document tr{break-inside:avoid;page-break-inside:avoid}.avoid-break{break-inside:avoid;page-break-inside:avoid}}`}</style>
     <header className="grid grid-cols-[1.35fr_1fr] items-center gap-8 border-b border-black pb-4">
       <div className="flex items-center gap-4">
-        {showLogo && <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-14 w-auto shrink-0 object-contain" />}
+        {showLogo && <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-16 w-auto shrink-0 object-contain" />}
         <div className="leading-5">
           <div className="text-[17px] font-bold tracking-wide">PT. MUTIARA MERDEKA HOTEL</div>
           <div>Jalan Yos Sudarso No 12 A PO Box 1129</div>
@@ -95,10 +108,34 @@ export default function DocumentPrintTemplate<Row>({
 
     <section className="avoid-break mt-7"><div className="font-semibold">NOTES:</div><div className="mt-1 min-h-14 border-b border-black py-2">{notes || "—"}</div></section>
 
-    {!!signatures?.length && <section className={`avoid-break mt-12 grid gap-10 text-center ${signatures.length >= 3 ? "grid-cols-3" : signatures.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
-      {signatures.map((signature, index) => <div key={`${signature.label}-${index}`}><div className="flex h-14 items-end justify-center">{signature.imageSrc && <img src={signature.imageSrc} alt="" className="max-h-14 max-w-full object-contain" />}</div><div className="border-t border-black pt-2 font-semibold">{signature.label}</div><div className="mt-1 text-[11px]">{signature.name ?? ""}</div></div>)}
+    {!!signatures?.length && <section className={`avoid-break mt-10 grid gap-6 text-center ${signatures.length >= 4 ? "grid-cols-4" : signatures.length === 3 ? "grid-cols-3" : signatures.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+      {signatures.map((signature, index) => (
+        <div key={`${signature.label}-${index}`}>
+          <div className="flex h-14 items-end justify-center">
+            {signature.imageSrc
+              ? <img src={signature.imageSrc} alt="" className="max-h-14 max-w-full object-contain" />
+              : <div className="pb-1 text-[12px] font-semibold">{signature.name ?? ""}</div>}
+          </div>
+          <div className="border-t border-black pt-2 font-semibold">{signature.label}</div>
+          {signature.imageSrc && <div className="mt-1 text-[11px] font-medium">{signature.name ?? ""}</div>}
+          {signature.status != null && <div className="mt-0.5 text-[10px] uppercase text-slate-600">{signature.status}</div>}
+          {signature.signedAt && <div className="mt-0.5 text-[10px] text-slate-600">{timestamp(signature.signedAt)}</div>}
+        </div>
+      ))}
     </section>}
 
-    {footer && <footer className="mt-8 border-t pt-2 text-[10px] text-slate-600">{footer}</footer>}
+    {!!visibleAuthenticity.length && <section className="avoid-break mt-8 border border-slate-400 p-3 text-[10px]">
+      <div className="mb-2 font-bold tracking-wide">DOCUMENT AUTHENTICITY</div>
+      <div className="grid grid-cols-2 gap-x-8 gap-y-1">
+        {visibleAuthenticity.map((field, index) => (
+          <div key={`${field.label}-${index}`} className="grid grid-cols-[105px_1fr] gap-2">
+            <span className="font-semibold">{field.label}</span>
+            <span>{field.value}</span>
+          </div>
+        ))}
+      </div>
+    </section>}
+
+    {footer && <footer className="mt-5 border-t pt-2 text-[10px] text-slate-600">{footer}</footer>}
   </article>;
 }

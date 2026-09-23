@@ -12,7 +12,7 @@ const TAX_CATEGORIES: { value: TaxCategory; label: string; help: string }[] = [
   { value: "REVIEW_REQUIRED", label: "Review Required", help: "Belum diklasifikasikan. Finance harus menetapkan perlakuan PPN sebelum dokumen dilanjutkan." },
   { value: "STANDARD", label: "Standard PPN", help: "Item kena PPN dengan tarif yang ditetapkan di Item Master." },
   { value: "EXEMPT", label: "PPN Dibebaskan", help: "Item mendapat fasilitas pembebasan PPN." },
-  { value: "NON_VAT", label: "Non PPN", help: "Item bukan objek PPN untuk transaksi pembelian ini." },
+  { value: "NON_TAXABLE", label: "Non PPN", help: "Item bukan objek PPN untuk transaksi pembelian ini." },
   { value: "SPECIAL", label: "Perlakuan Khusus", help: "Gunakan tarif khusus dan isi alasan/referensi Finance." },
 ];
 
@@ -191,7 +191,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
 
   const taxReady =
     form.tax_category === "REVIEW_REQUIRED" ||
-    (["EXEMPT", "NON_VAT"].includes(form.tax_category)) ||
+    (["EXEMPT", "NON_TAXABLE"].includes(form.tax_category)) ||
     (form.is_taxable && Number(form.tax_rate) > 0);
 
   const subgroupRequired = form.item_type === "BUY";

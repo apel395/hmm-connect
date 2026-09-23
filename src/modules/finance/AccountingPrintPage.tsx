@@ -75,6 +75,10 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     { label: "TOTAL", value: money(data.total_amount), emphasis: true },
   ];
 
+  const approvalSignatures: any[] = (data.approval_history ?? []).filter((step: any) => step.status === "APPROVED").map((step: any) => ({ label: step.signature_label || step.name || `Approval Level ${step.level}`, name: step.signature_name || step.approver_name || "Approved", imageSrc: step.signature_image || undefined, signedAt: step.decided_at, status: step.status }));
+  if (!approvalSignatures.length && data.approved_by_name) approvalSignatures.push({ label: "Approved By", name: data.approved_by_name, signedAt: data.approved_at || null, status: "APPROVED" });
+  const creator = data.created_by_name || data.requester_name || data.received_by_name;
+
   const funding = isPayment && data.funding_lines?.length ? <section className="avoid-break mt-6"><div className="mb-2 font-semibold">FUNDING ACCOUNTS</div><table className="w-full border-collapse text-[11px]"><thead><tr><th className="border-y border-black px-2 py-1 text-left">BANK</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT NUMBER</th><th className="border-y border-black px-2 py-1 text-right">AMOUNT</th></tr></thead><tbody>{data.funding_lines.map((line: any) => <tr key={line.id}><td className="border-b px-2 py-1">{line.bank_name}</td><td className="border-b px-2 py-1">{line.account_name}</td><td className="border-b px-2 py-1">{line.account_number}</td><td className="border-b px-2 py-1 text-right">{money(line.amount)}</td></tr>)}</tbody></table></section> : undefined;
 
   return <DocumentPrintTemplate
@@ -89,15 +93,23 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     totals={totals}
     notes={data.notes || data.description}
     extraAfterTable={funding}
-    signatures={isPayment ? [
-      { label: "Prepared By", name: data.created_by_name || "Finance" },
-      { label: "Approved By", name: data.approved_by_name },
+    signatures={approvalSignatures.length ? approvalSignatures : isPayment ? [
+      { label: "Prepared By", name: data.created_by_name || "Finance", signedAt: data.created_at },
       { label: "Receiver / Bank Reference", name: data.reference_number },
     ] : [
-      { label: "Prepared By", name: data.created_by_name },
-      { label: "Checked By", name: data.posted_by_name },
-      { label: "Approved By", name: data.approved_by_name },
+      { label: "Prepared By", name: data.created_by_name, signedAt: data.created_at },
+      { label: "Posted By", name: data.posted_by_name, signedAt: data.posted_at },
     ]}
-    footer={<>Created by {data.created_by_name || "—"} · Posted by {data.posted_by_name || "—"} · Printed at {new Date(data.generated_at).toLocaleString()}</>}
+    authenticity={[
+      { label: "CREATOR", value: creator },
+      { label: "CREATED AT", value: data.created_at ? new Date(data.created_at).toLocaleString("id-ID") : undefined },
+      { label: "POSTED BY", value: data.posted_by_name },
+      { label: "POSTED AT", value: data.posted_at ? new Date(data.posted_at).toLocaleString("id-ID") : undefined },
+      { label: "PRINTED BY", value: data.printed_by || data.generated_by_name || "Finance" },
+      { label: "PRINTED AT", value: data.generated_at ? new Date(data.generated_at).toLocaleString("id-ID") : undefined },
+      { label: "DOCUMENT #", value: documentNumber },
+      { label: "STATUS", value: data.status },
+    ]}
+    footer={<>System document · {documentNumber || "—"} · Created by {creator || "—"} · Printed {data.generated_at ? new Date(data.generated_at).toLocaleString("id-ID") : "—"}</>}
   />;
 }

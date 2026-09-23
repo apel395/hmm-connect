@@ -71,9 +71,12 @@ export default function GeneralLedgerPrintPage() {
         }
       `}</style>
 
-      <header className="gl-running-header mb-3 border-b-2 border-slate-800 pb-2 text-center">
-        <h1 className="text-lg font-bold tracking-wide">{brand.toUpperCase()}</h1>
-        <h2 className="text-base font-semibold">GENERAL LEDGER</h2>
+      <header className="gl-running-header mb-3 border-b-2 border-slate-800 pb-2">
+        <div className="grid grid-cols-[90px_1fr_90px] items-center">
+          <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-12 w-auto object-contain" />
+          <div className="text-center"><h1 className="text-lg font-bold tracking-wide">{brand.toUpperCase()}</h1><h2 className="text-base font-semibold">GENERAL LEDGER</h2></div>
+          <div />
+        </div>
         <div className="text-[10px]">{period}</div>
         <div className="text-[9px] text-slate-700">Account: {accountLine}</div>
       </header>

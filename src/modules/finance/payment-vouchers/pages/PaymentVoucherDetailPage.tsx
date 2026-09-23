@@ -1,4 +1,3 @@
-import { Printer } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -8,6 +7,7 @@ import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { approveVoucher, getVoucher, rejectVoucher, submitVoucher, voidVoucher } from "../api";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 
 const money = (v: unknown) => Number(v || 0).toLocaleString("id-ID", { minimumFractionDigits: 2 });
 
@@ -33,11 +33,10 @@ export default function PaymentVoucherDetailPage() {
       <PageHeader title={v.voucher_number} description={`${v.location_name} • ${v.voucher_date} • ${v.status}`} actions={
         <div className="flex gap-2">
           <Link to="/finance/payment-vouchers"><Button variant="outline">Back</Button></Link>
-          <Link to={`/finance/payment-vouchers/${v.id}/print`}><Button variant="outline">Print</Button></Link>
+          <PrintPreviewButton src={`/finance/payment-vouchers/${v.id}/print`} title={`Payment Voucher ${v.voucher_number}`} ariaLabel="Preview payment voucher" />
           {v.status === "DRAFT" && <Button onClick={() => submit.mutate()} loading={submit.isPending}>Submit</Button>}
           {v.status === "PENDING_APPROVAL" && <><Button onClick={() => approve.mutate()} loading={approve.isPending}>Approve</Button><Button variant="outline" onClick={() => reject.mutate()} loading={reject.isPending}>Reject</Button></>}
           {(v.status === "DRAFT" || v.status === "PENDING_APPROVAL") && <Button variant="outline" onClick={() => voidIt.mutate()} loading={voidIt.isPending}>Void</Button>}
-          <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </div>
       } />
       <div className="grid gap-3 sm:grid-cols-4">

@@ -48,7 +48,7 @@ export const productApi = {
   updateTaxProfile: (
     id: number,
     payload: {
-      tax_category: "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL";
+      tax_category: "STANDARD" | "EXEMPT" | "NON_TAXABLE" | "SPECIAL";
       is_taxable: boolean;
       tax_rate: number;
       tax_reason?: string | null;

@@ -19,9 +19,12 @@ export default function APAgingPrintPage() {
   return (
     <article className="mx-auto bg-white p-6 text-[10px] text-slate-950 print:p-0">
       <style>{`@page{size:landscape;margin:10mm} @media print{body{background:#fff}.app-shell,.sidebar,.topbar{display:none!important}}`}</style>
-      <header className="mb-4 text-center">
-        <h1 className="text-lg font-bold tracking-wide">ACCOUNT PAYABLE AGING</h1>
-        <div className="mt-1 text-xs">Hotel Mutiara Merdeka Pekanbaru</div>
+      <header className="mb-4 border-b-2 border-slate-800 pb-3">
+        <div className="grid grid-cols-[90px_1fr_90px] items-center">
+          <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-12 w-auto object-contain" />
+          <div className="text-center"><h1 className="text-lg font-bold tracking-wide">ACCOUNT PAYABLE AGING</h1><div className="mt-1 text-xs">Hotel Mutiara Merdeka Pekanbaru</div></div>
+          <div />
+        </div>
         <div className="mt-1">As of {data.as_of_date}</div>
       </header>
 
