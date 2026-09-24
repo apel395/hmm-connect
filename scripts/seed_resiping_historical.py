@@ -325,15 +325,21 @@ def parse_source_date(v):
         "JANUARY":1,"JANUARI":1,"FEBRUARY":2,"FEBRUARI":2,"MARCH":3,"MARET":3,
         "APRIL":4,"MAY":5,"MEI":5,"JUNE":6,"JUNI":6,"JULY":7,"JULI":7,
         "AUGUST":8,"AGUSTUS":8,"SEPTEMBER":9,"SEPTEMBER":9,"OCTOBER":10,"OKTOBER":10,
-        "NOVEMBER":11,"NOVEMBER":11,"DECEMBER":12,"DESEMBER":12,
+        "NOVEMBER":11,"NOVEMBER":11,"DECEMBER":12,"DESEMBER":12,"DES":12,
     }
-    m=re.search(r"(\d{1,2})(?:\s*-\s*\d{1,2})?\s+([A-Z]+)\s+(20\d{2})",raw)
+    m=re.search(r"(\d{1,2})(?:\s*-\s*\d{1,2})?\s+([A-Z]+)\s+(\d{2}|20\d{2})",raw)
     if not m:
         return None
-    day=int(m.group(1)); month=months.get(m.group(2)); year=int(m.group(3))
+    day=int(m.group(1))
+    month=months.get(m.group(2))
+    year=int(m.group(3))
+    if year < 100:
+        year += 2000
     if not month:
         return None
     try:
+        # For a historical range such as 15-21 DES 25, use the first day
+        # (2025-12-15) as the receiving-history date for the block.
         return date(year,month,day)
     except ValueError:
         return None
