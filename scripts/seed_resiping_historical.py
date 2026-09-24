@@ -235,6 +235,26 @@ def resolve_supplier(db, raw, cache, stats):
     db.add(s); db.flush(); cache[key]=s; stats["suppliers"]+=1
     return s
 
+def historical_inventory_override(db, key):
+    upper=text(key).upper()
+    # Boss-approved historical classification:
+    # drinking water gallons/mineral water -> Inv Minuman; the remaining
+    # historical food items (including Roti Jalah/Rempeyek) -> Inv Makanan.
+    if "AIR GALON" in upper or "AIR MINERAL" in upper:
+        return {
+            "group_code":"2","group_name":"BEVERAGE",
+            "subgroup_code":"2-1","subgroup_name":"MINERAL WATER",
+            "inventory_account_id":coa_id(db,"100-300-500"),
+        }
+    if upper in {"ROTI JALAH","ROTI JALA","REMPEYEK"}:
+        return {
+            "group_code":"1","group_name":"FOOD",
+            "subgroup_code":"1-9","subgroup_name":"SNACK",
+            "inventory_account_id":coa_id(db,"100-300-100"),
+        }
+    return None
+
+
 def resolve_product(db, name, description, uom, occupied, cache, stats, *, historical_stock=False):
     key=canonical_item_name(name)
     if key in cache:
@@ -264,6 +284,19 @@ def resolve_product(db, name, description, uom, occupied, cache, stats, *, histo
     if historical_stock:
         cls=infer_class(key)
         inv,pur,cogs=product_accounts(db,cls)
+        override=historical_inventory_override(db,key)
+        if override:
+            p.group_code=override["group_code"]
+            p.group_name=override["group_name"]
+            p.subgroup_code=override["subgroup_code"]
+            p.subgroup_name=override["subgroup_name"]
+            p.inventory_account_id=override["inventory_account_id"]
+            # Purchase/COGS follow the approved food/beverage group mapping.
+            override_cls=infer_class("AIR MINERAL" if override["group_code"]=="2" else "ROTI")
+            _,pur,cogs=product_accounts(db,override_cls)
+            p.purchase_account_id=pur
+            p.cogs_account_id=cogs
+            stats["inventory_overrides"]+=1
         if str(getattr(p,"inventory_treatment","REVIEW_REQUIRED") or "REVIEW_REQUIRED").upper()=="REVIEW_REQUIRED":
             p.inventory_treatment="STOCK"
             stats["stock_classified"]+=1
@@ -514,6 +547,10 @@ def main():
                 deferred.append((source_row,"SKIP_OPERATIONAL",first["supplier"]))
                 continue
 
+            if not text(first["location"]):
+                stats["skipped_empty_location"]+=1
+                deferred.append((source_row,"SKIP_EMPTY_LOCATION",first["supplier"]))
+                continue
             loc=resolve_location(db,first["location"])
             if not loc:
                 blocked.append((source_row,"LOCATION",first["location"]))
@@ -608,16 +645,27 @@ def main():
                             projected_invoice_subtotal += item_value(x)
                         continue
 
-                    if not x["date"]:
-                        blocked.append((x["row"],"DATE",x["name"]))
-                        group_blocked=True
-                        continue
-
                     period_date=first.get("period_date")
-                    if period_date and abs((x["date"]-period_date).days)>120:
-                        blocked.append((x["row"],"DATE_OUTLIER",f"{x['name']} / {x['date']}"))
-                        group_blocked=True
-                        continue
+                    fallback_date=(
+                        block.get("invoice_date")
+                        or first.get("invoice_date")
+                        or block.get("period_date")
+                        or period_date
+                    )
+                    if not x["date"]:
+                        if not fallback_date:
+                            blocked.append((x["row"],"DATE",x["name"]))
+                            group_blocked=True
+                            continue
+                        x["date"]=fallback_date
+                        stats["date_fallbacks"]+=1
+                    elif period_date and abs((x["date"]-period_date).days)>120:
+                        if not fallback_date:
+                            blocked.append((x["row"],"DATE_OUTLIER",f"{x['name']} / {x['date']}"))
+                            group_blocked=True
+                            continue
+                        x["date"]=fallback_date
+                        stats["date_fallbacks"]+=1
 
                     p=resolve_product(
                         db,x["name"],x["description"],x["uom"],
@@ -877,6 +925,9 @@ def main():
             "products_new:",stats["products"],
             "stock_classified:",stats["stock_classified"],
             "tax_classified:",stats["tax_classified"],
+            "inventory_overrides:",stats["inventory_overrides"],
+            "date_fallbacks:",stats["date_fallbacks"],
+            "skipped_empty_location:",stats["skipped_empty_location"],
             "suppliers_new:",stats["suppliers"],
             "not_received:",stats["not_received"],
             "received_not_invoiced:",stats["received_not_invoiced"],
