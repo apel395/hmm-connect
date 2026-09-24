@@ -36,6 +36,7 @@ import APAdjustmentsPage from "@/modules/finance/accounts-payable/APAdjustmentsP
 import JournalListPage from "@/modules/finance/journals/JournalListPage";
 import JournalDetailPage from "@/modules/finance/journals/JournalDetailPage";
 import JournalWorkspacePage from "@/modules/finance/journals/JournalWorkspacePage";
+import JournalRegisterPrintPage from "@/modules/finance/journals/JournalRegisterPrintPage";
 import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
 import PaymentListPage from "@/modules/finance/payments/PaymentListPage";
 import PaymentDetailPage from "@/modules/finance/payments/PaymentDetailPage";
@@ -50,6 +51,7 @@ import BankTransferDetailPage from "@/modules/finance/cash-flow/BankTransferDeta
 import BankTransferPrintPage from "@/modules/finance/cash-flow/BankTransferPrintPage";
 import CashBankWorkspacePage from "@/modules/finance/cash-flow/CashBankWorkspacePage";
 import TrialBalancePage from "@/modules/finance/trial-balance/TrialBalancePage";
+import TrialBalancePrintPage from "@/modules/finance/trial-balance/TrialBalancePrintPage";
 import BalanceSheetPage from "@/modules/finance/financial-statements/BalanceSheetPage";
 import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPage";
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
@@ -65,6 +67,7 @@ import DepreciationReportPage from "@/modules/finance/fixed-assets/DepreciationR
 import AmortizationPage from "@/modules/finance/fixed-assets/AmortizationPage";
 import FixedAssetsWorkspacePage from "@/modules/finance/fixed-assets/FixedAssetsWorkspacePage";
 import FinanceSetupWorkspacePage from "@/modules/finance/setup/FinanceSetupWorkspacePage";
+import FinanceSetupPrintPage from "@/modules/finance/setup/FinanceSetupPrintPage";
 import BankAccountFormPage from "@/modules/finance/setup/BankAccountFormPage";
 import ApprovalCenterPage from "@/modules/approval/ApprovalCenterPage";
 import ApprovalConfigurationPage from "@/modules/approval/ApprovalConfigurationPage";
@@ -198,12 +201,15 @@ const router = createBrowserRouter([
       { path: "journal", element: <JournalWorkspacePage section="journal" /> },
       { path: "journal/general-ledger", element: <JournalWorkspacePage section="general-ledger" /> },
       { path: "journal/trial-balance", element: <JournalWorkspacePage section="trial-balance" /> },
+      { path: "journal/register/print", element: <JournalRegisterPrintPage /> },
+      { path: "journal/trial-balance/print", element: <TrialBalancePrintPage /> },
       { path: "journal-entries", element: <JournalListPage /> },
       { path: "journal-entries/:id", element: <JournalDetailPage /> },
       { path: "journal-entries/:id/print", element: <AccountingPrintPage kind="journal-entries" /> },
       { path: "general-ledger", element: <GeneralLedgerPage /> },
       { path: "general-ledger/print", element: <GeneralLedgerPrintPage /> },
       { path: "trial-balance", element: <TrialBalancePage /> },
+      { path: "trial-balance/print", element: <TrialBalancePrintPage /> },
 
       { path: "fixed-assets", element: <FixedAssetsWorkspacePage section="assets" /> },
       { path: "fixed-assets/categories", element: <FixedAssetsWorkspacePage section="categories" /> },
@@ -219,6 +225,11 @@ const router = createBrowserRouter([
       { path: "amortization", element: <AmortizationPage /> },
 
       { path: "finance-setup", element: <FinanceSetupWorkspacePage section="coa" /> },
+      { path: "finance-setup/coa/print", element: <FinanceSetupPrintPage section="coa" /> },
+      { path: "finance-setup/posting-rules/print", element: <FinanceSetupPrintPage section="posting-rules" /> },
+      { path: "finance-setup/bank-accounts/print", element: <FinanceSetupPrintPage section="bank-accounts" /> },
+      { path: "finance-setup/opening-balances/print", element: <FinanceSetupPrintPage section="opening-balances" /> },
+      { path: "finance-setup/accounting-periods/print", element: <FinanceSetupPrintPage section="accounting-periods" /> },
       { path: "finance-setup/posting-rules", element: <FinanceSetupWorkspacePage section="posting-rules" /> },
       { path: "finance-setup/fiscal-periods", element: <Navigate to="/finance-setup/accounting-periods" replace /> },
       { path: "finance-setup/accounting-periods", element: <FinanceSetupWorkspacePage section="accounting-periods" /> },
