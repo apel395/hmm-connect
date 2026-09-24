@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import {ChevronDown, ChevronRight, Eye, Plus, Printer} from "lucide-react";
+import {ChevronDown, ChevronRight, Eye, Plus} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
 import Button from "@/components/ui/Button";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
@@ -59,6 +60,10 @@ export default function ChartOfAccountPage() {
   const accounts = useQuery({ queryKey: ["chart-of-accounts", params], queryFn: () => getAccounts(params), enabled: view === "table" });
   const tree = useQuery({ queryKey: ["chart-of-accounts-tree"], queryFn: getAccountTree });
   const lookup = useQuery({ queryKey: ["chart-of-accounts-lookup"], queryFn: () => getAccountLookup({is_posting:false, is_active:true}) });
+  const printParams = Object.fromEntries(Object.entries({ search, account_type: type, normal_balance: balance, is_posting: posting === "posting" ? "true" : posting === "group" ? "false" : "", is_active: status === "active" ? "true" : status === "archived" ? "false" : "", sort_by: sortBy, sort_order: sortOrder }).filter(([, value]) => value !== ""));
+  const printQuery = new URLSearchParams(printParams as Record<string, string>).toString();
+  const printSrc = `/finance-setup/coa/print${printQuery ? `?${printQuery}` : ""}`;
+
   const refresh = () => {
     client.invalidateQueries({ queryKey: ["chart-of-accounts"] });
     client.invalidateQueries({ queryKey: ["chart-of-accounts-tree"] });
@@ -83,7 +88,7 @@ export default function ChartOfAccountPage() {
 
   return <>
     <div className="space-y-6">
-      <PageHeader title="Chart of Accounts" description="Manage the finance account structure and availability." actions={<div className="flex flex-wrap gap-2"><Button onClick={() => openForm()}><Plus size={16}/> Create</Button><Button variant="outline" disabled title="COA import is not available yet">Import</Button><Button variant="outline" onClick={() => exportCsv("chart-of-accounts.csv", ["Code","Name","Type","Normal Balance","Posting","Status"], (accounts.data?.items ?? []).map((item) => [item.account_code,item.account_name,item.account_type,item.normal_balance,item.is_posting ? "Yes" : "No",item.is_active ? "Active" : "Archived"]))}>Export</Button>  <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+      <PageHeader title="Chart of Accounts" description="Manage the finance account structure and availability." actions={<div className="flex flex-wrap gap-2"><Button onClick={() => openForm()}><Plus size={16}/> Create</Button><Button variant="outline" disabled title="COA import is not available yet">Import</Button><Button variant="outline" onClick={() => exportCsv("chart-of-accounts.csv", ["Code","Name","Type","Normal Balance","Posting","Status"], (accounts.data?.items ?? []).map((item) => [item.account_code,item.account_name,item.account_type,item.normal_balance,item.is_posting ? "Yes" : "No",item.is_active ? "Active" : "Archived"]))}>Export</Button>  <PrintPreviewButton src={printSrc} title="Chart of Accounts Register" ariaLabel="Preview chart of accounts" label="Print" />
 </div>}/>
       <ModuleSummary metrics={[
         {label:"Total Accounts",value:accounts.data?.total_items ?? lookup.data?.length ?? 0},
