@@ -55,11 +55,32 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     { label: "INVOICE TOTAL", align: "right" as const, render: (line: any) => money(line.invoice_total) },
     { label: "AMOUNT", align: "right" as const, render: (line: any) => money(line.allocated_amount) },
   ] : [
-    { label: "DESCRIPTION", align: "left" as const, render: (line: any) => <><div>{line.product_name || line.description || "Manual line"}</div>{line.product_code && <div className="text-[10px] text-slate-500">{line.product_code}</div>}</> },
-    { label: "Qty", align: "right" as const, render: (line: any) => line.quantity },
-    { label: "Uom", align: "center" as const, render: (line: any) => line.uom || "—" },
-    { label: "Price", align: "right" as const, render: (line: any) => money(line.unit_price) },
-    { label: "AMOUNT", align: "right" as const, render: (line: any) => money(line.line_amount) },
+    {
+      label: "ITEM",
+      align: "left" as const,
+      render: (line: any) => {
+        const item = String(line.product_name || line.description || "Manual line").trim();
+        const description = String(line.description || "").trim();
+        const showDescription = Boolean(
+          description &&
+          description.localeCompare(item, undefined, { sensitivity: "accent" }) !== 0,
+        );
+        return (
+          <>
+            <div>{item}</div>
+            {showDescription ? <div className="mt-0.5 text-[10px] text-slate-500">{description}</div> : null}
+          </>
+        );
+      },
+    },
+    { label: "QTY", align: "right" as const, render: (line: any) => line.quantity },
+    { label: "UOM", align: "center" as const, render: (line: any) => line.uom || "—" },
+    { label: "UNIT PRICE", align: "right" as const, render: (line: any) => money(line.unit_price) },
+    ...(rows.some((line: any) => Number(line.tax_amount || 0) !== 0 || Number(line.tax_rate || 0) !== 0)
+      ? [{ label: "PPN", align: "right" as const, render: (line: any) => money(line.tax_amount) }]
+      : []),
+    { label: "ACCOUNT", align: "left" as const, render: (line: any) => [line.account_code, line.account_name].filter(Boolean).join(" — ") || "—" },
+    { label: "LINE TOTAL", align: "right" as const, render: (line: any) => money(line.line_amount) },
   ];
 
   const totals = isJournal ? [
