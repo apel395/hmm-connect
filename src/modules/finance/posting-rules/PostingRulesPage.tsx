@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import api from "@/api/client";
 import PageHeader from "@/components/common/PageHeader";
-import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Badge from "@/components/ui/Badge";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 
@@ -127,7 +127,7 @@ export default function PostingRulesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-         actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Direct COA Setup"
+         actions={<PrintPreviewButton src="/finance-setup/posting-rules/print" title="Direct COA Configuration" ariaLabel="Preview direct COA configuration" label="Print" />} title="Direct COA Setup"
         description="Global accounting controls and master-owned COA mappings for new transactions."
       />
 
