@@ -1,9 +1,9 @@
-import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Badge from "@/components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { exportTrialBalanceCsv, getTrialBalance, TrialBalanceFilters } from "./api";
@@ -31,11 +31,14 @@ export default function TrialBalancePage() {
   }, [locations.data, draft.location_id]);
   const query = useQuery({ queryKey: ["trial-balance", filters], queryFn: () => getTrialBalance(filters) });
   const data = query.data;
+  const printParams = Object.fromEntries(Object.entries(filters).filter(([key, value]) => key !== "page" && key !== "page_size" && value !== "" && value !== undefined));
+  const printQuery = new URLSearchParams(Object.fromEntries(Object.entries(printParams).map(([key, value]) => [key, String(value)]))).toString();
+  const printSrc = `/journal/trial-balance/print${printQuery ? `?${printQuery}` : ""}`;
 
   return <div className="space-y-5">
     <PageHeader title="Trial Balance" description="Opening balance, period movements, total movement, and closing balance by COA." actions={<>
 <Button variant="outline" disabled={!data} onClick={() => exportTrialBalanceCsv(filters)}>Export CSV</Button>
-<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+<PrintPreviewButton src={printSrc} title="Trial Balance" ariaLabel="Preview trial balance" label="Print" />
 </>} />
     <Card><form className="grid gap-3 md:grid-cols-5" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft, page: 1 }); }}>
       <label className="text-sm">From<input className={`${input} mt-1 w-full`} type="date" value={draft.date_from} onChange={(e) => setDraft({ ...draft, date_from: e.target.value })}/></label>
