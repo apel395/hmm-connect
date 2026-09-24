@@ -749,10 +749,14 @@ def main():
             ]
             receipt_dates=[]
             for block,ready in block_ready:
-                # Consolidate identical product/date/cost lines first.
+                # Historical receipts are date-based.  Consolidate all
+                # workbook rows for the same product/date/cost into one GR line.
+                # Do not let cosmetic UOM spelling/case split a receipt that was
+                # already posted historically (e.g. Suharti 30 + 20 portions on
+                # 2025-12-01 = the preserved 50-portion GR line).
                 consolidated={}
                 for x,p in ready:
-                    item_key=(p.id,x["date"],x["price"],text(x["uom"]).upper())
+                    item_key=(p.id,x["date"],x["price"])
                     if item_key not in consolidated:
                         consolidated[item_key]=(dict(x),p)
                     else:
@@ -761,20 +765,26 @@ def main():
                         gx["description"] = gx["description"] or x["description"]
                 ready=list(consolidated.values())
 
-                # Direct GR requires each product once per document. Split when
-                # the same product reappears at a different date/cost.
+                # Build one receipt group per receiving date where possible.
+                # If a product occurs more than once on the same date at
+                # different costs, split only that cost occurrence because a
+                # direct GR can contain a product only once.
                 receipt_groups=[]
-                current=[]
-                seen=set()
+                by_date={}
                 for x,p in sorted(ready,key=lambda xp:(xp[0]["date"],xp[0]["row"])):
-                    if p.id in seen:
+                    by_date.setdefault(x["date"],[]).append((x,p))
+                for receiving_date,date_lines in sorted(by_date.items()):
+                    current=[]
+                    seen=set()
+                    for x,p in date_lines:
+                        if p.id in seen:
+                            receipt_groups.append(current)
+                            current=[]
+                            seen=set()
+                        current.append((x,p))
+                        seen.add(p.id)
+                    if current:
                         receipt_groups.append(current)
-                        current=[]
-                        seen=set()
-                    current.append((x,p))
-                    seen.add(p.id)
-                if current:
-                    receipt_groups.append(current)
 
                 for group_no,ready_group in enumerate(receipt_groups,1):
                     receipt_date=min(x["date"] for x,_ in ready_group)
