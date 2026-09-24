@@ -412,6 +412,30 @@ def invoice_group_key(block, supplier):
 
 DIRECT_INVOICE_KEYWORDS=("LAUNDRY","PC RAKITAN","INTEL I5-4590","GOJEK","UANG SAMPAH","BIAYA ADMIN")
 
+# Historical direct-cost lines do not create stock receiving.  These mappings
+# point to existing posting COAs in production and are snapshotted onto SI lines.
+DIRECT_INVOICE_COA_RULES=(
+    (("LAUNDRY",), "700-500-123"),                 # Laundry dan Dry Cleaning
+    (("PC RAKITAN","INTEL I5-4590"), "700-500-121"), # Perangkat Lunak/Keras Komputer
+    (("GOJEK",), "700-500-100"),                   # Transportasi dan Perjalanan Dinas
+    (("UANG SAMPAH",), "750-100-999"),             # Beban Admin lainnya
+    (("BIAYA ADMIN",), "700-500-122"),             # Biaya Admin Bank
+)
+
+def direct_invoice_account(db, item):
+    upper=(item["name"]+" "+item["description"]).upper()
+    for keywords,number in DIRECT_INVOICE_COA_RULES:
+        if any(keyword in upper for keyword in keywords):
+            account=db.query(ChartOfAccount).filter(
+                ChartOfAccount.account_number==number,
+                ChartOfAccount.is_active.is_(True),
+                ChartOfAccount.is_posting.is_(True),
+            ).first()
+            if account and account.account_type=="EXPENSE" and account.normal_balance=="DEBIT":
+                return account
+            return None
+    return None
+
 def item_value(item):
     if item.get("qty") is None or item.get("price") is None:
         return None
@@ -551,6 +575,7 @@ def main():
             source_invoice_subtotal=ZERO
             excluded_rows=set()
             block_ready=[]
+            direct_invoice_lines=[]
             group_receipt_dates=[]
 
             for block in source_blocks:
@@ -573,8 +598,14 @@ def main():
 
                     if is_direct_invoice_item(x):
                         stats["direct_invoice"]+=1
-                        blocked.append((x["row"],"DIRECT_INVOICE_ACCOUNT_REQUIRED",x["name"]))
-                        group_blocked=True
+                        account=direct_invoice_account(db,x)
+                        if not account:
+                            blocked.append((x["row"],"DIRECT_INVOICE_ACCOUNT_REQUIRED",x["name"]))
+                            group_blocked=True
+                            continue
+                        direct_invoice_lines.append((x,account))
+                        if x["row"] not in excluded_rows:
+                            projected_invoice_subtotal += item_value(x)
                         continue
 
                     if not x["date"]:
@@ -644,7 +675,24 @@ def main():
                     stats["ready_groups"]+=1
                 continue
 
-            invoice_lines=[]
+            invoice_lines=[
+                SupplierInvoiceLineInput(
+                    product_id=None,
+                    goods_receipt_item_id=None,
+                    description=x["description"] or x["name"],
+                    quantity=x["qty"],
+                    uom=x["uom"] or "LOT",
+                    unit_price=x["price"],
+                    is_taxable=False,
+                    tax_rate=ZERO,
+                    tax_amount=ZERO,
+                    account_id=account.id,
+                    department_id=dept.id,
+                    notes=f"Historical direct invoice source row {x['row']}",
+                )
+                for x,account in direct_invoice_lines
+                if x["row"] not in excluded_rows
+            ]
             receipt_dates=[]
             for block,ready in block_ready:
                 # Consolidate identical product/date/cost lines first.
