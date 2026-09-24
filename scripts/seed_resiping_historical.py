@@ -821,13 +821,26 @@ def main():
                         stats["existing_receipts"]+=1
 
                     receipt_dates.append(receipt_date)
-                    for idx,(x,p) in enumerate(ready_group):
+                    gr_items_by_product={item.product_id:item for item in gr.items}
+                    for x,p in ready_group:
                         # The source can prove a received item is outside the
                         # supplier invoice (known example: Sukanda source row 94).
                         if x["row"] in excluded_rows:
                             stats["received_not_invoiced"]+=1
                             continue
-                        gri=gr.items[idx]
+                        gri=gr_items_by_product.get(p.id)
+                        if not gri:
+                            raise RuntimeError(
+                                f"Existing receipt {gr.external_reference} does not contain "
+                                f"current workbook product {p.code} {p.name} (source row {x['row']}). "
+                                "Historical receipt must be reconciled/rebuilt before invoice seeding."
+                            )
+                        if Decimal(gri.quantity or 0) != Decimal(x["qty"]) or Decimal(gri.unit_cost or 0) != Decimal(x["price"]):
+                            raise RuntimeError(
+                                f"Existing receipt {gr.external_reference} differs from current workbook "
+                                f"for {p.code} {p.name}: existing qty/cost="
+                                f"{gri.quantity}/{gri.unit_cost}, source={x['qty']}/{x['price']}."
+                            )
                         invoice_lines.append(SupplierInvoiceLineInput(
                             product_id=p.id,
                             goods_receipt_item_id=gri.id,
