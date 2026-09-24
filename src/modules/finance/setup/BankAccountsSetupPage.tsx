@@ -1,9 +1,9 @@
-import { Printer } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import { listBankAccounts } from "@/modules/finance/cash-flow/bankAccountApi";
 
@@ -21,7 +21,7 @@ export default function BankAccountsSetupPage() {
         description="Configure bank/cash funding accounts and their linked posting COA."
         actions={<>
 <Button onClick={() => navigate("/finance-setup/bank-accounts/new")}>Create Bank Account</Button>
-<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+<PrintPreviewButton src="/finance-setup/bank-accounts/print" title="Bank Account Register" ariaLabel="Preview bank account register" label="Print" />
 </>}
       />
       <Card className="p-0">
