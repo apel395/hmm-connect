@@ -235,24 +235,50 @@ def resolve_supplier(db, raw, cache, stats):
     db.add(s); db.flush(); cache[key]=s; stats["suppliers"]+=1
     return s
 
-def resolve_product(db, name, description, uom, occupied, cache, stats):
+def resolve_product(db, name, description, uom, occupied, cache, stats, *, historical_stock=False):
     key=canonical_item_name(name)
-    if key in cache: return cache[key]
-    p=db.query(Product).filter(func.upper(Product.name)==key).first()
-    if p: cache[key]=p; return p
-    cls=infer_class(key)
-    code=allocate_code(cls, occupied)
-    inv,pur,cogs=product_accounts(db,cls)
-    p=Product(code=code,name=key,description=text(description) or None,
-        group_code=cls.group_code,group_name=cls.group_name,
-        subgroup_code=cls.subgroup_code,subgroup_name=cls.subgroup_name,
-        uom=text(uom).upper() or "PCS",usage_uom=text(uom).upper() or "PCS",
-        conversion=Decimal("1"),cost_price=ZERO,selling_price=ZERO,
-        minimum_stock=ZERO,reorder_level=ZERO,maximum_stock=ZERO,lead_time_days=0,
-        inventory_account_id=inv,purchase_account_id=pur,cogs_account_id=cogs,
-        tax_category="NON_TAXABLE",is_taxable=False,tax_rate=ZERO,
-        inventory_treatment="REVIEW_REQUIRED",is_active=True)
-    db.add(p); db.flush(); cache[key]=p; stats["products"]+=1
+    if key in cache:
+        p=cache[key]
+    else:
+        p=db.query(Product).filter(func.upper(Product.name)==key).first()
+        if not p:
+            cls=infer_class(key)
+            code=allocate_code(cls, occupied)
+            inv,pur,cogs=product_accounts(db,cls)
+            p=Product(code=code,name=key,description=text(description) or None,
+                group_code=cls.group_code,group_name=cls.group_name,
+                subgroup_code=cls.subgroup_code,subgroup_name=cls.subgroup_name,
+                uom=text(uom).upper() or "PCS",usage_uom=text(uom).upper() or "PCS",
+                conversion=Decimal("1"),cost_price=ZERO,selling_price=ZERO,
+                minimum_stock=ZERO,reorder_level=ZERO,maximum_stock=ZERO,lead_time_days=0,
+                inventory_account_id=inv,purchase_account_id=pur,cogs_account_id=cogs,
+                tax_category="NON_TAXABLE",is_taxable=False,tax_rate=ZERO,
+                inventory_treatment="STOCK" if historical_stock else "REVIEW_REQUIRED",
+                is_active=True)
+            db.add(p); db.flush(); stats["products"]+=1
+        cache[key]=p
+
+    # The receiving workbook is source evidence that these positive qty/price
+    # goods were physically received into site inventory.  Promote only unresolved
+    # Item Master fields; never overwrite an explicit non-stock treatment or COA.
+    if historical_stock:
+        cls=infer_class(key)
+        inv,pur,cogs=product_accounts(db,cls)
+        if str(getattr(p,"inventory_treatment","REVIEW_REQUIRED") or "REVIEW_REQUIRED").upper()=="REVIEW_REQUIRED":
+            p.inventory_treatment="STOCK"
+            stats["stock_classified"]+=1
+        if not p.inventory_account_id:
+            p.inventory_account_id=inv
+        if not p.purchase_account_id:
+            p.purchase_account_id=pur
+        if not p.cogs_account_id:
+            p.cogs_account_id=cogs
+        if str(getattr(p,"tax_category","REVIEW_REQUIRED") or "REVIEW_REQUIRED").upper()=="REVIEW_REQUIRED":
+            p.tax_category="NON_TAXABLE"
+            p.is_taxable=False
+            p.tax_rate=ZERO
+            stats["tax_classified"]+=1
+        db.flush()
     return p
 
 def parse_source_date(v):
@@ -565,6 +591,7 @@ def main():
                     p=resolve_product(
                         db,x["name"],x["description"],x["uom"],
                         occupied,product_cache,stats,
+                        historical_stock=True,
                     )
                     treatment=getattr(p,"inventory_treatment","REVIEW_REQUIRED") or "REVIEW_REQUIRED"
                     if treatment!="STOCK":
@@ -800,6 +827,8 @@ def main():
         )
         print(
             "products_new:",stats["products"],
+            "stock_classified:",stats["stock_classified"],
+            "tax_classified:",stats["tax_classified"],
             "suppliers_new:",stats["suppliers"],
             "not_received:",stats["not_received"],
             "received_not_invoiced:",stats["received_not_invoiced"],
