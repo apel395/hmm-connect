@@ -7,9 +7,10 @@ interface PrintPreviewButtonProps {
   src: string;
   title: string;
   ariaLabel?: string;
+  label?: string;
 }
 
-export default function PrintPreviewButton({ src, title, ariaLabel = "Print preview" }: PrintPreviewButtonProps) {
+export default function PrintPreviewButton({ src, title, ariaLabel = "Print preview", label }: PrintPreviewButtonProps) {
   const [open, setOpen] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
 
@@ -21,7 +22,7 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
   return (
     <>
       <Button variant="outline" title="Print preview" aria-label={ariaLabel} onClick={() => setOpen(true)}>
-        <Printer size={18} />
+        <Printer size={18} />{label ? <span>{label}</span> : null}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-6xl">
