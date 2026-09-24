@@ -37,7 +37,7 @@ interface Props {
 }
 
 type DropdownPosition = { left: number; top: number; width: number };
-type TaxEditorState = { product: ProductComboboxOption; category: "STANDARD" | "EXEMPT" | "NON_VAT" | "SPECIAL"; rate: number; reason: string; reference: string };
+type TaxEditorState = { product: ProductComboboxOption; category: "STANDARD" | "EXEMPT" | "NON_TAXABLE" | "SPECIAL"; rate: number; reason: string; reference: string };
 
 function labelFor(product: ProductComboboxOption): string {
   const code = product.code ?? product.product_code ?? "";
@@ -231,7 +231,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
     {taxEditor && <DialogContent className="max-w-md p-4">
       <div className="mb-3"><div className="text-sm font-semibold text-slate-900">Set PPN · {labelFor(taxEditor.product)}</div><div className="mt-1 text-xs text-slate-500">Update the item tax profile without leaving this transaction.</div></div>
       <div className="space-y-3">
-        <label className="block text-xs font-medium text-slate-700">Tax Treatment<select className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.category} onChange={(event) => setTaxEditor((current) => current ? { ...current, category: event.target.value as TaxEditorState["category"] } : current)}><option value="STANDARD">Standard PPN</option><option value="SPECIAL">Special PPN</option><option value="NON_VAT">Non VAT</option><option value="EXEMPT">Exempt</option></select></label>
+        <label className="block text-xs font-medium text-slate-700">Tax Treatment<select className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.category} onChange={(event) => setTaxEditor((current) => current ? { ...current, category: event.target.value as TaxEditorState["category"] } : current)}><option value="STANDARD">Standard PPN</option><option value="SPECIAL">Special PPN</option><option value="NON_TAXABLE">Non VAT</option><option value="EXEMPT">Exempt</option></select></label>
         {(taxEditor.category === "STANDARD" || taxEditor.category === "SPECIAL") && <label className="block text-xs font-medium text-slate-700">PPN Rate (%)<input type="number" min="0.01" max="100" step="0.01" className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.rate} onChange={(event) => setTaxEditor((current) => current ? { ...current, rate: Number(event.target.value) } : current)} /></label>}
         <label className="block text-xs font-medium text-slate-700">Tax Reason / Notes<input className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.reason} onChange={(event) => setTaxEditor((current) => current ? { ...current, reason: event.target.value } : current)} /></label>
         <label className="block text-xs font-medium text-slate-700">Tax Reference<input className="mt-1 h-9 w-full rounded-md border border-slate-300 px-3 text-sm" value={taxEditor.reference} onChange={(event) => setTaxEditor((current) => current ? { ...current, reference: event.target.value } : current)} /></label>
