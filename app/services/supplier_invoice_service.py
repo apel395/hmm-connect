@@ -201,7 +201,14 @@ class SupplierInvoiceService:
                 raise HTTPException(409, "Supplier invoice receipt lines span multiple locations")
             resolved=locations.pop()
         if resolved is None:
-            raise HTTPException(409, "Supplier invoice has no resolvable work location. Repair its source transaction before finance processing.")
+            # Direct supplier invoices intentionally have no PO/GR source.
+            # Their explicit header location was already access-checked and
+            # dimension-validated during create/update.  Preserve that location
+            # so direct expense invoices can proceed to verification.
+            if not receipts and not purchase_order and receipt is None and invoice.location_id is not None:
+                resolved=invoice.location_id
+            else:
+                raise HTTPException(409, "Supplier invoice has no resolvable work location. Repair its source transaction before finance processing.")
         if invoice.location_id is not None and invoice.location_id != resolved:
             raise HTTPException(409, "Supplier invoice location does not match its source transaction")
         invoice.location_id=resolved
