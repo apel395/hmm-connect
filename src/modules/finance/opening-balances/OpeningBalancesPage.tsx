@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {CheckCircle2, Save, Trash2, Printer} from "lucide-react";
+import {CheckCircle2, Save, Trash2} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
 import Button from "@/components/ui/Button";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
@@ -114,7 +115,7 @@ export default function OpeningBalancesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Opening Balances" description="Enter the beginning-of-year balance for each balance-sheet account. Posted once per fiscal year (annual, not monthly); the balancing side goes to the Opening Balance Equity account and flows through the general ledger." />
+      <PageHeader  actions={<PrintPreviewButton src={`/finance-setup/opening-balances/print?year=${fiscal_year}`} title="Opening Balance Report" ariaLabel="Preview opening balance report" label="Print" />} title="Opening Balances" description="Enter the beginning-of-year balance for each balance-sheet account. Posted once per fiscal year (annual, not monthly); the balancing side goes to the Opening Balance Equity account and flows through the general ledger." />
 
       <ModuleSummary metrics={[
         { label: "Fiscal Year", value: fiscal_year },
