@@ -294,7 +294,7 @@ def parse_source_date(v):
         "AUGUST":8,"AGUSTUS":8,"SEPTEMBER":9,"SEPTEMBER":9,"OCTOBER":10,"OKTOBER":10,
         "NOVEMBER":11,"NOVEMBER":11,"DECEMBER":12,"DESEMBER":12,
     }
-    m=re.search(r"(\\d{1,2})(?:\\s*-\\s*\\d{1,2})?\\s+([A-Z]+)\\s+(20\\d{2})",raw)
+    m=re.search(r"(\d{1,2})(?:\s*-\s*\d{1,2})?\s+([A-Z]+)\s+(20\d{2})",raw)
     if not m:
         return None
     day=int(m.group(1)); month=months.get(m.group(2)); year=int(m.group(3))
