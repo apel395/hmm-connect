@@ -148,8 +148,13 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
             header.total_amount = header.subtotal + header.tax_amount
         elif isinstance(header, SupplierInvoice):
             header.subtotal = sum((Decimal(i.quantity or 0) * Decimal(i.unit_price or 0) for i in header.lines), ZERO)
-            header.tax_amount = sum((Decimal(i.tax_amount or 0) for i in header.lines), ZERO)
-            header.total_amount = header.subtotal - Decimal(header.discount_amount or 0) + header.tax_amount - Decimal(header.withholding_tax_amount or 0)
+            # Historical imports may carry authoritative header-level PPN from
+            # source documents even when individual receiving-linked lines do
+            # not carry tax snapshots. Preserve that source PPN instead of
+            # overwriting it with the sum of zero-tax lines during flush.
+            if header.source_type != "HISTORICAL_IMPORT":
+                header.tax_amount = sum((Decimal(i.tax_amount or 0) for i in header.lines), ZERO)
+            header.total_amount = header.subtotal - Decimal(header.discount_amount or 0) + Decimal(header.tax_amount or 0) - Decimal(header.withholding_tax_amount or 0)
 
     for header in headers:
         status = str(getattr(header, "status", "") or "").upper()
