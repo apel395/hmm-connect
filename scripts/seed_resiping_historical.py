@@ -567,6 +567,10 @@ def main():
     for block in blocks:
         group_id=block.get("invoice_group_id")
         if group_id is None:
+            # Ignore unrelated historical blocks entirely when resuming from a
+            # later source row. They belong to an earlier seeding batch.
+            if int(block["row"]) < a.start_row:
+                continue
             stats["without_total_invoice"]+=1
             deferred.append((block["row"],"NO_TOTAL_INVOICE",f"{block['supplier']} / {block['location']}"))
             continue
