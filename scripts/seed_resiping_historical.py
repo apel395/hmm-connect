@@ -68,6 +68,8 @@ def args():
                    help="Optional override. Default resolves a department linked to each location.")
     p.add_argument("--warehouse-code", default=None)
     p.add_argument("--apply", action="store_true")
+    p.add_argument("--start-row", type=int, default=2,
+                   help="Ignore source item rows before this Excel row while retaining header/invoice context.")
     return p.parse_args()
 
 def text(v): return re.sub(r"\s+", " ", str(v or "").strip())
@@ -82,10 +84,14 @@ def dec(v):
     raw=str(v).strip().replace(" ", "")
     # Workbook uses both 28,000.00 and 3,566,400,00.  The latter means
     # 3,566,400.00, not 356,640,000.
-    if re.fullmatch(r"-?\d{1,3}(?:,\d{3})+,\d{2}", raw):
+    if re.fullmatch(r"-?\d+,\d{1,2}", raw):
+        # Decimal-comma quantities such as 1,5 / 124,74.
+        raw=raw.replace(",", ".")
+    elif re.fullmatch(r"-?\d{1,3}(?:,\d{3})+,\d{1,2}", raw):
+        # Thousands groups plus a 1-2 digit decimal tail, e.g. 39,000,0.
         left,right=raw.rsplit(",",1)
         raw=left.replace(",", "")+"."+right
-    elif re.fullmatch(r"-?\d{1,3}(?:\.\d{3})+\.\d{2}", raw):
+    elif re.fullmatch(r"-?\d{1,3}(?:\.\d{3})+\.\d{1,2}", raw):
         left,right=raw.rsplit(".",1)
         raw=left.replace(".", "")+"."+right
     else:
@@ -179,6 +185,8 @@ def resolve_location(db, raw):
         "DURI": ("code", "006"),        # Duri
         "NKL": ("code", "007"),         # Kalimantan / Sanga-sanga
         "SANGASANGA": ("code", "007"),  # Kalimantan
+        "SANGGASANGA": ("code", "007"), # source typo
+        "SANGASANGA0": ("code", "007"), # source typo
         "SANGA-SANGA": ("code", "007"), # Kalimantan
     }
     if key in aliases:
@@ -344,6 +352,24 @@ def parse_source_date(v):
     except ValueError:
         return None
 
+def source_location_key(raw):
+    key=text(raw).upper()
+    aliases={
+        "MINAS":"RUMIN",
+        "RUMBAI":"RUMIN",
+        "RUMBAI MINAS":"RUMIN",
+        "RUMBAI MINUS":"RUMIN",
+        "SANGASANGA":"KALIMANTAN",
+        "SANGGASANGA":"KALIMANTAN",
+        "SANGASANGA0":"KALIMANTAN",
+        "SANGA-SANGA":"KALIMANTAN",
+        "NKL":"KALIMANTAN",
+        "HEAD OFFICE":"PEKANBARU",
+        "BSP PEDADA":"ZAMPED",
+        "PEDADA":"ZAMPED",
+    }
+    return aliases.get(key,key)
+
 def parse(ws):
     """Parse source blocks and preserve TOTAL INVOICE as the invoice boundary.
 
@@ -373,14 +399,14 @@ def parse(ws):
                 active_invoice={
                     "id":invoice_seq,
                     "supplier_key":supplier_key(block_supplier),
-                    "location":block_location.upper(),
+                    "location":source_location_key(block_location),
                     "total":invoice_total,
                     "start_row":row_no,
                 }
             elif not (
                 active_invoice
                 and supplier_key(block_supplier)==active_invoice["supplier_key"]
-                and block_location.upper()==active_invoice["location"]
+                and source_location_key(block_location)==active_invoice["location"]
             ):
                 active_invoice=None
 
@@ -628,6 +654,9 @@ def main():
                 ready=[]
 
                 for x in block["items"]:
+                    if x["row"] < a.start_row:
+                        stats["before_start_row"]+=1
+                        continue
                     # Missing quantity or price means the item was not received.
                     if x["qty"] is None or x["price"] is None or x["qty"]<=0 or x["price"]<=0:
                         stats["not_received"]+=1
@@ -709,6 +738,16 @@ def main():
                     f"invoice={invoice_total} projected={projected_total} difference={variance}",
                 ))
                 group_blocked=True
+            elif variance > ZERO:
+                variance_ratio=(variance/invoice_total) if invoice_total > ZERO else Decimal("1")
+                if variance > Decimal("100000") or variance_ratio > Decimal("0.01"):
+                    blocked.append((
+                        source_row,
+                        "INVOICE_VARIANCE_REVIEW",
+                        f"invoice={invoice_total} projected={projected_total} "
+                        f"difference={variance} ratio={variance_ratio:.4%}",
+                    ))
+                    group_blocked=True
 
             preview_rows.append({
                 "row":source_row,
@@ -1064,6 +1103,7 @@ def main():
             "suppliers_new:",stats["suppliers"],
             "not_received:",stats["not_received"],
             "received_not_invoiced:",stats["received_not_invoiced"],
+            "before_start_row:",stats["before_start_row"],
         )
         print("\n=== INVOICE CONTROL ===")
         for row in preview_rows:
