@@ -52,6 +52,15 @@ except ImportError:
     raise SystemExit("openpyxl is required")
 
 ZERO = Decimal("0")
+
+# Source-proven corrections where a workbook cell contains a line total in the
+# unit-price column. Keep these explicit and auditable rather than guessing.
+SOURCE_UNIT_PRICE_OVERRIDES = {
+    # MINERAL WATER: qty 16, H=128,000 while block subtotal L=1,463,000;
+    # the same item is 8,000/bottle immediately above. 16 x 8,000 = 128,000.
+    858: Decimal("8000"),
+}
+
 GROUP_COA = {
     "1": ("100-300-100", "500-100-100", "500-100-100"),
     "2": ("100-300-500", "500-100-102", "500-100-102"),
@@ -330,10 +339,18 @@ def parse_source_date(v):
     if not raw:
         return None
     months={
-        "JANUARY":1,"JANUARI":1,"FEBRUARY":2,"FEBRUARI":2,"MARCH":3,"MARET":3,
-        "APRIL":4,"MAY":5,"MEI":5,"JUNE":6,"JUNI":6,"JULY":7,"JULI":7,
-        "AUGUST":8,"AGUSTUS":8,"SEPTEMBER":9,"SEPTEMBER":9,"OCTOBER":10,"OKTOBER":10,
-        "NOVEMBER":11,"NOVEMBER":11,"DECEMBER":12,"DESEMBER":12,"DES":12,
+        "JANUARY":1,"JANUARI":1,"JAN":1,
+        "FEBRUARY":2,"FEBRUARI":2,"FEB":2,
+        "MARCH":3,"MARET":3,"MAR":3,
+        "APRIL":4,"APR":4,
+        "MAY":5,"MEI":5,
+        "JUNE":6,"JUNI":6,"JUN":6,
+        "JULY":7,"JULI":7,"JUL":7,
+        "AUGUST":8,"AGUSTUS":8,"AUG":8,"AGU":8,
+        "SEPTEMBER":9,"SEP":9,
+        "OCTOBER":10,"OKTOBER":10,"OCT":10,"OKT":10,
+        "NOVEMBER":11,"NOV":11,
+        "DECEMBER":12,"DESEMBER":12,"DEC":12,"DES":12,
     }
     m=re.search(r"(\d{1,2})(?:\s*-\s*\d{1,2})?\s+([A-Z]+)\s+(20\d{2}|\d{2})(?!\d)",raw)
     if not m:
@@ -452,6 +469,8 @@ def parse(ws):
         description=e_text
         qty=dec(g)
         price=dec(h)
+        if row_no in SOURCE_UNIT_PRICE_OVERRIDES:
+            price=SOURCE_UNIT_PRICE_OVERRIDES[row_no]
         if item_name and (qty is not None or price is not None):
             current["items"].append({
                 "row":row_no,
@@ -552,6 +571,32 @@ def main():
             deferred.append((block["row"],"NO_TOTAL_INVOICE",f"{block['supplier']} / {block['location']}"))
             continue
         grouped_blocks[group_id].append(block)
+
+    # Start-row is a hard continuation boundary. Historical invoice groups that
+    # end before it are ignored entirely. If the boundary cuts through an invoice
+    # group, defer that group instead of creating a partial invoice.
+    eligible_grouped_blocks={}
+    for group_id,source_blocks in grouped_blocks.items():
+        item_rows=[
+            item["row"]
+            for block in source_blocks
+            for item in block["items"]
+        ]
+        group_start=int(source_blocks[0].get("invoice_start_row") or source_blocks[0]["row"])
+        group_end=max(item_rows) if item_rows else group_start
+        if group_end < a.start_row:
+            stats["before_start_groups"]+=1
+            continue
+        if group_start < a.start_row <= group_end:
+            stats["partial_start_groups"]+=1
+            deferred.append((
+                group_start,
+                "PARTIAL_START_GROUP",
+                f"source rows {group_start}-{group_end}; start-row={a.start_row}",
+            ))
+            continue
+        eligible_grouped_blocks[group_id]=source_blocks
+    grouped_blocks=eligible_grouped_blocks
 
     try:
         user=db.query(User).filter(User.username==a.user).first()
@@ -654,9 +699,6 @@ def main():
                 ready=[]
 
                 for x in block["items"]:
-                    if x["row"] < a.start_row:
-                        stats["before_start_row"]+=1
-                        continue
                     # Missing quantity or price means the item was not received.
                     if x["qty"] is None or x["price"] is None or x["qty"]<=0 or x["price"]<=0:
                         stats["not_received"]+=1
@@ -1103,7 +1145,8 @@ def main():
             "suppliers_new:",stats["suppliers"],
             "not_received:",stats["not_received"],
             "received_not_invoiced:",stats["received_not_invoiced"],
-            "before_start_row:",stats["before_start_row"],
+            "before_start_groups:",stats["before_start_groups"],
+            "partial_start_groups:",stats["partial_start_groups"],
         )
         print("\n=== INVOICE CONTROL ===")
         for row in preview_rows:
