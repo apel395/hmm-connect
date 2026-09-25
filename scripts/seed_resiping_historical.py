@@ -79,6 +79,8 @@ def args():
     p.add_argument("--apply", action="store_true")
     p.add_argument("--start-row", type=int, default=2,
                    help="Ignore source item rows before this Excel row while retaining header/invoice context.")
+    p.add_argument("--only-invoice-rows", default=None,
+                   help="Optional comma-separated TOTAL INVOICE source rows to process, e.g. 722,790,795.")
     return p.parse_args()
 
 def text(v): return re.sub(r"\s+", " ", str(v or "").strip())
@@ -551,6 +553,14 @@ def is_direct_invoice_item(item):
 def main():
     a=args()
     dry=not a.apply
+    only_invoice_rows=None
+    if a.only_invoice_rows:
+        try:
+            only_invoice_rows={int(value.strip()) for value in a.only_invoice_rows.split(",") if value.strip()}
+        except ValueError as exc:
+            raise RuntimeError("--only-invoice-rows must be a comma-separated list of Excel row numbers") from exc
+        if not only_invoice_rows:
+            raise RuntimeError("--only-invoice-rows did not contain any row numbers")
     wb=load_workbook(a.workbook,read_only=True,data_only=True)
     ws=wb[wb.sheetnames[0]]
     blocks=parse(ws)
@@ -621,6 +631,9 @@ def main():
             source_blocks=grouped_blocks[group_id]
             first=source_blocks[0]
             source_row=int(first["invoice_start_row"] or first["row"])
+            if only_invoice_rows is not None and source_row not in only_invoice_rows:
+                stats["not_selected_groups"]+=1
+                continue
             raw_location=text(first["location"]).upper()
 
             if raw_location=="OPERATIONAL":
@@ -1151,6 +1164,7 @@ def main():
             "received_not_invoiced:",stats["received_not_invoiced"],
             "before_start_groups:",stats["before_start_groups"],
             "partial_start_groups:",stats["partial_start_groups"],
+            "not_selected_groups:",stats["not_selected_groups"],
         )
         print("\n=== INVOICE CONTROL ===")
         for row in preview_rows:
