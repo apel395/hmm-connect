@@ -57,14 +57,23 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
   });
 
   const groupOptions = useMemo(() => {
-    const visible = groups.filter((group) => group.item_type === form.item_type);
-    const set = new Map<string, { code: string; name: string }>();
-    visible.forEach((item) => set.set(item.code, { code: item.code, name: item.name }));
-    if (product?.group_code && product.group_name) set.set(product.group_code, { code: product.group_code, name: product.group_name });
+    const set = new Map<string, { code: string; name: string; item_type?: ItemType }>();
+    groups.forEach((item) => set.set(item.code, { code: item.code, name: item.name, item_type: item.item_type }));
+    if (product?.group_code && product.group_name) {
+      set.set(product.group_code, {
+        code: product.group_code,
+        name: product.group_name,
+        item_type: groups.find((item) => item.code === product.group_code)?.item_type,
+      });
+    }
     return [...set.values()]
       .sort((a, b) => a.code.localeCompare(b.code))
-      .map((item) => ({ id: item.code, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }));
-  }, [groups, form.item_type, product]);
+      .map((item) => ({
+        id: item.code,
+        label: `${item.code} — ${item.name}`,
+        keywords: [item.code, item.name, item.item_type ?? ""],
+      }));
+  }, [groups, product]);
 
   const subGroupOptions = useMemo(() => {
     const selected = groups.find((group) => group.code === form.group_code);
