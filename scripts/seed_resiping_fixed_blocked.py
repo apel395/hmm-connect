@@ -134,9 +134,15 @@ def main() -> None:
 
     validate_corrected_hulu(workbook)
 
-    base_script = Path(__file__).resolve().with_name("seed_resiping_historical.py")
+    scripts_dir = Path(__file__).resolve().parent
+    preferred = scripts_dir / "seed_resiping_historical_v2.py"
+    canonical = scripts_dir / "seed_resiping_historical.py"
+    base_script = preferred if preferred.exists() else canonical
     if not base_script.exists():
-        raise RuntimeError(f"Base seeder not found: {base_script}")
+        raise RuntimeError(
+            "Base seeder not found. Expected scripts/seed_resiping_historical_v2.py "
+            "or scripts/seed_resiping_historical.py"
+        )
 
     command = [
         sys.executable,
