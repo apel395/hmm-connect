@@ -738,6 +738,63 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_ma
     return result(db, payment, user)
 
 
+
+@router.post("/{payment_id}/reopen")
+def reopen(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
+    payment = (
+        db.query(Payment)
+        .options(lazyload(Payment.payment_voucher))
+        .filter(Payment.id == payment_id)
+        .with_for_update()
+        .first()
+    )
+    if not payment:
+        raise HTTPException(404, "Payment not found")
+    enforce_location_access(user, payment.location_id)
+
+    if payment.status != "APPROVED":
+        raise HTTPException(409, "Only approved, unposted payments can be reopened")
+
+    journal = None
+    if payment.journal_entry_id:
+        journal = (
+            db.query(JournalEntry)
+            .filter(JournalEntry.id == payment.journal_entry_id)
+            .with_for_update()
+            .one_or_none()
+        )
+        if not journal:
+            raise HTTPException(409, "Payment journal reference is missing")
+        if journal.status == "POSTED":
+            raise HTTPException(409, "Posted payment journal must be unposted/reversed before reopening")
+        if journal.status not in {"DRAFT", "VOID"}:
+            raise HTTPException(409, f"Payment journal is {journal.status} and cannot be reopened")
+        if journal.status == "DRAFT":
+            journal.status = "VOID"
+            journal.voided_at = datetime.now(timezone.utc)
+
+    previous_journal_id = payment.journal_entry_id
+    payment.journal_entry_id = None
+    payment.status = "DRAFT"
+    payment.approved_by_id = None
+    payment.approved_at = None
+
+    record_audit(
+        db,
+        user,
+        "PAYMENT_REOPENED",
+        "PAYMENT",
+        f"Reopened {payment.payment_number} as draft",
+        entity_id=payment.id,
+        before_data={"status": "APPROVED", "journal_entry_id": previous_journal_id},
+        after_data={"status": "DRAFT", "journal_entry_id": None},
+    )
+
+    db.commit()
+    db.refresh(payment)
+    return result(db, payment, user)
+
+
 @router.post("/{payment_id}/void")
 def void(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
     payment = get(db, payment_id, user)
