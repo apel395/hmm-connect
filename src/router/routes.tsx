@@ -164,6 +164,7 @@ const router = createBrowserRouter([
       { path: "accounts-payable", element: <APReportingPage /> },
       { path: "accounts-payable/detail", element: <APReportingPage /> },
       { path: "accounts-payable/aging", element: <AccountsPayablePage /> },
+      { path: "accounts-payable/movement", element: <APMovementPage /> },
       { path: "accounts-payable/aging/print", element: <APAgingPrintPage /> },
       { path: "accounts-payable/invoices", element: <APInvoicesPage /> },
       { path: "accounts-payable/payments", element: <APPaymentsPage /> },
