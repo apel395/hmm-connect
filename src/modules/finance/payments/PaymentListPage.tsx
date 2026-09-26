@@ -13,9 +13,8 @@ import CurrencyInput from "@/components/form/CurrencyInput";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { listBankAccounts } from "@/modules/finance/cash-flow/bankAccountApi";
 import { listLocations } from "@/modules/admin/organization/api";
-import { isBeforeToday, todayLocal } from "@/utils/dateConstraints";
+import { todayLocal } from "@/utils/dateConstraints";
 import { createPayment, eligibleInvoices, eligibleSuppliers, eligibleVouchers, listPayments, updatePayment } from "./api";
-import useAuthorization from "@/hooks/useAuthorization";
 
 const methods = ["BANK_TRANSFER", "CASH", "CHEQUE", "CREDIT_CARD", "PETTY_CASH", "OTHER"];
 const currencies = ["IDR", "USD", "SGD", "MYR", "EUR", "JPY", "CNY", "AUD"];
@@ -26,7 +25,7 @@ const emptyForm = () => ({ supplier_id:0,payment_date:today(),payment_method:"BA
 const availableBalance = (row:any) => Number(row.available_balance ?? row.outstanding_balance ?? 0);
 
 export default function PaymentListPage() {
-  const navigate=useNavigate();const location=useLocation();const qc=useQueryClient();const{canBackdate}=useAuthorization();
+  const navigate=useNavigate();const location=useLocation();const qc=useQueryClient();
   const [page,setPage]=useState(1),[search,setSearch]=useState(""),[status,setStatus]=useState(""),[filterLocationId,setFilterLocationId]=useState<number>(),[open,setOpen]=useState(false),[form,setForm]=useState<any>(emptyForm()),[editingId,setEditingId]=useState<number>();
   const [editingInvoices,setEditingInvoices]=useState<any[]>([]);
   const returnTo=location.pathname.startsWith("/accounts-payable")?`${location.pathname}${location.search}`:"/payments";
