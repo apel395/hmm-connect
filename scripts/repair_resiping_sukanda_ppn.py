@@ -108,9 +108,9 @@ def main() -> None:
             tax = Decimal(invoice.tax_amount or 0)
             paid = posted_payment_total(db, invoice.id)
 
-            if tax != expected["tax"]:
+            if tax not in {ZERO, expected["tax"]}:
                 raise RuntimeError(
-                    f"{supplier_invoice_number}: expected tax {expected['tax']}, found {tax}"
+                    f"{supplier_invoice_number}: expected stored tax 0 or {expected['tax']}, found {tax}"
                 )
             if paid != ZERO:
                 raise RuntimeError(
@@ -217,6 +217,7 @@ def main() -> None:
                         user_id=user.id,
                     )
 
+            invoice.tax_amount = expected["tax"]
             invoice.total_amount = expected["gross_total"]
             invoice.balance_amount = expected["gross_total"]
             invoice.paid_amount = ZERO
