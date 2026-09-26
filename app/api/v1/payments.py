@@ -347,6 +347,52 @@ def serialize(payment: Payment):
 
 def result(db, payment, user):
     data = serialize(payment)
+
+    # Always expose live invoice state on payment detail. A draft/approved
+    # allocation can outlive an invoice correction, so do not rely on the
+    # allocation snapshot alone when presenting or validating payment state.
+    allocation_exceptions = []
+    for row in data["allocations"]:
+        invoice = db.get(SupplierInvoice, row["supplier_invoice_id"])
+        if not invoice:
+            row["current_invoice_total"] = None
+            row["current_paid_amount"] = None
+            row["current_outstanding_balance"] = None
+            row["current_available_balance"] = None
+            row["allocation_exception"] = "INVOICE_MISSING"
+            allocation_exceptions.append({
+                "supplier_invoice_id": row["supplier_invoice_id"],
+                "code": "INVOICE_MISSING",
+            })
+            continue
+
+        current_total = Decimal(invoice.total_amount or 0)
+        current_paid = Decimal(invoice.paid_amount or 0)
+        current_outstanding = invoice_balance(invoice)
+        current_available = max(
+            ZERO,
+            current_outstanding - reserved_amount(db, invoice.id, payment.id),
+        )
+        allocated = Decimal(row["allocated_amount"] or 0)
+        exception = "ALLOCATION_EXCEEDS_CURRENT_AVAILABLE" if allocated > current_available else None
+
+        row["current_invoice_total"] = current_total
+        row["current_paid_amount"] = current_paid
+        row["current_outstanding_balance"] = current_outstanding
+        row["current_available_balance"] = current_available
+        row["allocation_exception"] = exception
+
+        if exception:
+            allocation_exceptions.append({
+                "supplier_invoice_id": invoice.id,
+                "invoice_number": invoice.internal_invoice_number,
+                "allocated_amount": allocated,
+                "current_available_balance": current_available,
+                "code": exception,
+            })
+
+    data["allocation_exception"] = bool(allocation_exceptions)
+    data["allocation_exception_rows"] = allocation_exceptions
     data.update(document_context(db, "PAYMENT", payment.id, payment.status, user))
     data["allowed_actions"] = {
         "can_edit": payment.status == "DRAFT" and has_permission(user, "payment.manage"),
