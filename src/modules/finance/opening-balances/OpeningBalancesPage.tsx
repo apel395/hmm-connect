@@ -63,6 +63,7 @@ export default function OpeningBalancesPage() {
 
   const items: OpeningBalanceAccount[] = useMemo(() => acct.data?.items ?? [], [acct.data]);
   const entryItems: any[] = useMemo(() => entries.data?.items ?? [], [entries.data]);
+  const openingRecorded = entryItems.length > 0;
 
   const totals = useMemo(() => {
     let debit = 0, credit = 0;
@@ -123,15 +124,17 @@ export default function OpeningBalancesPage() {
         { label: "Total Debit", value: fmt(totals.debit) },
         { label: "Total Credit", value: fmt(totals.credit) },
         { label: "Difference", value: fmt(Math.abs(totals.diff)), note: totals.diff !== 0 ? "Auto-contra to equity on post" : "Balanced" },
+        { label: "Status", value: openingRecorded ? "RECORDED" : "NOT RECORDED", note: openingRecorded ? "Opening balance already posted for this fiscal year" : "Available for one-time entry" },
       ]} />
 
       <Card>
+        {openingRecorded && <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><div className="font-semibold">Opening balance for {fiscal_year} has already been recorded.</div><div className="mt-1">The original posted amounts are shown below. New input is locked to prevent duplicate opening balances.</div></div>}
         <div className="mb-5 flex flex-wrap gap-3 items-end">
           <label className="text-sm font-medium">Fiscal Year
             <Input type="number" min={2000} max={2100} className="w-40" value={year} onChange={(e) => setYear(e.target.value)} />
           </label>
           <label className="text-sm font-medium">Description (optional)
-            <Input className="w-80" placeholder="e.g. Opening balances FY" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Input className="w-80" disabled={openingRecorded} placeholder="e.g. Opening balances FY" value={description} onChange={(e) => setDescription(e.target.value)} />
           </label>
         </div>
 
@@ -144,8 +147,8 @@ export default function OpeningBalancesPage() {
                   <TD>{a.account_name}</TD>
                   <TD><span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium">{a.account_type}</span></TD>
                   <TD className="text-xs text-slate-500">{a.normal_balance}</TD>
-                  <TD><Input type="number" min={0} step="0.01" className="w-40 font-mono" placeholder="0.00" value={rows[a.id]?.debit ?? ""} onChange={(e) => setRows({ ...rows, [a.id]: { ...rows[a.id], debit: e.target.value, credit: "" } })} /></TD>
-                  <TD><Input type="number" min={0} step="0.01" className="w-40 font-mono" placeholder="0.00" value={rows[a.id]?.credit ?? ""} onChange={(e) => setRows({ ...rows, [a.id]: { ...rows[a.id], credit: e.target.value, debit: "" } })} /></TD>
+                  <TD><Input type="number" min={0} step="0.01" disabled={openingRecorded} className="w-40 font-mono" placeholder="0.00" value={rows[a.id]?.debit ?? ""} onChange={(e) => setRows({ ...rows, [a.id]: { ...rows[a.id], debit: e.target.value, credit: "" } })} /></TD>
+                  <TD><Input type="number" min={0} step="0.01" disabled={openingRecorded} className="w-40 font-mono" placeholder="0.00" value={rows[a.id]?.credit ?? ""} onChange={(e) => setRows({ ...rows, [a.id]: { ...rows[a.id], credit: e.target.value, debit: "" } })} /></TD>
                 </TR>
               ))}
             </TBody>
@@ -159,8 +162,8 @@ export default function OpeningBalancesPage() {
               <span>Difference: <b className={`font-mono ${totals.diff === 0 ? "text-emerald-700" : "text-amber-700"}`}>{money(Math.abs(totals.diff))}</b></span>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" disabled={!linesDirty} onClick={() => runPreview.mutate()}>Preview</Button>
-              <Button loading={save.isPending} disabled={!linesDirty || save.isPending} onClick={() => { if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}? This creates a posted journal.`)) save.mutate(); }}><Save size={16} /> Save &amp; Post</Button>
+              <Button variant="outline" disabled={openingRecorded || !linesDirty} onClick={() => runPreview.mutate()}>Preview</Button>
+              <Button loading={save.isPending} disabled={openingRecorded || !linesDirty || save.isPending} onClick={() => { if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}? This creates a posted journal.`)) save.mutate(); }}><Save size={16} /> Save &amp; Post</Button>
             </div>
           </div>
         </>}
@@ -169,7 +172,7 @@ export default function OpeningBalancesPage() {
       {entryItems.length > 0 && (
         <Card>
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Posted Entries — {fiscal_year}</h3>
+            <div><h3 className="text-lg font-semibold">Recorded Opening Balance — {fiscal_year}</h3><p className="text-xs text-slate-500">Original posted amounts retained for audit and tracing.</p></div>
             <Button variant="outline" onClick={() => { if (window.confirm(`Void all opening balances for ${fiscal_year}? The journal will be unposted and entries removed.`)) voidAll.mutate(); }}><Trash2 size={16} /> Void</Button>
           </div>
           <Table variant="grid"><THead><TR><TH>Code</TH><TH>Name</TH><TH>Type</TH><TH>Amount</TH><TH>Posted</TH></TR></THead>
