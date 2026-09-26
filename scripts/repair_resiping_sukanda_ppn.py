@@ -117,7 +117,6 @@ def main() -> None:
                     f"{supplier_invoice_number}: already has posted payments {paid}; manual reconciliation required"
                 )
 
-            correction_ref = f"HIST-PPN-REPAIR:{invoice.id}"
             correction = (
                 db.query(JournalEntry)
                 .filter(
@@ -128,22 +127,66 @@ def main() -> None:
                 .first()
             )
 
-            if total == expected["gross_total"]:
-                print(
-                    f"{supplier_invoice_number}: invoice already gross={total}; "
-                    f"correction_journal={correction.journal_number if correction else 'missing'}"
-                )
-            elif total != expected["pre_tax_total"]:
+            if total not in {expected["pre_tax_total"], expected["gross_total"]}:
                 raise RuntimeError(
                     f"{supplier_invoice_number}: expected current total {expected['pre_tax_total']} "
                     f"or repaired total {expected['gross_total']}, found {total}"
                 )
 
-            if correction is None:
-                resolver = DirectCoaService(db)
-                vat = resolver.input_vat_account()
-                ap = resolver.payable_account(invoice.supplier, invoice.location_id)
+            resolver = DirectCoaService(db)
+            vat = resolver.input_vat_account()
+            ap = resolver.payable_account(invoice.supplier, invoice.location_id)
 
+            original = (
+                db.query(JournalEntry)
+                .filter(
+                    JournalEntry.reference_type == "SUPPLIER_INVOICE",
+                    JournalEntry.reference_id == invoice.id,
+                    JournalEntry.status == "POSTED",
+                )
+                .order_by(JournalEntry.id.desc())
+                .first()
+            )
+            if not original:
+                raise RuntimeError(f"{supplier_invoice_number}: posted supplier-invoice journal missing")
+
+            vat_debit = sum(
+                (Decimal(line.debit or 0) for line in original.lines if line.account_id == vat.id),
+                ZERO,
+            )
+            ap_credit = sum(
+                (Decimal(line.credit or 0) for line in original.lines if line.account_id == ap.id),
+                ZERO,
+            )
+
+            journal_already_gross = (
+                vat_debit == expected["tax"]
+                and ap_credit == expected["gross_total"]
+            )
+            journal_missing_ppn = (
+                vat_debit == ZERO
+                and ap_credit == expected["pre_tax_total"]
+            )
+
+            if not journal_already_gross and not journal_missing_ppn:
+                raise RuntimeError(
+                    f"{supplier_invoice_number}: unexpected original journal state "
+                    f"(VAT debit={vat_debit}, AP credit={ap_credit}); refusing automatic repair"
+                )
+
+            needs_correction = journal_missing_ppn
+            if journal_already_gross:
+                print(
+                    f"{supplier_invoice_number}: original journal already includes PPN "
+                    f"(VAT={vat_debit}, AP={ap_credit}); no correction journal needed"
+                )
+            elif correction:
+                print(
+                    f"{supplier_invoice_number}: PPN correction already exists "
+                    f"({correction.journal_number})"
+                )
+
+            if needs_correction and correction is None:
                 correction = JournalEntry(
                     journal_number=next_document_number(db, "JV", digits=4),
                     posting_date=invoice.invoice_date,
@@ -238,7 +281,7 @@ def main() -> None:
                 expected["pre_tax_total"],
                 expected["tax"],
                 expected["gross_total"],
-                correction.journal_number,
+                correction.journal_number if correction else "NOT_REQUIRED",
             ))
 
         print("\n=== REPAIR CONTROL ===")
