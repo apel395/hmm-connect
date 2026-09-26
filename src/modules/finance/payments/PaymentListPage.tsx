@@ -33,7 +33,7 @@ export default function PaymentListPage() {
   const payments=useQuery({queryKey:["payments",page,search,status,filterLocationId],queryFn:()=>listPayments({page,page_size:20,search:search||undefined,status:status||undefined,location_id:filterLocationId??undefined})});
   const suppliers=useQuery({queryKey:["eligible-payment-suppliers",form.currency,editingId,editingId?form.supplier_id:0],queryFn:()=>eligibleSuppliers(form.currency,editingId?form.supplier_id:undefined),enabled:open});
   const bankAccounts=useQuery({queryKey:["active-payment-bank-accounts"],queryFn:()=>listBankAccounts(true,true)});
-  const invoices=useQuery({queryKey:["eligible-payment-invoices",form.supplier_id,form.currency],queryFn:()=>eligibleInvoices(form.supplier_id,form.currency),enabled:Boolean(form.supplier_id)});
+  const invoices=useQuery({queryKey:["eligible-payment-invoices",form.supplier_id,form.currency,editingId??0],queryFn:()=>eligibleInvoices(form.supplier_id,form.currency),enabled:Boolean(form.supplier_id)&&open,refetchOnMount:"always"});
   const vouchers=useQuery({queryKey:["eligible-payment-vouchers",form.supplier_id,form.currency],queryFn:()=>eligibleVouchers(form.supplier_id,form.currency),enabled:Boolean(form.supplier_id) && !editingId && open});
   const applyVoucher=(v:any)=>setForm((current:any)=>({...current,voucher_id:v.id,allocations:(v.invoices??[]).map((inv:any)=>({supplier_invoice_id:inv.id,allocated_amount:Number(inv.allocated_amount)}))}));
 
@@ -84,7 +84,16 @@ export default function PaymentListPage() {
   const invoiceRows=useMemo(()=>{
     const rows=new Map<number,any>();
     editingInvoices.forEach((row:any)=>rows.set(row.id,row));
-    (invoices.data??[]).forEach((row:any)=>rows.set(row.id,row));
+    (invoices.data??[]).forEach((row:any)=>{
+      const existing=rows.get(row.id);
+      rows.set(row.id,{
+        ...existing,
+        ...row,
+        // Keep only the draft allocation amount from the payment snapshot.
+        // Invoice totals/balances must always come from the fresh eligible API.
+        allocated_amount:existing?.allocated_amount,
+      });
+    });
     return Array.from(rows.values());
   },[editingInvoices,invoices.data]);
   const allocated=useMemo(()=>form.allocations.reduce((sum:number,row:any)=>sum+Number(row.allocated_amount||0),0),[form.allocations]);
