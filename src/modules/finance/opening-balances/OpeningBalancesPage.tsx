@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {CheckCircle2, Save, Trash2} from "lucide-react";
+import {CheckCircle2, Save} from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
@@ -64,6 +64,8 @@ export default function OpeningBalancesPage() {
   const items: OpeningBalanceAccount[] = useMemo(() => acct.data?.items ?? [], [acct.data]);
   const entryItems: any[] = useMemo(() => entries.data?.items ?? [], [entries.data]);
   const openingRecorded = entryItems.length > 0;
+  const entryStatusUnknown = entries.isLoading || entries.isError;
+  const inputLocked = openingRecorded || entryStatusUnknown;
 
   const totals = useMemo(() => {
     let debit = 0, credit = 0;
@@ -108,12 +110,6 @@ export default function OpeningBalancesPage() {
     onError: (e) => toast.error(message(e)),
   });
 
-  const voidAll = useMutation({
-    mutationFn: () => openingBalanceApi.void(fiscal_year),
-    onSuccess: () => { toast.success(`Opening balances voided for ${fiscal_year}.`); setRows({}); client.invalidateQueries({ queryKey: ["opening-accounts"] }); client.invalidateQueries({ queryKey: ["opening-entries"] }); },
-    onError: (e) => toast.error(message(e)),
-  });
-
   return (
     <div className="space-y-6">
       <PageHeader  actions={<PrintPreviewButton src={`/finance-setup/opening-balances/print?year=${fiscal_year}`} title="Opening Balance Report" ariaLabel="Preview opening balance report" label="Print" />} title="Opening Balances" description="Enter the beginning-of-year balance for each balance-sheet account. Posted once per fiscal year (annual, not monthly); the balancing side goes to the Opening Balance Equity account and flows through the general ledger." />
@@ -128,13 +124,14 @@ export default function OpeningBalancesPage() {
       ]} />
 
       <Card>
+        {entries.isError && <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Unable to check whether opening balances were posted. Retry before entering values.</div>}
         {openingRecorded && <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><div className="font-semibold">Opening balance for {fiscal_year} has already been recorded.</div><div className="mt-1">The original posted amounts are shown below. New input is locked to prevent duplicate opening balances.</div></div>}
         <div className="mb-5 flex flex-wrap gap-3 items-end">
           <label className="text-sm font-medium">Fiscal Year
             <Input type="number" min={2000} max={2100} className="w-40" value={year} onChange={(e) => setYear(e.target.value)} />
           </label>
           <label className="text-sm font-medium">Description (optional)
-            <Input className="w-80" disabled={openingRecorded} placeholder="e.g. Opening balances FY" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Input className="w-80" disabled={inputLocked} placeholder="e.g. Opening balances FY" value={description} onChange={(e) => setDescription(e.target.value)} />
           </label>
         </div>
 
@@ -147,8 +144,8 @@ export default function OpeningBalancesPage() {
                   <TD>{a.account_name}</TD>
                   <TD><span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium">{a.account_type}</span></TD>
                   <TD className="text-xs text-slate-500">{a.normal_balance}</TD>
-                  <TD><Input type="number" min={0} step="0.01" disabled={openingRecorded} className="w-40 font-mono" placeholder="0.00" value={rows[a.id]?.debit ?? ""} onChange={(e) => setRows({ ...rows, [a.id]: { ...rows[a.id], debit: e.target.value, credit: "" } })} /></TD>
-                  <TD><Input type="number" min={0} step="0.01" disabled={openingRecorded} className="w-40 font-mono" placeholder="0.00" value={rows[a.id]?.credit ?? ""} onChange={(e) => setRows({ ...rows, [a.id]: { ...rows[a.id], credit: e.target.value, debit: "" } })} /></TD>
+                  <TD><Input type="number" min={0} step="0.01" disabled={inputLocked} className="w-40 font-mono" placeholder="0.00" value={rows[a.id]?.debit ?? ""} onChange={(e) => setRows({ ...rows, [a.id]: { ...rows[a.id], debit: e.target.value, credit: "" } })} /></TD>
+                  <TD><Input type="number" min={0} step="0.01" disabled={inputLocked} className="w-40 font-mono" placeholder="0.00" value={rows[a.id]?.credit ?? ""} onChange={(e) => setRows({ ...rows, [a.id]: { ...rows[a.id], credit: e.target.value, debit: "" } })} /></TD>
                 </TR>
               ))}
             </TBody>
@@ -162,8 +159,8 @@ export default function OpeningBalancesPage() {
               <span>Difference: <b className={`font-mono ${totals.diff === 0 ? "text-emerald-700" : "text-amber-700"}`}>{money(Math.abs(totals.diff))}</b></span>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" disabled={openingRecorded || !linesDirty} onClick={() => runPreview.mutate()}>Preview</Button>
-              <Button loading={save.isPending} disabled={openingRecorded || !linesDirty || save.isPending} onClick={() => { if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}? This creates a posted journal.`)) save.mutate(); }}><Save size={16} /> Save &amp; Post</Button>
+              <Button variant="outline" disabled={inputLocked || !linesDirty} onClick={() => runPreview.mutate()}>Preview</Button>
+              <Button loading={save.isPending} disabled={inputLocked || !linesDirty || save.isPending} onClick={() => { if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}? This creates a posted journal.`)) save.mutate(); }}><Save size={16} /> Save &amp; Post</Button>
             </div>
           </div>
         </>}
@@ -173,7 +170,6 @@ export default function OpeningBalancesPage() {
         <Card>
           <div className="mb-3 flex items-center justify-between">
             <div><h3 className="text-lg font-semibold">Recorded Opening Balance — {fiscal_year}</h3><p className="text-xs text-slate-500">Original posted amounts retained for audit and tracing.</p></div>
-            <Button variant="outline" onClick={() => { if (window.confirm(`Void all opening balances for ${fiscal_year}? The journal will be unposted and entries removed.`)) voidAll.mutate(); }}><Trash2 size={16} /> Void</Button>
           </div>
           <Table variant="grid"><THead><TR><TH>Code</TH><TH>Name</TH><TH>Type</TH><TH>Amount</TH><TH>Posted</TH></TR></THead>
             <TBody>{entryItems.map((e) => (
@@ -212,7 +208,7 @@ export default function OpeningBalancesPage() {
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowPreview(false)}>Close</Button>
-          <Button loading={save.isPending} disabled={save.isPending} onClick={() => { setShowPreview(false); if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}?`)) save.mutate(); }}><Save size={16} /> Confirm &amp; Post</Button>
+          <Button loading={save.isPending} disabled={inputLocked || save.isPending} onClick={() => { setShowPreview(false); if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}?`)) save.mutate(); }}><Save size={16} /> Confirm &amp; Post</Button>
         </DialogFooter>
         </DialogContent>
       </Dialog>
