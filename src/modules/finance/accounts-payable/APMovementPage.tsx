@@ -93,7 +93,7 @@ export default function APMovementPage() {
       ).data,
   });
 
-  const rows = movement.data?.items ?? [];
+  const rows = useMemo(() => movement.data?.items ?? [], [movement.data?.items]);
   const pageTotals = useMemo(
     () =>
       rows.reduce(
