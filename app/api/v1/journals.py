@@ -237,11 +237,14 @@ def listing(
     if supplier_id:
         q = q.filter(JournalEntry.lines.any(JournalLine.supplier_id == supplier_id))
     total = q.count()
-    journal_ids = q.with_entities(JournalEntry.id).subquery()
-    total_debit, total_credit = db.query(
-        func.coalesce(func.sum(JournalLine.debit), 0),
-        func.coalesce(func.sum(JournalLine.credit), 0),
-    ).filter(JournalLine.journal_entry_id.in_(journal_ids)).one()
+    if total:
+        journal_ids = q.with_entities(JournalEntry.id)
+        total_debit, total_credit = db.query(
+            func.coalesce(func.sum(JournalLine.debit), 0),
+            func.coalesce(func.sum(JournalLine.credit), 0),
+        ).filter(JournalLine.journal_entry_id.in_(journal_ids)).one()
+    else:
+        total_debit = total_credit = ZERO
     rows = q.order_by(JournalEntry.posting_date.desc(), JournalEntry.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [serialize(x, user) for x in rows],
