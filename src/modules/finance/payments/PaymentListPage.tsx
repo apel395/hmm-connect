@@ -95,7 +95,7 @@ export default function PaymentListPage() {
     });
     return Array.from(rows.values());
   },[editingInvoices,invoices.data]);
-  const paymentRows:any[]=payments.data?.items??[];
+  const paymentRows:any[]=useMemo(()=>payments.data?.items??[],[payments.data?.items]);
   const paymentPageTotal=useMemo(()=>paymentRows.reduce((sum:number,row:any)=>sum+Number(row.total_amount||0),0),[paymentRows]);
   const paymentFilteredTotal=Number(payments.data?.summary?.total_amount??paymentPageTotal);
   const allocated=useMemo(()=>form.allocations.reduce((sum:number,row:any)=>sum+Number(row.allocated_amount||0),0),[form.allocations]);
