@@ -583,6 +583,14 @@ Route: `/settings`
 
 Permission: `admin.settings.manage`
 
+## September 2026 finance UI work
+
+The frontend branch adds AP Movement, payment list totals, Journal supplier filtering, General Ledger search and account range controls, Trial Balance links to account ledgers, and a Stock Consolidation workspace under Financial Reconciliation. Opening Balance input is locked in the UI after an entry is recorded, and the recorded figures remain visible. The Recreate GL control was removed from Journal Detail.
+
+Payment creation allows earlier dates; Finance posting still follows backend accounting period validation. Receiving creation and editing reject dates before 2026-01-01 in the UI. Historical 2025 receiving records are not deleted by this frontend change.
+
+The AP Movement and Stock Consolidation screens call `/ap-movement` and `/stock-reconciliation`; stock adjustment requests call `/stock-reconciliation/requests`. Supplier filtering and complete filtered totals in Journal/GL also need backend support. The API must enforce AP user visibility, the stock cutoff, the one-time opening balance rule, and the accounting period controls. Until those contracts are implemented, the UI cannot complete those workflows or guarantee access restrictions.
+
 ## Accounting / document flow
 
 The main purchasing-to-payment accounting chain is:
