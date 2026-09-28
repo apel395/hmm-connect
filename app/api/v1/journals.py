@@ -3,7 +3,7 @@ from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -210,6 +210,7 @@ def listing(
     date_to: date | None = None,
     reference_type: str | None = None,
     account_id: int | None = None,
+    supplier_id: int | None = None,
     location_id: int | None = None,
     db: Session = Depends(get_db),
     user=Depends(journal_view_user),
@@ -232,11 +233,19 @@ def listing(
     if reference_type:
         q = q.filter(JournalEntry.reference_type == reference_type)
     if account_id:
-        q = q.join(JournalEntry.lines).filter(JournalLine.account_id == account_id)
+        q = q.filter(JournalEntry.lines.any(JournalLine.account_id == account_id))
+    if supplier_id:
+        q = q.filter(JournalEntry.lines.any(JournalLine.supplier_id == supplier_id))
     total = q.count()
+    journal_ids = q.with_entities(JournalEntry.id).subquery()
+    total_debit, total_credit = db.query(
+        func.coalesce(func.sum(JournalLine.debit), 0),
+        func.coalesce(func.sum(JournalLine.credit), 0),
+    ).filter(JournalLine.journal_entry_id.in_(journal_ids)).one()
     rows = q.order_by(JournalEntry.posting_date.desc(), JournalEntry.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [serialize(x, user) for x in rows],
+        "summary": {"total_debit": total_debit, "total_credit": total_credit},
         "page": page,
         "page_size": page_size,
         "total_items": total,
