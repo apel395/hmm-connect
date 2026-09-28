@@ -28,6 +28,7 @@ import PaymentVoucherPrintPage from "@/modules/finance/payment-vouchers/pages/Pa
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
 import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
 import APReportingPage from "@/modules/finance/accounts-payable/APReportingPage";
+import APMovementPage from "@/modules/finance/accounts-payable/APMovementPage";
 import ARReportingPage from "@/modules/finance/accounts-receivable/ARReportingPage";
 import APAgingPrintPage from "@/modules/finance/accounts-payable/APAgingPrintPage";
 import APInvoicesPage from "@/modules/finance/accounts-payable/APInvoicesPage";
