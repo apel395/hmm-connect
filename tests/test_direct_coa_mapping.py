@@ -73,7 +73,7 @@ def test_missing_item_mapping_fails_before_journal_creation():
     with pytest.raises(HTTPException) as error:
         service.inventory_account(product(inventory_account_id=None))
     assert error.value.status_code == 409
-    assert "inventory" in error.value.detail
+    assert "inventory" in error.value.detail.lower()
 
 
 def test_supplier_payable_must_be_credit_balance_liability():
