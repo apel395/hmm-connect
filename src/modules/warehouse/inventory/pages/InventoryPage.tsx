@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Printer } from "lucide-react";
@@ -77,7 +77,7 @@ export default function InventoryPage() {
   const loading = closing.isFetching || (hasRange && opening.isFetching);
   const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
 
-  const rangeTotals = useMemo(() => {
+  const rangeTotals = (() => {
     const byId = new Map<string, { closing?: AccountTotal; opening?: AccountTotal }>();
     for (const row of accountTotals) {
       const key = String(row.account_id ?? "unmapped");
@@ -92,7 +92,7 @@ export default function InventoryPage() {
         b.closing?.account_code ?? b.opening?.account_code ?? ""
       )
     );
-  }, [accountTotals, openingTotals]);
+  })();
 
   useEffect(() => setPage(1), [search, health, accountId, dateFrom, dateTo]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
