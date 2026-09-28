@@ -1,13 +1,13 @@
 """Add persistent stock reconciliation adjustment requests.
 
-Revision ID: 20260928_stock_reconciliation_requests
+Revision ID: 20260928_stock_recon
 Revises: 20260921_async_journal_import
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-revision = "20260928_stock_reconciliation_requests"
+revision = "20260928_stock_recon"
 down_revision = "20260921_async_journal_import"
 branch_labels = None
 depends_on = None
