@@ -39,7 +39,7 @@ export default function PosRegisterPage() {
   const [lastNumber, setLastNumber] = useState("");
 
   const warehousesQuery = useQuery({ queryKey: ["pos-warehouses"], queryFn: async () => (await warehouseApi.list()).data });
-  const warehouses: any[] = warehousesQuery.data ?? [];
+  const warehouses: any[] = useMemo(() => warehousesQuery.data ?? [], [warehousesQuery.data]);
   const warehouseOptions = warehouses.map((w) => ({ id: w.id, code: w.code, name: w.name }));
   useEffect(() => { if (!warehouseId && warehouses.length) setWarehouseId(warehouses[0].id); }, [warehouses, warehouseId]);
 
@@ -48,7 +48,7 @@ export default function PosRegisterPage() {
     queryFn: async () => (await posApi.products({ warehouse_id: warehouseId, search: search.trim() || undefined, page: 1, page_size: 200 })).data,
     enabled: Boolean(warehouseId),
   });
-  const products: any[] = productsQuery.data?.items ?? [];
+  const products: any[] = useMemo(() => productsQuery.data?.items ?? [], [productsQuery.data?.items]);
   const groups = useMemo(() => Array.from(new Set(products.map((p) => p.group_name).filter(Boolean))) as string[], [products]);
   const visibleProducts = groupFilter ? products.filter((p) => p.group_name === groupFilter) : products;
   const subtotal = cart.reduce((sum, line) => sum + line.quantity * line.unit_price, 0);
