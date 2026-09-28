@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {RefreshCw, Printer} from "lucide-react";
 
 import PageHeader from "@/components/common/PageHeader";
@@ -39,15 +40,14 @@ export default function ReconciliationPage() {
       <PageHeader
         title="Financial Reconciliation"
         description="Read-only control comparing current subledger balances with posted General Ledger balances."
-        actions={<>
-
+        actions={<div className="flex flex-wrap gap-2"><Link className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium" to="/financial-reconciliation/stock">Stock Consolidation</Link>
           <Button variant="secondary" onClick={() => query.refetch()} disabled={query.isFetching}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
         
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
-</>}
+</div>}
       />
 
       {query.isError && (

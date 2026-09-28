@@ -28,6 +28,7 @@ import PaymentVoucherPrintPage from "@/modules/finance/payment-vouchers/pages/Pa
 import SupplierAdjustmentsPage from "@/modules/finance/supplier-adjustments/SupplierAdjustmentsPage";
 import AccountsPayablePage from "@/modules/finance/accounts-payable/AccountsPayablePage";
 import APReportingPage from "@/modules/finance/accounts-payable/APReportingPage";
+import APMovementPage from "@/modules/finance/accounts-payable/APMovementPage";
 import ARReportingPage from "@/modules/finance/accounts-receivable/ARReportingPage";
 import APAgingPrintPage from "@/modules/finance/accounts-payable/APAgingPrintPage";
 import APInvoicesPage from "@/modules/finance/accounts-payable/APInvoicesPage";
@@ -56,6 +57,7 @@ import BalanceSheetPage from "@/modules/finance/financial-statements/BalanceShee
 import ProfitLossPage from "@/modules/finance/financial-statements/ProfitLossPage";
 import FinanceDashboardPage from "@/modules/finance/finance-dashboard/FinanceDashboardPage";
 import ReconciliationPage from "@/modules/finance/reconciliation/ReconciliationPage";
+import StockConsolidationPage from "@/modules/finance/reconciliation/StockConsolidationPage";
 import BankReconciliationListPage from "@/modules/finance/bank-reconciliation/BankReconciliationListPage";
 import BankReconciliationDetailPage from "@/modules/finance/bank-reconciliation/BankReconciliationDetailPage";
 import FixedAssetFormPage from "@/modules/finance/fixed-assets/FixedAssetFormPage";
@@ -164,6 +166,7 @@ const router = createBrowserRouter([
       { path: "accounts-payable", element: <APReportingPage /> },
       { path: "accounts-payable/detail", element: <APReportingPage /> },
       { path: "accounts-payable/aging", element: <AccountsPayablePage /> },
+      { path: "accounts-payable/movement", element: <APMovementPage /> },
       { path: "accounts-payable/aging/print", element: <APAgingPrintPage /> },
       { path: "accounts-payable/invoices", element: <APInvoicesPage /> },
       { path: "accounts-payable/payments", element: <APPaymentsPage /> },
@@ -261,6 +264,7 @@ const router = createBrowserRouter([
 
       { path: "finance-dashboard", element: <FinanceDashboardPage /> },
       { path: "financial-reconciliation", element: <ReconciliationPage /> },
+      { path: "financial-reconciliation/stock", element: <StockConsolidationPage /> },
       { path: "balance-sheet", element: <BalanceSheetPage /> },
       { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "inventory", element: <InventoryPage /> },

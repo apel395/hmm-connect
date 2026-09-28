@@ -25,6 +25,7 @@ export type Payment = {
   funding_lines: any[];
   allowed_actions?: Record<string, boolean>;
   activity_history?: any[];
+  allocation_exception_rows?: any[];
 };
 
 export type EligiblePaymentSupplier = {
