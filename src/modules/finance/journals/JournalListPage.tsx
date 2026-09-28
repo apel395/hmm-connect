@@ -65,7 +65,7 @@ export default function JournalListPage() {
   const valid = Boolean(documentNumber.trim() && businessUnitId && validLines.length >= 2 && balanced && postingDate && !isBeforeToday(postingDate));
   const changeBusinessUnit = (value?: number) => { setBusinessUnitId(value); setDepartmentId(undefined); setLocationId(undefined); };
   const createJournalEntry = () => { if (isBeforeToday(postingDate)) return toast.error("Posting Date cannot be before today."); save.mutate(); };
-  const visibleRows: any[] = q.data?.items ?? [];
+  const visibleRows: any[] = useMemo(() => q.data?.items ?? [], [q.data?.items]);
   const visibleTotals = useMemo(() => visibleRows.reduce((sum, row) => ({ debit: sum.debit + Number(row.total_debit || 0), credit: sum.credit + Number(row.total_credit || 0) }), { debit: 0, credit: 0 }), [visibleRows]);
   const filteredJournalTotals = q.data?.summary?.total_debit != null && q.data?.summary?.total_credit != null
     ? { debit: Number(q.data.summary.total_debit), credit: Number(q.data.summary.total_credit) }
