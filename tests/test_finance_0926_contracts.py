@@ -12,6 +12,10 @@ from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.supplier import Supplier
+from app.models.product import Product
+from app.models.warehouse import Warehouse
+from app.models.inventory import Inventory
+from app.models.stock_movement import StockMovement
 from app.api.v1.general_ledger import listing as ledger_listing
 from app.api.v1.stock_reconciliation import listing as stock_listing
 from app.services.goods_receipt_service import GoodsReceiptService
@@ -96,3 +100,34 @@ def test_receiving_before_2026_rejected_at_service_boundary():
     with pytest.raises(HTTPException) as error:
         GoodsReceiptService.create(db=None, data=data, user=ADMIN)
     assert error.value.status_code == 422
+
+
+def test_stock_reconciliation_uses_movement_cutoff_and_current_snapshot(db):
+    product = Product(
+        code="ITEM-1", name="Item", group_code="1", group_name="Food",
+        subgroup_code="1", subgroup_name="Food", uom="PCS",
+        usage_uom="PCS", is_active=True,
+    )
+    warehouse = Warehouse(code="WH-1", name="Warehouse", is_active=True)
+    db.add_all([product, warehouse])
+    db.flush()
+    db.add(Inventory(product_id=product.id, warehouse_id=warehouse.id,
+                     quantity=Decimal("16"), average_cost=Decimal("1")))
+    db.add_all([
+        StockMovement(product_id=product.id, warehouse_id=warehouse.id,
+                      movement_type="IN", quantity=Decimal("10"), unit_cost=Decimal("1"),
+                      created_at=datetime(2025, 12, 20, tzinfo=timezone.utc)),
+        StockMovement(product_id=product.id, warehouse_id=warehouse.id,
+                      movement_type="IN", quantity=Decimal("5"), unit_cost=Decimal("1"),
+                      created_at=datetime(2026, 1, 10, tzinfo=timezone.utc)),
+    ])
+    db.commit()
+    result = stock_listing(
+        fiscal_year=2026, location_id=None, warehouse_id=None,
+        status=None, search=None, page=1, page_size=50, db=db, user=ADMIN,
+    )
+    row = result["items"][0]
+    assert row["closing_2025_qty"] == Decimal("10")
+    assert row["opening_2026_qty"] == Decimal("11")
+    assert row["variance_qty"] == Decimal("-1")
+    assert row["status"] == "VARIANCE"
