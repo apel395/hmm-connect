@@ -70,7 +70,7 @@ export default function StockConsolidationPage() {
     queryFn: async () => (await api.get<StockResponse>("/stock-reconciliation", { params: { ...filters, location_id: filters.location_id || undefined, warehouse_id: filters.warehouse_id || undefined, status: filters.status || undefined, search: filters.search || undefined, page, page_size: 50 } })).data,
   });
 
-  const rows = query.data?.items ?? [];
+  const rows = useMemo(() => query.data?.items ?? [], [query.data?.items]);
   const pageVariance = useMemo(() => rows.reduce((sum, row) => sum + Number(row.variance_qty || 0), 0), [rows]);
 
   const request = useMutation({
