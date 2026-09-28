@@ -128,9 +128,20 @@ def printable(
 ):
     access(user)
     location_id = resolve_location_id(user, location_id)
+    if account_id and (account_from_id or account_to_id):
+        raise HTTPException(422, "Choose a single account or an account range")
+    start = db.get(ChartOfAccount, account_from_id) if account_from_id else None
+    end = db.get(ChartOfAccount, account_to_id) if account_to_id else None
+    if (account_from_id and not start) or (account_to_id and not end):
+        raise HTTPException(404, "Account range endpoint not found")
+    if start and end and start.account_number > end.account_number:
+        raise HTTPException(422, "From Account must not be after To Account")
     accounts, control_debit, control_credit = ledger_grouped_report(
         db,
         account_id=account_id,
+        account_from_id=account_from_id,
+        account_to_id=account_to_id,
+        search_type=search_type,
         date_from=date_from,
         date_to=date_to,
         reference_type=reference_type,
@@ -146,6 +157,9 @@ def printable(
         "period": {"date_from": date_from, "date_to": date_to},
         "filters": {
             "account_id": account_id,
+            "account_from_id": account_from_id,
+            "account_to_id": account_to_id,
+            "search_type": search_type,
             "account_code": account.account_number if account else None,
             "account_name": account.account_name if account else None,
             "business_unit_id": business_unit_id,
