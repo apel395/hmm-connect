@@ -455,7 +455,7 @@ def listing(
     if payment_date_to:
         query = query.filter(Payment.payment_date <= payment_date_to)
     total = query.count()
-    total_amount = query.with_entities(func.coalesce(func.sum(Payment.total_amount), 0)).scalar()
+    total_amount = query.with_entities(func.coalesce(func.sum(Payment.total_amount), 0)).scalar() if total else ZERO
     rows = query.order_by(Payment.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [serialize(row) for row in rows],
