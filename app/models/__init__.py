@@ -52,6 +52,7 @@ from app.models.recurring_journal_line import RecurringJournalLine
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.stock_movement import StockMovement
+from app.models.stock_reconciliation_request import StockReconciliationRequest
 from app.models.stock_opname import StockOpname, StockOpnameItem
 from app.models.store_request import StoreIssue, StoreIssueItem, StoreRequest, StoreRequestItem
 from app.models.supplier import Supplier, SupplierRow
