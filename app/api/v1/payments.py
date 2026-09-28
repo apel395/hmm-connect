@@ -4,12 +4,12 @@ from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, lazyload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_permission, require_permission
+from app.dependencies.authorization import has_permission, is_superuser, require_permission, role_names
 from app.models.account_payable import AccountPayable
 from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
@@ -41,6 +41,8 @@ def get(db: Session, payment_id: int, user) -> Payment:
     if not payment:
         raise HTTPException(404, "Payment not found")
     enforce_location_access(user, payment.location_id)
+    if "AP" in role_names(user) and not is_superuser(user) and payment.created_by_id != user.id:
+        raise HTTPException(404, "Payment not found")
     return payment
 
 
@@ -422,6 +424,8 @@ def listing(
     user=Depends(payment_view_user),
 ):
     query = apply_location_scope(db.query(Payment), Payment, user)
+    if "AP" in role_names(user) and not is_superuser(user):
+        query = query.filter(Payment.created_by_id == user.id)
     if location_id:
         query = query.filter(Payment.location_id == location_id)
     if search and search.strip():
@@ -451,9 +455,11 @@ def listing(
     if payment_date_to:
         query = query.filter(Payment.payment_date <= payment_date_to)
     total = query.count()
+    total_amount = query.with_entities(func.coalesce(func.sum(Payment.total_amount), 0)).scalar() if total else ZERO
     rows = query.order_by(Payment.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [serialize(row) for row in rows],
+        "summary": {"total_amount": total_amount},
         "page": page,
         "page_size": page_size,
         "total_items": total,

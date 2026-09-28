@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, contains_eager, joinedload
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
+from app.models.supplier import Supplier
 
 ZERO = Decimal("0")
 
@@ -15,6 +16,9 @@ def build_ledger_query(
     db: Session,
     *,
     account_id: int | None = None,
+    account_from_id: int | None = None,
+    account_to_id: int | None = None,
+    search_type: str = "ALL",
     date_from: date | None = None,
     date_to: date | None = None,
     reference_type: str | None = None,
@@ -27,6 +31,14 @@ def build_ledger_query(
     q = db.query(JournalLine).join(JournalEntry).filter(JournalEntry.status == "POSTED")
     if account_id:
         q = q.filter(JournalLine.account_id == account_id)
+    if account_from_id:
+        start = db.get(ChartOfAccount, account_from_id)
+        if start:
+            q = q.filter(JournalLine.account.has(ChartOfAccount.account_number >= start.account_number))
+    if account_to_id:
+        end = db.get(ChartOfAccount, account_to_id)
+        if end:
+            q = q.filter(JournalLine.account.has(ChartOfAccount.account_number <= end.account_number))
     if date_from:
         q = q.filter(JournalEntry.posting_date >= date_from)
     if date_to:
@@ -44,11 +56,19 @@ def build_ledger_query(
     token = str(search or "").strip()
     term = f"%{token}%" if token else None
     if term:
-        q = q.filter(or_(
-            JournalEntry.journal_number.ilike(term),
-            JournalEntry.document_number.ilike(term),
-            JournalLine.description.ilike(term),
-        ))
+        choices = {
+            "JOURNAL": JournalEntry.journal_number.ilike(term),
+            "DOCUMENT": JournalEntry.document_number.ilike(term),
+            "DESCRIPTION": JournalLine.description.ilike(term),
+            "ACCOUNT": JournalLine.account.has(or_(ChartOfAccount.account_number.ilike(term), ChartOfAccount.account_name.ilike(term))),
+            "SUPPLIER": JournalLine.supplier.has(or_(Supplier.name.ilike(term), Supplier.code.ilike(term))),
+        }
+        if search_type.upper() == "ALL":
+            q = q.filter(or_(*choices.values()))
+        elif search_type.upper() in choices:
+            q = q.filter(choices[search_type.upper()])
+        else:
+            raise ValueError("Unsupported ledger search type")
     return q
 
 
@@ -114,6 +134,8 @@ def opening_balances(
     db: Session,
     *,
     account_id: int | None = None,
+    account_from_id: int | None = None,
+    account_to_id: int | None = None,
     date_from: date | None = None,
     reference_type: str | None = None,
     supplier_id: int | None = None,
@@ -132,6 +154,8 @@ def opening_balances(
     q = build_ledger_query(
         db,
         account_id=account_id,
+        account_from_id=account_from_id,
+        account_to_id=account_to_id,
         reference_type=reference_type,
         supplier_id=supplier_id,
         department_id=department_id,
@@ -204,6 +228,9 @@ def ledger_grouped_report(
     db: Session,
     *,
     account_id: int | None = None,
+    account_from_id: int | None = None,
+    account_to_id: int | None = None,
+    search_type: str = "ALL",
     date_from: date | None = None,
     date_to: date | None = None,
     reference_type: str | None = None,
@@ -217,6 +244,9 @@ def ledger_grouped_report(
     q = build_ledger_query(
         db,
         account_id=account_id,
+        account_from_id=account_from_id,
+        account_to_id=account_to_id,
+        search_type=search_type,
         date_from=date_from,
         date_to=date_to,
         reference_type=reference_type,
@@ -229,6 +259,8 @@ def ledger_grouped_report(
     openings = opening_balances(
         db,
         account_id=account_id,
+        account_from_id=account_from_id,
+        account_to_id=account_to_id,
         date_from=date_from,
         reference_type=reference_type,
         supplier_id=supplier_id,

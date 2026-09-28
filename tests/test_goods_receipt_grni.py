@@ -39,7 +39,7 @@ class Resolver:
     def __init__(self, _db):
         pass
 
-    def grni_account(self):
+    def ap_suspense_account(self):
         return SimpleNamespace(id=90)
 
     def inventory_account(self, product, _location_id):
@@ -59,12 +59,12 @@ def receipt():
         subtotal=Decimal("350.00"),
         items=[
             SimpleNamespace(
-                product=SimpleNamespace(inventory_account_id=10),
+                product=SimpleNamespace(code="ITEM-10", inventory_treatment="STOCK", inventory_account_id=10),
                 quantity=Decimal("2"),
                 unit_cost=Decimal("100"),
             ),
             SimpleNamespace(
-                product=SimpleNamespace(inventory_account_id=11),
+                product=SimpleNamespace(code="ITEM-11", inventory_treatment="STOCK", inventory_account_id=11),
                 quantity=Decimal("3"),
                 unit_cost=Decimal("50"),
             ),

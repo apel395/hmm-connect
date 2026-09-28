@@ -13,12 +13,14 @@ from app.models.business_unit import BusinessUnit
 from app.models.chart_of_account import ChartOfAccount
 from app.models.department import Department
 from app.models.journal_entry import JournalEntry
+from app.models.journal_line import JournalLine
 from app.models.location import Location
 from app.services.document_context import print_metadata
 from app.services.general_ledger_report import (
     build_ledger_query,
     ledger_grouped_report,
     ledger_rows_with_balance,
+    ledger_totals,
     serialize_ledger_item,
 )
 from app.services.location_access import resolve_location_id
@@ -53,7 +55,10 @@ def listing(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = None,
+    search_type: str = Query("ALL", pattern="^(ALL|JOURNAL|DOCUMENT|DESCRIPTION|ACCOUNT|SUPPLIER)$"),
     account_id: int | None = None,
+    account_from_id: int | None = None,
+    account_to_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     reference_type: str | None = None,
@@ -66,9 +71,20 @@ def listing(
 ):
     access(user)
     location_id = resolve_location_id(user, location_id)
+    if account_id and (account_from_id or account_to_id):
+        raise HTTPException(422, "Choose a single account or an account range")
+    start = db.get(ChartOfAccount, account_from_id) if account_from_id else None
+    end = db.get(ChartOfAccount, account_to_id) if account_to_id else None
+    if (account_from_id and not start) or (account_to_id and not end):
+        raise HTTPException(404, "Account range endpoint not found")
+    if start and end and start.account_number > end.account_number:
+        raise HTTPException(422, "From Account must not be after To Account")
     q = build_ledger_query(
         db,
         account_id=account_id,
+        account_from_id=account_from_id,
+        account_to_id=account_to_id,
+        search_type=search_type,
         date_from=date_from,
         date_to=date_to,
         reference_type=reference_type,
@@ -79,9 +95,11 @@ def listing(
         business_unit_id=business_unit_id,
     )
     total = q.count()
+    total_debit, total_credit = ledger_totals(q)
     rows = ledger_rows_with_balance(q).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [_item(line, balance) for line, balance in rows],
+        "summary": {"total_debit": total_debit, "total_credit": total_credit, "difference": total_debit - total_credit},
         "page": page,
         "page_size": page_size,
         "total_items": total,
@@ -94,7 +112,10 @@ def listing(
 @router.get("/print")
 def printable(
     search: str | None = None,
+    search_type: str = Query("ALL", pattern="^(ALL|JOURNAL|DOCUMENT|DESCRIPTION|ACCOUNT|SUPPLIER)$"),
     account_id: int | None = None,
+    account_from_id: int | None = None,
+    account_to_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     reference_type: str | None = None,
@@ -107,9 +128,20 @@ def printable(
 ):
     access(user)
     location_id = resolve_location_id(user, location_id)
+    if account_id and (account_from_id or account_to_id):
+        raise HTTPException(422, "Choose a single account or an account range")
+    start = db.get(ChartOfAccount, account_from_id) if account_from_id else None
+    end = db.get(ChartOfAccount, account_to_id) if account_to_id else None
+    if (account_from_id and not start) or (account_to_id and not end):
+        raise HTTPException(404, "Account range endpoint not found")
+    if start and end and start.account_number > end.account_number:
+        raise HTTPException(422, "From Account must not be after To Account")
     accounts, control_debit, control_credit = ledger_grouped_report(
         db,
         account_id=account_id,
+        account_from_id=account_from_id,
+        account_to_id=account_to_id,
+        search_type=search_type,
         date_from=date_from,
         date_to=date_to,
         reference_type=reference_type,
@@ -125,6 +157,9 @@ def printable(
         "period": {"date_from": date_from, "date_to": date_to},
         "filters": {
             "account_id": account_id,
+            "account_from_id": account_from_id,
+            "account_to_id": account_to_id,
+            "search_type": search_type,
             "account_code": account.account_number if account else None,
             "account_name": account.account_name if account else None,
             "business_unit_id": business_unit_id,

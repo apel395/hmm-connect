@@ -85,8 +85,8 @@ def test_inventory_account_resolves_loc2_by_role(
     assert service.inventory_role(item) == role
 
 
-def test_location_setting_precedes_product_fallback():
-    # A location INVENTORY_FOOD setting overrides the product's own account.
+def test_product_mapping_precedes_location_fallback():
+    # Item Master mapping is authoritative when a product has its own account.
     loc_account = coa(173, "100-300-106", "ASSET", "DEBIT", "INVENTORY")
     product_account = coa(999, "100-300-999", "ASSET", "DEBIT", "INVENTORY")
     db = FakeDb({173: loc_account, 999: product_account}, setting_account_id=173)
@@ -95,7 +95,7 @@ def test_location_setting_precedes_product_fallback():
 
     resolved = service.inventory_account(item, location_id=2)
 
-    assert resolved.id == 173
+    assert resolved.id == 999
 
 
 def test_missing_loc2_setting_and_product_mapping_raises_409():

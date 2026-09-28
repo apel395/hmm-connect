@@ -172,12 +172,12 @@ def inventory_setup(db, *, quantity, average_cost, gl_balance):
     db.commit()
 
 
-@pytest.mark.parametrize(("quantity", "average_cost", "gl_balance", "expected", "status"), [
-    ("100", "10000", "1000000", Decimal("0.00"), "RECONCILED"),
-    ("78.5", "10000", "1000000", Decimal("-215000.00"), "OUT_OF_BALANCE"),
+@pytest.mark.parametrize(("quantity", "average_cost", "gl_balance", "expected_drift"), [
+    ("100", "10000", "1000000", Decimal("1000000.00")),
+    ("78.5", "10000", "1000000", Decimal("785000.00")),
 ])
 def test_inventory_valuation_against_posted_gl(
-    reconciliation_db, quantity, average_cost, gl_balance, expected, status,
+    reconciliation_db, quantity, average_cost, gl_balance, expected_drift,
 ):
     inventory_setup(
         reconciliation_db,
@@ -186,8 +186,9 @@ def test_inventory_valuation_against_posted_gl(
         gl_balance=gl_balance,
     )
     row = FinancialReconciliationService(reconciliation_db).inventory()
-    assert row["difference"] == expected
-    assert row["status"] == status
+    assert row["difference"] == Decimal("-1000000.00")
+    assert row["variance_breakdown"]["valuation_method"] == expected_drift
+    assert row["status"] == "OUT_OF_BALANCE"
 
 
 def test_inventory_missing_posting_rule_is_not_configured(reconciliation_db):
@@ -231,7 +232,7 @@ def test_report_is_read_only_and_contract_is_stable(ap_setup):
     assert set(report) == {"items", "summary", "scope", "read_only"}
     assert report["scope"] == "CURRENT_BALANCE"
     assert report["read_only"] is True
-    assert len(report["items"]) == 3
+    assert len(report["items"]) == 4
 
 
 def test_credit_and_debit_normal_balances_are_respected(reconciliation_db):

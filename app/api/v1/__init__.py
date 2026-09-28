@@ -1,14 +1,14 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    accounting, accounting_posting_rules, admin_lifecycle, amortizations, ap_aging, ap_reconciliation, ap_reporting, approvals, ar_aging, ar_reporting,
+    accounting, accounting_posting_rules, admin_lifecycle, amortizations, ap_aging, ap_movement, ap_reconciliation, ap_reporting, approvals, ar_aging, ar_reporting,
     audit_trail, auth, balance_sheet, bank_accounts, bank_reconciliations, bank_transfers,
     cash_flow, chart_of_accounts, customer_payments, dashboard,
     document_attachments, document_drilldown, document_events, exports, financial_reconciliation, fiscal, fiscal_balance_sheet, fiscal_periods,
     fixed_assets_core, general_ledger, goods_receipts, inventory, journal_detail, journals, market_lists,
     organization_dimensions, payment_eligibility, payment_vouchers, payments, products, profit_loss, purchase_orders, journal_imports,
     purchase_requisitions, purchasing_documents, purchasing_reports, roles, sales, pos_metadata, stock_adjustments, stock_opnames, store_requests, supplier_adjustments, supplier_invoice_sources,
-    supplier_invoices, supplier_products, suppliers, system_capabilities, spt_1771, trial_balance, users, warehouses,
+    supplier_invoices, supplier_products, suppliers, stock_reconciliation, system_capabilities, spt_1771, trial_balance, users, warehouses,
     year_end, opening_balances,
 )
 
@@ -29,6 +29,7 @@ for router in (
     goods_receipts.router,
     store_requests.router,
     stock_adjustments.router,
+    stock_reconciliation.router,
     sales.router,
     pos_metadata.router,
     stock_opnames.router,
@@ -56,6 +57,7 @@ for router in (
     fixed_assets_core.reports_router,
     amortizations.router,
     ap_aging.router,
+    ap_movement.router,
     ap_reconciliation.router,
     ap_reporting.router,
     ar_aging.router,
