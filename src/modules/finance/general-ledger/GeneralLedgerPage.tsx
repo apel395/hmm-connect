@@ -114,10 +114,11 @@ export default function GeneralLedgerPage() {
     debit: sum.debit + Number(row.debit || 0),
     credit: sum.credit + Number(row.credit || 0),
   }), { debit: 0, credit: 0 });
-  const filteredTotals = {
-    debit: Number(ledger.data?.summary?.total_debit ?? pageTotals.debit),
-    credit: Number(ledger.data?.summary?.total_credit ?? pageTotals.credit),
-  };
+  const summaryAvailable = ledger.data?.summary?.total_debit != null && ledger.data?.summary?.total_credit != null;
+  const filteredTotals = summaryAvailable ? {
+    debit: Number(ledger.data.summary.total_debit),
+    credit: Number(ledger.data.summary.total_credit),
+  } : null;
   const printHeader = (() => {
     const parts: string[] = [];
     if (filters.date_from || filters.date_to) parts.push(`${filters.date_from || "…"} to ${filters.date_to || "…"}`);
@@ -159,7 +160,7 @@ export default function GeneralLedgerPage() {
         <SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} />
       </div>
     </Card>
-    <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{amount(filteredTotals.debit)}</div></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{amount(filteredTotals.credit)}</div></div><div><small>Difference</small><div className="font-bold tabular-nums">{amount(filteredTotals.debit-filteredTotals.credit)}</div></div></div></Card>
+    <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit)}</small></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.credit)}</small></div><div><small>Difference</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit-filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit-pageTotals.credit)}</small></div></div></Card>
     {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
     </div>
     <Card>
