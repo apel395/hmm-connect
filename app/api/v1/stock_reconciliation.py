@@ -22,7 +22,7 @@ ZERO = Decimal("0")
 
 
 class AdjustmentRequestIn(BaseModel):
-    fiscal_year: int = Field(ge=2026, le=2100)
+    fiscal_year: int = Field(ge=2026, le=2026)
     product_id: int
     warehouse_id: int
     requested_qty: Decimal = Field(gt=0)
@@ -104,7 +104,7 @@ def _rows(db: Session, user, fiscal_year: int, location_id: int | None, warehous
 
 @router.get("")
 def listing(
-    fiscal_year: int = Query(2026, ge=2026, le=2100),
+    fiscal_year: int = Query(2026, ge=2026, le=2026),
     location_id: int | None = None,
     warehouse_id: int | None = None,
     status: str | None = None,
