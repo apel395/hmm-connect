@@ -54,14 +54,15 @@ def _rows(db: Session, user, fiscal_year: int, location_id: int | None, warehous
     for movement in movements:
         key = (movement.product_id, movement.warehouse_id)
         product_map[key] = movement.product
-        moment = movement.goods_receipt.received_at if movement.goods_receipt else movement.created_at
+        receipt_in = movement.goods_receipt and movement.reference_type == "GOODS_RECEIPT" and movement.movement_type == "IN"
+        moment = movement.goods_receipt.received_at if receipt_in else movement.created_at
         if moment is None:
             continue
         effective_date = moment.date()
         signed = Decimal(movement.quantity or 0) * (-1 if movement.movement_type == "OUT" else 1)
         target = historical if effective_date < cutoff else period
         target[key] = target.get(key, ZERO) + signed
-        if movement.goods_receipt and effective_date < cutoff and signed > ZERO:
+        if receipt_in and effective_date < cutoff and signed > ZERO:
             excluded[key] = excluded.get(key, ZERO) + signed
 
     requests = {
