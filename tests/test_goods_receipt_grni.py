@@ -39,7 +39,7 @@ class Resolver:
     def __init__(self, _db):
         pass
 
-    def grni_account(self):
+    def ap_suspense_account(self):
         return SimpleNamespace(id=90)
 
     def inventory_account(self, product, _location_id):
