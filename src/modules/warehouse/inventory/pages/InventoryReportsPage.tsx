@@ -18,6 +18,7 @@ const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text
 
 export default function InventoryReportsPage() {
   const [section, setSection] = useState<Section>("valuation");
+  const [asOf, setAsOf] = useState("");
 
   const warehousesQuery = useQuery({
     queryKey: ["inventory-report-warehouses"],
@@ -26,25 +27,25 @@ export default function InventoryReportsPage() {
   const warehouses: any[] = warehousesQuery.data ?? [];
 
   const overall = useQuery({
-    queryKey: ["inventory-report-overall"],
-    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100 })).data,
+    queryKey: ["inventory-report-overall", asOf],
+    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100, as_of: asOf || undefined })).data,
   });
   const overallData: any = overall.data ?? {};
   const overallSummary = overallData.summary ?? {};
 
   const lowStock = useQuery({
-    queryKey: ["inventory-report-low-stock"],
-    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100, health: "LOW_STOCK" })).data,
+    queryKey: ["inventory-report-low-stock", asOf],
+    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100, as_of: asOf || undefined, health: "LOW_STOCK" })).data,
   });
   const lowStockData: any = lowStock.data ?? {};
   const lowStockItems: any[] = lowStockData.items ?? [];
 
   const byWarehouse = useQuery({
-    queryKey: ["inventory-report-by-warehouse", warehouses.length],
+    queryKey: ["inventory-report-by-warehouse", warehouses.length, asOf],
     queryFn: async () => {
       const rows = await Promise.all(
         warehouses.map(async (w) => {
-          const data = await (await inventoryApi.list({ page: 1, page_size: 1, warehouse_id: w.id })).data;
+          const data = await (await inventoryApi.list({ page: 1, page_size: 1, warehouse_id: w.id, as_of: asOf || undefined })).data;
           const s = data.summary ?? {};
           return {
             id: w.id,
@@ -65,7 +66,7 @@ export default function InventoryReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Inventory Reports" description="Stock valuation and movement insights computed from current warehouse inventory." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Inventory Reports" description="Stock valuation and movement insights computed from warehouse inventory on the selected date." />
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
@@ -76,6 +77,7 @@ export default function InventoryReportsPage() {
               <option value="low-stock">Low Stock / Reorder</option>
             </select>
           </label>
+          <label className="block"><span className="mb-1 block text-xs font-medium text-slate-500">Stock as of</span><input type="date" className={input} value={asOf} onChange={(e) => setAsOf(e.target.value)} /></label>
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Badge variant="success">{num(overallSummary.stock_lines ?? 0)} stock lines</Badge>
             <Badge variant="secondary">{money(overallSummary.stock_value)}</Badge>
@@ -92,6 +94,7 @@ export default function InventoryReportsPage() {
             <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Stock Lines</div><div className="mt-2 text-2xl font-bold">{num(overallSummary.stock_lines ?? 0)}</div></Card>
             <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Monitored Lines</div><div className="mt-2 text-2xl font-bold">{num(overallSummary.monitored_lines ?? 0)}</div></Card>
             <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Low Stock</div><div className="mt-2 text-2xl font-bold text-red-700">{num(overallSummary.low_stock ?? 0)}</div></Card>
+            <Card className="p-0 sm:col-span-2 xl:col-span-4"><div className="border-b px-4 py-3 font-semibold">Totals by Inventory Account {asOf ? `as of ${asOf}` : "(current)"}</div><table className="w-full text-sm"><thead><tr><th className="px-4 py-2 text-left">Inventory COA</th><th className="px-4 py-2 text-right">Quantity</th><th className="px-4 py-2 text-right">Stock Value</th></tr></thead><tbody>{(overallData.totals_by_account ?? []).map((row:any) => <tr key={row.account_id ?? "none"} className="border-t"><td className="px-4 py-2">{row.account_code ? `${row.account_code} — ${row.account_name}` : "Unmapped"}</td><td className="px-4 py-2 text-right">{num(row.quantity)}</td><td className="px-4 py-2 text-right">{money(row.stock_value)}</td></tr>)}</tbody></table></Card>
           </div>
         ) : section === "by-warehouse" ? (
           <Card className="p-0">
