@@ -184,6 +184,7 @@ class FinancialReconciliationService:
         row = {
             "control": control,
             "external_statement": source,
+            "source_balance": source,
             "gl_balance": gl,
             "variance": difference,
             "difference": difference,
