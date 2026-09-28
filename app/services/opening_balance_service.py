@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
@@ -233,6 +233,18 @@ class OpeningBalanceService:
                 )
             resolved_location_id = fallback.id
 
+        # Serialize concurrent annual submissions before checking existing rows.
+        if self.db.bind and self.db.bind.dialect.name == "postgresql":
+            self.db.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": 920000000 + fiscal_year},
+            )
+        recorded = self.db.query(OpeningBalance.id).filter(
+            OpeningBalance.fiscal_year == fiscal_year
+        ).first()
+        if recorded:
+            raise HTTPException(409, f"Opening balances for {fiscal_year} have already been recorded")
+
         journal_lines = []
         for item in prepared["lines"]:
             is_contra = item.get("contra", False)
@@ -306,25 +318,7 @@ class OpeningBalanceService:
         }
 
     def void(self, *, user, fiscal_year: int, location_id: int | None = None) -> dict:
-        query = self.db.query(OpeningBalance).filter(
-            OpeningBalance.fiscal_year == fiscal_year,
+        raise HTTPException(
+            409,
+            "Recorded opening balances are immutable; use a controlled adjustment journal",
         )
-        if location_id:
-            query = query.filter(OpeningBalance.location_id == location_id)
-        entries = query.all()
-        if not entries:
-            raise HTTPException(404, f"No opening balances found for {fiscal_year}")
-        journal_ids = {e.journal_entry_id for e in entries if e.journal_entry_id}
-        for journal_id in journal_ids:
-            journal = self.db.get(JournalEntry, journal_id)
-            if journal and journal.status == "POSTED":
-                from app.services.accounting_unpost import unpost_journal
-                unpost_journal(self.db, journal=journal, user=user, commit=False)
-        for entry in entries:
-            self.db.delete(entry)
-        record_audit(
-            self.db, user, "OPENING_BALANCE_VOIDED", "OPENING_BALANCE",
-            f"Voided opening balances for fiscal year {fiscal_year}",
-        )
-        self.db.commit()
-        return {"voided": len(entries)}
