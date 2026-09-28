@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
@@ -23,6 +23,7 @@ from app.services.direct_coa_service import DirectCoaService
 
 ZERO = Decimal("0")
 MONEY = Decimal("0.01")
+STOCK_CUTOFF = date(2026, 1, 1)
 
 
 class GoodsReceiptService:
@@ -315,6 +316,8 @@ class GoodsReceiptService:
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
         cls._check_access(user, "receiving.create")
+        if data.received_at and data.received_at.date() < STOCK_CUTOFF:
+            raise HTTPException(422, "Receiving dated before 2026 is excluded from stock")
         from app.services.organization_dimensions import validate_dimensions
 
         purchase_order = db.get(PurchaseOrder, data.purchase_order_id) if data.purchase_order_id else None
@@ -398,6 +401,8 @@ class GoodsReceiptService:
 
     @classmethod
     def update(cls, db: Session, *, receipt: GoodsReceipt, data: GoodsReceiptUpdate, user):
+        if data.received_at.date() < STOCK_CUTOFF:
+            raise HTTPException(422, "Receiving dated before 2026 is excluded from stock")
         if receipt.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only unposted Receiving Reports can be edited")
 
@@ -509,6 +514,8 @@ class GoodsReceiptService:
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
         if receipt.status != "DRAFT": raise HTTPException(status_code=409, detail="Only draft receipts can be posted")
+        if receipt.received_at.date() < STOCK_CUTOFF:
+            raise HTTPException(409, "Pre-2026 receiving cannot be posted into current stock")
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
         if receipt.purchase_order_id and (not purchase_order or purchase_order.status not in {"APPROVED", "PARTIALLY_RECEIVED"}):
             raise HTTPException(status_code=409, detail="Purchase order is no longer receivable")
