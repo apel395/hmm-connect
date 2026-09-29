@@ -10,6 +10,8 @@ from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.opening_balance import OpeningBalance
 from app.services.trial_balance_service import TrialBalanceService
+from app.services.general_ledger_report import opening_balances, ledger_grouped_report
+from app.services.cash_flow_service import CashFlowService
 
 
 def test_trial_balance_reports_unbalanced_opening_even_when_account_search_filters_rows():
@@ -19,7 +21,7 @@ def test_trial_balance_reports_unbalanced_opening_even_when_account_search_filte
     try:
         asset = ChartOfAccount(
             account_number="100-TEST", account_name="Asset Test",
-            account_type="ASSET", normal_balance="DEBIT",
+            account_type="ASSET", account_subtype="CASH", normal_balance="DEBIT",
             is_active=True, is_posting=True,
         )
         other = ChartOfAccount(
@@ -65,6 +67,16 @@ def test_trial_balance_reports_unbalanced_opening_even_when_account_search_filte
         assert report["items"][0]["opening_balance"] == Decimal("125.00")
         assert report["items"][0]["closing_balance"] == Decimal("115.00")
         assert report["summary"]["is_balanced"] is False
+        assert opening_balances(db, account_id=asset.id, date_from=date(2026, 9, 1))[asset.id] == Decimal("125.00")
+        accounts, debit, credit = ledger_grouped_report(
+            db, account_id=asset.id, date_from=date(2026, 9, 1),
+            date_to=date(2026, 9, 30),
+        )
+        assert len(accounts) == 1
+        assert accounts[0]["opening_balance"] == Decimal("125.00")
+        assert accounts[0]["closing_balance"] == Decimal("115.00")
+        assert credit == Decimal("10.00")
+        assert CashFlowService(db).opening(date(2026, 9, 1), asset.id) == Decimal("125.00")
     finally:
         db.close()
         engine.dispose()
