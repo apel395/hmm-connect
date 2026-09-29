@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.api.v1.payments import create, eligible, listing
+from app.api.v1.payments import create, eligible, listing, invoice_balance, reserved_amount
 from app.models import Base
 from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
@@ -70,6 +70,12 @@ def test_tax_inclusive_invoice_remains_unchanged_when_payment_draft_is_created(d
     )
     db.add(invoice)
     db.commit()
+    db.refresh(invoice)
+    assert invoice.total_amount == Decimal("111")
+    assert invoice.paid_amount == Decimal("0")
+    assert invoice.adjustment_amount == Decimal("0")
+    assert invoice_balance(invoice) == Decimal("111")
+    assert reserved_amount(db, invoice.id) == Decimal("0")
 
     payment = create(
         data=PaymentCreate(
