@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -16,7 +18,12 @@ def _access(user):
 
 
 @router.get("")
-def report(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def report(date_from: date | None = None, date_to: date | None = None,
+           db: Session = Depends(get_db), user=Depends(get_current_user)):
     _access(user)
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "From date must not exceed To date")
     location_id = resolve_location_id(user, None)
-    return FinancialReconciliationService(db).report(location_id=location_id)
+    return FinancialReconciliationService(db).report(
+        location_id=location_id, date_from=date_from, date_to=date_to,
+    )
