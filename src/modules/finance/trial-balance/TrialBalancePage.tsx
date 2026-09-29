@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
@@ -7,7 +8,7 @@ import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Badge from "@/components/ui/Badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
-import { exportTrialBalanceCsv, getTrialBalance, TrialBalanceFilters } from "./api";
+import { exportTrialBalanceXlsx, getTrialBalance, TrialBalanceFilters } from "./api";
 import { listLocations } from "@/modules/admin/organization/api";
 import SearchableSelect from "@/components/form/SearchableSelect";
 
@@ -19,6 +20,7 @@ const input = "h-10 rounded-md border border-slate-300 bg-white px-3 text-sm";
 export default function TrialBalancePage() {
   const [draft, setDraft] = useState<TrialBalanceFilters>({ date_from: monthStart, date_to: today, page: 1, page_size: 50, search: "", include_zero_balance: false });
   const [filters, setFilters] = useState<TrialBalanceFilters>(draft);
+  const [exporting, setExporting] = useState(false);
   const locations = useQuery({
     queryKey: ["trial-balance-locations"],
     queryFn: () => listLocations({ is_active: true }),
@@ -36,9 +38,20 @@ export default function TrialBalancePage() {
   const printQuery = new URLSearchParams(Object.fromEntries(Object.entries(printParams).map(([key, value]) => [key, String(value)]))).toString();
   const printSrc = `/journal/trial-balance/print${printQuery ? `?${printQuery}` : ""}`;
 
+  const downloadExcel = async () => {
+    setExporting(true);
+    try {
+      await exportTrialBalanceXlsx(filters);
+    } catch {
+      toast.error("Trial Balance Excel export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return <div className="space-y-5">
     <PageHeader title="Trial Balance" description="Opening balance, period movements, total movement, and closing balance by COA." actions={<>
-<Button variant="outline" disabled={!data} onClick={() => exportTrialBalanceCsv(filters)}>Export CSV</Button>
+<Button variant="outline" disabled={!data || exporting} loading={exporting} onClick={downloadExcel}>Export Excel</Button>
 <PrintPreviewButton src={printSrc} title="Trial Balance" ariaLabel="Preview trial balance" label="Print" />
 </>} />
     <Card><form className="grid gap-3 md:grid-cols-5" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft, page: 1 }); }}>
