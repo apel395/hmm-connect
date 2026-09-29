@@ -52,10 +52,11 @@ export default function OpeningBalancesPage() {
   useEffect(() => {
     const next: RowState = {};
     (acct.data?.items ?? []).forEach((a: OpeningBalanceAccount) => {
-      const bal = Number(a.existing_balance || 0);
+      const debit = Number(a.existing_debit || 0);
+      const credit = Number(a.existing_credit || 0);
       next[a.id] = {
-        debit: a.normal_balance === "DEBIT" && bal > 0 ? String(bal) : "",
-        credit: a.normal_balance === "CREDIT" && bal > 0 ? String(bal) : "",
+        debit: debit > 0 ? String(debit) : "",
+        credit: credit > 0 ? String(credit) : "",
       };
     });
     setRows(next);
