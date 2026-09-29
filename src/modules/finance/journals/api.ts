@@ -63,6 +63,7 @@ export type JournalCreatePayload = {
 
 export type JournalUpdatePayload = {
   posting_date?: string;
+  location_id?: number | null;
   description?: string | null;
   lines?: Array<{
     account_id: number;
