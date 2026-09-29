@@ -7,6 +7,8 @@ export type OpeningBalanceAccount = {
   account_type: string;
   normal_balance: string;
   existing_balance: number;
+  existing_debit?: number;
+  existing_credit?: number;
 };
 
 export type OpeningBalanceLine = {
