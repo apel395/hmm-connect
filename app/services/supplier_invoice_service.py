@@ -30,7 +30,7 @@ class SupplierInvoiceService:
 
     @staticmethod
     def serialize(x):
-        journal = next((j for j in getattr(x, "_journals", []) if j.reference_type == "SUPPLIER_INVOICE"), None)
+        journal = next((j for j in getattr(x, "_journals", []) if j.reference_type == "SUPPLIER_INVOICE" and j.status != "VOID"), None)
         receipt = x.goods_receipt
         purchase_order = x.purchase_order or (receipt.purchase_order if receipt else None)
         journal_location = getattr(journal, "location", None) if journal else None
@@ -120,7 +120,7 @@ class SupplierInvoiceService:
         invoice._journals = self.db.query(JournalEntry).filter(
             JournalEntry.reference_type == "SUPPLIER_INVOICE",
             JournalEntry.reference_id == invoice.id,
-        ).all()
+        ).order_by(JournalEntry.id.desc()).all()
         return invoice
 
     @staticmethod
