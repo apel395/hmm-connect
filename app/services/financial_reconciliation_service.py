@@ -338,6 +338,9 @@ class FinancialReconciliationService:
                         configured=bool(account_ids),
                         variance_breakdown={"posting_mismatch": source - gl})
         row["exceptions"] = self._unallocated_payments(location_id, as_of)
+        if as_of is not None:
+            row["note"] = ("Dated AP source uses posted invoice totals and payment allocations; "
+                           "undated invoice adjustments have no historical effective date.")
         return row
 
     def accounts_receivable(self, location_id: int | None = None,
@@ -393,10 +396,14 @@ class FinancialReconciliationService:
             debit=True, event_types=["SUPPLIER_INVOICE_INVENTORY"],
             location_id=location_id,
         )
-        product_ids = {
-            account_id for (account_id,) in self.db.query(Product.inventory_account_id)
-            .filter(Product.inventory_account_id.is_not(None)).distinct().all()
-        }
+        product_accounts = (self.db.query(Product.inventory_account_id)
+                            .filter(Product.inventory_account_id.is_not(None)))
+        if location_id is not None:
+            product_accounts = (product_accounts.join(
+                Inventory, Inventory.product_id == Product.id
+            ).join(Warehouse, Warehouse.id == Inventory.warehouse_id)
+             .filter(Warehouse.location_id == location_id))
+        product_ids = {account_id for (account_id,) in product_accounts.distinct().all()}
         ledger_by = self._stock_ledger(None, location_id, as_of)
         valuation_by = self._inventory_valuation(location_id, as_of)
         account_ids = sorted(set(rule_ids) | product_ids |
@@ -429,13 +436,22 @@ class FinancialReconciliationService:
             )
             row["movement_value"] = ledger_by.get(account_id, ZERO)
             detail.append(row)
-        return self._row(
+        row = self._row(
             "INVENTORY", source, gl, self._accounts(account_ids),
             configured=bool(account_ids), detail=detail,
             variance_breakdown={"posting_mismatch": source - gl,
                                 "valuation_method": raw_valuation - sum(ledger_by.values(), ZERO),
                                 "unmapped_stock": unmapped_stock},
         )
+        if unmapped_stock != ZERO and row["status"] == "RECONCILED":
+            row["status"] = "OUT_OF_BALANCE"
+            row["visual"] = "RED"
+        if unmapped_stock != ZERO:
+            row["note"] = f"Stock without an inventory account: {unmapped_stock}. Assign its product COA before closing."
+        elif as_of is not None:
+            row["note"] = ("Historical stock valuation is reconstructed from the current snapshot "
+                           "and later movement costs; review average-cost and opening adjustments.")
+        return row
 
     def _snapshot(self, location_id: int | None, as_of: date | None) -> list[dict]:
         return [
