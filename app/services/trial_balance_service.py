@@ -154,6 +154,8 @@ class TrialBalanceService:
                 period_credit,
             )
             closing_balance = opening_balance + period_total
+            opening_net_debit = opening_debit_activity - opening_credit_activity
+            closing_net_debit = opening_net_debit + period_debit - period_credit
             status = "ABNORMAL" if closing_balance < ZERO else "NORMAL"
 
             if not include_zero_balance and not any(
@@ -173,10 +175,14 @@ class TrialBalanceService:
                     "parent_account_code": account.parent.account_number if account.parent else None,
                     "parent_account_name": account.parent.account_name if account.parent else None,
                     "opening_balance": opening_balance,
+                    "opening_debit": max(opening_net_debit, ZERO),
+                    "opening_credit": max(-opening_net_debit, ZERO),
                     "period_debit": period_debit,
                     "period_credit": period_credit,
                     "period_total": period_total,
                     "closing_balance": closing_balance,
+                    "closing_debit": max(closing_net_debit, ZERO),
+                    "closing_credit": max(-closing_net_debit, ZERO),
                     "status": status,
                     "is_abnormal_balance": status == "ABNORMAL",
                 }
