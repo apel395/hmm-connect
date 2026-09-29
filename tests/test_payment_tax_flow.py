@@ -3,6 +3,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -101,6 +102,19 @@ def test_tax_inclusive_invoice_remains_unchanged_when_payment_draft_is_created(d
     assert invoice.tax_amount == Decimal("11")
     assert invoice.paid_amount == Decimal("0")
 
+    with pytest.raises(HTTPException) as conflict:
+        create(
+            data=PaymentCreate(
+                supplier_id=supplier.id, payment_date=date(2026, 9, 29),
+                total_amount=Decimal("111"),
+                allocations=[{"supplier_invoice_id": invoice.id, "allocated_amount": "111"}],
+                funding_lines=[{"bank_account_id": bank.id, "amount": "111"}],
+            ),
+            db=db, user=ADMIN,
+        )
+    assert conflict.value.status_code == 409
+    assert payment["payment_number"] in conflict.value.detail
+
     choices = eligible(supplier_id=supplier.id, currency="IDR", db=db, user=ADMIN)
     assert choices[0]["available_balance"] == Decimal("111")
     assert choices[0]["tax_amount"] == Decimal("11")
@@ -122,7 +136,7 @@ def test_tax_inclusive_invoice_remains_unchanged_when_payment_draft_is_created(d
     assert posted_view["allocations"][0]["current_available_balance"] == Decimal("111")
 
     # A reopened draft must reflect a different approved payment's reservation.
-    posted.status = "DRAFT"
+    posted.status = "VOID"
     invoice.paid_amount = Decimal("0")
     db.commit()
     other = create(
@@ -135,8 +149,10 @@ def test_tax_inclusive_invoice_remains_unchanged_when_payment_draft_is_created(d
         db=db, user=ADMIN,
     )
     db.get(Payment, other["id"]).status = "APPROVED"
+    posted.status = "DRAFT"  # Simulate an older overlapping draft after the new guard.
     db.commit()
     reopened_view = result(db, posted, ADMIN)
     assert reopened_view["allocation_exception"] is True
     assert reopened_view["allocations"][0]["current_reserved_amount"] == Decimal("111")
     assert reopened_view["allocations"][0]["current_available_balance"] == Decimal("0")
+    assert reopened_view["allocations"][0]["reserved_by_payments"][0]["id"] == other["id"]
