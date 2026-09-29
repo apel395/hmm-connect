@@ -170,7 +170,7 @@ class FinancialStatementService:
                 "current_period_earnings": current_earnings, "total_liabilities_and_equity": liabilities_equity,
                 "difference": difference, "is_balanced": difference == ZERO, "unclassified_account_count": unclassified,
             },
-            "metadata": {"canonical_source": "POSTED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "NOT_AVAILABLE", "earnings_reconciled": True, "is_yearly": True, "year_start": year_start, "year_end": year_end},
+            "metadata": {"canonical_source": "OPENING_BALANCES_AND_POSTED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "NOT_AVAILABLE", "earnings_reconciled": True, "is_yearly": True, "year_start": year_start, "year_end": year_end},
         }
 
     def profit_and_loss(

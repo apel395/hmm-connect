@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
+from app.services.opening_snapshot import opening_snapshot
 
 
 ZERO = Decimal("0.00")
@@ -46,6 +47,7 @@ class TrialBalanceService:
             )
             .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)
             .filter(JournalEntry.status == "POSTED")
+            .filter(JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")))
         )
         if before:
             query = query.filter(JournalEntry.posting_date < before)
@@ -115,12 +117,20 @@ class TrialBalanceService:
         if parent_account_id:
             accounts_query = accounts_query.filter(ChartOfAccount.parent_account_id == parent_account_id)
 
+        snapshot_date, snapshot = opening_snapshot(
+            self.db, as_of=date_from, location_id=location_id,
+            department_id=department_id, business_unit_id=business_unit_id,
+        )
         opening = self._activity(
+            date_from=snapshot_date,
             before=date_from,
             location_id=location_id,
             department_id=department_id,
             business_unit_id=business_unit_id,
         )
+        for account_id_value, (debit, credit) in snapshot.items():
+            prior_debit, prior_credit = opening.get(account_id_value, (ZERO, ZERO))
+            opening[account_id_value] = prior_debit + debit, prior_credit + credit
         period = self._activity(
             date_from=date_from,
             date_to=date_to,
@@ -144,6 +154,8 @@ class TrialBalanceService:
                 period_credit,
             )
             closing_balance = opening_balance + period_total
+            opening_net_debit = opening_debit_activity - opening_credit_activity
+            closing_net_debit = opening_net_debit + period_debit - period_credit
             status = "ABNORMAL" if closing_balance < ZERO else "NORMAL"
 
             if not include_zero_balance and not any(
@@ -163,10 +175,14 @@ class TrialBalanceService:
                     "parent_account_code": account.parent.account_number if account.parent else None,
                     "parent_account_name": account.parent.account_name if account.parent else None,
                     "opening_balance": opening_balance,
+                    "opening_debit": max(opening_net_debit, ZERO),
+                    "opening_credit": max(-opening_net_debit, ZERO),
                     "period_debit": period_debit,
                     "period_credit": period_credit,
                     "period_total": period_total,
                     "closing_balance": closing_balance,
+                    "closing_debit": max(closing_net_debit, ZERO),
+                    "closing_credit": max(-closing_net_debit, ZERO),
                     "status": status,
                     "is_abnormal_balance": status == "ABNORMAL",
                 }
