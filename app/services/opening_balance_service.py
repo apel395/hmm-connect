@@ -6,7 +6,6 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
-from app.models.accounting_setting import AccountingSetting
 from app.models.journal_entry import JournalEntry
 from app.models.opening_balance import OpeningBalance
 from app.models.location import Location
@@ -23,9 +22,6 @@ ZERO = Decimal("0.00")
 
 BALANCE_SHEET_TYPES = ["ASSET", "LIABILITY", "EQUITY"]
 
-DEFAULT_EQUITY_SETTING_KEY = "OPENING_BALANCE_EQUITY_ACCOUNT"
-
-
 class OpeningBalanceService:
     def __init__(self, db: Session):
         self.db = db
@@ -33,35 +29,6 @@ class OpeningBalanceService:
     @staticmethod
     def opening_date(fiscal_year: int) -> date:
         return date(fiscal_year, 1, 1)
-
-    def resolve_equity_account(self) -> ChartOfAccount:
-        setting = (
-            self.db.query(AccountingSetting)
-            .filter(AccountingSetting.setting_key == DEFAULT_EQUITY_SETTING_KEY)
-            .first()
-        )
-        if setting:
-            account = self.db.get(ChartOfAccount, setting.account_id)
-            if account:
-                return account
-        account = (
-            self.db.query(ChartOfAccount)
-            .filter(ChartOfAccount.is_active.is_(True))
-            .filter(ChartOfAccount.is_posting.is_(True))
-            .filter(ChartOfAccount.account_type == "EQUITY")
-            .order_by(ChartOfAccount.account_number)
-            .first()
-        )
-        if account is None:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Opening Balance Equity account not configured and no "
-                    "active posting equity account exists. Set the "
-                    f"'{DEFAULT_EQUITY_SETTING_KEY}' accounting setting."
-                ),
-            )
-        return account
 
     def accounts(
         self, *, fiscal_year: int, location_id: int | None
@@ -183,33 +150,12 @@ class OpeningBalanceService:
                 }
             )
 
-        equity = self.resolve_equity_account()
-        difference = total_debit - total_credit
-        contra_type = "CREDIT" if difference >= 0 else "DEBIT"
-        ledger_lines.append(
-            {
-                "contra": True,
-                "account_id": equity.id,
-                "account_code": equity.account_number,
-                "balance_type": contra_type,
-                "amount": abs(difference),
-            }
-        )
-
-        total_debit += abs(difference) if contra_type == "DEBIT" else ZERO
-        total_credit += abs(difference) if contra_type == "CREDIT" else ZERO
-
         return {
             "lines": ledger_lines,
             "total_debit": total_debit,
             "total_credit": total_credit,
-            "difference": abs(difference),
+            "difference": abs(total_debit - total_credit),
             "differences_ok": total_debit == total_credit,
-            "equity_account": {
-                "id": equity.id,
-                "account_code": equity.account_number,
-                "account_name": equity.account_name,
-            },
         }
 
     def post(
@@ -217,6 +163,15 @@ class OpeningBalanceService:
         lines: list[dict], description: str | None,
     ) -> dict:
         prepared = self.prepare(fiscal_year=fiscal_year, lines=lines)
+        if not prepared["lines"]:
+            raise HTTPException(400, "Enter at least one opening balance amount")
+        if not prepared["differences_ok"]:
+            raise HTTPException(
+                400,
+                f"Opening balances are not balanced: debit {prepared['total_debit']:.2f}, "
+                f"credit {prepared['total_credit']:.2f}. Enter the balancing account "
+                "amount manually before posting.",
+            )
         posting_date = self.opening_date(fiscal_year)
         resolved_location_id = resolve_location_id(user, location_id)
         if resolved_location_id is None:
@@ -247,16 +202,13 @@ class OpeningBalanceService:
 
         journal_lines = []
         for item in prepared["lines"]:
-            is_contra = item.get("contra", False)
             if item["balance_type"] == "DEBIT":
                 journal_lines.append(
                     JournalLineCreate(
                         account_id=item["account_id"],
                         debit=item["amount"],
                         credit=ZERO,
-                        description="Opening Balance Contra" if is_contra else (
-                            description or "Opening Balance"
-                        ),
+                        description=description or "Opening Balance",
                     )
                 )
             else:
@@ -265,9 +217,7 @@ class OpeningBalanceService:
                         account_id=item["account_id"],
                         debit=ZERO,
                         credit=item["amount"],
-                        description="Opening Balance Contra" if is_contra else (
-                            description or "Opening Balance"
-                        ),
+                        description=description or "Opening Balance",
                     )
                 )
 
@@ -294,9 +244,7 @@ class OpeningBalanceService:
                     location_id=resolved_location_id,
                     amount=item["amount"],
                     balance_type=item["balance_type"],
-                    description="Opening Balance Contra" if item.get("contra") else (
-                        description or "Opening Balance"
-                    ),
+                    description=description or "Opening Balance",
                     journal_entry_id=journal.id,
                     posted_by_id=user.id,
                     posted_at=journal.posted_at,
