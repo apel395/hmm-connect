@@ -136,12 +136,19 @@ def _apply_voucher(db: Session, data: PaymentCreate, user) -> PaymentVoucher:
 def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = None):
     invoices = []
     seen_invoice_ids: set[int] = set()
-    for allocation in data.allocations:
+    # Lock invoices in a stable order so two concurrent draft creations cannot
+    # both pass the overlap check for the same invoice.
+    for allocation in sorted(data.allocations, key=lambda row: row.supplier_invoice_id):
         if allocation.supplier_invoice_id in seen_invoice_ids:
             raise HTTPException(422, "The same supplier invoice cannot be allocated more than once")
         seen_invoice_ids.add(allocation.supplier_invoice_id)
 
-        invoice = db.get(SupplierInvoice, allocation.supplier_invoice_id)
+        invoice = (
+            db.query(SupplierInvoice)
+            .filter(SupplierInvoice.id == allocation.supplier_invoice_id)
+            .with_for_update()
+            .one_or_none()
+        )
         if not invoice or invoice.supplier_id != data.supplier_id:
             raise HTTPException(400, "Allocated invoice does not belong to selected supplier")
         SupplierInvoiceService(db).ensure_location(invoice)
@@ -152,6 +159,23 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
             raise HTTPException(400, "Payment and invoice currencies must match")
 
         available = invoice_balance(invoice) - reserved_amount(db, invoice.id, exclude)
+        other_draft = (
+            db.query(Payment)
+            .join(PaymentAllocation)
+            .filter(
+                PaymentAllocation.supplier_invoice_id == invoice.id,
+                Payment.status == "DRAFT",
+                Payment.id != exclude if exclude is not None else Payment.id > 0,
+            )
+            .order_by(Payment.id)
+            .first()
+        )
+        if other_draft:
+            raise HTTPException(
+                409,
+                f"Invoice {invoice.internal_invoice_number} is already on draft payment "
+                f"{other_draft.payment_number}. Edit or void that payment before creating another.",
+            )
         if Decimal(allocation.allocated_amount) <= ZERO:
             raise HTTPException(422, "Payment allocation must be greater than zero")
         if Decimal(allocation.allocated_amount) > available:
@@ -397,6 +421,20 @@ def result(db, payment, user):
         row["current_outstanding_balance"] = current_outstanding
         row["current_available_balance"] = current_available
         row["current_reserved_amount"] = other_reservations
+        competing = (
+            db.query(PaymentAllocation)
+            .join(Payment)
+            .filter(
+                PaymentAllocation.supplier_invoice_id == invoice.id,
+                Payment.status == "APPROVED",
+                Payment.id != payment.id,
+            )
+            .all()
+        )
+        row["reserved_by_payments"] = [
+            {"id": other.payment.id, "number": other.payment.payment_number, "amount": other.allocated_amount}
+            for other in competing
+        ]
         row["allocation_exception"] = exception
 
         if exception:
@@ -405,6 +443,7 @@ def result(db, payment, user):
                 "invoice_number": invoice.internal_invoice_number,
                 "allocated_amount": allocated,
                 "current_available_balance": current_available,
+                "reserved_by_payments": row["reserved_by_payments"],
                 "code": exception,
             })
 
