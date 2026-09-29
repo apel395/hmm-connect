@@ -14,6 +14,7 @@ import CurrencyInput from "@/components/form/CurrencyInput";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { getJournal, journalAction, updateJournal } from "./api";
+import { sourceDocumentPath } from "./sourceDocument";
 
 type EditLine = {
   account_id: number;
@@ -25,17 +26,6 @@ type EditLine = {
 };
 
 const blankLine = (): EditLine => ({ account_id: 0, debit: 0, credit: 0, description: "" });
-
-const sourceDocumentPath = (referenceType: string, referenceId: number) => {
-  if (!referenceId) return null;
-  const paths: Record<string, string> = {
-    SUPPLIER_INVOICE: `/supplier-invoices/${referenceId}`,
-    SUPPLIER_PAYMENT: `/payments/${referenceId}`,
-    SUPPLIER_ADJUSTMENT: `/supplier-adjustments?document=${referenceId}`,
-    BANK_TRANSFER: `/bank-transfers/${referenceId}`,
-  };
-  return paths[(referenceType || "").toUpperCase()] || null;
-};
 
 export default function JournalDetailPage() {
   const { id } = useParams();
@@ -139,6 +129,7 @@ export default function JournalDetailPage() {
     <div className="flex flex-wrap justify-between gap-3">
       <div className="flex items-center gap-3"><Button variant="outline" onClick={() => nav("/journal")}><ArrowLeft size={16}/> Back</Button><h1 className="text-2xl font-bold">{x.journal_number}</h1><Badge>{x.status}</Badge></div>
       <div className="flex flex-wrap gap-2">
+        {sourcePath && <Button variant="outline" onClick={() => nav(sourcePath, { state: { returnTo: `/journal-entries/${x.id}` } })}>Open Source Document</Button>}
         <PrintPreviewButton src={`/journal-entries/${x.id}/print`} title={`Journal ${x.journal_number}`} ariaLabel="Preview journal" />
         {a.can_edit && <Button variant="outline" onClick={openEditor}>Edit</Button>}
         {a.can_post && <Button loading={act.isPending} onClick={() => act.mutate("post")}>Post</Button>}
