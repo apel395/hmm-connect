@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
-from app.models.journal_line import JournalLine
 from app.models.opening_balance import OpeningBalance
 from app.models.location import Location
 
@@ -16,8 +15,6 @@ from app.schemas.journal import JournalCreate, JournalLineCreate
 from app.services.audit import record_audit
 from app.services.document_number import next_document_number
 from app.services.journal_service import JournalService
-from app.services.general_ledger import GeneralLedgerService
-from app.services.fiscal_period_service import FiscalPeriodService
 from app.services.location_access import enforce_location_access, resolve_location_id
 
 
@@ -191,13 +188,6 @@ class OpeningBalanceService:
         prepared = self.prepare(fiscal_year=fiscal_year, lines=lines)
         if not prepared["lines"]:
             raise HTTPException(400, "Enter at least one opening balance amount")
-        if not prepared["differences_ok"]:
-            raise HTTPException(
-                400,
-                f"Opening balances are not balanced: debit {prepared['total_debit']:.2f}, "
-                f"credit {prepared['total_credit']:.2f}. Enter the balancing account "
-                "amount manually before posting.",
-            )
         posting_date = self.opening_date(fiscal_year)
         resolved_location_id = resolve_location_id(user, location_id)
         if resolved_location_id is None:
@@ -260,6 +250,7 @@ class OpeningBalanceService:
                 location_id=resolved_location_id,
                 lines=journal_lines,
             ),
+            allow_unbalanced_opening=True,
         )
 
         for item in prepared["lines"]:
@@ -291,97 +282,76 @@ class OpeningBalanceService:
             **prepared,
         }
 
-    def complete_imbalance(
+    def post_adjustment(
         self, *, user, journal_id: int, lines: list[dict], description: str | None,
     ) -> dict:
-        journal = self.db.query(JournalEntry).filter(
+        """Record user-selected corrections separately; never mutate the original opening journal."""
+        original = self.db.query(JournalEntry).filter(
             JournalEntry.id == journal_id,
         ).with_for_update().first()
-        if (journal is None or journal.status != "POSTED"
-                or journal.reference_type != "OPENING_BALANCE"
-                or journal.posting_date.year != journal.reference_id):
+        if (original is None or original.status != "POSTED"
+                or original.reference_type != "OPENING_BALANCE"
+                or original.posting_date.year != original.reference_id):
             raise HTTPException(409, "Posted opening journal not found")
-        enforce_location_access(user, journal.location_id)
+        enforce_location_access(user, original.location_id)
         if not self.db.query(OpeningBalance.id).filter(
             OpeningBalance.journal_entry_id == journal_id,
         ).first():
             raise HTTPException(409, "Opening journal has no linked opening balances")
+        if not description or not description.strip():
+            raise HTTPException(400, "Explain the opening adjustment and supporting reference")
 
-        FiscalPeriodService.validate_posting_date(
-            db=self.db, posting_date=journal.posting_date,
-        )
+        prepared = self.prepare(fiscal_year=original.posting_date.year, lines=lines)
+        if not prepared["lines"]:
+            raise HTTPException(400, "Enter at least one adjustment amount")
+
         previous = sum(
-            (Decimal(line.debit or 0) - Decimal(line.credit or 0) for line in journal.lines),
+            (Decimal(line.debit or 0) - Decimal(line.credit or 0) for line in original.lines),
             ZERO,
         )
-        if previous == ZERO:
-            raise HTTPException(409, "Opening journal is already balanced")
-        prepared = self.prepare(fiscal_year=journal.posting_date.year, lines=lines)
-        if not prepared["lines"]:
-            raise HTTPException(400, "Enter a balancing account amount")
-        correction = prepared["total_debit"] - prepared["total_credit"]
-        if previous + correction != ZERO:
-            raise HTTPException(
-                400,
-                f"Correction must offset the exact opening difference of {previous:.2f}",
+        journal_lines = [
+            JournalLineCreate(
+                account_id=item["account_id"],
+                debit=item["amount"] if item["balance_type"] == "DEBIT" else ZERO,
+                credit=item["amount"] if item["balance_type"] == "CREDIT" else ZERO,
+                description=description.strip(),
             )
-
-        posted_at = datetime.now(timezone.utc)
-        next_line = max((line.line_number or 0 for line in journal.lines), default=0)
-        for index, item in enumerate(prepared["lines"], 1):
-            debit = item["amount"] if item["balance_type"] == "DEBIT" else ZERO
-            credit = item["amount"] if item["balance_type"] == "CREDIT" else ZERO
-            journal.lines.append(JournalLine(
-                account_id=item["account_id"],
-                debit=debit,
-                credit=credit,
-                description=description or "Manual opening balance completion",
-                line_number=next_line + index,
-                location_id=journal.location_id,
-                business_unit_id=journal.business_unit_id,
-                department_id=journal.department_id,
-            ))
-            GeneralLedgerService.post(
-                db=self.db,
-                account_id=item["account_id"],
-                debit=debit,
-                credit=credit,
-                posting_date=journal.posting_date,
-                journal_source="JOURNAL",
-                document_type=journal.document_type,
-                document_number=journal.document_number,
-                reference_type=journal.reference_type,
-                reference_id=journal.reference_id,
-                reference_number=journal.journal_number,
-                description=description or "Manual opening balance completion",
-                user_id=user.id,
-            )
-            self.db.add(OpeningBalance(
-                fiscal_year=journal.reference_id,
-                account_id=item["account_id"],
-                location_id=journal.location_id,
-                amount=item["amount"],
-                balance_type=item["balance_type"],
-                description=description or "Manual opening balance completion",
-                journal_entry_id=journal.id,
-                posted_by_id=user.id,
-                posted_at=posted_at,
-            ))
-        self.db.flush()
+            for item in prepared["lines"]
+        ]
+        adjustment = JournalService.post(
+            db=self.db,
+            user=user,
+            journal=JournalCreate(
+                posting_date=original.posting_date,
+                document_type="OPENING_BALANCE_ADJUSTMENT",
+                document_number=next_document_number(self.db, "OPEN-ADJ", digits=6),
+                reference_type="OPENING_BALANCE_ADJUSTMENT",
+                reference_id=original.id,
+                description=description.strip(),
+                location_id=original.location_id,
+                business_unit_id=original.business_unit_id,
+                department_id=original.department_id,
+                lines=journal_lines,
+            ),
+            allow_unbalanced_opening=True,
+        )
         record_audit(
-            self.db, user, "OPENING_BALANCE_COMPLETED", "OPENING_BALANCE",
-            f"Manually completed opening journal {journal.journal_number}",
-            entity_id=journal.id, reference_document=journal.document_number,
-            before_data={"debit_credit_difference": str(previous)},
-            after_data={"debit_credit_difference": "0.00",
-                        "lines": [{**item, "amount": str(item["amount"])} for item in prepared["lines"]]},
+            self.db, user, "OPENING_BALANCE_ADJUSTMENT_POSTED", "OPENING_BALANCE",
+            f"Posted user-entered adjustment {adjustment.journal_number} for {original.journal_number}",
+            entity_id=adjustment.id, reference_document=adjustment.document_number,
+            before_data={"original_journal_difference": str(previous)},
+            after_data={"original_journal_id": original.id,
+                        "adjustment_debit": str(prepared["total_debit"]),
+                        "adjustment_credit": str(prepared["total_credit"]),
+                        "reason": description.strip()},
         )
         self.db.commit()
         return {
-            "journal_id": journal.id,
-            "journal_number": journal.journal_number,
-            "previous_difference": previous,
-            "difference": ZERO,
+            "journal_id": adjustment.id,
+            "journal_number": adjustment.journal_number,
+            "original_journal_id": original.id,
+            "original_difference": previous,
+            "adjustment_difference": prepared["total_debit"] - prepared["total_credit"],
         }
 
     def void(self, *, user, fiscal_year: int, location_id: int | None = None) -> dict:
