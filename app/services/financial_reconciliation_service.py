@@ -17,6 +17,7 @@ from app.models.payment import Payment, PaymentAllocation
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.supplier_invoice import SupplierInvoice
+from app.services.opening_snapshot import opening_snapshot
 
 ZERO = Decimal("0.00")
 
@@ -58,6 +59,9 @@ class FinancialReconciliationService:
         """Per-account signed balance from POSTED journal lines."""
         if not account_ids:
             return {}
+        snapshot_date, snapshot = opening_snapshot(
+            self.db, as_of=as_of or date.today(), location_id=location_id,
+        )
         query = (
             self.db.query(
                 ChartOfAccount.id,
@@ -70,9 +74,12 @@ class FinancialReconciliationService:
             .filter(
                 ChartOfAccount.id.in_(account_ids),
                 JournalEntry.status == "POSTED",
+                JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")),
             )
             .group_by(ChartOfAccount.id, ChartOfAccount.normal_balance)
         )
+        if snapshot_date is not None:
+            query = query.filter(JournalEntry.posting_date >= snapshot_date)
         if location_id is not None:
             query = query.filter(JournalLine.location_id == location_id)
         if as_of is not None:
@@ -82,6 +89,13 @@ class FinancialReconciliationService:
             debit = Decimal(debit or 0)
             credit = Decimal(credit or 0)
             result[account_id] = credit - debit if normal_balance == "CREDIT" else debit - credit
+        for account_id, (debit, credit) in snapshot.items():
+            if account_id not in account_ids:
+                continue
+            account = self.db.get(ChartOfAccount, account_id)
+            if account:
+                signed = credit - debit if account.normal_balance == "CREDIT" else debit - credit
+                result[account_id] = result.get(account_id, ZERO) + signed
         return result
 
     @staticmethod
