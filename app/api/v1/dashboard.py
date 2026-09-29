@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
 from app.models.approval_request import ApprovalRequest
+from app.models.chart_of_account import ChartOfAccount
 from app.models.goods_receipt import GoodsReceipt
 from app.models.inventory import Inventory
 from app.models.location import Location
@@ -182,12 +183,13 @@ def overview(db: Session = Depends(get_db), user=Depends(get_current_user)):
             func.coalesce(func.sum(Inventory.quantity * Inventory.average_cost), 0),
         ).one()
         account_rows = (
-            stock.with_entities(
-                Product.inventory_account_id,
+            stock.outerjoin(ChartOfAccount, ChartOfAccount.id == Product.inventory_account_id)
+            .with_entities(
+                ChartOfAccount.id, ChartOfAccount.account_number, ChartOfAccount.account_name,
                 func.coalesce(func.sum(Inventory.quantity * Inventory.average_cost), 0),
             )
-            .group_by(Product.inventory_account_id)
-            .order_by(Product.inventory_account_id)
+            .group_by(ChartOfAccount.id, ChartOfAccount.account_number, ChartOfAccount.account_name)
+            .order_by(ChartOfAccount.account_number)
             .all()
         )
         top_low = low.order_by(
@@ -198,8 +200,8 @@ def overview(db: Session = Depends(get_db), user=Depends(get_current_user)):
             "stock_value": stock_value[1],
             "reorder_required": low.count(),
             "by_account": [
-                {"account_id": account_id, "stock_value": value}
-                for account_id, value in account_rows
+                {"account_id": account_id, "account_code": code, "account_name": name, "stock_value": value}
+                for account_id, code, name, value in account_rows
             ],
             "low_stock": [
                 {
