@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, text
+from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
@@ -24,6 +24,12 @@ class OpeningBalanceService:
     def accounts(
         self, *, fiscal_year: int, location_id: int | None
     ) -> dict:
+        join_on = (
+            (OpeningBalance.account_id == ChartOfAccount.id)
+            & (OpeningBalance.fiscal_year == fiscal_year)
+        )
+        if location_id is not None:
+            join_on = join_on & (OpeningBalance.location_id == location_id)
         rows = (
             self.db.query(
                 ChartOfAccount.id,
@@ -31,14 +37,10 @@ class OpeningBalanceService:
                 ChartOfAccount.account_name,
                 ChartOfAccount.account_type,
                 ChartOfAccount.normal_balance,
-                func.coalesce(func.sum(OpeningBalance.amount), 0).label("balance"),
+                func.coalesce(func.sum(case((OpeningBalance.balance_type == "DEBIT", OpeningBalance.amount), else_=0)), 0).label("debit"),
+                func.coalesce(func.sum(case((OpeningBalance.balance_type == "CREDIT", OpeningBalance.amount), else_=0)), 0).label("credit"),
             )
-            .outerjoin(
-                OpeningBalance,
-                (OpeningBalance.account_id == ChartOfAccount.id)
-                & (OpeningBalance.fiscal_year == fiscal_year)
-                & (OpeningBalance.location_id == location_id),
-            )
+            .outerjoin(OpeningBalance, join_on)
             .filter(ChartOfAccount.is_active.is_(True))
             .filter(ChartOfAccount.is_posting.is_(True))
             .filter(ChartOfAccount.account_type.in_(BALANCE_SHEET_TYPES))
@@ -60,7 +62,10 @@ class OpeningBalanceService:
                     "account_name": r.account_name,
                     "account_type": r.account_type,
                     "normal_balance": r.normal_balance,
-                    "existing_balance": Decimal(r.balance or 0),
+                    "existing_balance": (Decimal(r.debit or 0) - Decimal(r.credit or 0))
+                    if r.normal_balance == "DEBIT" else (Decimal(r.credit or 0) - Decimal(r.debit or 0)),
+                    "existing_debit": Decimal(r.debit or 0),
+                    "existing_credit": Decimal(r.credit or 0),
                 }
                 for r in rows
             ],
