@@ -329,6 +329,10 @@ def serialize(payment: Payment):
             "invoice_date": row.supplier_invoice.invoice_date,
             "due_date": row.supplier_invoice.due_date,
             "invoice_total": row.supplier_invoice.total_amount,
+            "invoice_subtotal": row.supplier_invoice.subtotal,
+            "invoice_tax_amount": row.supplier_invoice.tax_amount,
+            "invoice_discount_amount": row.supplier_invoice.discount_amount,
+            "invoice_withholding_tax_amount": row.supplier_invoice.withholding_tax_amount,
             "paid_amount": row.supplier_invoice.paid_amount,
             "outstanding_balance": row.supplier_invoice.balance_amount,
             "allocated_amount": row.allocated_amount,
@@ -379,6 +383,10 @@ def result(db, payment, user):
         exception = "ALLOCATION_EXCEEDS_CURRENT_AVAILABLE" if allocated > current_available else None
 
         row["current_invoice_total"] = current_total
+        row["current_invoice_subtotal"] = invoice.subtotal
+        row["current_invoice_tax_amount"] = invoice.tax_amount
+        row["current_invoice_discount_amount"] = invoice.discount_amount
+        row["current_invoice_withholding_tax_amount"] = invoice.withholding_tax_amount
         row["current_paid_amount"] = current_paid
         row["current_outstanding_balance"] = current_outstanding
         row["current_available_balance"] = current_available
@@ -455,7 +463,7 @@ def listing(
     if payment_date_to:
         query = query.filter(Payment.payment_date <= payment_date_to)
     total = query.count()
-    total_amount = query.with_entities(func.coalesce(func.sum(Payment.total_amount), 0)).scalar() if total else ZERO
+    total_amount = query.with_entities(func.coalesce(func.sum(Payment.amount), 0)).scalar() if total else ZERO
     rows = query.order_by(Payment.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [serialize(row) for row in rows],
@@ -491,6 +499,10 @@ def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_
             "invoice_date": row.invoice_date,
             "due_date": row.due_date,
             "total_amount": row.total_amount,
+            "subtotal": row.subtotal,
+            "tax_amount": row.tax_amount,
+            "discount_amount": row.discount_amount,
+            "withholding_tax_amount": row.withholding_tax_amount,
             "paid_amount": row.paid_amount,
             "outstanding_balance": outstanding,
             "reserved_amount": reserved,
