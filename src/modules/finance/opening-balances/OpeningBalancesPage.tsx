@@ -125,11 +125,11 @@ export default function OpeningBalancesPage() {
         { label: "Total Debit", value: fmt(displayTotals.debit) },
         { label: "Total Credit", value: fmt(displayTotals.credit) },
         { label: "Difference", value: fmt(Math.abs(displayTotals.diff)), note: Math.abs(displayTotals.diff) >= 0.005 ? "Difference remains visible in reports" : "No difference" },
-        { label: "Status", value: openingRecorded ? "RECORDED" : "NOT RECORDED", note: openingRecorded ? "Opening balance already posted for this fiscal year" : "Available for one-time entry" },
+        { label: "Status", value: openingRecorded ? "RECORDED" : "NOT RECORDED", note: openingRecorded ? "Opening values already recorded for this fiscal year" : "Available for one-time entry" },
       ]} />
 
       <Card>
-        {entries.isError && <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Unable to check whether opening balances were posted. Retry before entering values.</div>}
+        {entries.isError && <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Unable to check whether opening values were recorded. Retry before entering values.</div>}
         {!inputLocked && linesDirty && Math.abs(totals.diff) >= 0.005 && <div role="alert" className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Debit and credit differ. The report will show this difference; record only verified starting values.</div>}
         {openingRecorded && <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><div className="font-semibold">Opening balance for {fiscal_year} has already been recorded.</div><div className="mt-1">The originally entered values are shown below. New input is locked to prevent duplicate starting balances.</div></div>}
         <div className="mb-5 flex flex-wrap gap-3 items-end">
@@ -182,7 +182,7 @@ export default function OpeningBalancesPage() {
           <div className="mb-3 flex items-center justify-between">
             <div><h3 className="text-lg font-semibold">Recorded Opening Balance — {fiscal_year}</h3><p className="text-xs text-slate-500">Original starting values retained for audit and tracing.</p></div>
           </div>
-          <Table variant="grid"><THead><TR><TH>Code</TH><TH>Name</TH><TH>Type</TH><TH>Amount</TH><TH>Posted</TH></TR></THead>
+          <Table variant="grid"><THead><TR><TH>Code</TH><TH>Name</TH><TH>Type</TH><TH>Amount</TH><TH>Recorded</TH></TR></THead>
             <TBody>{entryItems.map((e) => (
               <TR key={e.id}>
                 <TD className="font-mono">{e.account_code}</TD>
