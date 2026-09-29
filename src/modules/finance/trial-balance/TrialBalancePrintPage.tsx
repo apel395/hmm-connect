@@ -85,8 +85,8 @@ export default function TrialBalancePrintPage() {
       footerRows={
         <tr className="font-bold">
           <td colSpan={2} className="border border-slate-700 px-1.5 py-1 text-right">TOTAL</td>
-          <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(openingDebit)}
-          </td><td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(openingCredit)}</td>
+          <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(openingDebit)}</td>
+          <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(openingCredit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalDebit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalCredit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(closingDebit)}</td>
