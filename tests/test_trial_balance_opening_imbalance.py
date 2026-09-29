@@ -66,6 +66,10 @@ def test_trial_balance_reports_unbalanced_opening_even_when_account_search_filte
         assert report["summary"]["closing_difference"] == Decimal("125.00")
         assert report["items"][0]["opening_balance"] == Decimal("125.00")
         assert report["items"][0]["closing_balance"] == Decimal("115.00")
+        assert report["items"][0]["opening_debit"] == Decimal("125.00")
+        assert report["items"][0]["opening_credit"] == Decimal("0.00")
+        assert report["items"][0]["closing_debit"] == Decimal("115.00")
+        assert report["items"][0]["closing_credit"] == Decimal("0.00")
         assert report["summary"]["is_balanced"] is False
         assert opening_balances(db, account_id=asset.id, date_from=date(2026, 9, 1))[asset.id] == Decimal("125.00")
         accounts, debit, credit = ledger_grouped_report(
