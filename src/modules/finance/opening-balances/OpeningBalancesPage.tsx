@@ -130,7 +130,7 @@ export default function OpeningBalancesPage() {
 
       <Card>
         {entries.isError && <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Unable to check whether opening balances were posted. Retry before entering values.</div>}
-        {!inputLocked && linesDirty && !balanced && <div role="alert" className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Debit and credit differ. The report will show this difference; record only verified starting values.</div>}
+        {!inputLocked && linesDirty && Math.abs(totals.diff) >= 0.005 && <div role="alert" className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Debit and credit differ. The report will show this difference; record only verified starting values.</div>}
         {openingRecorded && <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><div className="font-semibold">Opening balance for {fiscal_year} has already been recorded.</div><div className="mt-1">The originally entered values are shown below. New input is locked to prevent duplicate starting balances.</div></div>}
         <div className="mb-5 flex flex-wrap gap-3 items-end">
           <label className="text-sm font-medium">Fiscal Year
