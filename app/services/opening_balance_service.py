@@ -331,8 +331,7 @@ class OpeningBalanceService:
         for index, item in enumerate(prepared["lines"], 1):
             debit = item["amount"] if item["balance_type"] == "DEBIT" else ZERO
             credit = item["amount"] if item["balance_type"] == "CREDIT" else ZERO
-            self.db.add(JournalLine(
-                journal_entry_id=journal.id,
+            journal.lines.append(JournalLine(
                 account_id=item["account_id"],
                 debit=debit,
                 credit=credit,
