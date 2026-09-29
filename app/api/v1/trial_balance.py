@@ -15,10 +15,14 @@ from app.services.location_access import resolve_location_id
 router = APIRouter(prefix="/trial-balance", tags=["Financial Reports"])
 MONEY_FIELDS = (
     "opening_balance",
+    "opening_debit",
+    "opening_credit",
     "period_debit",
     "period_credit",
     "period_total",
     "closing_balance",
+    "closing_debit",
+    "closing_credit",
 )
 
 
@@ -138,12 +142,12 @@ def export_trial_balance_csv(
         department_id, business_unit_id, sort_by, sort_order, paginate=False,
     )
     headers = [
-        "COA No.", "COA Name", "Opening", "Debit Movement", "Credit Movement",
-        "Total", "Closing", "Status",
+        "COA No.", "COA Name", "Opening Debit", "Opening Credit",
+        "Debit Movement", "Credit Movement", "Closing Debit", "Closing Credit",
     ]
     fields = [
-        "account_code", "account_name", "opening_balance", "period_debit",
-        "period_credit", "period_total", "closing_balance", "status",
+        "account_code", "account_name", "opening_debit", "opening_credit",
+        "period_debit", "period_credit", "closing_debit", "closing_credit",
     ]
     output = StringIO()
     writer = csv.writer(output)
