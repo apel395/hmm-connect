@@ -406,7 +406,15 @@ class FinancialReconciliationService:
         product_ids = {account_id for (account_id,) in product_accounts.distinct().all()}
         ledger_by = self._stock_ledger(None, location_id, as_of)
         valuation_by = self._inventory_valuation(location_id, as_of)
-        account_ids = sorted(set(rule_ids) | product_ids |
+        # The hotel's inventory chart includes accounts with opening GL balances
+        # even when no current product or movement points to them.
+        chart_inventory_ids = {
+            account_id for (account_id,) in self.db.query(ChartOfAccount.id).filter(
+                ChartOfAccount.account_type == "ASSET",
+                ChartOfAccount.account_number.like("100-300-%"),
+            ).all()
+        }
+        account_ids = sorted(set(rule_ids) | product_ids | chart_inventory_ids |
                              set(ledger_by) | set(valuation_by))
         gl_by = self._gl_by_account(account_ids, location_id, as_of)
         source = sum(valuation_by.values(), ZERO)
