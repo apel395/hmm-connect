@@ -73,25 +73,22 @@ export default function TrialBalancePrintPage() {
         { label: "COA No.", render: (row) => row.account_code },
         { label: "COA Name", render: (row) => row.account_name },
         { label: "Type", render: (row) => row.account_type },
-        { label: "Normal", render: (row) => row.normal_balance },
         { label: "Opening", align: "right", render: (row) => money(row.opening_balance) },
         { label: "Debit Movement", align: "right", render: (row) => money(row.period_debit) },
         { label: "Credit Movement", align: "right", render: (row) => money(row.period_credit) },
         { label: "Net Movement", align: "right", render: (row) => money(row.period_total) },
         { label: "Closing", align: "right", render: (row) => money(row.closing_balance) },
-        { label: "Status", render: (row) => row.status },
       ]}
       rows={rows}
       rowKey={(row) => row.account_id}
       footerRows={
         <tr className="font-bold">
-          <td colSpan={4} className="border border-slate-700 px-1.5 py-1 text-right">TOTAL</td>
+          <td colSpan={3} className="border border-slate-700 px-1.5 py-1 text-right">TOTAL</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalOpening)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalDebit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalCredit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalMovement)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalClosing)}</td>
-          <td className="border border-slate-700 px-1.5 py-1" />
         </tr>
       }
       control={
