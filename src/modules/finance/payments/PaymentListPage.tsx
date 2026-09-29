@@ -24,7 +24,7 @@ const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { m
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const emptyForm = () => ({ supplier_id:0,payment_date:today(),payment_method:"BANK_TRANSFER",currency:"IDR",total_amount:0,voucher_id:null as number|null,reference_number:"",cheque_number:"",notes:"",source_type:"LIVE",allocations:[] as any[],funding_lines:[{bank_account_id:0,amount:0}] as any[] });
 const availableBalance = (row:any) => Number(row.available_balance ?? row.outstanding_balance ?? 0);
-type ListAction = "approve" | "generate-journal" | "post" | "void" | "reopen" | "unpost" | "cancel-posted";
+type ListAction = "approve" | "generate-journal" | "void" | "reopen" | "unpost" | "cancel-posted";
 
 export default function PaymentListPage() {
   const navigate=useNavigate();const location=useLocation();const qc=useQueryClient();
@@ -165,17 +165,15 @@ export default function PaymentListPage() {
           : allowed[({
               approve: "can_approve",
               "generate-journal": "can_generate_journal",
-              post: "can_post",
               void: "can_void",
             } as Record<string, string>)[name]];
       if (!canManage || !permitted) throw new Error("This action is no longer available for the payment.");
-      if ((name === "approve" || name === "post") && latest.allocation_exception_rows?.length) {
+      if (name === "approve" && latest.allocation_exception_rows?.length) {
         throw new Error("An invoice allocation needs correction. Open the payment to review it before continuing.");
       }
       const label: Record<ListAction, string> = {
         approve: "Approve and create a draft journal",
         "generate-journal": "Create the missing draft journal",
-        post: "Post the payment and its journal",
         void: "Void the payment",
         reopen: "Reopen the payment as a draft",
         unpost: "Unpost the payment and restore invoice balances",
@@ -206,9 +204,7 @@ export default function PaymentListPage() {
       if (cancelled) return;
       toast.success(name === "approve"
         ? "Payment approved and draft journal created."
-        : name === "post"
-          ? "Payment and journal posted."
-          : `Payment ${name.replaceAll("-", " ")} complete.`);
+        : `Payment ${name.replaceAll("-", " ")} complete.`);
       refreshAfterAction(id);
     },
     onError: (error: any, { id }) => {
@@ -233,7 +229,7 @@ export default function PaymentListPage() {
   {canManage && row.status === "DRAFT" && <Button size="xs" variant="outline" disabled={rowAction.isPending} onClick={() => navigate(`/payments?edit=${row.id}`)}>Edit</Button>}
   {canManage && row.status === "DRAFT" && <Button size="xs" disabled={rowAction.isPending} loading={rowAction.isPending && rowAction.variables?.id === row.id && rowAction.variables?.name === "approve"} onClick={() => runRowAction(row.id, "approve")}>Approve</Button>}
   {canManage && row.status === "APPROVED" && !row.journal_entry_id && <Button size="xs" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "generate-journal")}>Create Journal</Button>}
-  {canManage && row.status === "APPROVED" && Boolean(row.journal_entry_id) && <Button size="xs" disabled={rowAction.isPending} loading={rowAction.isPending && rowAction.variables?.id === row.id && rowAction.variables?.name === "post"} onClick={() => runRowAction(row.id, "post")}>Post</Button>}
+  {hasPermission("journal.manage") && row.status === "APPROVED" && Boolean(row.journal_entry_id) && <Button size="xs" variant="outline" onClick={() => navigate(`/journal-entries/${row.journal_entry_id}`)}>Open Journal to Post</Button>}
   {admin && row.status === "APPROVED" && <Button size="xs" variant="outline" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "reopen")}>Reopen</Button>}
   {canManage && ["DRAFT", "APPROVED"].includes(row.status) && <Button size="xs" variant="danger" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "void")}>Void</Button>}
   {admin && row.status === "POSTED" && <Button size="xs" variant="outline" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "unpost")}>Unpost</Button>}
