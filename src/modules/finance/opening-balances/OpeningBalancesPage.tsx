@@ -78,6 +78,8 @@ export default function OpeningBalancesPage() {
     return { debit, credit, diff: debit - credit };
   }, [rows, items]);
 
+  const balanced = Math.round(totals.debit * 100) === Math.round(totals.credit * 100);
+
   const linesDirty = useMemo(
     () => items.some((a) => (Number(rows[a.id]?.debit) || 0) > 0 || (Number(rows[a.id]?.credit) || 0) > 0),
     [rows, items],
@@ -112,19 +114,20 @@ export default function OpeningBalancesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader  actions={<PrintPreviewButton src={`/finance-setup/opening-balances/print?year=${fiscal_year}`} title="Opening Balance Report" ariaLabel="Preview opening balance report" label="Print" />} title="Opening Balances" description="Enter the beginning-of-year balance for each balance-sheet account. Posted once per fiscal year (annual, not monthly); the balancing side goes to the Opening Balance Equity account and flows through the general ledger." />
+      <PageHeader  actions={<PrintPreviewButton src={`/finance-setup/opening-balances/print?year=${fiscal_year}`} title="Opening Balance Report" ariaLabel="Preview opening balance report" label="Print" />} title="Opening Balances" description="Enter the beginning-of-year balance for each balance-sheet account. Posted once per fiscal year (annual, not monthly); enter every balancing account amount yourself. Posting requires total debit to equal total credit; no account is added automatically." />
 
       <ModuleSummary metrics={[
         { label: "Fiscal Year", value: fiscal_year },
         { label: "Balance-Sheet Accounts", value: acct.data?.count ?? 0 },
         { label: "Total Debit", value: fmt(totals.debit) },
         { label: "Total Credit", value: fmt(totals.credit) },
-        { label: "Difference", value: fmt(Math.abs(totals.diff)), note: totals.diff !== 0 ? "Auto-contra to equity on post" : "Balanced" },
+        { label: "Difference", value: fmt(Math.abs(totals.diff)), note: !balanced ? "Enter the balancing account amount before posting" : "Balanced" },
         { label: "Status", value: openingRecorded ? "RECORDED" : "NOT RECORDED", note: openingRecorded ? "Opening balance already posted for this fiscal year" : "Available for one-time entry" },
       ]} />
 
       <Card>
         {entries.isError && <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Unable to check whether opening balances were posted. Retry before entering values.</div>}
+        {!inputLocked && linesDirty && !balanced && <div role="alert" className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Debit and credit differ. Enter the balancing amount in the correct account above before posting.</div>}
         {openingRecorded && <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><div className="font-semibold">Opening balance for {fiscal_year} has already been recorded.</div><div className="mt-1">The original posted amounts are shown below. New input is locked to prevent duplicate opening balances.</div></div>}
         <div className="mb-5 flex flex-wrap gap-3 items-end">
           <label className="text-sm font-medium">Fiscal Year
@@ -160,7 +163,7 @@ export default function OpeningBalancesPage() {
             </div>
             <div className="flex gap-2">
               <Button variant="outline" disabled={inputLocked || !linesDirty} onClick={() => runPreview.mutate()}>Preview</Button>
-              <Button loading={save.isPending} disabled={inputLocked || !linesDirty || save.isPending} onClick={() => { if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}? This creates a posted journal.`)) save.mutate(); }}><Save size={16} /> Save &amp; Post</Button>
+              <Button loading={save.isPending} disabled={inputLocked || !linesDirty || !balanced || save.isPending} onClick={() => { if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}? This creates a posted journal.`)) save.mutate(); }}><Save size={16} /> Save &amp; Post</Button>
             </div>
           </div>
         </>}
@@ -189,26 +192,25 @@ export default function OpeningBalancesPage() {
         <DialogContent><DialogHeader><DialogTitle>Opening Balances Preview — {fiscal_year}</DialogTitle></DialogHeader>
         <DialogBody className="space-y-4">
           {preview && <>
-            <Table variant="grid"><THead><TR><TH>Account</TH><TH>Type</TH><TH>Amount</TH><TH></TH></TR></THead>
+            <Table variant="grid"><THead><TR><TH>Account</TH><TH>Type</TH><TH>Amount</TH></TR></THead>
               <TBody>{(preview.lines ?? []).map((l: any, i: number) => (
                 <TR key={i}>
                   <TD className="font-mono">{l.account_code}</TD>
                   <TD><span className={`rounded px-2 py-1 text-xs font-medium ${l.balance_type === "DEBIT" ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}>{l.balance_type}</span></TD>
                   <TD className="font-mono">{money(l.amount)}</TD>
-                  <TD className="text-xs text-slate-500">{l.contra ? "Auto-contra (equity)" : ""}</TD>
                 </TR>
               ))}</TBody>
             </Table>
-            <div className="flex items-center gap-2 text-sm">
-              <CheckCircle2 size={16} className="text-emerald-600" />
-              <span>Total Debit <b className="font-mono">{money(preview.total_debit)}</b> = Total Credit <b className="font-mono">{money(preview.total_credit)}</b>.</span>
+            <div className={`flex items-center gap-2 text-sm ${preview.differences_ok ? "text-emerald-700" : "text-amber-700"}`}>
+              {preview.differences_ok && <CheckCircle2 size={16} />}
+              <span>Total Debit <b className="font-mono">{money(preview.total_debit)}</b> · Total Credit <b className="font-mono">{money(preview.total_credit)}</b> · Difference <b className="font-mono">{money(preview.difference)}</b></span>
             </div>
-            <div className="text-xs text-slate-500">Contra account: <span className="font-mono">{preview.equity_account.account_code}</span> — {preview.equity_account.account_name}. Posted at {fiscal_year}-01-01.</div>
+            <div className="text-xs text-slate-500">Only the amounts entered above will be posted on {fiscal_year}-01-01.</div>
           </>}
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowPreview(false)}>Close</Button>
-          <Button loading={save.isPending} disabled={inputLocked || save.isPending} onClick={() => { setShowPreview(false); if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}?`)) save.mutate(); }}><Save size={16} /> Confirm &amp; Post</Button>
+          <Button loading={save.isPending} disabled={inputLocked || !preview?.differences_ok || !balanced || save.isPending} onClick={() => { setShowPreview(false); if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}?`)) save.mutate(); }}><Save size={16} /> Confirm &amp; Post</Button>
         </DialogFooter>
         </DialogContent>
       </Dialog>
