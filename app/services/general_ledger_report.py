@@ -8,6 +8,7 @@ from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.supplier import Supplier
+from app.services.opening_snapshot import opening_snapshot
 
 ZERO = Decimal("0")
 
@@ -28,7 +29,10 @@ def build_ledger_query(
     business_unit_id: int | None = None,
     search: str | None = None,
 ):
-    q = db.query(JournalLine).join(JournalEntry).filter(JournalEntry.status == "POSTED")
+    q = db.query(JournalLine).join(JournalEntry).filter(
+        JournalEntry.status == "POSTED",
+        JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")),
+    )
     if account_id:
         q = q.filter(JournalLine.account_id == account_id)
     if account_from_id:
@@ -162,6 +166,12 @@ def opening_balances(
         location_id=location_id,
         business_unit_id=business_unit_id,
     )
+    snapshot_date, snapshot = opening_snapshot(
+        db, as_of=date_from, location_id=location_id,
+        department_id=department_id, business_unit_id=business_unit_id,
+    )
+    if snapshot_date:
+        q = q.filter(JournalEntry.posting_date >= snapshot_date)
     rows = (
         q.filter(JournalEntry.posting_date < date_from)
         .join(ChartOfAccount, ChartOfAccount.id == JournalLine.account_id)
@@ -169,8 +179,25 @@ def opening_balances(
         .group_by(JournalLine.account_id)
         .all()
     )
-    return {account_id_value: Decimal(total) for account_id_value, total in rows}
-
+    totals = {account_id_value: Decimal(total) for account_id_value, total in rows}
+    if reference_type is None and supplier_id is None:
+        for account_id_value, (debit, credit) in snapshot.items():
+            account = db.get(ChartOfAccount, account_id_value)
+            if not account:
+                continue
+            if account_id is not None and account_id_value != account_id:
+                continue
+            if account_from_id:
+                start = db.get(ChartOfAccount, account_from_id)
+                if start and account.account_number < start.account_number:
+                    continue
+            if account_to_id:
+                end = db.get(ChartOfAccount, account_to_id)
+                if end and account.account_number > end.account_number:
+                    continue
+            signed = debit - credit if account.normal_balance == "DEBIT" else credit - debit
+            totals[account_id_value] = totals.get(account_id_value, ZERO) + signed
+    return totals
 
 def ledger_report_rows(q):
     return (
