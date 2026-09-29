@@ -12,6 +12,7 @@ import Input from "@/components/ui/Input";
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { openingBalanceApi, type OpeningBalanceAccount } from "./api";
+import SearchableSelect from "@/components/form/SearchableSelect";
 
 function fmt(v: number) {
   return Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,6 +23,8 @@ function money(v: number | string) {
 }
 
 type RowState = Record<number, { debit: string; credit: string }>;
+type Imbalance = { journal_id: number; journal_number: string; difference: string; location_id: number | null };
+type CompletionLine = { account_id?: number; amount: string; balance_type: "DEBIT" | "CREDIT" };
 
 function message(error: unknown) {
   const detail = (error as any)?.response?.data?.detail;
@@ -36,6 +39,9 @@ export default function OpeningBalancesPage() {
   const [description, setDescription] = useState("");
   const [preview, setPreview] = useState<any>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [completionJournal, setCompletionJournal] = useState<Imbalance | null>(null);
+  const [completionLines, setCompletionLines] = useState<CompletionLine[]>([]);
+  const [completionDescription, setCompletionDescription] = useState("");
 
   const fiscal_year = Number(year) || new Date().getFullYear();
 
@@ -63,6 +69,7 @@ export default function OpeningBalancesPage() {
 
   const items: OpeningBalanceAccount[] = useMemo(() => acct.data?.items ?? [], [acct.data]);
   const entryItems: any[] = useMemo(() => entries.data?.items ?? [], [entries.data]);
+  const imbalances: Imbalance[] = entries.data?.imbalances ?? [];
   const openingRecorded = entryItems.length > 0;
   const entryStatusUnknown = entries.isLoading || entries.isError;
   const inputLocked = openingRecorded || entryStatusUnknown;
@@ -108,6 +115,42 @@ export default function OpeningBalancesPage() {
       setShowPreview(false);
       client.invalidateQueries({ queryKey: ["opening-accounts"] });
       client.invalidateQueries({ queryKey: ["opening-entries"] });
+    },
+    onError: (e) => toast.error(message(e)),
+  });
+
+  const openCompletion = (journal: Imbalance) => {
+    setCompletionJournal(journal);
+    setCompletionLines([{
+      balance_type: Number(journal.difference) > 0 ? "CREDIT" : "DEBIT",
+      amount: String(Math.abs(Number(journal.difference))),
+    }]);
+    setCompletionDescription("");
+  };
+  const completionDifference = (completionLines.reduce(
+    (sum, line) => sum + (line.balance_type === "DEBIT" ? 1 : -1) * Number(line.amount || 0), 0,
+  ) + Number(completionJournal?.difference || 0));
+  const completionReady = completionLines.length > 0 && completionLines.every(
+    (line) => line.account_id && Number(line.amount) > 0,
+  ) && Math.abs(completionDifference) < 0.005;
+  const complete = useMutation({
+    mutationFn: () => openingBalanceApi.complete(
+      completionJournal!.journal_id,
+      completionLines.map((line) => ({
+        account_id: line.account_id!,
+        amount: Number(line.amount),
+        balance_type: line.balance_type,
+      })),
+      completionDescription.trim() || undefined,
+    ),
+    onSuccess: () => {
+      toast.success("Opening journal balanced with the entered account lines.");
+      setCompletionJournal(null);
+      client.invalidateQueries({ queryKey: ["opening-accounts"] });
+      client.invalidateQueries({ queryKey: ["opening-entries"] });
+      client.invalidateQueries({ queryKey: ["trial-balance"] });
+      client.invalidateQueries({ queryKey: ["journal-entry"] });
+      client.invalidateQueries({ queryKey: ["general-ledger"] });
     },
     onError: (e) => toast.error(message(e)),
   });
@@ -169,6 +212,17 @@ export default function OpeningBalancesPage() {
         </>}
       </Card>
 
+      {imbalances.length > 0 && <Card>
+        <h3 className="mb-2 text-lg font-semibold text-amber-900">Opening journals awaiting manual balance</h3>
+        <p className="mb-3 text-sm text-slate-600">Select the verified account and amount for each journal. The app will accept only an exact match to its remaining debit–credit difference.</p>
+        <div className="space-y-2">{imbalances.map((journal) => (
+          <div key={journal.journal_id} className="flex flex-wrap items-center justify-between gap-3 rounded border border-amber-200 bg-amber-50 p-3">
+            <span className="text-sm"><b>{journal.journal_number}</b> · Location #{journal.location_id ?? "—"} · Debit–credit difference <b>{money(journal.difference)}</b></span>
+            <Button variant="outline" onClick={() => openCompletion(journal)}>Enter balancing accounts</Button>
+          </div>
+        ))}</div>
+      </Card>}
+
       {entryItems.length > 0 && (
         <Card>
           <div className="mb-3 flex items-center justify-between">
@@ -212,6 +266,27 @@ export default function OpeningBalancesPage() {
           <Button variant="outline" onClick={() => setShowPreview(false)}>Close</Button>
           <Button loading={save.isPending} disabled={inputLocked || !preview?.differences_ok || !balanced || save.isPending} onClick={() => { setShowPreview(false); if (window.confirm(`Post opening balances for fiscal year ${fiscal_year}?`)) save.mutate(); }}><Save size={16} /> Confirm &amp; Post</Button>
         </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(completionJournal)} onOpenChange={(open) => { if (!open && !complete.isPending) setCompletionJournal(null); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader><DialogTitle>Complete {completionJournal?.journal_number}</DialogTitle></DialogHeader>
+          <DialogBody className="space-y-4">
+            <p className="text-sm text-amber-900">Remaining debit–credit difference: <b>{money(completionJournal?.difference ?? 0)}</b>. Add the correct account lines below. No account is chosen automatically.</p>
+            <Input placeholder="Reason and supporting reference" value={completionDescription} onChange={(e) => setCompletionDescription(e.target.value)} />
+            {completionLines.map((line, index) => (
+              <div key={index} className="grid items-end gap-2 md:grid-cols-[1fr_120px_160px_auto]">
+                <SearchableSelect label="Account" value={line.account_id} placeholder="Search account code or name" options={items.map((account) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}` }))} onChange={(value) => setCompletionLines((current) => current.map((item, i) => i === index ? { ...item, account_id: value } : item))} />
+                <label className="text-sm">Side<select className="mt-1 h-10 w-full rounded border px-2" value={line.balance_type} onChange={(e) => setCompletionLines((current) => current.map((item, i) => i === index ? { ...item, balance_type: e.target.value as CompletionLine["balance_type"] } : item))}><option value="DEBIT">Debit</option><option value="CREDIT">Credit</option></select></label>
+                <label className="text-sm">Amount<Input className="mt-1" type="number" min="0.01" step="0.01" value={line.amount} onChange={(e) => setCompletionLines((current) => current.map((item, i) => i === index ? { ...item, amount: e.target.value } : item))} /></label>
+                <Button type="button" size="xs" variant="danger" disabled={completionLines.length === 1} onClick={() => setCompletionLines((current) => current.filter((_, i) => i !== index))}>Remove</Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={() => setCompletionLines((current) => [...current, { balance_type: Number(completionJournal?.difference) > 0 ? "CREDIT" : "DEBIT", amount: "" }])}>Add Account</Button>
+            <p className="text-sm font-medium">Difference after entered lines: {money(completionDifference)}</p>
+          </DialogBody>
+          <DialogFooter><Button variant="outline" onClick={() => setCompletionJournal(null)}>Cancel</Button><Button disabled={!completionReady || complete.isPending} loading={complete.isPending} onClick={() => { if (window.confirm(`Post these manual opening lines to ${completionJournal?.journal_number}?`)) complete.mutate(); }}>Post Balancing Lines</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
