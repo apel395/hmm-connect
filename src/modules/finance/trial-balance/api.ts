@@ -66,6 +66,8 @@ export async function exportTrialBalanceXlsx(params: TrialBalanceFilters) {
     ["From", params.date_from, "To", params.date_to],
     ...(params.search ? [["Account search", params.search]] : []),
     ...(params.location_id ? [["Location ID", params.location_id]] : []),
+    ["Opening debit-credit difference", Number(first.summary.opening_difference ?? 0)],
+    ["Closing debit-credit difference", Number(first.summary.closing_difference ?? 0)],
     [],
     ["COA No.", "COA Name", "Opening", "Debit Movement", "Credit Movement", "Total", "Closing", "Status"],
     ...items.map((row) => [
