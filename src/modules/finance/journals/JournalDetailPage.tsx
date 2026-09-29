@@ -12,7 +12,7 @@ import Input from "@/components/ui/Input";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
-import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listLocations } from "@/modules/admin/organization/api";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { getJournal, journalAction, updateJournal } from "./api";
@@ -43,7 +43,7 @@ export default function JournalDetailPage() {
   const q = useQuery({ queryKey: ["journal-entry", id], queryFn: () => getJournal(Number(id)), enabled: !!id });
   const accounts = useQuery({
     queryKey: ["journal-account-lookup"],
-    queryFn: () => getAccountLookup({ is_posting: true, is_active: true }),
+    queryFn: () => getAllAccountLookup({ is_posting: true, is_active: true }),
     enabled: editOpen,
   });
 
@@ -177,7 +177,7 @@ export default function JournalDetailPage() {
             <table className="min-w-[850px] w-full text-sm">
               <thead className="bg-slate-50"><tr><th className="p-3 text-left">Account</th><th className="p-3 text-left">Description</th><th className="w-44 p-3 text-right">Debit</th><th className="w-44 p-3 text-right">Credit</th><th /></tr></thead>
               <tbody>{lines.map((line, index) => <tr key={index} className="border-t">
-                <td className="p-2"><select className="h-10 w-full rounded border px-2" value={line.account_id || ""} onChange={(e) => updateLine(index, { account_id: Number(e.target.value) })}><option value="">Select posting account</option>{accounts.data?.map((account) => <option key={account.id} value={account.id}>{account.account_code} - {account.account_name}</option>)}</select></td>
+                <td className="p-2"><SearchableSelect value={line.account_id || undefined} disabled={accounts.isLoading || accounts.isError} placeholder={accounts.isLoading ? "Loading accounts..." : accounts.isError ? "Could not load accounts" : "Type account code or name..."} options={(accounts.data ?? []).map((account) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}`, keywords: [account.account_code, account.account_name, account.account_type, account.account_subtype] }))} maxOptions={1000} onChange={(value) => updateLine(index, { account_id: value ?? 0 })} /></td>
                 <td className="p-2"><Input value={line.description} onChange={(e) => updateLine(index, { description: e.target.value })} /></td>
                 <td className="w-44 p-2"><CurrencyInput value={line.debit} onValueChange={(value) => updateLine(index, { debit: value, credit: value > 0 ? 0 : line.credit })} /></td>
                 <td className="w-44 p-2"><CurrencyInput value={line.credit} onValueChange={(value) => updateLine(index, { credit: value, debit: value > 0 ? 0 : line.debit })} /></td>
