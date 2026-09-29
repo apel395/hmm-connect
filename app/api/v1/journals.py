@@ -28,6 +28,7 @@ from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
 from app.services.fiscal_period_service import FiscalPeriodService
 from app.services.location_access import apply_location_scope, enforce_location_access, resolve_location_id
+from app.services.organization_dimensions import validate_dimensions
 
 router = APIRouter(prefix="/journal-entries", tags=["Journal Entries"])
 ZERO = Decimal("0")
@@ -99,6 +100,10 @@ def serialize(x, user=None):
         "reference_id": x.reference_id,
         "reference_number": x.document_number,
         "status": x.status,
+        "business_unit_id": x.business_unit_id,
+        "department_id": x.department_id,
+        "location_id": x.location_id,
+        "location_name": next((line.location.name for line in x.lines if line.location_id == x.location_id and line.location), None),
         "created_by_name": x.created_by.full_name if x.created_by else None,
         "posted_by_name": x.posted_by.full_name if x.posted_by else None,
         "created_at": x.created_at,
@@ -128,6 +133,7 @@ def serialize(x, user=None):
                 "description": l.description,
                 "debit": l.debit,
                 "credit": l.credit,
+                "business_unit_id": l.business_unit_id,
                 "department_id": l.department_id,
                 "department_name": l.department.name if l.department else None,
                 "location_id": l.location_id,
@@ -277,6 +283,9 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(jour
     if debit != credit:
         raise HTTPException(422, "Journal debit and credit must be balanced")
     location_id = resolve_location_id(user, data.location_id)
+    if location_id is None:
+        raise HTTPException(422, "Select a work location before creating a journal")
+    validate_dimensions(db, data.business_unit_id, location_id, data.department_id)
     x = JournalEntry(
         journal_number=next_document_number(db, "MAN", digits=6),
         posting_date=data.posting_date,
@@ -412,18 +421,33 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
         raise HTTPException(409, "Unpost the journal before editing it")
     if x.reference_type in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE"}:
         raise HTTPException(409, "Edit this journal through its source payment or supplier invoice")
+    location_changed = "location_id" in data.model_fields_set
+    if location_changed:
+        if (x.reference_type or "").upper() != "MANUAL":
+            raise HTTPException(409, "Work location must be corrected in the source document")
+        if data.location_id is None:
+            raise HTTPException(422, "Work location is required")
+        location_id = resolve_location_id(user, data.location_id)
+        validate_dimensions(db, x.business_unit_id, location_id, x.department_id)
+        x.location_id = location_id
     if data.posting_date:
         x.posting_date = data.posting_date
     if data.description is not None:
         x.description = data.description
     if data.lines is not None:
-        validate(db, data.lines)
+        debit, credit = validate(db, data.lines)
+        if debit != credit:
+            raise HTTPException(422, "Journal debit and credit must be balanced")
         x.lines.clear()
         for i, l in enumerate(data.lines, 1):
             line_data = l.model_dump()
             line_data["location_id"] = x.location_id
             line_data["business_unit_id"] = x.business_unit_id
             x.lines.append(JournalLine(line_number=i, **line_data))
+    elif location_changed:
+        for line in x.lines:
+            line.location_id = x.location_id
+            line.business_unit_id = x.business_unit_id
     record_audit(db, user, "JOURNAL_UPDATED", "JOURNAL_ENTRY", f"Updated {x.journal_number}", entity_id=x.id)
     db.commit()
     db.refresh(x)
