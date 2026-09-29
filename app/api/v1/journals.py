@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import is_superuser, require_permission
+from app.dependencies.authorization import has_permission, is_superuser, require_permission
 from app.models.chart_of_account import ChartOfAccount
 from app.models.accounting_setting import AccountingSetting
 from app.models.journal_entry import JournalEntry
@@ -115,6 +115,7 @@ def serialize(x, user=None):
                 source in STANDARD_UNPOSTABLE_SOURCES or admin_unpost
             ),
             "can_void": x.status == "DRAFT" and source not in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE"},
+            "can_void_source_payment": x.status == "DRAFT" and source == "SUPPLIER_PAYMENT" and bool(user and has_permission(user, "payment.manage")),
             "can_print": True,
         },
         "lines": [
