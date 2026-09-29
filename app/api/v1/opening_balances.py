@@ -83,19 +83,19 @@ def submit(
     )
 
 
-class OpeningBalanceCompletion(BaseModel):
+class OpeningBalanceAdjustment(BaseModel):
     description: str | None = None
     lines: list[OpeningLine]
 
 
-@router.post("/complete/{journal_id}")
-def complete_imbalance(
+@router.post("/adjustments/{journal_id}")
+def post_adjustment(
     journal_id: int,
-    data: OpeningBalanceCompletion,
+    data: OpeningBalanceAdjustment,
     db: Session = Depends(get_db),
     user=Depends(journal_manage_user),
 ):
-    return OpeningBalanceService(db).complete_imbalance(
+    return OpeningBalanceService(db).post_adjustment(
         user=user, journal_id=journal_id,
         lines=[line.model_dump() for line in data.lines],
         description=data.description,
