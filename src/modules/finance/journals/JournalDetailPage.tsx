@@ -13,6 +13,8 @@ import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTi
 import CurrencyInput from "@/components/form/CurrencyInput";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { listLocations } from "@/modules/admin/organization/api";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import { getJournal, journalAction, updateJournal } from "./api";
 import { paymentAction } from "@/modules/finance/payments/api";
 import { sourceDocumentPath } from "./sourceDocument";
@@ -34,6 +36,7 @@ export default function JournalDetailPage() {
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
   const [postingDate, setPostingDate] = useState("");
+  const [locationId, setLocationId] = useState<number>();
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<EditLine[]>([]);
 
@@ -41,6 +44,12 @@ export default function JournalDetailPage() {
   const accounts = useQuery({
     queryKey: ["journal-account-lookup"],
     queryFn: () => getAccountLookup({ is_posting: true, is_active: true }),
+    enabled: editOpen,
+  });
+
+  const locations = useQuery({
+    queryKey: ["journal-edit-locations", q.data?.business_unit_id],
+    queryFn: () => listLocations({ business_unit_id: q.data?.business_unit_id ?? undefined, is_active: true }),
     enabled: editOpen,
   });
 
@@ -87,6 +96,7 @@ export default function JournalDetailPage() {
   const save = useMutation({
     mutationFn: () => updateJournal(Number(id), {
       posting_date: postingDate,
+      location_id: locationId ?? null,
       description: description.trim() || null,
       lines: validLines.map((line) => ({
         account_id: line.account_id,
@@ -94,7 +104,7 @@ export default function JournalDetailPage() {
         credit: line.credit,
         description: line.description.trim() || undefined,
         department_id: line.department_id ?? null,
-        location_id: line.location_id ?? null,
+        location_id: locationId ?? null,
       })),
     }),
     onSuccess: () => {
@@ -113,6 +123,7 @@ export default function JournalDetailPage() {
 
   const openEditor = () => {
     setPostingDate(x.journal_date);
+    setLocationId(x.location_id ?? undefined);
     setDescription(x.description || "");
     setLines(x.lines.map((line) => ({
       account_id: line.account_id,
@@ -148,7 +159,7 @@ export default function JournalDetailPage() {
         {a.can_void_source_payment && <Button variant="danger" loading={voidSourcePayment.isPending} onClick={() => { if (window.confirm(`Void payment ${x.reference_number} and its draft journal ${x.journal_number}? This releases the invoice reservation and keeps both records as VOID.`)) voidSourcePayment.mutate(); }}>Void Payment & Journal</Button>}
       </div>
     </div>
-    <Card><div className="grid gap-4 md:grid-cols-4"><div><small>Date</small><div>{x.journal_date}</div></div><div><small>Source</small><div>{(x.reference_type || "MANUAL").replaceAll("_", " ")}</div></div><div><small>Reference</small><div>{sourcePath?<Link className="font-medium text-emerald-700 hover:underline" to={sourcePath} state={{returnTo:`/journal-entries/${x.id}`}}>{x.reference_number||"View Source Document"}</Link>:x.reference_number||"—"}</div></div><div><small>Created By</small><div>{x.created_by_name || "—"}</div></div><div className="md:col-span-4"><small>Description</small><div>{x.description || "—"}</div></div></div></Card>
+    <Card><div className="grid gap-4 md:grid-cols-4"><div><small>Date</small><div>{x.journal_date}</div></div><div><small>Source</small><div>{(x.reference_type || "MANUAL").replaceAll("_", " ")}</div></div><div><small>Work Location</small><div>{x.location_name || (x.location_id ? `Location #${x.location_id}` : "Missing — edit before posting")}</div></div><div><small>Reference</small><div>{sourcePath?<Link className="font-medium text-emerald-700 hover:underline" to={sourcePath} state={{returnTo:`/journal-entries/${x.id}`}}>{x.reference_number||"View Source Document"}</Link>:x.reference_number||"—"}</div></div><div><small>Created By</small><div>{x.created_by_name || "—"}</div></div><div className="md:col-span-4"><small>Description</small><div>{x.description || "—"}</div></div></div></Card>
     <Card><Table variant="grid" className="min-w-[820px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Account</TH><TH>Description</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH>Organization</TH></TR></THead><TBody>{x.lines.map((l: any) => <TR key={l.id} className="whitespace-nowrap"><TD className="max-w-[280px]"><TableCellStack primary={l.account_name} secondary={l.account_code}/></TD><TD className="max-w-[280px]"><span className="block truncate" title={l.description || undefined}>{l.description || "—"}</span></TD><TD numeric className="w-40">{Number(l.debit).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}</TD><TD numeric className="w-40">{Number(l.credit).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}</TD><TD>{l.department_name || l.location_name ? <TableCellStack primary={l.department_name || l.location_name} secondary={l.department_name ? l.location_name : undefined}/> : "—"}</TD></TR>)}</TBody></Table></Card>
     <Card><div className="grid grid-cols-3 gap-4 text-right"><div><small>Total Debit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_debit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Total Credit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_credit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Difference</small><div className="text-lg font-bold tabular-nums">{Number(x.difference).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div></div></Card>
     {x.status === "POSTED" && !a.can_unpost && <p className="text-xs text-slate-500">This journal cannot be safely unposted from Journal. Reverse it from the originating module or reopen the required fiscal period first.</p>}
@@ -157,9 +168,10 @@ export default function JournalDetailPage() {
       <DialogContent className="max-w-5xl">
         <DialogHeader><DialogTitle>Edit Draft Journal {x.journal_number}</DialogTitle></DialogHeader>
         <DialogBody className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <label className="text-sm font-medium">Posting Date<Input className="mt-1" type="date" value={postingDate} onChange={(e) => setPostingDate(e.target.value)} /></label>
             <label className="text-sm font-medium">Description<Input className="mt-1" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+            <SearchableSelect label="Work Location" required value={locationId} disabled={locations.isLoading} placeholder="Select work location..." options={(locations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}))} onChange={setLocationId} />
           </div>
           <div className="overflow-x-auto rounded-lg border">
             <table className="min-w-[850px] w-full text-sm">
@@ -182,7 +194,7 @@ export default function JournalDetailPage() {
             </div>
           </div>
         </DialogBody>
-        <DialogFooter><Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button><Button loading={save.isPending} disabled={!postingDate || validLines.length < 2 || !balanced} onClick={() => save.mutate()}>Save Changes</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button><Button loading={save.isPending} disabled={!postingDate || !locationId || validLines.length < 2 || !balanced} onClick={() => save.mutate()}>Save Changes</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;
