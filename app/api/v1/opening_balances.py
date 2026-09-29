@@ -83,25 +83,6 @@ def submit(
     )
 
 
-class OpeningBalanceAdjustment(BaseModel):
-    description: str | None = None
-    lines: list[OpeningLine]
-
-
-@router.post("/adjustments/{journal_id}")
-def post_adjustment(
-    journal_id: int,
-    data: OpeningBalanceAdjustment,
-    db: Session = Depends(get_db),
-    user=Depends(journal_manage_user),
-):
-    return OpeningBalanceService(db).post_adjustment(
-        user=user, journal_id=journal_id,
-        lines=[line.model_dump() for line in data.lines],
-        description=data.description,
-    )
-
-
 @router.delete("")
 def void(
     fiscal_year: int = Query(...),
