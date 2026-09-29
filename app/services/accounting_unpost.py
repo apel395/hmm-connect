@@ -132,7 +132,12 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
             raise HTTPException(409, "Supplier payment linked to this journal was not found")
         if payment.status != "APPROVED":
             raise HTTPException(409, "Supplier payment must be approved before its journal can be posted")
+        if not payment.allocations or sum((Decimal(a.allocated_amount) for a in payment.allocations), ZERO) != Decimal(payment.amount):
+            raise HTTPException(409, "Payment allocations must match the payment total")
         locked_invoices = _lock_payment_invoices(db, payment)
+        payment.status = "POSTED"
+        payment.posted_by_id = user.id
+        payment.posted_at = now
         for allocation in payment.allocations:
             invoice = locked_invoices[allocation.supplier_invoice_id]
             if invoice.status != "POSTED":
@@ -143,9 +148,6 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
                 raise HTTPException(409, f"Payment allocation is no longer valid for {invoice.internal_invoice_number}")
             invoice.paid_amount = Decimal(invoice.paid_amount or 0) + amount
             _sync_invoice_payable(db, invoice)
-        payment.status = "POSTED"
-        payment.posted_by_id = user.id
-        payment.posted_at = now
         return
 
     if source == "SUPPLIER_ADJUSTMENT":
@@ -216,6 +218,10 @@ def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
         if payment.status != "POSTED":
             raise HTTPException(status_code=409, detail="Linked supplier payment is not posted")
         locked_invoices = _lock_payment_invoices(db, payment)
+        # Exclude this payment from the last-posted-payment query below.
+        payment.status = "APPROVED"
+        payment.posted_by_id = None
+        payment.posted_at = None
         for allocation in payment.allocations:
             invoice = locked_invoices[allocation.supplier_invoice_id]
             invoice.paid_amount = max(
@@ -223,9 +229,6 @@ def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
                 Decimal(invoice.paid_amount or 0) - Decimal(allocation.allocated_amount or 0),
             )
             _sync_invoice_payable(db, invoice)
-        payment.status = "APPROVED"
-        payment.posted_by_id = None
-        payment.posted_at = None
         return
 
     if source == "SUPPLIER_ADJUSTMENT":
