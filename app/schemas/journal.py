@@ -58,5 +58,6 @@ class JournalBulkAction(BaseModel):
 
 class JournalUpdate(BaseModel):
     posting_date: date | None = None
+    location_id: int | None = None
     description: str | None = None
     lines: list[JournalLineCreate] | None = None
