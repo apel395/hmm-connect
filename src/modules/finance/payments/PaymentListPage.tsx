@@ -14,7 +14,8 @@ import SearchableSelect from "@/components/form/SearchableSelect";
 import { listBankAccounts } from "@/modules/finance/cash-flow/bankAccountApi";
 import { listLocations } from "@/modules/admin/organization/api";
 import { todayLocal } from "@/utils/dateConstraints";
-import { createPayment, eligibleInvoices, eligibleSuppliers, eligibleVouchers, getPayment, listPayments, updatePayment } from "./api";
+import useAuthorization from "@/hooks/useAuthorization";
+import { createPayment, eligibleInvoices, eligibleSuppliers, eligibleVouchers, getPayment, listPayments, paymentAction, updatePayment, type Payment } from "./api";
 
 const methods = ["BANK_TRANSFER", "CASH", "CHEQUE", "CREDIT_CARD", "PETTY_CASH", "OTHER"];
 const currencies = ["IDR", "USD", "SGD", "MYR", "EUR", "JPY", "CNY", "AUD"];
@@ -23,9 +24,13 @@ const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { m
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const emptyForm = () => ({ supplier_id:0,payment_date:today(),payment_method:"BANK_TRANSFER",currency:"IDR",total_amount:0,voucher_id:null as number|null,reference_number:"",cheque_number:"",notes:"",source_type:"LIVE",allocations:[] as any[],funding_lines:[{bank_account_id:0,amount:0}] as any[] });
 const availableBalance = (row:any) => Number(row.available_balance ?? row.outstanding_balance ?? 0);
+type ListAction = "approve" | "generate-journal" | "post" | "void" | "reopen" | "unpost" | "cancel-posted";
 
 export default function PaymentListPage() {
   const navigate=useNavigate();const location=useLocation();const qc=useQueryClient();
+  const { hasPermission, isSuperuser } = useAuthorization();
+  const canManage = hasPermission("payment.manage");
+  const admin = isSuperuser();
   const [page,setPage]=useState(1),[search,setSearch]=useState(""),[status,setStatus]=useState(""),[filterLocationId,setFilterLocationId]=useState<number>(),[open,setOpen]=useState(false),[form,setForm]=useState<any>(emptyForm()),[editingId,setEditingId]=useState<number>();
   const [editingInvoices,setEditingInvoices]=useState<any[]>([]);
   const returnTo=location.pathname.startsWith("/accounts-payable")?`${location.pathname}${location.search}`:"/payments";
@@ -139,6 +144,83 @@ export default function PaymentListPage() {
   const useAllocatedAsFunding=()=>setForm((current:any)=>({...current,funding_lines:current.funding_lines.length===1?[{...current.funding_lines[0],amount:allocated}]:current.funding_lines}));
 
   const save=useMutation({mutationFn:async()=>{const latest=await invoices.refetch();if (latest.isError || !latest.data) throw new Error("Could not verify current invoice availability. Try again.");for(const allocation of form.allocations){const current=latest.data.find((row:any)=>row.id===allocation.supplier_invoice_id);if(!current || Number(allocation.allocated_amount)>availableBalance(current))throw new Error(`Invoice ${current?.invoice_number||allocation.supplier_invoice_id} is no longer available for this amount. Refresh the invoice selection or clear this allocation.`);}if(editId && editingId!==editId) throw new Error("Payment edit is still loading. Try again.");return editId?updatePayment(editId,{...form,voucher_id:undefined,total_amount:allocated}):editingId?updatePayment(editingId,{...form,voucher_id:undefined,total_amount:allocated}):createPayment({...form,total_amount:allocated});},onSuccess:(payment)=>{toast.success(editId||editingId?"Draft payment updated":"Payment saved as draft");setOpen(false);setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["payment",String(payment.id)]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["eligible-payment-suppliers"]});navigate(`/payments/${payment.id}`,{state:{returnTo}})},onError:(error:any)=>toast.error(error.response?.data?.detail||error.message||"Payment could not be saved")});
+  const refreshAfterAction = (id: number) => {
+    [
+      ["payments"], ["payment", String(id)], ["payment-edit", id],
+      ["eligible-payment-invoices"], ["eligible-payment-suppliers"],
+      ["supplier-invoice"], ["supplier-invoices"], ["accounts-payable-aging"],
+      ["finance-dashboard"], ["cash-flow"], ["cash-accounts"],
+      ["journal-entries"], ["general-ledger"], ["trial-balance"],
+      ["balance-sheet"], ["dashboard", "overview"],
+    ].forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+  };
+  const rowAction = useMutation({
+    mutationFn: async ({ id, name }: { id: number; name: ListAction }) => {
+      const latest: Payment = await getPayment(id);
+      const allowed = latest.allowed_actions ?? {};
+      const permitted = name === "unpost" || name === "cancel-posted"
+        ? admin && latest.status === "POSTED" && Boolean(latest.journal_entry_id)
+        : name === "reopen"
+          ? admin && latest.status === "APPROVED"
+          : allowed[({
+              approve: "can_approve",
+              "generate-journal": "can_generate_journal",
+              post: "can_post",
+              void: "can_void",
+            } as Record<string, string>)[name]];
+      if (!canManage || !permitted) throw new Error("This action is no longer available for the payment.");
+      if ((name === "approve" || name === "post") && latest.allocation_exception_rows?.length) {
+        throw new Error("An invoice allocation needs correction. Open the payment to review it before continuing.");
+      }
+      const label: Record<ListAction, string> = {
+        approve: "Approve and create a draft journal",
+        "generate-journal": "Create the missing draft journal",
+        post: "Post the payment and its journal",
+        void: "Void the payment",
+        reopen: "Reopen the payment as a draft",
+        unpost: "Unpost the payment and restore invoice balances",
+        "cancel-posted": "Cancel the posted payment and remove its GL impact",
+      };
+      const invoices = latest.allocations.map((line: any) =>
+        `${line.invoice_number ?? line.supplier_invoice_id}: ${money(line.allocated_amount)}`
+      ).join("\n");
+      const funding = latest.funding_lines.map((line: any) =>
+        `${line.bank_name ?? "Account"} ${line.account_number ?? ""}: ${money(line.amount)}`
+      ).join("\n");
+      if (!window.confirm(
+        `${label[name]}?\n\n${latest.payment_number} · ${latest.supplier_name}\nAmount: ${money(latest.total_amount)} ${latest.currency}\n\nInvoices:\n${invoices || "None"}\n\nFunding:\n${funding || "None"}`
+      )) return { id, name, cancelled: true };
+      if (name === "approve") {
+        await paymentAction(id, "approve");
+        try {
+          await paymentAction(id, "generate-journal");
+        } catch (error: any) {
+          throw Object.assign(error, { paymentApproved: true });
+        }
+      } else {
+        await paymentAction(id, name);
+      }
+      return { id, name, cancelled: false };
+    },
+    onSuccess: ({ id, name, cancelled }) => {
+      if (cancelled) return;
+      toast.success(name === "approve"
+        ? "Payment approved and draft journal created."
+        : name === "post"
+          ? "Payment and journal posted."
+          : `Payment ${name.replaceAll("-", " ")} complete.`);
+      refreshAfterAction(id);
+    },
+    onError: (error: any, { id }) => {
+      toast.error(error?.response?.data?.detail || error?.message || "Payment action failed.");
+      refreshAfterAction(id);
+    },
+  });
+  const runRowAction = (id: number, name: ListAction) => {
+    if (rowAction.isPending) return;
+    rowAction.mutate({ id, name });
+  };
+
   const submit=()=>{if(!form.supplier_id)return toast.error("Select a supplier");if(!form.payment_date)return toast.error("Payment Date is required");if(!form.allocations.length||allocated<=0)return toast.error("Select at least one supplier invoice");if(invoices.isFetching)return toast.error("Invoice balances are still refreshing");if(form.allocations.some((row:any)=>Number(row.allocated_amount)>availableBalance(invoiceRows.find((invoice:any)=>invoice.id===row.supplier_invoice_id))))return toast.error("An allocated invoice is no longer available. Clear or correct it before saving.");if(bankAccounts.isLoading)return toast.error("Funding accounts are still loading");if(bankAccounts.isError)return toast.error("Funding accounts could not be loaded");if(!eligibleBankAccounts.length)return toast.error("No active payment account with a linked COA is available for this currency");if(funded!==allocated)return toast.error("Funding total must equal selected invoice allocations");if(form.funding_lines.some((row:any)=>!row.bank_account_id||row.amount<=0))return toast.error("Complete every funding line");if(form.funding_lines.some((row:any)=>!eligibleBankAccountIds.has(row.bank_account_id)))return toast.error("Select only payment accounts with a valid linked COA");save.mutate()};
 
   return <>
@@ -147,7 +229,17 @@ export default function PaymentListPage() {
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}/>
     <div className="grid gap-3 sm:grid-cols-3"><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Payments</div><div className="mt-1 text-xl font-semibold">{payments.data?.total_items??0}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Payment Total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(paymentFilteredTotal)}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Visible Page Total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(paymentPageTotal)}</div></Card></div>
-    <Card><div className="mb-4 grid gap-3 md:grid-cols-4"><input className={input} placeholder="Search payment, supplier, invoice, cheque or reference" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/><select className={input} value={status} onChange={e=>{setStatus(e.target.value);setPage(1)}}><option value="">All statuses</option>{["DRAFT","APPROVED","POSTED","VOID"].map(value=><option key={value}>{value}</option>)}</select><div className="md:col-span-2"><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading?"Loading locations...":"Type location code or name..."} options={(filterLocations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}))} onChange={id=>{setFilterLocationId(id);setPage(1)}}/></div></div><Table className="min-w-[820px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Payment</TH><TH>Supplier</TH><TH numeric>Amount</TH><TH numeric>Allocation / Funding</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{payments.data?.items.map((row:any)=><TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={<Link className={TABLE_UI.documentLink} to={`/payments/${row.id}`} state={{returnTo}}>{row.payment_number}</Link>} secondary={`${row.payment_date} · ${row.payment_method.replaceAll("_"," ")}`}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD numeric><TableCellStack primary={`Allocated ${money(row.allocated_amount)}`} secondary={`Funded ${money(row.funded_amount)}`}/></TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={()=>navigate(`/payments/${row.id}`,{state:{returnTo}})}>View</Button></div></TD></TR>)}</TBody></Table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!payments.data?.has_previous} onClick={()=>setPage(page-1)}>Previous</Button><Button variant="outline" disabled={!payments.data?.has_next} onClick={()=>setPage(page+1)}>Next</Button></div></Card>
+    <Card><div className="mb-4 grid gap-3 md:grid-cols-4"><input className={input} placeholder="Search payment, supplier, invoice, cheque or reference" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/><select className={input} value={status} onChange={e=>{setStatus(e.target.value);setPage(1)}}><option value="">All statuses</option>{["DRAFT","APPROVED","POSTED","VOID"].map(value=><option key={value}>{value}</option>)}</select><div className="md:col-span-2"><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading?"Loading locations...":"Type location code or name..."} options={(filterLocations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}))} onChange={id=>{setFilterLocationId(id);setPage(1)}}/></div></div><Table className="min-w-[820px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Payment</TH><TH>Supplier</TH><TH numeric>Amount</TH><TH numeric>Allocation / Funding</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{payments.data?.items.map((row:any)=><TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={<Link className={TABLE_UI.documentLink} to={`/payments/${row.id}`} state={{returnTo}}>{row.payment_number}</Link>} secondary={`${row.payment_date} · ${row.payment_method.replaceAll("_"," ")}`}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD numeric><TableCellStack primary={`Allocated ${money(row.allocated_amount)}`} secondary={`Funded ${money(row.funded_amount)}`}/></TD><TD>{row.status}</TD><TD><div className="flex flex-wrap justify-end gap-1" role="group" aria-label={`Actions for ${row.payment_number}`}>
+  {canManage && row.status === "DRAFT" && <Button size="xs" variant="outline" disabled={rowAction.isPending} onClick={() => navigate(`/payments?edit=${row.id}`)}>Edit</Button>}
+  {canManage && row.status === "DRAFT" && <Button size="xs" disabled={rowAction.isPending} loading={rowAction.isPending && rowAction.variables?.id === row.id && rowAction.variables?.name === "approve"} onClick={() => runRowAction(row.id, "approve")}>Approve</Button>}
+  {canManage && row.status === "APPROVED" && !row.journal_entry_id && <Button size="xs" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "generate-journal")}>Create Journal</Button>}
+  {canManage && row.status === "APPROVED" && Boolean(row.journal_entry_id) && <Button size="xs" disabled={rowAction.isPending} loading={rowAction.isPending && rowAction.variables?.id === row.id && rowAction.variables?.name === "post"} onClick={() => runRowAction(row.id, "post")}>Post</Button>}
+  {admin && row.status === "APPROVED" && <Button size="xs" variant="outline" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "reopen")}>Reopen</Button>}
+  {canManage && ["DRAFT", "APPROVED"].includes(row.status) && <Button size="xs" variant="danger" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "void")}>Void</Button>}
+  {admin && row.status === "POSTED" && <Button size="xs" variant="outline" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "unpost")}>Unpost</Button>}
+  {admin && row.status === "POSTED" && <Button size="xs" variant="danger" disabled={rowAction.isPending} onClick={() => runRowAction(row.id, "cancel-posted")}>Cancel</Button>}
+  <Button size="xs" variant="outline" onClick={() => navigate(`/payments/${row.id}`, { state: { returnTo } })}>View</Button>
+</div></TD></TR>)}</TBody></Table><div className="mt-4 flex justify-end gap-2"><Button variant="outline" disabled={!payments.data?.has_previous} onClick={()=>setPage(page-1)}>Previous</Button><Button variant="outline" disabled={!payments.data?.has_next} onClick={()=>setPage(page+1)}>Next</Button></div></Card>
 
     <Dialog open={open} onOpenChange={next=>{if(!next)closeEditor();else setOpen(true)}}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId?"Edit Draft Supplier Payment":"Create Supplier Payment"}</DialogTitle></DialogHeader><DialogBody className="space-y-6">
       <div className="grid gap-3 md:grid-cols-4"><SearchableSelect label="Supplier" required value={form.supplier_id||undefined} disabled={suppliers.isLoading} placeholder={suppliers.isLoading?"Loading suppliers...":"Type supplier code or name..."} options={supplierOptions} onChange={value=>setForm({...form,supplier_id:value??0,allocations:[]})}/><label className="text-sm">Payment Date<input type="date" data-allow-past-date="true" className={input} value={form.payment_date} onChange={e=>setForm({...form,payment_date:e.target.value})}/></label><label className="text-sm">Payment Method<select className={input} value={form.payment_method} onChange={e=>setForm({...form,payment_method:e.target.value})}>{methods.map(value=><option key={value}>{value}</option>)}</select></label><label className="text-sm">Currency<select className={input} value={form.currency} onChange={e=>setForm({...form,currency:e.target.value,supplier_id:editingId?form.supplier_id:0,allocations:[]})}>{currencies.map(value=><option key={value}>{value}</option>)}</select></label><label className="text-sm md:col-span-2">Reference Number<input className={input} value={form.reference_number} onChange={e=>setForm({...form,reference_number:e.target.value})}/></label>{form.payment_method==="CHEQUE"&&<label className="text-sm">Cheque Number<input className={input} value={form.cheque_number} onChange={e=>setForm({...form,cheque_number:e.target.value})}/></label>}</div>
