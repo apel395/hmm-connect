@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import require_permission
+from app.dependencies.authorization import is_superuser, require_permission
 from app.models.journal_entry import JournalEntry
+from app.models.payment import Payment, PaymentAllocation
+from app.models.payment_voucher import PaymentVoucher, PaymentVoucherAllocation
 from app.models.goods_receipt import GoodsReceipt
 from app.models.purchase_order import PurchaseOrder
 from app.models.warehouse import Warehouse
@@ -16,6 +18,7 @@ from app.models.location import Location
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
+from app.services.accounting_unpost import unpost_journal
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
 from app.services.direct_coa_service import DirectCoaService
@@ -237,6 +240,74 @@ def generate(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoic
     invoice = service.persist_source_location(invoice)
     journal = service.generate_journal(invoice, user)
     return {"id": journal.id, "journal_number": journal.journal_number, "status": journal.status}
+
+
+@router.post("/{invoice_id}/unpost")
+def admin_unpost(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_post_user)):
+    if not is_superuser(user):
+        raise HTTPException(403, "Administrator access required to unpost a supplier invoice")
+    invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == invoice_id).with_for_update().first()
+    if not invoice:
+        raise HTTPException(404, "Supplier invoice not found")
+    enforce_location_access(user, _resolved_invoice_location_id(db, invoice))
+    if invoice.status != "POSTED":
+        raise HTTPException(409, "Only posted supplier invoices can be unposted")
+    journal = db.query(JournalEntry).filter(
+        JournalEntry.reference_type == "SUPPLIER_INVOICE",
+        JournalEntry.reference_id == invoice.id,
+        JournalEntry.status == "POSTED",
+    ).with_for_update().one_or_none()
+    if not journal:
+        raise HTTPException(409, "Posted supplier invoice journal not found")
+    unpost_journal(db, journal=journal, user=user, commit=False)
+    db.commit()
+    db.refresh(invoice)
+    return result(db, invoice, user)
+
+
+@router.post("/{invoice_id}/reopen")
+def admin_reopen(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_edit_user)):
+    if not is_superuser(user):
+        raise HTTPException(403, "Administrator access required to reopen a supplier invoice")
+    invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == invoice_id).with_for_update().first()
+    if not invoice:
+        raise HTTPException(404, "Supplier invoice not found")
+    enforce_location_access(user, _resolved_invoice_location_id(db, invoice))
+    if invoice.status != "VERIFIED":
+        raise HTTPException(409, "Only verified, unposted invoices can be reopened")
+    linked_payment = db.query(PaymentAllocation.id).join(Payment).filter(
+        PaymentAllocation.supplier_invoice_id == invoice.id,
+        Payment.status != "VOID",
+    ).first()
+    linked_voucher = db.query(PaymentVoucherAllocation.id).join(PaymentVoucher).filter(
+        PaymentVoucherAllocation.supplier_invoice_id == invoice.id,
+        PaymentVoucher.status.notin_(("VOID", "REJECTED", "CANCELLED")),
+    ).first()
+    if linked_payment or linked_voucher:
+        raise HTTPException(409, "Void linked payments and vouchers before reopening this invoice")
+    journals = db.query(JournalEntry).filter(
+        JournalEntry.reference_type == "SUPPLIER_INVOICE",
+        JournalEntry.reference_id == invoice.id,
+        JournalEntry.status != "VOID",
+    ).with_for_update().all()
+    if any(j.status != "DRAFT" for j in journals):
+        raise HTTPException(409, "Unpost the supplier invoice journal before reopening")
+    now = datetime.now(timezone.utc)
+    for journal in journals:
+        journal.status = "VOID"
+        journal.voided_at = now
+    invoice.status = "DRAFT"
+    invoice.verified_at = None
+    record_audit(
+        db, user, "SUPPLIER_INVOICE_REOPENED", "SUPPLIER_INVOICE",
+        f"Reopened {invoice.internal_invoice_number} as draft",
+        entity_id=invoice.id,
+        before_data={"status": "VERIFIED", "journal_ids": [j.id for j in journals]},
+        after_data={"status": "DRAFT", "journal_status": "VOID"},
+    )
+    db.commit()
+    db.refresh(invoice)
+    return result(db, invoice, user)
 
 
 @router.post("/{invoice_id}/void")
