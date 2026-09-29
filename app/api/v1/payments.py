@@ -21,6 +21,7 @@ from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.payment import PaymentAllocationInput, PaymentCreate, PaymentUpdate
 from app.services.direct_coa_service import DirectCoaService
+from app.services.accounting_unpost import unpost_journal
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
 from app.services.document_number import next_document_number
@@ -410,6 +411,7 @@ def result(db, payment, user):
         "can_generate_journal": payment.status == "APPROVED" and not payment.journal_entry_id and has_permission(user, "payment.manage"),
         "can_post": payment.status == "APPROVED" and bool(payment.journal_entry_id and payment.journal_entry.status == "DRAFT") and has_permission(user, "payment.manage"),
         "can_void": payment.status in {"DRAFT", "APPROVED"} and has_permission(user, "payment.manage"),
+        "can_cancel_posted": payment.status == "POSTED" and is_superuser(user),
         "can_print": True,
         "can_manage_attachments": True,
         "can_view_history": True,
@@ -801,6 +803,57 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_ma
     db.refresh(payment)
     return result(db, payment, user)
 
+
+
+@router.post("/{payment_id}/unpost")
+def admin_unpost(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
+    if not is_superuser(user):
+        raise HTTPException(403, "Administrator access required to unpost a supplier payment")
+    payment = db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
+    if not payment:
+        raise HTTPException(404, "Payment not found")
+    enforce_location_access(user, payment.location_id)
+    if payment.status != "POSTED" or not payment.journal_entry_id:
+        raise HTTPException(409, "Posted payment with a linked journal required")
+    journal = db.query(JournalEntry).filter(JournalEntry.id == payment.journal_entry_id).with_for_update().one_or_none()
+    if not journal or journal.reference_type != "SUPPLIER_PAYMENT" or journal.reference_id != payment.id:
+        raise HTTPException(409, "Payment journal link is invalid")
+    unpost_journal(db, journal=journal, user=user, commit=False)
+    db.commit()
+    db.refresh(payment)
+    return result(db, payment, user)
+
+
+@router.post("/{payment_id}/cancel-posted")
+def cancel_posted(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_manage_user)):
+    """Unpost and void in one transaction, retaining the document and journal audit trail."""
+    if not is_superuser(user):
+        raise HTTPException(403, "Administrator access required to cancel a posted supplier payment")
+    payment = db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
+    if not payment:
+        raise HTTPException(404, "Payment not found")
+    enforce_location_access(user, payment.location_id)
+    if payment.status != "POSTED" or not payment.journal_entry_id:
+        raise HTTPException(409, "Posted payment with a linked journal required")
+    journal = db.query(JournalEntry).filter(JournalEntry.id == payment.journal_entry_id).with_for_update().one_or_none()
+    if not journal or journal.reference_type != "SUPPLIER_PAYMENT" or journal.reference_id != payment.id:
+        raise HTTPException(409, "Payment journal link is invalid")
+    unpost_journal(db, journal=journal, user=user, commit=False)
+    now = datetime.now(timezone.utc)
+    journal.status = "VOID"
+    journal.voided_at = now
+    payment.status = "VOID"
+    payment.voided_at = now
+    record_audit(
+        db, user, "PAYMENT_CANCELLED", "PAYMENT",
+        f"Cancelled posted payment {payment.payment_number}",
+        entity_id=payment.id, reference_document=journal.journal_number,
+        before_data={"status": "POSTED", "amount": str(payment.amount)},
+        after_data={"status": "VOID", "journal_status": "VOID"},
+    )
+    db.commit()
+    db.refresh(payment)
+    return result(db, payment, user)
 
 
 @router.post("/{payment_id}/reopen")
