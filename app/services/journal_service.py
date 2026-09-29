@@ -29,7 +29,6 @@ class JournalService:
         db: Session,
         journal: JournalCreate,
         user,
-        allow_unbalanced_opening: bool = False,
     ) -> JournalEntry:
 
         if not journal.lines:
@@ -79,10 +78,7 @@ class JournalService:
             total_debit += debit
             total_credit += credit
 
-        if total_debit != total_credit and not (
-            allow_unbalanced_opening
-            and journal.reference_type in ("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")
-        ):
+        if total_debit != total_credit:
             raise HTTPException(
                 status_code=400,
                 detail="Journal is not balanced.",
