@@ -108,13 +108,13 @@ def serialize(x, user=None):
         "total_credit": credit,
         "difference": debit - credit,
         "allowed_actions": {
-            "can_edit": x.status == "DRAFT",
+            "can_edit": x.status == "DRAFT" and source not in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE"},
             "can_post": x.status == "DRAFT" and bool(x.lines) and debit == credit,
             "can_recreate": x.status == "POSTED" and bool(user and is_superuser(user)),
             "can_unpost": x.status == "POSTED" and (
                 source in STANDARD_UNPOSTABLE_SOURCES or admin_unpost
             ),
-            "can_void": x.status == "DRAFT",
+            "can_void": x.status == "DRAFT" and source not in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE"},
             "can_print": True,
         },
         "lines": [
@@ -168,6 +168,14 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
             credit_accounts,
             allowed_liability_debit_ids=allowed_liability_debit_ids,
         )
+
+    if source_type == "SUPPLIER_PAYMENT":
+        from app.api.v1.payments import validate_payment_journal_integrity
+        from app.models.payment import Payment
+        payment = db.get(Payment, journal.reference_id)
+        if not payment or payment.journal_entry_id != journal.id:
+            raise HTTPException(409, "Payment journal is not linked to its source payment")
+        validate_payment_journal_integrity(db, payment, journal)
 
     apply_source_post_state(db, journal=journal, user=user)
     for line in journal.lines:
@@ -397,6 +405,8 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
     x = get(db, journal_id, user)
     if x.status != "DRAFT":
         raise HTTPException(409, "Unpost the journal before editing it")
+    if x.reference_type in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE"}:
+        raise HTTPException(409, "Edit this journal through its source payment or supplier invoice")
     if data.posting_date:
         x.posting_date = data.posting_date
     if data.description is not None:
@@ -465,6 +475,8 @@ def void(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_ma
     x = get(db, journal_id, user)
     if x.status != "DRAFT":
         raise HTTPException(409, "Only draft journals can be voided without reversal")
+    if x.reference_type in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE"}:
+        raise HTTPException(409, "Void or reopen the source payment or supplier invoice instead")
     x.status = "VOID"
     x.voided_at = datetime.now(timezone.utc)
     record_audit(db, user, "JOURNAL_VOIDED", "JOURNAL_ENTRY", f"Voided {x.journal_number}", entity_id=x.id)
