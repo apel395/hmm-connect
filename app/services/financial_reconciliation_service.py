@@ -427,8 +427,22 @@ class FinancialReconciliationService:
                 Warehouse, Warehouse.id == Inventory.warehouse_id
             ).filter(Warehouse.location_id == location_id)
         raw_valuation = Decimal(raw_valuation_query.scalar() or 0)
+        if as_of is not None:
+            signed_qty = case(
+                (StockMovement.movement_type == "OUT", -StockMovement.quantity),
+                else_=StockMovement.quantity,
+            )
+            later_value_query = (self.db.query(func.coalesce(func.sum(
+                signed_qty * StockMovement.unit_cost
+            ), 0)).outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
+             .filter(self._movement_date() > as_of))
+            if location_id is not None:
+                later_value_query = later_value_query.join(
+                    Warehouse, Warehouse.id == StockMovement.warehouse_id
+                ).filter(Warehouse.location_id == location_id)
+            raw_valuation -= Decimal(later_value_query.scalar() or 0)
         # Preserve visibility of stock whose product has no inventory account.
-        unmapped_stock = raw_valuation - sum(self._inventory_valuation(location_id).values(), ZERO)
+        unmapped_stock = raw_valuation - source
         account_meta = self._accounts_by_id(account_ids)
         detail = []
         for account_id in sorted(account_ids, key=lambda aid: (
