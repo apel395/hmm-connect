@@ -159,22 +159,25 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
             raise HTTPException(400, "Payment and invoice currencies must match")
 
         available = invoice_balance(invoice) - reserved_amount(db, invoice.id, exclude)
-        other_draft = (
-            db.query(Payment)
-            .join(PaymentAllocation)
+        other_drafts = (
+            db.query(PaymentAllocation)
+            .join(Payment)
             .filter(
                 PaymentAllocation.supplier_invoice_id == invoice.id,
                 Payment.status == "DRAFT",
                 Payment.id != exclude if exclude is not None else Payment.id > 0,
             )
             .order_by(Payment.id)
-            .first()
+            .all()
         )
-        if other_draft:
+        draft_reserved = sum((Decimal(row.allocated_amount or 0) for row in other_drafts), ZERO)
+        if Decimal(allocation.allocated_amount) > available - draft_reserved and other_drafts:
+            numbers = ", ".join(dict.fromkeys(row.payment.payment_number for row in other_drafts))
             raise HTTPException(
                 409,
-                f"Invoice {invoice.internal_invoice_number} is already on draft payment "
-                f"{other_draft.payment_number}. Edit or void that payment before creating another.",
+                f"Invoice {invoice.internal_invoice_number} has only "
+                f"{max(ZERO, available - draft_reserved)} available after draft payment(s) "
+                f"{numbers}. Edit or void those drafts before creating another.",
             )
         if Decimal(allocation.allocated_amount) <= ZERO:
             raise HTTPException(422, "Payment allocation must be greater than zero")
