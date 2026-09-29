@@ -1,57 +1,214 @@
-import { AlertTriangle, Boxes, ClipboardCheck, ClipboardList, ShoppingCart } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertCircle, ArrowRight, Box, CheckCircle2, ClipboardCheck, ClipboardList,
+  Clock3, Coins, PackageCheck, RefreshCw, ShoppingCart, TrendingUp,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
-import useAuthStore from "@/store/auth";
+import api from "@/api/interceptor";
 import Card from "@/components/ui/Card";
-import { useInventory } from "@/modules/warehouse/inventory/useInventory";
-import type { Inventory } from "@/modules/warehouse/inventory/types";
-import { usePurchaseOrders } from "@/modules/purchasing/purchase-order/hooks/usePurchaseOrders";
-import type { PurchaseOrder } from "@/modules/purchasing/purchase-order/types";
-import { usePurchaseRequisitions } from "@/modules/purchasing/requisition/hooks/usePurchaseRequisitions";
-import type { PurchaseRequisition } from "@/modules/purchasing/requisition/types";
-import { useAllGoodsReceipts } from "@/modules/purchasing/goods-receipts/hooks/useGoodsReceipts";
+import { hasPermission } from "@/lib/access";
+import useAuthStore from "@/store/auth";
 
-type ListEnvelope<T> = { items?: T[]; data?: T[] };
-const listFrom = <T,>(value: unknown): T[] => {
-  if (Array.isArray(value)) return value as T[];
-  if (value && typeof value === "object") {
-    const envelope = value as ListEnvelope<T>;
-    if (Array.isArray(envelope.items)) return envelope.items;
-    if (Array.isArray(envelope.data)) return envelope.data;
-  }
-  return [];
+type Order = {
+  id: number; po_number: string; supplier_name: string | null; order_date: string;
+  status: string; total_amount: string; currency: string;
 };
-const dateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+type LowStock = {
+  id: number; product_code: string; product_name: string; warehouse_name: string;
+  quantity: string; minimum_stock: string; shortage: string; uom: string;
+};
+type Overview = {
+  generated_at: string;
+  scope: { location_id: number | null; location_name: string | null };
+  purchasing: {
+    pr_waiting?: number; pr_draft?: number; po_waiting?: number; po_open?: number;
+    rr_waiting?: number; rr_ready?: number; recent_orders?: Order[];
+  };
+  inventory: null | {
+    stock_lines: number; stock_value: string; reorder_required: number; low_stock: LowStock[];
+    by_account: { account_id: number | null; account_code: string | null; account_name: string | null; stock_value: string }[];
+  };
+  finance: null | { ap_outstanding: string; ap_overdue: string; overdue_invoice_count: number };
+};
+type QueueItem = {
+  label: string; value: number; detail: string; href: string; icon: LucideIcon; tone: "amber" | "blue" | "emerald";
+};
+const number = (value: number | string) => Number(value || 0).toLocaleString("id-ID");
+const rupiah = (value: number | string) => new Intl.NumberFormat("id-ID", {
+  style: "currency", currency: "IDR", maximumFractionDigits: 0,
+}).format(Number(value || 0));
+const shortDate = (value: string) => new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit", month: "short", year: "numeric",
+}).format(new Date(value));
+const statusLabel = (status: string) => status.replaceAll("_", " ").toLowerCase()
+  .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-function Metric({ title, value, note, icon: Icon }: { title: string; value: number; note: string; icon: any }) {
-  return <Card><div className="flex items-start justify-between"><div><div className="text-3xl font-semibold">{value}</div><div className="mt-1 font-medium">{title}</div><div className="mt-1 text-xs text-slate-500">{note}</div></div><div className="rounded-lg bg-emerald-50 p-3 text-emerald-700"><Icon size={20}/></div></div></Card>;
+function SectionHeading({ eyebrow, title, href, link }: {
+  eyebrow: string; title: string; href?: string; link?: string;
+}) {
+  return <div className="flex flex-wrap items-end justify-between gap-3">
+    <div><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">{eyebrow}</p>
+      <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">{title}</h2></div>
+    {href && <Link to={href} className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-900">
+      {link ?? "View all"} <ArrowRight size={15} /></Link>}
+  </div>;
+}
+
+function QueueCard({ item }: { item: QueueItem }) {
+  const Icon = item.icon;
+  const tone = {
+    amber: "bg-amber-50 text-amber-700", blue: "bg-sky-50 text-sky-700",
+    emerald: "bg-emerald-50 text-emerald-700",
+  }[item.tone];
+  return <Link to={item.href} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md">
+    <div className="flex items-start justify-between gap-3">
+      <span className={"rounded-xl p-2.5 " + tone}><Icon size={19} /></span>
+      <ArrowRight size={16} className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-emerald-700" />
+    </div>
+    <div className="mt-5 text-3xl font-semibold tabular-nums text-slate-950">{number(item.value)}</div>
+    <div className="mt-1 text-sm font-semibold text-slate-800">{item.label}</div>
+    <div className="mt-1 text-xs text-slate-500">{item.detail}</div>
+  </Link>;
 }
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
-  const ordersQuery = usePurchaseOrders();
-  const requisitionsQuery = usePurchaseRequisitions();
-  const lowStockQuery = useInventory({ health: "LOW_STOCK", page: 1, page_size: 8 });
-  const receiptsQuery = useAllGoodsReceipts();
-  const orders = listFrom<PurchaseOrder>(ordersQuery.data);
-  const requisitions = listFrom<PurchaseRequisition>(requisitionsQuery.data);
-  const lowStockData = (lowStockQuery.data ?? {}) as { items?: Inventory[]; total_items?: number };
-  const lowStock = lowStockData.items ?? [];
-  const lowStockCount = Number(lowStockData.total_items ?? 0);
-  const receipts = listFrom<any>(receiptsQuery.data);
-  const pendingRequests = requisitions.filter((row) => ["DRAFT", "PENDING", "PENDING_APPROVAL", "SUBMITTED"].includes(row.status));
-  const pendingOrders = orders.filter((row) => ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED"].includes(row.status));
-  const waitingReceiving = receipts.filter((row) => row.approval_status === "PENDING");
-  const readyReceiving = receipts.filter((row) => row.status === "DRAFT" && row.approval_status === "APPROVED");
-  const recentOrders = [...orders].sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()).slice(0, 8);
-  const firstName = (user?.full_name || user?.username || "User").trim().split(/\s+/)[0];
+  const query = useQuery({
+    queryKey: ["dashboard", "overview", user?.id],
+    queryFn: async () => (await api.get<Overview>("/dashboard/overview")).data,
+    staleTime: 30_000,
+    refetchInterval: 120_000,
+  });
+  const data = query.data;
+  const p = data?.purchasing;
+  const firstName = (user?.full_name || user?.username || "there").trim().split(/\s+/)[0];
+  const localHour = Number(new Intl.DateTimeFormat("en-GB", {
+    hour: "numeric", hourCycle: "h23", timeZone: "Asia/Jakarta",
+  }).format(new Date()));
+  const greeting = localHour < 11 ? "Good morning" : localHour < 16 ? "Good afternoon" : "Good evening";
+  const today = new Intl.DateTimeFormat("en-GB", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
+  }).format(new Date());
+  const queue: QueueItem[] = [];
+  if (p?.pr_waiting !== undefined) queue.push({ label: "PR awaiting approval", value: p.pr_waiting, detail: "Purchase requests to review", href: "/purchase-requisitions", icon: ClipboardList, tone: "amber" });
+  if (p?.po_waiting !== undefined) queue.push({ label: "PO awaiting approval", value: p.po_waiting, detail: "Orders pending a decision", href: "/purchase-orders", icon: ShoppingCart, tone: "amber" });
+  if (p?.po_open !== undefined) queue.push({ label: "Open purchase orders", value: p.po_open, detail: "Approved or partially received", href: "/purchase-orders", icon: PackageCheck, tone: "blue" });
+  if (p?.rr_waiting !== undefined) queue.push({ label: "Receiving approval", value: p.rr_waiting, detail: "Reports in approval", href: "/receiving", icon: ClipboardCheck, tone: "amber" });
+  if (p?.rr_ready !== undefined) queue.push({ label: "Ready to post", value: p.rr_ready, detail: "Approved receiving reports", href: "/receiving", icon: Box, tone: "emerald" });
+  if (data?.inventory) queue.push({ label: "Reorder required", value: data.inventory.reorder_required, detail: "Stock at or below minimum", href: "/inventory?health=LOW_STOCK", icon: AlertCircle, tone: "amber" });
+  const outstanding = queue.reduce((sum, item) => sum + item.value, 0);
+  const recent = p?.recent_orders ?? [];
+  const stock = data?.inventory;
+  const finance = data?.finance;
 
-  return <div className="space-y-6">
-    <div className="flex flex-wrap items-end justify-between gap-4"><div><div className="text-sm text-slate-500">{dateFormatter.format(new Date())}</div><h1 className="mt-1 text-2xl font-semibold">Good morning, {firstName}</h1><p className="text-sm text-slate-500">Purchasing, receiving, inventory, and finance operations overview.</p></div><Link to="/purchase-requisitions" className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">Create Purchase Requisition</Link></div>
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"><Metric title="Pending PR" value={pendingRequests.length} note="Draft or awaiting approval" icon={ClipboardList}/><Metric title="Open PO" value={pendingOrders.length} note="Not fully received" icon={ShoppingCart}/><Metric title="RR Waiting Approval" value={waitingReceiving.length} note="Receiving Reports in approval" icon={ClipboardCheck}/><Metric title="RR Ready to Post" value={readyReceiving.length} note="Approved, stock not posted" icon={Boxes}/><Metric title="Reorder Required" value={lowStockCount} note="Warehouse stock at or below minimum" icon={AlertTriangle}/></div>
-    <div className="grid gap-6 xl:grid-cols-2">
-      <Card><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold">Procurement Overview</h2><Link className="text-sm text-emerald-700" to="/purchase-orders">View Purchase Orders</Link></div><div className="grid gap-3 sm:grid-cols-2"><div className="rounded border p-4"><div className="text-sm text-slate-500">PR Pending Approval</div><div className="text-2xl font-semibold">{requisitions.filter((row) => row.status === "PENDING_APPROVAL").length}</div></div><div className="rounded border p-4"><div className="text-sm text-slate-500">PO Pending Approval</div><div className="text-2xl font-semibold">{orders.filter((row) => row.status === "PENDING_APPROVAL").length}</div></div><Link to="/receiving" className="rounded border p-4 hover:bg-slate-50"><div className="text-sm text-slate-500">RR Waiting Approval</div><div className="text-2xl font-semibold">{waitingReceiving.length}</div></Link><Link to="/receiving" className="rounded border p-4 hover:bg-slate-50"><div className="text-sm text-slate-500">RR Approved to Post</div><div className="text-2xl font-semibold">{readyReceiving.length}</div></Link></div></Card>
-      <Card><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold">Reorder Required</h2><Link className="text-sm text-emerald-700" to="/inventory?health=LOW_STOCK">View Inventory</Link></div>{lowStock.length ? <div className="divide-y">{lowStock.map((row) => <div key={row.id} className="flex items-center justify-between gap-5 py-3"><div className="min-w-0"><div className="truncate font-medium">{row.product_name}</div><div className="truncate text-xs text-slate-500">{row.product_code} · {row.warehouse_name}</div></div><div className="shrink-0 text-right"><div className="font-semibold text-red-700">{Number(row.quantity).toLocaleString()} {row.uom}</div><div className="text-xs text-slate-500">minimum {Number(row.minimum_stock).toLocaleString()} · shortage {Number(row.shortage).toLocaleString()}</div></div></div>)}</div> : <div className="py-10 text-center text-sm text-slate-500">No warehouse stock is at or below its minimum threshold.</div>}</Card>
-    </div>
-    <Card><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold">Recent Purchase Orders</h2><Link className="text-sm text-emerald-700" to="/purchase-orders">View all</Link></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr><th className="text-left">PO Number</th><th>Supplier</th><th>Order Date</th><th>Status</th></tr></thead><tbody>{recentOrders.map((row) => <tr key={row.id} className="border-t"><td><Link className="text-emerald-700" to={`/purchase-orders/${row.id}`}>{row.po_number}</Link></td><td>{row.supplier_name ?? "—"}</td><td>{row.order_date}</td><td>{row.status}</td></tr>)}</tbody></table></div></Card>
+  return <div className="mx-auto max-w-[1600px] space-y-7 pb-10">
+    <header className="relative overflow-hidden rounded-2xl bg-slate-900 px-6 py-7 text-white sm:px-8 sm:py-8">
+      <div className="pointer-events-none absolute -right-16 -top-32 h-80 w-80 rounded-full bg-emerald-500/15 blur-3xl" />
+      <div className="relative flex flex-wrap items-end justify-between gap-5">
+        <div><p className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-300">{today}</p>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{greeting}, {firstName}.</h1>
+          <p className="mt-2 max-w-xl text-sm text-slate-300">Your operations at a glance. Follow the queues below to keep purchasing, stock, and payables moving.</p>
+          <p className="mt-4 flex items-center gap-2 text-xs text-slate-400">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            {data?.scope.location_name ?? (data?.scope.location_id ? "Assigned location" : "All locations")}
+            {data?.generated_at && " · Updated " + new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" }).format(new Date(data.generated_at)) + " WIB"}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => void query.refetch()} disabled={query.isFetching}
+            className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-medium text-white hover:bg-white/10 disabled:opacity-60">
+            <RefreshCw size={15} className={query.isFetching ? "animate-spin" : ""} /> Refresh
+          </button>
+          {hasPermission(user, "pr.view") && <Link to="/purchase-requisitions" className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">
+            Purchase requests <ArrowRight size={15} /></Link>}
+        </div>
+      </div>
+    </header>
+
+    {query.isPending && <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {[1, 2, 3, 4, 5, 6].map((value) => <div key={value} className="h-44 animate-pulse rounded-2xl bg-slate-100" />)}
+    </div>}
+    {query.isError && <Card className="p-6">
+      <div className="flex items-center gap-3 text-rose-700"><AlertCircle size={20} /><span className="font-semibold">Dashboard could not load</span></div>
+      <p className="mt-2 text-sm text-slate-600">Please retry. No figures are shown until the overview is available.</p>
+      <button type="button" onClick={() => void query.refetch()} className="mt-4 text-sm font-semibold text-emerald-700">Try again</button>
+    </Card>}
+
+    {data && <>
+      {queue.length > 0 && <section className="space-y-4">
+        <SectionHeading eyebrow="Action center" title="Work that needs attention" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{queue.map((item) => <QueueCard key={item.label} item={item} />)}</div>
+        {outstanding === 0 && <p className="flex items-center gap-2 text-sm text-emerald-700"><CheckCircle2 size={17} /> All visible queues are clear.</p>}
+      </section>}
+
+      {(stock || finance) && <section className="space-y-4">
+        <SectionHeading eyebrow="Position" title="Stock & finance" />
+        <div className={"grid gap-4 " + (stock && finance ? "xl:grid-cols-2" : "")}>
+          {stock && <Card className="p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2 text-slate-900"><Box size={19} className="text-emerald-700" /><h3 className="font-semibold">Inventory position</h3></div>
+              <Link to="/inventory" className="text-sm font-medium text-emerald-700 hover:underline">Explore inventory</Link></div>
+            <div className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">{rupiah(stock.stock_value)}</div>
+            <p className="mt-1 text-sm text-slate-500">Current stock value across {number(stock.stock_lines)} product and warehouse lines</p>
+            <div className="mt-6 border-t border-slate-100 pt-5">
+              <div className="mb-3 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <span>By inventory account</span><span>{number(stock.reorder_required)} reorder alerts</span>
+              </div>
+              <div className="space-y-3">{stock.by_account.slice(0, 4).map((account) => {
+                const total = Number(stock.stock_value);
+                const share = total > 0 ? Math.max(0, Math.min(100, Number(account.stock_value) / total * 100)) : 0;
+                return <div key={account.account_id ?? "unassigned"}>
+                  <div className="flex justify-between gap-3 text-xs"><span className="truncate text-slate-600">{account.account_code ?? "Unassigned"} · {account.account_name ?? "No account"}</span>
+                    <span className="shrink-0 font-semibold tabular-nums text-slate-800">{rupiah(account.stock_value)}</span></div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: share + "%" }} /></div>
+                </div>;
+              })}</div>
+              {stock.by_account.length === 0 && <p className="text-sm text-slate-500">No current inventory valuation.</p>}
+            </div>
+          </Card>}
+          {finance && <Card className="p-5 sm:p-6">
+            <div className="flex items-center gap-2 text-slate-900"><Coins size={19} className="text-sky-700" /><h3 className="font-semibold">Payables position</h3></div>
+            <div className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">{rupiah(finance.ap_outstanding)}</div>
+            <p className="mt-1 text-sm text-slate-500">Outstanding supplier invoices</p>
+            <div className="mt-6 grid grid-cols-2 gap-3 border-t border-slate-100 pt-5">
+              <div><div className="text-xl font-semibold tabular-nums text-amber-700">{rupiah(finance.ap_overdue)}</div><div className="text-xs text-slate-500">Overdue balance</div></div>
+              <div><div className="text-xl font-semibold tabular-nums">{number(finance.overdue_invoice_count)}</div><div className="text-xs text-slate-500">Overdue invoices</div></div>
+            </div>
+          </Card>}
+        </div>
+      </section>}
+
+      {(stock || p?.recent_orders) && <section className="grid gap-5 xl:grid-cols-5">
+        {stock && <Card className="p-5 xl:col-span-2">
+          <SectionHeading eyebrow="Stock watch" title="Reorder priorities" href="/inventory?health=LOW_STOCK" link="View inventory" />
+          {stock.low_stock.length ? <div className="mt-4 divide-y divide-slate-100">{stock.low_stock.map((item) =>
+            <div key={item.id} className="flex items-center justify-between gap-4 py-3">
+              <div className="min-w-0"><div className="truncate text-sm font-medium text-slate-900">{item.product_name}</div>
+                <div className="truncate text-xs text-slate-500">{item.product_code} · {item.warehouse_name}</div></div>
+              <div className="shrink-0 text-right"><div className="text-sm font-semibold tabular-nums text-rose-700">{number(item.quantity)} {item.uom}</div>
+                <div className="text-xs text-slate-500">Short {number(item.shortage)}</div></div>
+            </div>)}</div> : <div className="mt-5 flex items-center gap-2 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
+              <CheckCircle2 size={18} /> No monitored stock is below its minimum.</div>}
+        </Card>}
+        {p?.recent_orders && <Card className={"p-5 " + (stock ? "xl:col-span-3" : "xl:col-span-5")}>
+          <SectionHeading eyebrow="Activity" title="Recent purchase orders" href="/purchase-orders" link="View all orders" />
+          {recent.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[540px] text-sm">
+            <thead><tr className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+              <th className="py-3 pr-3">Order</th><th className="py-3 pr-3">Supplier</th><th className="py-3 pr-3">Date</th><th className="py-3">Status</th></tr></thead>
+            <tbody>{recent.map((po) => <tr key={po.id} className="border-b border-slate-100 last:border-0">
+              <td className="py-3 pr-3 font-semibold"><Link to={"/purchase-orders/" + po.id} className="text-emerald-700 hover:underline">{po.po_number}</Link></td>
+              <td className="max-w-[190px] truncate py-3 pr-3 text-slate-700">{po.supplier_name ?? "—"}</td>
+              <td className="whitespace-nowrap py-3 pr-3 text-slate-500">{shortDate(po.order_date)}</td>
+              <td className="py-3"><span className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{statusLabel(po.status)}</span></td>
+            </tr>)}</tbody></table></div> : <div className="mt-5 flex items-center gap-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+              <Clock3 size={18} /> No purchase orders yet.</div>}
+        </Card>}
+      </section>}
+      {queue.length === 0 && !stock && !finance && <Card className="p-8 text-center text-slate-600">
+        <TrendingUp className="mx-auto mb-3 text-emerald-600" size={28} />
+        <h2 className="font-semibold text-slate-900">Welcome to your workspace</h2>
+        <p className="mt-1 text-sm">Your dashboard will show the areas available to your role.</p>
+      </Card>}
+    </>}
   </div>;
 }
