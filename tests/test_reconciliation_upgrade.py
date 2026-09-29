@@ -108,3 +108,14 @@ def test_unallocated_posted_payment_is_visible(db):
     rows = FinancialReconciliationService(db)._unallocated_payments(None, None)
     assert rows[0]["document_number"] == "PAY-202609-0004"
     assert rows[0]["amount"] == Decimal("7316281")
+
+
+def test_inventory_chart_account_with_only_gl_opening_is_not_hidden(db):
+    opening_account = _account(db, "100-300-999", "Persediaan Lainnya")
+    _journal(db, opening_account, 1, "50", "0")
+    db.commit()
+    row = FinancialReconciliationService(db).inventory()
+    assert row["status"] == "OUT_OF_BALANCE"
+    assert row["source_balance"] == Decimal("0")
+    assert row["gl_balance"] == Decimal("50")
+    assert row["detail"][0]["account_code"] == "100-300-999"
