@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
+from app.services.opening_snapshot import opening_snapshot
 
 
 ZERO = Decimal("0.00")
@@ -46,6 +47,7 @@ class TrialBalanceService:
             )
             .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)
             .filter(JournalEntry.status == "POSTED")
+            .filter(JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")))
         )
         if before:
             query = query.filter(JournalEntry.posting_date < before)
@@ -115,12 +117,20 @@ class TrialBalanceService:
         if parent_account_id:
             accounts_query = accounts_query.filter(ChartOfAccount.parent_account_id == parent_account_id)
 
+        snapshot_date, snapshot = opening_snapshot(
+            self.db, as_of=date_from, location_id=location_id,
+            department_id=department_id, business_unit_id=business_unit_id,
+        )
         opening = self._activity(
+            date_from=snapshot_date,
             before=date_from,
             location_id=location_id,
             department_id=department_id,
             business_unit_id=business_unit_id,
         )
+        for account_id_value, (debit, credit) in snapshot.items():
+            prior_debit, prior_credit = opening.get(account_id_value, (ZERO, ZERO))
+            opening[account_id_value] = prior_debit + debit, prior_credit + credit
         period = self._activity(
             date_from=date_from,
             date_to=date_to,
