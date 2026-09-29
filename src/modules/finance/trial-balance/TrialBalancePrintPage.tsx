@@ -98,7 +98,8 @@ export default function TrialBalancePrintPage() {
         <div className="mx-auto grid w-80 grid-cols-2 gap-y-1">
           <span>Period Debits</span><span className="text-right tabular-nums">{money(totalDebit)}</span>
           <span>Period Credits</span><span className="text-right tabular-nums">{money(totalCredit)}</span>
-          <span className="font-bold">Difference</span><span className="text-right font-bold tabular-nums">{money(totalDebit - totalCredit)}</span>
+          <span>Opening Difference</span><span className="text-right tabular-nums">{money(query.data.summary.opening_difference)}</span>
+          <span className="font-bold">Closing Difference</span><span className="text-right font-bold tabular-nums">{money(query.data.summary.closing_difference)}</span>
         </div>
       }
     />
