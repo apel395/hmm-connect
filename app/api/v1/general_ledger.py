@@ -19,6 +19,7 @@ from app.services.document_context import print_metadata
 from app.services.general_ledger_report import (
     build_ledger_query,
     ledger_grouped_report,
+    opening_balances,
     ledger_rows_with_balance,
     ledger_totals,
     serialize_ledger_item,
@@ -97,8 +98,15 @@ def listing(
     total = q.count()
     total_debit, total_credit = ledger_totals(q)
     rows = ledger_rows_with_balance(q).offset((page - 1) * page_size).limit(page_size).all()
+    openings = opening_balances(
+        db, account_id=account_id, account_from_id=account_from_id,
+        account_to_id=account_to_id, date_from=date_from,
+        reference_type=reference_type, supplier_id=supplier_id,
+        department_id=department_id, location_id=location_id,
+        business_unit_id=business_unit_id,
+    )
     return {
-        "items": [_item(line, balance) for line, balance in rows],
+        "items": [_item(line, Decimal(balance or 0) + openings.get(line.account_id, ZERO)) for line, balance in rows],
         "summary": {"total_debit": total_debit, "total_credit": total_credit, "difference": total_debit - total_credit},
         "page": page,
         "page_size": page_size,
@@ -189,14 +197,10 @@ def summary(account_id: int, date_from: date | None = None, date_to: date | None
     if not account:
         raise HTTPException(404, "Account not found")
     location_id = resolve_location_id(user, None)
-    opening_q = build_ledger_query(db, account_id=account_id, date_to=date_from, location_id=location_id)
-    if date_from:
-        opening_q = opening_q.filter(JournalEntry.posting_date < date_from)
-    else:
-        opening_q = opening_q.filter(False)
-    od, oc = opening_q.with_entities(func.coalesce(func.sum(JournalLine.debit), 0), func.coalesce(func.sum(JournalLine.credit), 0)).one()
+    opening = opening_balances(
+        db, account_id=account_id, date_from=date_from, location_id=location_id,
+    ).get(account_id, ZERO)
     q = build_ledger_query(db, account_id=account_id, date_from=date_from, date_to=date_to, location_id=location_id)
     td, tc = q.with_entities(func.coalesce(func.sum(JournalLine.debit), 0), func.coalesce(func.sum(JournalLine.credit), 0)).one()
-    opening = Decimal(od) - Decimal(oc) if account.normal_balance == "DEBIT" else Decimal(oc) - Decimal(od)
     movement = Decimal(td) - Decimal(tc) if account.normal_balance == "DEBIT" else Decimal(tc) - Decimal(td)
     return {"account_id": account.id, "account_code": account.account_number, "account_name": account.account_name, "normal_balance": account.normal_balance, "opening_balance": opening, "total_debit": td, "total_credit": tc, "closing_balance": opening + movement}
