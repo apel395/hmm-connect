@@ -10,8 +10,8 @@ from app.models.base import Base, TimestampMixin
 class OpeningBalance(Base, TimestampMixin):
     """Opening balance entry for a balance-sheet account at fiscal-year start.
 
-    Entered once per fiscal year (not monthly). Flows through the journal/GL
-    engine so it appears in the trial balance, balance sheet, and reports.
+    Entered once per fiscal year (not monthly). A starting snapshot for reports,
+    separate from transaction journals and General Ledger movements.
     """
 
     __tablename__ = "opening_balances"
