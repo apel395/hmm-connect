@@ -18,7 +18,7 @@ from app.services.document_number import next_document_number
 from app.services.journal_service import JournalService
 from app.services.general_ledger import GeneralLedgerService
 from app.services.fiscal_period_service import FiscalPeriodService
-from app.services.location_access import resolve_location_id
+from app.services.location_access import enforce_location_access, resolve_location_id
 
 
 ZERO = Decimal("0.00")
@@ -299,6 +299,7 @@ class OpeningBalanceService:
                 or journal.reference_type != "OPENING_BALANCE"
                 or journal.posting_date.year != journal.reference_id):
             raise HTTPException(409, "Posted opening journal not found")
+        enforce_location_access(user, journal.location_id)
         if not self.db.query(OpeningBalance.id).filter(
             OpeningBalance.journal_entry_id == journal_id,
         ).first():
