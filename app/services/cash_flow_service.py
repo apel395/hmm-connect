@@ -10,6 +10,7 @@ from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.payment import Payment
 from app.models.bank_transfer import BankTransfer
+from app.services.opening_snapshot import opening_snapshot
 
 ZERO=Decimal("0");CASH_TYPES={"CASH","BANK","PETTY_CASH"};CATEGORIES={"OPERATING","INVESTING","FINANCING","UNCLASSIFIED"}
 
@@ -45,7 +46,7 @@ class CashFlowService:
         if active_only:q=q.filter(ChartOfAccount.is_active.is_(True),ChartOfAccount.is_posting.is_(True),ChartOfAccount.account_type=="ASSET")
         return q.order_by(ChartOfAccount.account_number).all()
     def journals(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
-        q=self.db.query(JournalEntry).options(joinedload(JournalEntry.lines).joinedload(JournalLine.account),joinedload(JournalEntry.lines).joinedload(JournalLine.supplier)).filter(JournalEntry.status=="POSTED")
+        q=self.db.query(JournalEntry).options(joinedload(JournalEntry.lines).joinedload(JournalLine.account),joinedload(JournalEntry.lines).joinedload(JournalLine.supplier)).filter(JournalEntry.status=="POSTED",JournalEntry.reference_type.notin_(("OPENING_BALANCE","OPENING_BALANCE_ADJUSTMENT")))
         if date_from:q=q.filter(JournalEntry.posting_date>=date_from)
         if date_to:q=q.filter(JournalEntry.posting_date<=date_to)
         if account_id:q=q.filter(JournalEntry.lines.any(JournalLine.account_id==account_id))
@@ -83,7 +84,12 @@ class CashFlowService:
         return result
     def opening(self,date_from,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
         if not date_from:return ZERO
-        return sum((m["delta"] for m in self.movements(date_to=date_from,account_id=account_id,subtypes=subtypes,location_id=location_id,department_id=department_id,business_unit_id=business_unit_id) if m["date"]<date_from),ZERO)
+        snapshot_date,snapshot=opening_snapshot(self.db,as_of=date_from,location_id=location_id,department_id=department_id,business_unit_id=business_unit_id)
+        cash_accounts={account.id for account in self.cash_accounts(subtypes=subtypes)}
+        if account_id is not None:cash_accounts &= {account_id}
+        starting=sum((debit-credit for aid,(debit,credit) in snapshot.items() if aid in cash_accounts),ZERO)
+        prior=sum((m["delta"] for m in self.movements(date_from=snapshot_date,date_to=date_from,account_id=account_id,subtypes=subtypes,location_id=location_id,department_id=department_id,business_unit_id=business_unit_id) if m["date"]<date_from),ZERO)
+        return starting+prior
     def summary(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
         opening=self.opening(date_from,account_id,subtypes,location_id,department_id,business_unit_id);items=self.movements(date_from,date_to,account_id,subtypes,location_id,department_id,business_unit_id);totals={category:{"inflow":ZERO,"outflow":ZERO} for category in CATEGORIES};inflow=outflow=transfers=ZERO
         seen_transfers=set()
