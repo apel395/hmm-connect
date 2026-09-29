@@ -422,7 +422,8 @@ class FinancialReconciliationService:
         return self._row(
             "INVENTORY", source, gl, self._accounts(account_ids),
             configured=bool(account_ids), detail=detail,
-            variance_breakdown={"posting_mismatch": source - gl},
+            variance_breakdown={"posting_mismatch": source - gl,
+                                "valuation_method": source - sum(ledger_by.values(), ZERO)},
         )
 
     def _snapshot(self, location_id: int | None, as_of: date | None) -> list[dict]:
@@ -462,7 +463,7 @@ class FinancialReconciliationService:
             (row["variance"] for row in items
              if row["status"] == "OUT_OF_BALANCE"), ZERO,
         )
-        return {
+        result = {
             "items": items,
             "summary": {
                 "reconciled": sum(row["status"] == "RECONCILED" for row in items),
@@ -480,6 +481,9 @@ class FinancialReconciliationService:
                 "generated_at": datetime.now(timezone.utc).isoformat(),
             },
             "scope": "DATE_RANGE" if date_from or date_to else "CURRENT_BALANCE",
-            "date_from": date_from, "date_to": date_to,
             "read_only": True,
         }
+        if date_from is not None or date_to is not None:
+            result["date_from"] = date_from
+            result["date_to"] = date_to
+        return result
