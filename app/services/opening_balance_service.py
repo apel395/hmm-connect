@@ -140,7 +140,9 @@ class OpeningBalanceService:
         ledger_lines = []
         for raw in lines:
             account_id = int(raw.get("account_id") or 0)
-            amount = Decimal(raw.get("amount") or 0)
+            amount = Decimal(str(raw.get("amount") or 0))
+            if amount != amount.quantize(Decimal("0.01")):
+                raise HTTPException(400, "Opening balance amounts must have at most two decimals")
             if amount < 0:
                 raise HTTPException(400, "Opening balance amounts cannot be negative")
             if amount == 0:
