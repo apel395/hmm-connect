@@ -175,6 +175,10 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
         payment = db.get(Payment, journal.reference_id)
         if not payment or payment.journal_entry_id != journal.id:
             raise HTTPException(409, "Payment journal is not linked to its source payment")
+        if not payment.allocations or sum((Decimal(row.allocated_amount) for row in payment.allocations), ZERO) != Decimal(payment.amount):
+            raise HTTPException(409, "Payment allocations must match its total before journal posting")
+        if sum((Decimal(row.amount) for row in payment.funding_lines), ZERO) != Decimal(payment.amount):
+            raise HTTPException(409, "Payment funding must match its total before journal posting")
         validate_payment_journal_integrity(db, payment, journal)
 
     apply_source_post_state(db, journal=journal, user=user)
