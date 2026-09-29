@@ -27,7 +27,7 @@ type Overview = {
   };
   inventory: null | {
     stock_lines: number; stock_value: string; reorder_required: number; low_stock: LowStock[];
-    by_account: { account_id: number | null; stock_value: string }[];
+    by_account: { account_id: number | null; account_code: string | null; account_name: string | null; stock_value: string }[];
   };
   finance: null | { ap_outstanding: string; ap_overdue: string; overdue_invoice_count: number };
 };
@@ -150,9 +150,20 @@ export default function DashboardPage() {
               <Link to="/inventory" className="text-sm font-medium text-emerald-700 hover:underline">Explore inventory</Link></div>
             <div className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">{rupiah(stock.stock_value)}</div>
             <p className="mt-1 text-sm text-slate-500">Current stock value across {number(stock.stock_lines)} product and warehouse lines</p>
-            <div className="mt-6 grid grid-cols-2 gap-3 border-t border-slate-100 pt-5">
-              <div><div className="text-xl font-semibold tabular-nums">{number(stock.reorder_required)}</div><div className="text-xs text-slate-500">Below or at minimum</div></div>
-              <div><div className="text-xl font-semibold tabular-nums">{number(stock.by_account.length)}</div><div className="text-xs text-slate-500">Inventory account groups</div></div>
+            <div className="mt-6 border-t border-slate-100 pt-5">
+              <div className="mb-3 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <span>By inventory account</span><span>{number(stock.reorder_required)} reorder alerts</span>
+              </div>
+              <div className="space-y-3">{stock.by_account.slice(0, 4).map((account) => {
+                const total = Number(stock.stock_value);
+                const share = total > 0 ? Math.max(0, Math.min(100, Number(account.stock_value) / total * 100)) : 0;
+                return <div key={account.account_id ?? "unassigned"}>
+                  <div className="flex justify-between gap-3 text-xs"><span className="truncate text-slate-600">{account.account_code ?? "Unassigned"} · {account.account_name ?? "No account"}</span>
+                    <span className="shrink-0 font-semibold tabular-nums text-slate-800">{rupiah(account.stock_value)}</span></div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: share + "%" }} /></div>
+                </div>;
+              })}</div>
+              {stock.by_account.length === 0 && <p className="text-sm text-slate-500">No current inventory valuation.</p>}
             </div>
           </Card>}
           {finance && <Card className="p-5 sm:p-6">
