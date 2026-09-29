@@ -14,6 +14,7 @@ import CurrencyInput from "@/components/form/CurrencyInput";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { getJournal, journalAction, updateJournal } from "./api";
+import { paymentAction } from "@/modules/finance/payments/api";
 import { sourceDocumentPath } from "./sourceDocument";
 
 type EditLine = {
@@ -65,6 +66,15 @@ export default function JournalDetailPage() {
       refresh();
     },
     onError: (error: any) => toast.error(error?.response?.data?.detail || "Journal action failed."),
+  });
+
+  const voidSourcePayment = useMutation({
+    mutationFn: () => paymentAction(Number(q.data?.reference_id), "void"),
+    onSuccess: () => {
+      toast.success("Payment and its draft journal were voided.");
+      refresh();
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.detail || "Payment could not be voided."),
   });
 
   const totals = useMemo(
@@ -135,6 +145,7 @@ export default function JournalDetailPage() {
         {a.can_post && <Button loading={act.isPending} onClick={() => act.mutate("post")}>Post</Button>}
         {a.can_unpost && <Button loading={act.isPending} variant="outline" onClick={confirmUnpost}>Unpost</Button>}
         {a.can_void && <Button variant="danger" loading={act.isPending} onClick={() => act.mutate("void")}>Void</Button>}
+        {a.can_void_source_payment && <Button variant="danger" loading={voidSourcePayment.isPending} onClick={() => { if (window.confirm(`Void payment ${x.reference_number} and its draft journal ${x.journal_number}? This releases the invoice reservation and keeps both records as VOID.`)) voidSourcePayment.mutate(); }}>Void Payment & Journal</Button>}
       </div>
     </div>
     <Card><div className="grid gap-4 md:grid-cols-4"><div><small>Date</small><div>{x.journal_date}</div></div><div><small>Source</small><div>{(x.reference_type || "MANUAL").replaceAll("_", " ")}</div></div><div><small>Reference</small><div>{sourcePath?<Link className="font-medium text-emerald-700 hover:underline" to={sourcePath} state={{returnTo:`/journal-entries/${x.id}`}}>{x.reference_number||"View Source Document"}</Link>:x.reference_number||"—"}</div></div><div><small>Created By</small><div>{x.created_by_name || "—"}</div></div><div className="md:col-span-4"><small>Description</small><div>{x.description || "—"}</div></div></div></Card>
