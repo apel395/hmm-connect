@@ -27,7 +27,8 @@ def db(monkeypatch):
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     monkeypatch.setattr(module, "record_audit", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(module.FiscalPeriodService, "validate_posting_date", lambda **_kwargs: None)
+    monkeypatch.setattr(module.JournalService.post.__func__.__globals__["FiscalPeriodService"], "validate_posting_date", lambda **_kwargs: None)
+    monkeypatch.setattr(module, "next_document_number", lambda *_args, **_kwargs: "OPEN-ADJ-TEST")
     posted = []
     monkeypatch.setattr(module.GeneralLedgerService, "post", lambda **kwargs: posted.append(kwargs))
     session.test_ledger_posts = posted
@@ -52,7 +53,7 @@ def seed(db):
     journal = JournalEntry(
         journal_number="OPEN-TEST", posting_date=date(2026, 1, 1),
         status="POSTED", reference_type="OPENING_BALANCE", reference_id=2026,
-        document_type="OPENING_BALANCE", document_number="OPEN-TEST",
+        document_type="OPENING_BALANCE", document_number="OPEN-TEST", location_id=1,
     )
     journal.lines = [JournalLine(
         account_id=asset.id, debit=Decimal("125.00"), credit=Decimal("0.00"),
@@ -68,37 +69,46 @@ def seed(db):
     return journal.id, liability.id
 
 
-def test_exact_manual_completion_adds_only_chosen_account(db):
+def test_manual_adjustment_keeps_original_and_posts_only_chosen_line(db):
     journal_id, liability_id = seed(db)
-    result = module.OpeningBalanceService(db).complete_imbalance(
+    result = module.OpeningBalanceService(db).post_adjustment(
         user=USER, journal_id=journal_id,
         lines=[{"account_id": liability_id, "amount": "125.00", "balance_type": "CREDIT"}],
         description="Verified opening liability",
     )
-    assert result["difference"] == Decimal("0.00")
-    journal = db.get(JournalEntry, journal_id)
-    assert journal.status == "POSTED"
-    assert sum((line.debit - line.credit for line in journal.lines), Decimal("0")) == 0
-    assert db.query(OpeningBalance).filter(OpeningBalance.journal_entry_id == journal_id).count() == 2
+    original = db.get(JournalEntry, journal_id)
+    adjustment = db.get(JournalEntry, result["journal_id"])
+    assert original.status == "POSTED"
+    assert len(original.lines) == 1
+    assert original.lines[0].debit == Decimal("125.00")
+    assert adjustment.id != original.id
+    assert adjustment.reference_type == "OPENING_BALANCE_ADJUSTMENT"
+    assert adjustment.reference_id == original.id
+    assert len(adjustment.lines) == 1
+    assert adjustment.lines[0].account_id == liability_id
+    assert adjustment.lines[0].credit == Decimal("125.00")
+    assert db.query(OpeningBalance).filter(OpeningBalance.journal_entry_id == journal_id).count() == 1
     assert len(db.test_ledger_posts) == 1
-    assert db.test_ledger_posts[0]["account_id"] == liability_id
+
+
+def test_partial_adjustment_is_recorded_without_system_completion(db):
+    journal_id, liability_id = seed(db)
+    result = module.OpeningBalanceService(db).post_adjustment(
+        user=USER, journal_id=journal_id,
+        lines=[{"account_id": liability_id, "amount": "124.00", "balance_type": "CREDIT"}],
+        description="Confirmed portion only",
+    )
+    assert result["adjustment_difference"] == Decimal("-124.00")
+    assert db.query(JournalLine).filter(JournalLine.journal_entry_id == journal_id).count() == 1
+
+
+def test_adjustment_requires_reason(db):
+    journal_id, liability_id = seed(db)
     with pytest.raises(HTTPException) as error:
-        module.OpeningBalanceService(db).complete_imbalance(
+        module.OpeningBalanceService(db).post_adjustment(
             user=USER, journal_id=journal_id,
             lines=[{"account_id": liability_id, "amount": "125.00", "balance_type": "CREDIT"}],
             description=None,
         )
-    assert error.value.status_code == 409
-
-
-def test_partial_completion_is_rejected_without_writes(db):
-    journal_id, liability_id = seed(db)
-    with pytest.raises(HTTPException) as error:
-        module.OpeningBalanceService(db).complete_imbalance(
-            user=USER, journal_id=journal_id,
-            lines=[{"account_id": liability_id, "amount": "124.00", "balance_type": "CREDIT"}],
-            description=None,
-        )
     assert error.value.status_code == 400
-    assert db.query(JournalLine).filter(JournalLine.journal_entry_id == journal_id).count() == 1
-    assert len(db.test_ledger_posts) == 0
+    assert db.query(JournalEntry).count() == 1
