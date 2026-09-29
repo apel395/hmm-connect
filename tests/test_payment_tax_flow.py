@@ -6,11 +6,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.api.v1.payments import create, eligible, listing, invoice_balance, reserved_amount
+from app.api.v1.payments import create, eligible, listing, result, invoice_balance, reserved_amount
 from app.models import Base
 from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
 from app.models.purchase_order import PurchaseOrder
+from app.models.payment import Payment
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.schemas.payment import PaymentCreate
@@ -109,3 +110,33 @@ def test_tax_inclusive_invoice_remains_unchanged_when_payment_draft_is_created(d
         location_id=None, db=db, user=ADMIN,
     )
     assert payments["summary"]["total_amount"] == Decimal("111")
+
+    # Posted payments have already reduced the invoice's outstanding balance.
+    # Their own allocation must not show as a new availability exception.
+    posted = db.get(Payment, payment["id"])
+    posted.status = "POSTED"
+    invoice.paid_amount = Decimal("111")
+    db.commit()
+    posted_view = result(db, posted, ADMIN)
+    assert posted_view["allocation_exception"] is False
+    assert posted_view["allocations"][0]["current_available_balance"] == Decimal("111")
+
+    # A reopened draft must reflect a different approved payment's reservation.
+    posted.status = "DRAFT"
+    invoice.paid_amount = Decimal("0")
+    db.commit()
+    other = create(
+        data=PaymentCreate(
+            supplier_id=supplier.id, payment_date=date(2026, 9, 29),
+            total_amount=Decimal("111"),
+            allocations=[{"supplier_invoice_id": invoice.id, "allocated_amount": "111"}],
+            funding_lines=[{"bank_account_id": bank.id, "amount": "111"}],
+        ),
+        db=db, user=ADMIN,
+    )
+    db.get(Payment, other["id"]).status = "APPROVED"
+    db.commit()
+    reopened_view = result(db, posted, ADMIN)
+    assert reopened_view["allocation_exception"] is True
+    assert reopened_view["allocations"][0]["current_reserved_amount"] == Decimal("111")
+    assert reopened_view["allocations"][0]["current_available_balance"] == Decimal("0")

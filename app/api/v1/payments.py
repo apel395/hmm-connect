@@ -376,12 +376,17 @@ def result(db, payment, user):
         current_total = Decimal(invoice.total_amount or 0)
         current_paid = Decimal(invoice.paid_amount or 0)
         current_outstanding = invoice_balance(invoice)
-        current_available = max(
-            ZERO,
-            current_outstanding - reserved_amount(db, invoice.id, payment.id),
-        )
+        other_reservations = reserved_amount(db, invoice.id, payment.id)
         allocated = Decimal(row["allocated_amount"] or 0)
-        exception = "ALLOCATION_EXCEEDS_CURRENT_AVAILABLE" if allocated > current_available else None
+        # A posted payment already reduced paid_amount. Add back its own
+        # allocation to assess whether it was valid at posting time.
+        available_for_payment = current_outstanding + (allocated if payment.status == "POSTED" else ZERO)
+        current_available = max(ZERO, available_for_payment - other_reservations)
+        exception = (
+            "ALLOCATION_EXCEEDS_CURRENT_AVAILABLE"
+            if payment.status in {"DRAFT", "APPROVED"} and allocated > current_available
+            else None
+        )
 
         row["current_invoice_total"] = current_total
         row["current_invoice_subtotal"] = invoice.subtotal
@@ -391,6 +396,7 @@ def result(db, payment, user):
         row["current_paid_amount"] = current_paid
         row["current_outstanding_balance"] = current_outstanding
         row["current_available_balance"] = current_available
+        row["current_reserved_amount"] = other_reservations
         row["allocation_exception"] = exception
 
         if exception:
