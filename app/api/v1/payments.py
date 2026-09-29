@@ -925,6 +925,14 @@ def void(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_ma
         raise HTTPException(409, "Posted payments require a reversal and cannot be voided")
     if payment.status == "VOID":
         raise HTTPException(409, "Payment is already void")
+    if payment.journal_entry_id:
+        journal = payment.journal_entry
+        if not journal or journal.reference_type != "SUPPLIER_PAYMENT" or journal.reference_id != payment.id:
+            raise HTTPException(409, "Payment journal link is invalid")
+        if journal.status == "POSTED":
+            raise HTTPException(409, "Posted payment journal must be unposted before voiding the payment")
+        if journal.status not in {"DRAFT", "VOID"}:
+            raise HTTPException(409, f"Payment journal is {journal.status} and cannot be voided")
     payment.status = "VOID"
     payment.voided_at = datetime.now(timezone.utc)
     if payment.journal_entry and payment.journal_entry.status == "DRAFT":
