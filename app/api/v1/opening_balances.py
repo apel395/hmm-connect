@@ -83,6 +83,25 @@ def submit(
     )
 
 
+class OpeningBalanceCompletion(BaseModel):
+    description: str | None = None
+    lines: list[OpeningLine]
+
+
+@router.post("/complete/{journal_id}")
+def complete_imbalance(
+    journal_id: int,
+    data: OpeningBalanceCompletion,
+    db: Session = Depends(get_db),
+    user=Depends(journal_manage_user),
+):
+    return OpeningBalanceService(db).complete_imbalance(
+        user=user, journal_id=journal_id,
+        lines=[line.model_dump() for line in data.lines],
+        description=data.description,
+    )
+
+
 @router.delete("")
 def void(
     fiscal_year: int = Query(...),
