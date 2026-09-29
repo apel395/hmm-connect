@@ -8,14 +8,15 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.v1 import payments, supplier_invoices
 from app.models import Base
+from app.models.account_payable import AccountPayable
 from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
 from app.models.general_ledger import GeneralLedger
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
-from app.models.payment import Payment, PaymentFundingLine
+from app.models.payment import Payment, PaymentAllocation, PaymentFundingLine
 from app.models.supplier import Supplier
-from app.models.supplier_invoice import SupplierInvoice
+from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.services.fiscal_period_service import FiscalPeriodService
 
 
@@ -133,3 +134,59 @@ def test_invoice_unpost_then_reopen_voids_old_journal(db, monkeypatch):
     assert supplier_invoices.admin_reopen(invoice.id, db=db, user=ADMIN)["status"] == "DRAFT"
     db.refresh(journal)
     assert journal.status == "VOID"
+
+
+def test_cancel_posted_payment_restores_invoice_and_ap_last_payment_date(db):
+    payable_account = _account(db, "PAY-AP-2", "LIABILITY")
+    cash_account = _account(db, "PAY-BANK-2", "ASSET", "BANK")
+    supplier = Supplier(code="PAY-RESTORE", name="Supplier", is_active=True)
+    db.add(supplier)
+    db.flush()
+    bank = BankAccount(
+        bank_name="Second Bank", account_name="Operating", account_number="PAY-RESTORE-BANK",
+        coa_account_id=cash_account.id, business_unit_id=1,
+        is_active=True, is_payment_account=True,
+    )
+    db.add(bank)
+    db.flush()
+    invoice = SupplierInvoice(
+        internal_invoice_number="PAY-RESTORE-INV", supplier_invoice_number="RESTORE",
+        supplier_id=supplier.id, invoice_date=date(2026, 9, 1),
+        subtotal=Decimal("100"), tax_amount=Decimal("11"),
+        total_amount=Decimal("111"), paid_amount=Decimal("111"),
+        balance_amount=Decimal("0"), status="POSTED", location_id=1,
+    )
+    invoice.lines = [SupplierInvoiceLine(
+        description="Taxable supply", quantity=1, unit_price=Decimal("100"),
+        line_amount=Decimal("100"), is_taxable=True,
+        tax_rate=Decimal("11"), tax_amount=Decimal("11"),
+    )]
+    db.add(invoice)
+    db.flush()
+    mirror = AccountPayable(
+        supplier_id=supplier.id, invoice_number=invoice.internal_invoice_number,
+        amount=Decimal("111"), paid_amount=Decimal("111"),
+        outstanding_amount=Decimal("0"), status="PAID", payment_status="PAID",
+        last_payment_date=date(2026, 9, 29),
+    )
+    db.add(mirror)
+    payment = Payment(
+        payment_number="PAY-RESTORE-1", supplier_id=supplier.id,
+        payment_date=date(2026, 9, 29), amount=Decimal("111"),
+        payment_method="BANK_TRANSFER", status="POSTED", created_by_id=1, location_id=1,
+    )
+    payment.allocations = [PaymentAllocation(supplier_invoice_id=invoice.id, allocated_amount=Decimal("111"))]
+    payment.funding_lines = [PaymentFundingLine(bank_account_id=bank.id, amount=Decimal("111"))]
+    db.add(payment)
+    db.flush()
+    journal = _journal(db, "SUPPLIER_PAYMENT", payment.id, payment.payment_number, payable_account.id, cash_account.id)
+    payment.journal_entry_id = journal.id
+    db.commit()
+
+    payments.cancel_posted(payment.id, db=db, user=ADMIN)
+    db.refresh(invoice)
+    db.refresh(mirror)
+    assert invoice.paid_amount == Decimal("0")
+    assert invoice.balance_amount == Decimal("111")
+    assert mirror.outstanding_amount == Decimal("111")
+    assert mirror.last_payment_date is None
