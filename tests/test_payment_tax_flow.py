@@ -12,7 +12,7 @@ from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
 from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
-from app.models.supplier_invoice import SupplierInvoice
+from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.schemas.payment import PaymentCreate
 from app.schemas.supplier_invoice import SupplierInvoiceInput
 
@@ -68,6 +68,11 @@ def test_tax_inclusive_invoice_remains_unchanged_when_payment_draft_is_created(d
         total_amount=Decimal("111"), paid_amount=Decimal("0"),
         balance_amount=Decimal("111"), status="POSTED",
     )
+    invoice.lines.append(SupplierInvoiceLine(
+        description="Taxable supply", quantity=Decimal("1"), unit_price=Decimal("100"),
+        line_amount=Decimal("100"), is_taxable=True, tax_rate=Decimal("11"),
+        tax_amount=Decimal("11"),
+    ))
     db.add(invoice)
     db.commit()
     db.refresh(invoice)
