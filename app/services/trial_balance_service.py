@@ -183,7 +183,19 @@ class TrialBalanceService:
             "closing_balance": sum((row["closing_balance"] for row in rows), ZERO),
         }
         summary["difference"] = summary["period_debit"] - summary["period_credit"]
-        summary["is_balanced"] = summary["difference"] == ZERO
+        # Assess the complete posted ledger within the date/location scope. A
+        # search or account filter is only a view and must not change this check.
+        opening_debit = sum((debit for debit, _ in opening.values()), ZERO)
+        opening_credit = sum((credit for _, credit in opening.values()), ZERO)
+        period_debit_all = sum((debit for debit, _ in period.values()), ZERO)
+        period_credit_all = sum((credit for _, credit in period.values()), ZERO)
+        summary["opening_debit"] = opening_debit
+        summary["opening_credit"] = opening_credit
+        summary["opening_difference"] = opening_debit - opening_credit
+        summary["closing_difference"] = (
+            opening_debit + period_debit_all - opening_credit - period_credit_all
+        )
+        summary["is_balanced"] = summary["closing_difference"] == ZERO
         summary["account_count"] = len(rows)
         summary["abnormal_balance_count"] = sum(row["is_abnormal_balance"] for row in rows)
 
