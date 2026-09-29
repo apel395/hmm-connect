@@ -404,6 +404,16 @@ class FinancialReconciliationService:
         gl_by = self._gl_by_account(account_ids, location_id, as_of)
         source = sum(valuation_by.values(), ZERO)
         gl = sum(gl_by.values(), ZERO)
+        raw_valuation_query = self.db.query(func.coalesce(func.sum(
+            Inventory.quantity * Inventory.average_cost
+        ), 0))
+        if location_id is not None:
+            raw_valuation_query = raw_valuation_query.join(
+                Warehouse, Warehouse.id == Inventory.warehouse_id
+            ).filter(Warehouse.location_id == location_id)
+        raw_valuation = Decimal(raw_valuation_query.scalar() or 0)
+        # Preserve visibility of stock whose product has no inventory account.
+        unmapped_stock = raw_valuation - sum(self._inventory_valuation(location_id).values(), ZERO)
         account_meta = self._accounts_by_id(account_ids)
         detail = []
         for account_id in sorted(account_ids, key=lambda aid: (
@@ -423,7 +433,8 @@ class FinancialReconciliationService:
             "INVENTORY", source, gl, self._accounts(account_ids),
             configured=bool(account_ids), detail=detail,
             variance_breakdown={"posting_mismatch": source - gl,
-                                "valuation_method": source - sum(ledger_by.values(), ZERO)},
+                                "valuation_method": raw_valuation - sum(ledger_by.values(), ZERO),
+                                "unmapped_stock": unmapped_stock},
         )
 
     def _snapshot(self, location_id: int | None, as_of: date | None) -> list[dict]:
