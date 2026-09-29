@@ -1,13 +1,15 @@
 from decimal import Decimal
 
 import pytest
-from fastapi import HTTPException
+from types import SimpleNamespace
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base
 from app.models.chart_of_account import ChartOfAccount
 from app.models.opening_balance import OpeningBalance
+from app.models.journal_entry import JournalEntry
+from app.services import opening_balance_service as module
 from app.services.opening_balance_service import OpeningBalanceService
 
 
@@ -55,19 +57,26 @@ def test_opening_preview_shows_unbalanced_input_without_generated_equity(db):
     assert equity.id not in [line["account_id"] for line in preview["lines"]]
 
 
-def test_opening_post_rejects_unbalanced_input_without_writing(db):
+def test_opening_post_keeps_user_entered_imbalance(db, monkeypatch):
     asset = account(db, "100-TEST", "ASSET", "DEBIT")
-    with pytest.raises(HTTPException) as error:
-        OpeningBalanceService(db).post(
-            user=None,
-            fiscal_year=2026,
-            location_id=None,
-            lines=[{"account_id": asset.id, "amount": "125.00", "balance_type": "DEBIT"}],
-            description=None,
-        )
-    assert error.value.status_code == 400
-    assert "manually before posting" in error.value.detail
-    assert db.query(OpeningBalance).count() == 0
+    monkeypatch.setattr(module, "resolve_location_id", lambda *_args: 1)
+    monkeypatch.setattr(module, "next_document_number", lambda *_args, **_kwargs: "OPEN-TEST")
+    monkeypatch.setattr(module, "record_audit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(module.JournalService.post.__func__.__globals__["FiscalPeriodService"], "validate_posting_date", lambda **_kwargs: None)
+    monkeypatch.setattr(module.JournalService.post.__func__.__globals__["GeneralLedgerService"], "post", lambda **_kwargs: None)
+    result = OpeningBalanceService(db).post(
+        user=SimpleNamespace(id=1), fiscal_year=2026, location_id=1,
+        lines=[{"account_id": asset.id, "amount": "125.00", "balance_type": "DEBIT"}],
+        description="Opening figures verified",
+    )
+    journal = db.get(JournalEntry, result["journal_id"])
+    assert result["difference"] == Decimal("125.00")
+    assert result["total_credit"] == Decimal("0.00")
+    assert journal.reference_type == "OPENING_BALANCE"
+    assert len(journal.lines) == 1
+    assert journal.lines[0].account_id == asset.id
+    assert journal.lines[0].debit == Decimal("125.00")
+    assert db.query(OpeningBalance).count() == 1
 
 
 def test_opening_preview_accepts_manually_entered_equity(db):
