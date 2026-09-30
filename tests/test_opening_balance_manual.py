@@ -190,3 +190,33 @@ def test_opening_initial_save_requires_open_year(db, monkeypatch):
         )
     assert closed.value.status_code == 400
     assert db.query(OpeningBalance).count() == 0
+
+
+def test_saved_inactive_account_stays_in_form_and_can_be_revised(db, monkeypatch):
+    asset = account(db, "100-TEST", "ASSET", "DEBIT")
+    open_year(db)
+    monkeypatch.setattr(module, "resolve_location_id", lambda *_args: 1)
+    monkeypatch.setattr(module, "record_audit", lambda *_args, **_kwargs: None)
+    service = OpeningBalanceService(db)
+    user = SimpleNamespace(id=1)
+    service.post(
+        user=user, fiscal_year=2026, location_id=1,
+        lines=[{"account_id": asset.id, "amount": "125.00", "balance_type": "DEBIT"}],
+        description=None,
+    )
+
+    asset.is_active = False
+    asset.is_posting = False
+    db.commit()
+    visible = service.accounts(fiscal_year=2026, location_id=None)["items"]
+    assert len(visible) == 1
+    assert visible[0]["existing_debit"] == Decimal("125.00")
+
+    version = service.list_entries(fiscal_year=2026, location_id=None)["snapshot_version"]
+    service.revise(
+        user=user, fiscal_year=2026, location_id=1, expected_version=version,
+        lines=[{"account_id": asset.id, "amount": "175.00", "balance_type": "DEBIT"}],
+        description=None,
+    )
+    assert db.query(OpeningBalance).one().amount == Decimal("175.00")
+    assert db.query(JournalEntry).count() == 0
