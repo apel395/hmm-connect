@@ -170,9 +170,6 @@ class OpeningBalanceService:
                 raise HTTPException(400, "Opening balance amounts cannot be negative")
             if amount == 0:
                 continue
-            if account_id in seen_accounts:
-                raise HTTPException(400, f"Duplicate opening balance for account {account_id}")
-            seen_accounts.add(account_id)
             account = self.db.get(ChartOfAccount, account_id)
             if account is None:
                 raise HTTPException(404, f"Account {account_id} not found")
@@ -189,6 +186,10 @@ class OpeningBalanceService:
             balance_type = (raw.get("balance_type") or account.normal_balance).upper()
             if balance_type not in ("DEBIT", "CREDIT"):
                 raise HTTPException(400, f"Invalid balance type {balance_type}")
+            key = (account_id, balance_type)
+            if key in seen_accounts:
+                raise HTTPException(400, f"Duplicate opening balance for account {account_id} on {balance_type}")
+            seen_accounts.add(key)
             if balance_type == "DEBIT":
                 total_debit += amount
             else:
