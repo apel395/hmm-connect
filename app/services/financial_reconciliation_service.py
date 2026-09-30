@@ -2,25 +2,33 @@ from datetime import date, datetime, timedelta, timezone
 
 from decimal import Decimal
 
-from sqlalchemy import case, func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from app.models.account_receivable import AccountReceivable
+from app.models.accounting_setting import AccountingSetting
 from app.models.accounting_posting_rule import AccountingPostingRule
 from app.models.chart_of_account import ChartOfAccount
 from app.models.inventory import Inventory
 from app.models.warehouse import Warehouse
 from app.models.stock_movement import StockMovement
-from app.models.goods_receipt import GoodsReceipt
+from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
 from app.models.product import Product
 from app.models.payment import Payment, PaymentAllocation
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
-from app.models.supplier_invoice import SupplierInvoice
+from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.services.opening_snapshot import opening_snapshot
 
 ZERO = Decimal("0.00")
+CENT = Decimal("0.01")
+OPENING_JOURNAL_TYPES = ("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")
+
+
+def _operational_journal():
+    return or_(JournalEntry.reference_type.is_(None),
+               JournalEntry.reference_type.notin_(OPENING_JOURNAL_TYPES))
 
 
 def _status_for(difference: Decimal, configured: bool) -> str:
@@ -75,7 +83,7 @@ class FinancialReconciliationService:
             .filter(
                 ChartOfAccount.id.in_(account_ids),
                 JournalEntry.status == "POSTED",
-                JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")),
+                _operational_journal(),
             )
             .group_by(ChartOfAccount.id, ChartOfAccount.normal_balance)
         )
@@ -171,6 +179,31 @@ class FinancialReconciliationService:
                 result.get(product.inventory_account_id, ZERO) + value
             )
         return {key: value.quantize(Decimal("0.01")) for key, value in result.items()}
+
+    def _unmapped_inventory_value(self, location_id: int | None = None,
+                                  as_of: date | None = None) -> Decimal:
+        """Value only products lacking a stock COA; rounding is never an unmapped item."""
+        query = (self.db.query(Inventory)
+                 .join(Product, Product.id == Inventory.product_id)
+                 .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
+                 .filter(Product.inventory_account_id.is_(None)))
+        if location_id is not None:
+            query = query.filter(Warehouse.location_id == location_id)
+        value = sum((Decimal(item.quantity or 0) * Decimal(item.average_cost or 0)
+                     for item in query.all()), ZERO)
+        if as_of is not None:
+            signed = case((StockMovement.movement_type == "OUT", -StockMovement.quantity),
+                          else_=StockMovement.quantity) * StockMovement.unit_cost
+            later = (self.db.query(func.coalesce(func.sum(signed), 0))
+                     .join(Product, Product.id == StockMovement.product_id)
+                     .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
+                     .filter(Product.inventory_account_id.is_(None),
+                             self._movement_date() > as_of))
+            if location_id is not None:
+                later = (later.join(Warehouse, Warehouse.id == StockMovement.warehouse_id)
+                         .filter(Warehouse.location_id == location_id))
+            value -= Decimal(later.scalar() or 0)
+        return value.quantize(CENT)
 
     def _accounts(self, account_ids: list[int]) -> list[dict]:
         if not account_ids:
@@ -273,7 +306,9 @@ class FinancialReconciliationService:
         allocated = (self.db.query(
             PaymentAllocation.payment_id,
             func.coalesce(func.sum(PaymentAllocation.allocated_amount), 0).label("amount"),
-        ).group_by(PaymentAllocation.payment_id).subquery())
+        ).join(SupplierInvoice, SupplierInvoice.id == PaymentAllocation.supplier_invoice_id)
+         .filter(SupplierInvoice.status == "POSTED")
+         .group_by(PaymentAllocation.payment_id).subquery())
         query = (self.db.query(Payment, allocated.c.amount)
                  .outerjoin(allocated, allocated.c.payment_id == Payment.id)
                  .filter(Payment.status == "POSTED"))
@@ -315,6 +350,157 @@ class FinancialReconciliationService:
             JournalEntry.posting_date.desc(), JournalLine.id.desc()
         ).limit(100).all()]
 
+    def _ap_documents(self, account_ids: list[int], location_id: int | None,
+                      as_of: date | None, closing_source: Decimal) -> tuple[list[dict], dict]:
+        """Bridge posted invoices and allocated payments to AP journal lines.
+
+        Opening AP has no supplier subledger in this installation, so its
+        journal impact is displayed separately instead of inventing invoices.
+        """
+        if not account_ids:
+            return [], {}
+        invoices = self.db.query(SupplierInvoice).filter(SupplierInvoice.status == "POSTED")
+        if location_id is not None:
+            invoices = invoices.filter(SupplierInvoice.location_id == location_id)
+        if as_of is not None:
+            invoices = invoices.filter(SupplierInvoice.invoice_date <= as_of)
+        invoice_rows = invoices.order_by(SupplierInvoice.invoice_date, SupplierInvoice.id).all()
+        invoice_ids = [invoice.id for invoice in invoice_rows]
+
+        allocated_by_payment: dict[int, Decimal] = {}
+        if invoice_ids:
+            allocations = (self.db.query(PaymentAllocation, Payment)
+                           .join(Payment, Payment.id == PaymentAllocation.payment_id)
+                           .filter(PaymentAllocation.supplier_invoice_id.in_(invoice_ids),
+                                   Payment.status == "POSTED"))
+            if as_of is not None:
+                allocations = allocations.filter(Payment.payment_date <= as_of)
+            for allocation, payment in allocations.all():
+                allocated_by_payment[payment.id] = (
+                    allocated_by_payment.get(payment.id, ZERO)
+                    + Decimal(allocation.allocated_amount or 0)
+                )
+
+        payments = self.db.query(Payment).filter(Payment.status == "POSTED")
+        if location_id is not None:
+            payments = payments.filter(Payment.location_id == location_id)
+        if as_of is not None:
+            payments = payments.filter(Payment.payment_date <= as_of)
+        payment_by_id = {payment.id: payment for payment in payments.all()}
+        # Cross-location allocations still affect the invoice source. Show
+        # the payment even when its own location differs from this GL scope.
+        if allocated_by_payment:
+            for payment in self.db.query(Payment).filter(
+                    Payment.id.in_(allocated_by_payment)).all():
+                payment_by_id.setdefault(payment.id, payment)
+
+        snapshot_date, snapshot = opening_snapshot(
+            self.db, as_of=as_of or date.today(), location_id=location_id,
+        )
+        normals = {row.id: row.normal_balance for row in self.db.query(ChartOfAccount)
+                   .filter(ChartOfAccount.id.in_(account_ids)).all()}
+        journal_query = (self.db.query(JournalEntry, JournalLine)
+                         .join(JournalLine, JournalLine.journal_entry_id == JournalEntry.id)
+                         .filter(JournalEntry.status == "POSTED",
+                                 JournalLine.account_id.in_(account_ids),
+                                 _operational_journal()))
+        if snapshot_date is not None:
+            journal_query = journal_query.filter(JournalEntry.posting_date >= snapshot_date)
+        if as_of is not None:
+            journal_query = journal_query.filter(JournalEntry.posting_date <= as_of)
+        if location_id is not None:
+            journal_query = journal_query.filter(JournalLine.location_id == location_id)
+        by_journal: dict[int, dict] = {}
+        for journal, line in journal_query.all():
+            signed = (Decimal(line.credit or 0) - Decimal(line.debit or 0)
+                      if normals[line.account_id] == "CREDIT"
+                      else Decimal(line.debit or 0) - Decimal(line.credit or 0))
+            if journal.id not in by_journal:
+                by_journal[journal.id] = {"journal": journal, "gl": ZERO}
+            by_journal[journal.id]["gl"] += signed
+
+        used_journals: set[int] = set()
+        documents: list[dict] = []
+
+        def linked(reference_types: tuple[str, ...], document_id: int) -> tuple[Decimal, list[int]]:
+            matches = [item for item in by_journal.values()
+                       if item["journal"].reference_type in reference_types
+                       and item["journal"].reference_id == document_id]
+            ids = [item["journal"].id for item in matches]
+            used_journals.update(ids)
+            return sum((item["gl"] for item in matches), ZERO), ids
+
+        source_activity = ZERO
+        for invoice in invoice_rows:
+            source_amount = Decimal(invoice.total_amount or 0) - Decimal(invoice.adjustment_amount or 0)
+            source_activity += source_amount
+            gl_amount, journal_ids = linked(("SUPPLIER_INVOICE",), invoice.id)
+            documents.append({
+                "kind": "INVOICE", "document_id": invoice.id,
+                "document_number": invoice.internal_invoice_number,
+                "date": invoice.invoice_date, "supplier_id": invoice.supplier_id,
+                "source_amount": source_amount, "gl_amount": gl_amount,
+                "difference": source_amount - gl_amount,
+                "journal_ids": journal_ids,
+            })
+
+        for payment in payment_by_id.values():
+            source_amount = -allocated_by_payment.get(payment.id, ZERO)
+            source_activity += source_amount
+            gl_amount, journal_ids = linked(("SUPPLIER_PAYMENT", "PAYMENT"), payment.id)
+            documents.append({
+                "kind": "PAYMENT", "document_id": payment.id,
+                "document_number": payment.payment_number,
+                "date": payment.payment_date, "supplier_id": payment.supplier_id,
+                "source_amount": source_amount, "gl_amount": gl_amount,
+                "difference": source_amount - gl_amount,
+                "journal_ids": journal_ids,
+            })
+
+        for journal_id, item in by_journal.items():
+            if journal_id in used_journals:
+                continue
+            journal = item["journal"]
+            documents.append({
+                "kind": "GL_ONLY_JOURNAL", "document_id": journal_id,
+                "document_number": journal.document_number or journal.journal_number,
+                "date": journal.posting_date, "supplier_id": None,
+                "source_amount": ZERO, "gl_amount": item["gl"],
+                "difference": -item["gl"], "journal_ids": [journal_id],
+                "reference_type": journal.reference_type,
+            })
+
+        drift = closing_source - source_activity
+        if drift != ZERO:
+            documents.append({
+                "kind": "SOURCE_BALANCE_DRIFT", "document_id": None,
+                "document_number": "Invoice balance fields", "date": None,
+                "supplier_id": None, "source_amount": drift,
+                "gl_amount": ZERO, "difference": drift, "journal_ids": [],
+            })
+
+        opening_gl = ZERO
+        for account_id, (debit, credit) in snapshot.items():
+            if account_id in normals:
+                opening_gl += (credit - debit if normals[account_id] == "CREDIT"
+                               else debit - credit)
+        if opening_gl != ZERO:
+            documents.append({
+                "kind": "OPENING_GL", "document_id": None,
+                "document_number": f"Opening {snapshot_date.year}",
+                "date": snapshot_date, "supplier_id": None,
+                "source_amount": None, "gl_amount": opening_gl,
+                "difference": -opening_gl, "journal_ids": [],
+            })
+        documents.sort(key=lambda item: (abs(item["difference"]),
+                                         item["date"] or date.min), reverse=True)
+        return documents, {
+            "source_activity": source_activity,
+            "source_balance_drift": drift,
+            "opening_gl": opening_gl,
+            "document_difference_total": sum((item["difference"] for item in documents), ZERO),
+        }
+
     def accounts_payable(self, location_id: int | None = None,
                          as_of: date | None = None) -> dict:
         source_query = self.db.query(func.coalesce(func.sum(SupplierInvoice.balance_amount), 0)).filter(
@@ -352,10 +538,16 @@ class FinancialReconciliationService:
         row = self._row("ACCOUNTS_PAYABLE", source, gl, self._accounts(account_ids),
                         configured=bool(account_ids),
                         variance_breakdown={"posting_mismatch": source - gl})
+        row["ap_documents"], row["ap_document_summary"] = self._ap_documents(
+            account_ids, location_id, as_of, source,
+        )
         row["exceptions"] = self._unallocated_payments(location_id, as_of)
+        if row["ap_document_summary"].get("opening_gl"):
+            row["note"] = ("GL includes a manual opening AP balance. Supplier-level opening "
+                           "payables are unavailable; review opening separately from 2026 activity.")
         if as_of is not None:
-            row["note"] = ("Dated AP source uses posted invoice totals and payment allocations; "
-                           "undated invoice adjustments have no historical effective date.")
+            row["note"] = (row.get("note", "") + " Dated AP uses invoice totals and posted "
+                           "allocations; invoice adjustments have no historical effective date.").strip()
         return row
 
     def accounts_receivable(self, location_id: int | None = None,
@@ -386,23 +578,79 @@ class FinancialReconciliationService:
 
     def clearing_suspense(self, location_id: int | None = None,
                           as_of: date | None = None) -> dict:
-        rows = (self.db.query(ChartOfAccount)
-                .filter(ChartOfAccount.account_name.ilike("%suspense%"),
-                        ChartOfAccount.is_active.is_(True))
-                .order_by(ChartOfAccount.account_number).all())
-        account_ids = [row.id for row in rows]
-        gl_by = self._gl_by_account(account_ids, location_id, as_of)
-        gl = sum(gl_by.values(), ZERO)
-        accounts = self._accounts(account_ids)
+        setting = (self.db.query(AccountingSetting)
+                   .filter(AccountingSetting.setting_key == "AP_SUSPENSE_ACCOUNT").first())
+        account = self.db.get(ChartOfAccount, setting.account_id) if setting else None
+        if not account or not account.is_active:
+            row = self._row("CLEARING_SUSPENSE", ZERO, ZERO, [], configured=False)
+            row["note"] = "Map an active AP Suspense account before reconciling receipts."
+            return row
+
+        receipts = (self.db.query(GoodsReceipt)
+                    .filter(GoodsReceipt.status == "POSTED",
+                            func.date(GoodsReceipt.received_at) >= date(2026, 1, 1)))
+        if as_of is not None:
+            receipts = receipts.filter(func.date(GoodsReceipt.received_at) <= as_of)
+        if location_id is not None:
+            receipts = receipts.filter(GoodsReceipt.location_id == location_id)
+        receipt_rows = receipts.order_by(GoodsReceipt.received_at, GoodsReceipt.id).all()
+        receipt_ids = [receipt.id for receipt in receipt_rows]
+        received = {}
+        invoiced = {}
+        invoice_numbers: dict[int, set[str]] = {}
+        if receipt_ids:
+            for receipt_id, quantity, unit_cost in (self.db.query(
+                    GoodsReceiptItem.goods_receipt_id, GoodsReceiptItem.quantity,
+                    GoodsReceiptItem.unit_cost)
+                    .filter(GoodsReceiptItem.goods_receipt_id.in_(receipt_ids)).all()):
+                received[receipt_id] = (received.get(receipt_id, ZERO)
+                                        + Decimal(quantity or 0) * Decimal(unit_cost or 0))
+            invoice_lines = (self.db.query(SupplierInvoiceLine, SupplierInvoice,
+                                           GoodsReceiptItem.goods_receipt_id)
+                             .join(SupplierInvoice, SupplierInvoice.id == SupplierInvoiceLine.supplier_invoice_id)
+                             .join(GoodsReceiptItem, GoodsReceiptItem.id == SupplierInvoiceLine.goods_receipt_item_id)
+                             .filter(SupplierInvoice.status == "POSTED",
+                                     GoodsReceiptItem.goods_receipt_id.in_(receipt_ids)))
+            if as_of is not None:
+                invoice_lines = invoice_lines.filter(SupplierInvoice.invoice_date <= as_of)
+            if location_id is not None:
+                invoice_lines = invoice_lines.filter(SupplierInvoice.location_id == location_id)
+            for line, invoice, receipt_id in invoice_lines.all():
+                invoiced[receipt_id] = (invoiced.get(receipt_id, ZERO)
+                                        + Decimal(line.line_amount or 0))
+                invoice_numbers.setdefault(receipt_id, set()).add(invoice.internal_invoice_number)
+
+        evidence = []
+        source = ZERO
+        for receipt in receipt_rows:
+            gross = received.get(receipt.id, ZERO).quantize(CENT)
+            cleared = invoiced.get(receipt.id, ZERO).quantize(CENT)
+            outstanding = gross - cleared
+            source += outstanding
+            if outstanding != ZERO:
+                evidence.append({
+                    "receipt_id": receipt.id, "receipt_number": receipt.receipt_number,
+                    "date": receipt.received_at.date(), "supplier_id": receipt.supplier_id,
+                    "received_amount": gross, "invoiced_amount": cleared,
+                    "outstanding_amount": outstanding,
+                    "invoice_numbers": sorted(invoice_numbers.get(receipt.id, set())),
+                })
+
+        gl = self._gl_balance([account.id], location_id, as_of)
+        accounts = self._accounts([account.id])
         row = self._row(
-            "CLEARING_SUSPENSE", ZERO, gl, accounts, configured=bool(account_ids),
-            detail=[self._detail_row(
-                f"CLR_{acc['account_code']}", ZERO,
-                gl_by.get(acc["account_id"], ZERO), account=acc,
-            ) for acc in accounts],
-            variance_breakdown={"uncleared_amount": gl},
+            "CLEARING_SUSPENSE", source, gl, accounts,
+            detail=[self._detail_row(f"CLR_{accounts[0]['account_code']}",
+                                     source, gl, account=accounts[0])],
+            variance_breakdown={"receipt_accrual_difference": source - gl},
         )
-        row["exceptions"] = self._suspense_journals(account_ids, location_id, as_of)
+        if row["status"] == "RECONCILED" and source != ZERO:
+            row.update(status="OPEN_ITEMS", visual="AMBER")
+        row["receipt_evidence"] = evidence
+        row["exceptions"] = self._suspense_journals([account.id], location_id, as_of)
+        if source != ZERO:
+            row["note"] = ("Open receipt accrual is expected until matching invoices clear it. "
+                           "Compare each receipt with the posted AP Suspense balance.")
         return row
 
     def inventory(self, location_id: int | None = None,
@@ -434,30 +682,9 @@ class FinancialReconciliationService:
         gl_by = self._gl_by_account(account_ids, location_id, as_of)
         source = sum(valuation_by.values(), ZERO)
         gl = sum(gl_by.values(), ZERO)
-        raw_valuation_query = self.db.query(func.coalesce(func.sum(
-            Inventory.quantity * Inventory.average_cost
-        ), 0))
-        if location_id is not None:
-            raw_valuation_query = raw_valuation_query.join(
-                Warehouse, Warehouse.id == Inventory.warehouse_id
-            ).filter(Warehouse.location_id == location_id)
-        raw_valuation = Decimal(raw_valuation_query.scalar() or 0)
-        if as_of is not None:
-            signed_qty = case(
-                (StockMovement.movement_type == "OUT", -StockMovement.quantity),
-                else_=StockMovement.quantity,
-            )
-            later_value_query = (self.db.query(func.coalesce(func.sum(
-                signed_qty * StockMovement.unit_cost
-            ), 0)).outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
-             .filter(self._movement_date() > as_of))
-            if location_id is not None:
-                later_value_query = later_value_query.join(
-                    Warehouse, Warehouse.id == StockMovement.warehouse_id
-                ).filter(Warehouse.location_id == location_id)
-            raw_valuation -= Decimal(later_value_query.scalar() or 0)
-        # Preserve visibility of stock whose product has no inventory account.
-        unmapped_stock = raw_valuation - source
+        # Inspect missing mappings directly. Sub-cent weighted-average rounding
+        # must not be treated as stock without a COA.
+        unmapped_stock = self._unmapped_inventory_value(location_id, as_of)
         account_meta = self._accounts_by_id(account_ids)
         detail = []
         for account_id in sorted(account_ids, key=lambda aid: (
@@ -477,7 +704,8 @@ class FinancialReconciliationService:
             "INVENTORY", source, gl, self._accounts(account_ids),
             configured=bool(account_ids), detail=detail,
             variance_breakdown={"posting_mismatch": source - gl,
-                                "valuation_method": raw_valuation - sum(ledger_by.values(), ZERO),
+                                "valuation_method": (source + unmapped_stock -
+                                                     sum(ledger_by.values(), ZERO)).quantize(CENT),
                                 "unmapped_stock": unmapped_stock},
         )
         if unmapped_stock != ZERO and row["status"] == "RECONCILED":
@@ -524,9 +752,7 @@ class FinancialReconciliationService:
             .filter(
                 target.account_id.in_(account_ids),
                 JournalEntry.status == "POSTED",
-                JournalEntry.reference_type.notin_(
-                    ("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")
-                ),
+                _operational_journal(),
             )
         )
         if location_id is not None:
@@ -605,6 +831,7 @@ class FinancialReconciliationService:
             "summary": {
                 "reconciled": sum(row["status"] == "RECONCILED" for row in items),
                 "out_of_balance": sum(row["status"] == "OUT_OF_BALANCE" for row in items),
+                "open_items": sum(row["status"] == "OPEN_ITEMS" for row in items),
                 "not_configured": sum(row["status"] == "NOT_CONFIGURED" for row in items),
                 "history_unavailable": sum(row["status"] == "HISTORY_UNAVAILABLE" for row in items),
                 "ready_to_close": all(row["status"] == "RECONCILED" for row in items),
