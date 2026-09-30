@@ -13,17 +13,15 @@ const money = (value: unknown) =>
 async function loadAll(params: TrialBalanceFilters) {
   const rows: TrialBalanceRow[] = [];
   let page = 1;
-  let summary: Record<string, string | number | boolean> = {};
 
   while (true) {
     const data = await getTrialBalance({ ...params, page, page_size: 100 });
     rows.push(...data.items);
-    summary = data.summary ?? summary;
     if (!data.has_next) break;
     page += 1;
   }
 
-  return { rows, summary };
+  return { rows };
 }
 
 export default function TrialBalancePrintPage() {
@@ -92,7 +90,7 @@ export default function TrialBalancePrintPage() {
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalCredit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(closingDebit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(closingCredit)}</td>
-          <td className="border border-slate-700 px-1.5 py-1">{query.data.summary.is_balanced ? "Balanced" : "Unbalanced"}</td>
+          <td className="border border-slate-700 px-1.5 py-1" />
         </tr>
       }
     />
