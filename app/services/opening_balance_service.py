@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from hashlib import sha256
+import json
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -8,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.chart_of_account import ChartOfAccount
 from app.models.opening_balance import OpeningBalance
 from app.models.location import Location
+from app.models.fiscal_period import FiscalPeriod
 
 from app.services.audit import record_audit
 from app.services.location_access import resolve_location_id
@@ -20,6 +23,51 @@ BALANCE_SHEET_TYPES = ["ASSET", "LIABILITY", "EQUITY"]
 class OpeningBalanceService:
     def __init__(self, db: Session):
         self.db = db
+
+    def _can_edit(self, fiscal_year: int) -> bool:
+        return self.db.query(FiscalPeriod.id).filter(
+            FiscalPeriod.fiscal_year == fiscal_year,
+            FiscalPeriod.is_open.is_(True),
+            FiscalPeriod.is_closed.is_(False),
+        ).first() is not None
+
+    def _require_open_year(self, fiscal_year: int) -> None:
+        if not self._can_edit(fiscal_year):
+            raise HTTPException(
+                400,
+                f"No accounting period in {fiscal_year} is open. Open a period before saving opening balances.",
+            )
+
+    @staticmethod
+    def _snapshot_version(rows: list[OpeningBalance]) -> str:
+        values = [
+            (row.id, row.account_id, row.balance_type, str(row.amount), row.location_id)
+            for row in rows
+        ]
+        return sha256(json.dumps(values, separators=(",", ":")).encode()).hexdigest()
+
+    @staticmethod
+    def _snapshot_data(rows: list[OpeningBalance]) -> dict:
+        return {
+            "lines": [
+                {"account_id": row.account_id, "balance_type": row.balance_type,
+                 "amount": str(row.amount), "location_id": row.location_id}
+                for row in rows
+            ],
+            "total_debit": str(sum(
+                (Decimal(row.amount) for row in rows if row.balance_type == "DEBIT"), ZERO
+            )),
+            "total_credit": str(sum(
+                (Decimal(row.amount) for row in rows if row.balance_type == "CREDIT"), ZERO
+            )),
+        }
+
+    def _lock_year(self, fiscal_year: int) -> None:
+        if self.db.bind and self.db.bind.dialect.name == "postgresql":
+            self.db.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": 920000000 + fiscal_year},
+            )
 
     def accounts(
         self, *, fiscal_year: int, location_id: int | None
@@ -102,6 +150,8 @@ class OpeningBalanceService:
             "total_credit": sum(
                 (Decimal(r.amount) for r in rows if r.balance_type == "CREDIT"), ZERO
             ),
+            "can_edit": self._can_edit(fiscal_year),
+            "snapshot_version": self._snapshot_version(rows),
         }
 
     def prepare(
@@ -110,6 +160,7 @@ class OpeningBalanceService:
         total_debit = ZERO
         total_credit = ZERO
         ledger_lines = []
+        seen_accounts = set()
         for raw in lines:
             account_id = int(raw.get("account_id") or 0)
             amount = Decimal(str(raw.get("amount") or 0))
@@ -119,6 +170,9 @@ class OpeningBalanceService:
                 raise HTTPException(400, "Opening balance amounts cannot be negative")
             if amount == 0:
                 continue
+            if account_id in seen_accounts:
+                raise HTTPException(400, f"Duplicate opening balance for account {account_id}")
+            seen_accounts.add(account_id)
             account = self.db.get(ChartOfAccount, account_id)
             if account is None:
                 raise HTTPException(404, f"Account {account_id} not found")
@@ -178,12 +232,9 @@ class OpeningBalanceService:
                 )
             resolved_location_id = fallback.id
 
-        # Serialize concurrent annual submissions before checking existing rows.
-        if self.db.bind and self.db.bind.dialect.name == "postgresql":
-            self.db.execute(
-                text("SELECT pg_advisory_xact_lock(:lock_id)"),
-                {"lock_id": 920000000 + fiscal_year},
-            )
+        # Serialize annual saves before checking the snapshot and period.
+        self._lock_year(fiscal_year)
+        self._require_open_year(fiscal_year)
         recorded = self.db.query(OpeningBalance.id).filter(
             OpeningBalance.fiscal_year == fiscal_year
         ).first()
@@ -221,6 +272,66 @@ class OpeningBalanceService:
             "fiscal_year": fiscal_year,
             **prepared,
         }
+
+    def revise(
+        self, *, user, fiscal_year: int, location_id: int | None,
+        lines: list[dict], description: str | None, expected_version: str,
+    ) -> dict:
+        prepared = self.prepare(fiscal_year=fiscal_year, lines=lines)
+        self._lock_year(fiscal_year)
+        self._require_open_year(fiscal_year)
+        existing = (
+            self.db.query(OpeningBalance)
+            .filter(OpeningBalance.fiscal_year == fiscal_year)
+            .order_by(OpeningBalance.id)
+            .with_for_update()
+            .all()
+        )
+        if not existing:
+            raise HTTPException(409, "Opening balances have changed. Reload before saving.")
+        if self._snapshot_version(existing) != expected_version:
+            raise HTTPException(409, "Opening balances have changed. Reload before saving.")
+
+        locations = {row.location_id for row in existing}
+        if len(locations) != 1:
+            raise HTTPException(409, "Opening balances span multiple locations; revise each location separately.")
+        existing_location_id = next(iter(locations))
+        requested_location_id = resolve_location_id(user, location_id)
+        if requested_location_id is not None and requested_location_id != existing_location_id:
+            raise HTTPException(404, "Opening balances not found for this location")
+
+        before = self._snapshot_data(existing)
+        original_id = existing[0].id
+        for row in existing:
+            self.db.delete(row)
+        self.db.flush()
+
+        now = datetime.now(timezone.utc)
+        created = []
+        for item in prepared["lines"]:
+            row = OpeningBalance(
+                fiscal_year=fiscal_year,
+                account_id=item["account_id"],
+                location_id=existing_location_id,
+                amount=item["amount"],
+                balance_type=item["balance_type"],
+                description=description or "Opening Balance",
+                posted_by_id=user.id,
+                posted_at=now,
+            )
+            self.db.add(row)
+            created.append(row)
+        self.db.flush()
+        record_audit(
+            self.db, user, "OPENING_BALANCE_REVISED", "OPENING_BALANCE",
+            f"Revised opening balances for fiscal year {fiscal_year}",
+            entity_id=created[0].id if created else original_id,
+            reference_document=f"OPENING-{fiscal_year}",
+            before_data=before,
+            after_data=self._snapshot_data(created),
+        )
+        self.db.commit()
+        return {"fiscal_year": fiscal_year, **prepared}
 
     def void(self, *, user, fiscal_year: int, location_id: int | None = None) -> dict:
         raise HTTPException(
