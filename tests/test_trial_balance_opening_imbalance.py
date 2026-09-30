@@ -84,3 +84,56 @@ def test_trial_balance_reports_unbalanced_opening_even_when_account_search_filte
     finally:
         db.close()
         engine.dispose()
+
+
+def test_trial_balance_keeps_annual_snapshot_opening_and_all_year_activity_as_movement():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine, expire_on_commit=False)()
+    try:
+        asset = ChartOfAccount(
+            account_number="100-YTD", account_name="Annual Asset",
+            account_type="ASSET", normal_balance="DEBIT",
+            is_active=True, is_posting=True,
+        )
+        equity = ChartOfAccount(
+            account_number="300-YTD", account_name="Annual Equity",
+            account_type="EQUITY", normal_balance="CREDIT",
+            is_active=True, is_posting=True,
+        )
+        db.add_all([asset, equity])
+        db.flush()
+        db.add_all([
+            OpeningBalance(fiscal_year=2025, account_id=asset.id, amount=Decimal("999.00"), balance_type="DEBIT"),
+            OpeningBalance(fiscal_year=2026, account_id=asset.id, amount=Decimal("100.00"), balance_type="DEBIT"),
+        ])
+        for number, day, amount in (
+            ("PRIOR", date(2025, 12, 31), "50.00"),
+            ("JAN", date(2026, 1, 10), "10.00"),
+            ("SEP", date(2026, 9, 5), "5.00"),
+        ):
+            entry = JournalEntry(
+                journal_number=number, posting_date=day, status="POSTED",
+                reference_type="MANUAL", reference_id=1,
+            )
+            entry.lines = [
+                JournalLine(account_id=asset.id, debit=Decimal(amount), credit=Decimal("0")),
+                JournalLine(account_id=equity.id, debit=Decimal("0"), credit=Decimal(amount)),
+            ]
+            db.add(entry)
+        db.commit()
+        report = TrialBalanceService(db).report(
+            date_from=date(2026, 9, 1), date_to=date(2026, 9, 30),
+            account_id=asset.id,
+        )
+        row = report["items"][0]
+        assert report["opening_as_of"] == date(2025, 12, 31)
+        assert report["movement_from"] == date(2026, 1, 1)
+        assert row["opening_debit"] == Decimal("100.00")
+        assert row["period_debit"] == Decimal("15.00")
+        assert row["closing_debit"] == Decimal("115.00")
+        assert report["summary"]["opening_debit"] == Decimal("100.00")
+        assert report["summary"]["period_debit"] == Decimal("15.00")
+    finally:
+        db.close()
+        engine.dispose()
