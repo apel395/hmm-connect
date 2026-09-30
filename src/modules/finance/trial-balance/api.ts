@@ -83,8 +83,6 @@ export async function exportTrialBalanceXlsx(params: TrialBalanceFilters) {
       Number(row.closing_credit),
       row.status === "ABNORMAL" ? "Abnormal" : "Normal",
     ]),
-    ["Trial Balance", "", "", "", "", "", "", "", first.summary.is_balanced ? "Balanced" : "Unbalanced"],
-
   ];
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   sheet["!cols"] = [
