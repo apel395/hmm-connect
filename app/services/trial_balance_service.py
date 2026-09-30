@@ -94,6 +94,9 @@ class TrialBalanceService:
     ) -> dict:
         if date_from > date_to:
             raise ValueError("date_from must be on or before date_to")
+        if date_from.year != date_to.year:
+            raise ValueError("Trial Balance date range must be within one fiscal year")
+        year_start = date(date_to.year, 1, 1)
 
         # Trial Balance reports only leaf/posting accounts. Parent/header COA
         # remains in the COA hierarchy but must not appear as a separate row.
@@ -118,21 +121,14 @@ class TrialBalanceService:
             accounts_query = accounts_query.filter(ChartOfAccount.parent_account_id == parent_account_id)
 
         snapshot_date, snapshot = opening_snapshot(
-            self.db, as_of=date_from, location_id=location_id,
+            self.db, as_of=year_start, location_id=location_id,
             department_id=department_id, business_unit_id=business_unit_id,
         )
-        opening = self._activity(
-            date_from=snapshot_date,
-            before=date_from,
-            location_id=location_id,
-            department_id=department_id,
-            business_unit_id=business_unit_id,
-        )
-        for account_id_value, (debit, credit) in snapshot.items():
-            prior_debit, prior_credit = opening.get(account_id_value, (ZERO, ZERO))
-            opening[account_id_value] = prior_debit + debit, prior_credit + credit
+        # A selected year's opening is the manually entered closing of the
+        # preceding year. Earlier transactions in this year remain movement.
+        opening = snapshot if snapshot_date == year_start else {}
         period = self._activity(
-            date_from=date_from,
+            date_from=year_start,
             date_to=date_to,
             location_id=location_id,
             department_id=department_id,
@@ -220,6 +216,8 @@ class TrialBalanceService:
         return {
             "items": items,
             "summary": summary,
+            "opening_as_of": date(date_to.year - 1, 12, 31),
+            "movement_from": year_start,
             "page": page,
             "page_size": page_size,
             "total_items": total,
