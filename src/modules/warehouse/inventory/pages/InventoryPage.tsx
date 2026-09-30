@@ -9,7 +9,7 @@ import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 import InventoryTable from "../components/InventoryTable";
 import { useInventory } from "../useInventory";
-import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { inventoryApi } from "../api";
 
 const money = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -18,7 +18,7 @@ const quantity = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", 
   maximumFractionDigits: 4,
 });
 const input = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900";
-const PAGE_SIZE = 25;
+type MovementFilter = "ALL" | "FAST" | "SLOW" | "DEAD";
 type HealthFilter = "ALL" | "HEALTHY" | "LOW_STOCK";
 type AccountTotal = {
   account_id: number | null;
@@ -41,6 +41,9 @@ export default function InventoryPage() {
     : params.get("health") === "HEALTHY" ? "HEALTHY" : "ALL";
   const [search, setSearch] = useState("");
   const [health, setHealth] = useState<HealthFilter>(initialHealth);
+  const initialClass = params.get("movement_class");
+  const [movementClass, setMovementClass] = useState<MovementFilter>(initialClass === "FAST" || initialClass === "SLOW" || initialClass === "DEAD" ? initialClass : "ALL");
+  const [pageSize, setPageSize] = useState(25);
   const [accountId, setAccountId] = useState<number | undefined>();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -48,18 +51,19 @@ export default function InventoryPage() {
 
   const accounts = useQuery({
     queryKey: ["inventory-coa-filter"],
-    queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }),
+    queryFn: inventoryApi.accounts,
   });
   const filters = {
     search: search.trim() || undefined,
     health: health === "ALL" ? undefined : health,
     account_id: accountId,
+    movement_class: movementClass === "ALL" ? undefined : movementClass,
   };
   const closing = useInventory({
-    ...filters, page, page_size: PAGE_SIZE, as_of: dateTo || undefined,
+    ...filters, page, page_size: pageSize, as_of: dateTo || undefined,
   });
   const opening = useInventory({
-    ...filters, page: 1, page_size: 1,
+    ...filters, movement_class: undefined, page: 1, page_size: 1,
     as_of: dateFrom ? previousDay(dateFrom) : undefined,
   });
 
@@ -73,7 +77,7 @@ export default function InventoryPage() {
   const openingTotals: AccountTotal[] = openingData.totals_by_account ?? [];
   const pages = Math.max(data.total_pages ?? 0, 1);
   const total = data.total_items ?? 0;
-  const hasRange = Boolean(dateFrom);
+  const hasRange = Boolean(dateFrom && movementClass === "ALL");
   const loading = closing.isFetching || (hasRange && opening.isFetching);
   const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
 
@@ -94,7 +98,7 @@ export default function InventoryPage() {
     );
   })();
 
-  useEffect(() => setPage(1), [search, health, accountId, dateFrom, dateTo]);
+  useEffect(() => setPage(1), [search, health, accountId, movementClass, dateFrom, dateTo, pageSize]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
   const changeHealth = (value: HealthFilter) => {
@@ -104,6 +108,17 @@ export default function InventoryPage() {
     else next.set("health", value);
     setParams(next, { replace: true });
   };
+
+  const changeMovement = (value: MovementFilter) => {
+    setMovementClass(value);
+    if (value !== "ALL") setDateFrom("");
+    const next = new URLSearchParams(params);
+    if (value === "ALL") next.delete("movement_class");
+    else next.set("movement_class", value);
+    setParams(next, { replace: true });
+  };
+  const movementCounts: Record<"FAST" | "SLOW" | "DEAD", { stock_lines: number; stock_value: number }> = summary.movement_classes ?? {};
+  const movementDays = summary.movement_days ?? { fast: 30, dead: 90 };
 
   return <div className="space-y-6">
     <div className="hidden print:block">
@@ -148,8 +163,15 @@ export default function InventoryPage() {
           </select>
         </label>
         <label className="block min-w-0 text-xs font-medium text-slate-600">
+          Movement class
+          <select className={input} value={movementClass} onChange={e => changeMovement(e.target.value as MovementFilter)}>
+            <option value="ALL">All movement</option><option value="FAST">Fast</option>
+            <option value="SLOW">Slow</option><option value="DEAD">Dead</option>
+          </select>
+        </label>
+        <label className="block min-w-0 text-xs font-medium text-slate-600">
           From date
-          <input type="date" className={input} value={dateFrom}
+          <input type="date" className={input} value={dateFrom} disabled={movementClass !== "ALL"}
             max={dateTo || undefined} onChange={e => setDateFrom(e.target.value)}/>
         </label>
         <label className="block min-w-0 text-xs font-medium text-slate-600">
@@ -161,12 +183,28 @@ export default function InventoryPage() {
       <p className="mt-3 text-xs text-slate-500">
         {hasRange
           ? `Opening: before ${dateFrom} · Closing: ${dateTo || "current stock"} · Change: closing minus opening.`
-          : `Showing stock ${dateTo ? `as of ${dateTo}` : "as of now"}. Set From date to compare opening and closing balances.`}
+          : `Showing stock ${dateTo ? `as of ${dateTo}` : "as of now"}. ${movementClass === "ALL" ? "Set From date to compare opening and closing balances." : "Select All movement to compare opening and closing balances."}`}
       </p>
       {invalidRange && <p className="mt-2 text-sm text-red-700">From date must be on or before To date.</p>}
     </Card>
 
     {!invalidRange && <>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {(["FAST", "SLOW", "DEAD"] as const).map(status => {
+          const current = movementCounts[status];
+          const detail = status === "FAST"
+            ? `Still on hand; outbound within ${movementDays.fast} days`
+            : status === "SLOW" ? `Stock active within ${movementDays.dead} days, without recent outbound`
+            : `No movement for over ${movementDays.dead} days`;
+          return <button type="button" key={status} onClick={() => changeMovement(movementClass === status ? "ALL" : status)}
+            className={`rounded-xl border p-4 text-left shadow-sm transition hover:border-emerald-400 ${movementClass === status ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white"}`}>
+            <div className="text-xs uppercase tracking-wide text-slate-500">{status} STOCK</div>
+            <div className="mt-2 text-2xl font-bold">{current?.stock_lines ?? 0} <span className="text-sm font-normal text-slate-500">lines</span></div>
+            <div className="mt-1 text-sm font-semibold">Rp {money(current?.stock_value)}</div>
+            <div className="mt-1 text-xs text-slate-500">{detail}</div>
+          </button>;
+        })}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Closing Stock Lines</div><div className="mt-2 text-2xl font-bold">{summary.stock_lines ?? 0}</div></Card>
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Closing Stock Value</div><div className="mt-2 text-2xl font-bold">Rp {money(summary.stock_value)}</div>{hasRange && <div className="mt-1 text-xs text-slate-500">Opening: Rp {money(openingSummary.stock_value)} · Change: Rp {money(Number(summary.stock_value ?? 0) - Number(openingSummary.stock_value ?? 0))}</div>}</Card>
@@ -226,7 +264,14 @@ export default function InventoryPage() {
       <Card className="p-0">
         {loading ? <Loading/> : <>
           <InventoryTable rows={rows}/>
-          <div className="p-4"><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="stock lines" onChange={setPage}/></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <label className="text-sm text-slate-600">Rows per page
+              <select className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => setPageSize(Number(e.target.value))}>
+                {[25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
+            <Pagination page={page} pages={pages} total={total} pageSize={pageSize} noun="stock lines" onChange={setPage}/>
+          </div>
         </>}
       </Card>
     </>}
