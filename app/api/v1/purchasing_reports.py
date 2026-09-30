@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.models.purchase_requisition import PurchaseRequisition
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.services.location_access import apply_location_scope
+from app.services.purchasing_insights_service import PurchasingInsightsService
 
 router = APIRouter(prefix="/purchasing", tags=["Purchasing Reports"])
 
@@ -140,3 +141,37 @@ def purchasing_summary(
         },
         "top_suppliers": top_suppliers,
     }
+
+
+@router.get("/price-history")
+def price_history(
+    product_id: int | None = None,
+    supplier_id: int | None = None,
+    search: str | None = Query(default=None, max_length=100),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not has_permission(user, "reports.purchasing"):
+        raise HTTPException(403, "Purchasing report access required")
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "From date must not exceed To date")
+    return PurchasingInsightsService(db, user).price_history(
+        product_id=product_id, supplier_id=supplier_id, search=search,
+        date_from=date_from, date_to=date_to, page=page, page_size=page_size,
+    )
+
+
+@router.get("/top")
+def top_purchases(
+    year: int = Query(..., ge=2026, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not has_permission(user, "reports.purchasing"):
+        raise HTTPException(403, "Purchasing report access required")
+    return PurchasingInsightsService(db, user).rankings(year=year, month=month, limit=10)

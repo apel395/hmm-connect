@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import case, func
+from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from app.models.account_receivable import AccountReceivable
@@ -497,10 +498,83 @@ class FinancialReconciliationService:
             self.inventory(location_id, as_of),
         ]
 
+    def _journal_counterparts(self, items: list[dict], location_id: int | None,
+                              as_of: date | None) -> None:
+        """Other posted lines in journals containing a controlled account.
+
+        Pairing is journal-level evidence. Debit/credit amounts on multi-line
+        journals are not attributed to any particular controlled line.
+        """
+        account_ids = sorted({
+            account["account_id"] for row in items for account in row["accounts"]
+        })
+        for row in items:
+            row["counterparts"] = []
+        if not account_ids:
+            return
+
+        target = aliased(JournalLine)
+        other = aliased(JournalLine)
+        journals = (
+            self.db.query(
+                target.account_id.label("account_id"),
+                target.journal_entry_id.label("journal_entry_id"),
+            )
+            .join(JournalEntry, JournalEntry.id == target.journal_entry_id)
+            .filter(
+                target.account_id.in_(account_ids),
+                JournalEntry.status == "POSTED",
+                JournalEntry.reference_type.notin_(
+                    ("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")
+                ),
+            )
+        )
+        if location_id is not None:
+            journals = journals.filter(target.location_id == location_id)
+        if as_of is not None:
+            journals = journals.filter(JournalEntry.posting_date <= as_of)
+        journals = journals.distinct().subquery()
+
+        matches = (
+            self.db.query(
+                journals.c.account_id,
+                ChartOfAccount.id, ChartOfAccount.account_number,
+                ChartOfAccount.account_name,
+                func.count(func.distinct(other.journal_entry_id)),
+                func.coalesce(func.sum(other.debit), 0),
+                func.coalesce(func.sum(other.credit), 0),
+            )
+            .join(other, other.journal_entry_id == journals.c.journal_entry_id)
+            .join(ChartOfAccount, ChartOfAccount.id == other.account_id)
+            .filter(other.account_id != journals.c.account_id)
+        )
+        if location_id is not None:
+            matches = matches.filter(other.location_id == location_id)
+        matches = matches.group_by(
+            journals.c.account_id, ChartOfAccount.id,
+            ChartOfAccount.account_number, ChartOfAccount.account_name,
+        ).order_by(journals.c.account_id, ChartOfAccount.account_number)
+
+        by_account: dict[int, list[dict]] = {}
+        for target_id, opposite_id, code, name, count, debit, credit in matches.all():
+            by_account.setdefault(target_id, []).append({
+                "account_id": target_id,
+                "counterpart_account_id": opposite_id,
+                "counterpart_code": code,
+                "counterpart_name": name,
+                "journal_count": int(count),
+                "counterpart_debit": Decimal(debit),
+                "counterpart_credit": Decimal(credit),
+            })
+        for row in items:
+            for account in row["accounts"]:
+                row["counterparts"].extend(by_account.get(account["account_id"], []))
+
     def report(self, location_id: int | None = None, date_from: date | None = None,
                date_to: date | None = None) -> dict:
         as_of = date_to
         items = self._snapshot(location_id, as_of)
+        self._journal_counterparts(items, location_id, as_of)
         if date_from is not None:
             opening = {
                 row["control"]: row for row in self._snapshot(

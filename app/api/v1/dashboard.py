@@ -1,5 +1,6 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -19,6 +20,7 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_requisition import PurchaseRequisition
 from app.services.ap_metrics import ap_metrics
 from app.services.finance_dashboard_service import FinanceDashboardService
+from app.services.purchasing_insights_service import PurchasingInsightsService
 from app.services.location_access import apply_location_scope, apply_warehouse_scope, assigned_location_id, resolve_location_id
 
 
@@ -119,8 +121,16 @@ def finance_dashboard(
 
 
 @router.get("/overview")
-def overview(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def overview(
+    month: int | None = None, year: int | None = None,
+    db: Session = Depends(get_db), user=Depends(get_current_user),
+):
     """Permission-aware, location-scoped global dashboard from full data sets."""
+    local_today = datetime.now(ZoneInfo("Asia/Jakarta")).date()
+    month = month or local_today.month
+    year = year or local_today.year
+    if month < 1 or month > 12 or year < 2026 or year > 2100:
+        raise HTTPException(422, "Select a valid purchasing month and year")
     location_id = assigned_location_id(user)
     location = db.get(Location, location_id) if location_id else None
     result = {
@@ -141,7 +151,7 @@ def overview(db: Session = Depends(get_db), user=Depends(get_current_user)):
         orders = apply_location_scope(db.query(PurchaseOrder), PurchaseOrder.location_id, user)
         purchasing["po_waiting"] = orders.filter(PurchaseOrder.status == "PENDING_APPROVAL").count()
         purchasing["po_open"] = orders.filter(PurchaseOrder.status.in_(("APPROVED", "PARTIALLY_RECEIVED"))).count()
-        recent = orders.order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc()).limit(5).all()
+        recent = orders.order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc()).limit(10).all()
         purchasing["recent_orders"] = [
             {
                 "id": po.id, "po_number": po.po_number, "supplier_name": po.supplier.name if po.supplier else None,
@@ -150,6 +160,11 @@ def overview(db: Session = Depends(get_db), user=Depends(get_current_user)):
             }
             for po in recent
         ]
+
+    if has_permission(user, "po.view") or has_permission(user, "reports.purchasing"):
+        purchasing["rankings"] = PurchasingInsightsService(db, user).rankings(
+            year=year, month=month, limit=5,
+        )
 
     if has_permission(user, "receiving.view"):
         receipts = apply_location_scope(db.query(GoodsReceipt), GoodsReceipt.location_id, user)
@@ -194,7 +209,7 @@ def overview(db: Session = Depends(get_db), user=Depends(get_current_user)):
         )
         top_low = low.order_by(
             (Product.minimum_stock - Inventory.quantity).desc(), Product.name, Warehouse.name
-        ).limit(5).all()
+        ).limit(10).all()
         result["inventory"] = {
             "stock_lines": stock_value[0],
             "stock_value": stock_value[1],

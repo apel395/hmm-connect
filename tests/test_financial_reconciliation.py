@@ -267,3 +267,34 @@ def test_operational_role_is_denied_and_router_is_get_only():
         _access(SimpleNamespace(roles=[SimpleNamespace(name="WAREHOUSE", permissions=[])]))
     assert denied.value.status_code == 403
     assert [route.methods for route in router.routes] == [{"GET"}]
+
+def test_counterparts_show_posted_opposing_lines_without_assigning_a_match(ap_setup):
+    db, supplier, payable = ap_setup
+    offset = account(db, "5101", "Cost", "DEBIT")
+    posted = JournalEntry(
+        journal_number="JE-PAIR", posting_date=date(2026, 9, 1),
+        status="POSTED", reference_type="MANUAL", reference_id=4,
+    )
+    posted.lines = [
+        JournalLine(account_id=payable.id, credit=Decimal("150")),
+        JournalLine(account_id=offset.id, debit=Decimal("150")),
+    ]
+    draft = JournalEntry(
+        journal_number="JE-DRAFT-PAIR", posting_date=date(2026, 9, 2),
+        status="DRAFT", reference_type="MANUAL", reference_id=5,
+    )
+    draft.lines = [
+        JournalLine(account_id=payable.id, credit=Decimal("99")),
+        JournalLine(account_id=offset.id, debit=Decimal("99")),
+    ]
+    db.add_all([posted, draft])
+    db.commit()
+
+    items = FinancialReconciliationService(db).report(date_to=date(2026, 9, 1))["items"]
+    counterparts = next(row["counterparts"] for row in items
+                        if row["control"] == "ACCOUNTS_PAYABLE")
+    assert len(counterparts) == 1
+    assert counterparts[0]["account_id"] == payable.id
+    assert counterparts[0]["counterpart_account_id"] == offset.id
+    assert counterparts[0]["journal_count"] == 1
+    assert counterparts[0]["counterpart_debit"] == Decimal("150")
