@@ -4,7 +4,7 @@ import json
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, text
+from sqlalchemy import and_, case, func, or_, text
 from sqlalchemy.orm import Session
 
 from app.models.chart_of_account import ChartOfAccount
@@ -89,9 +89,14 @@ class OpeningBalanceService:
                 func.coalesce(func.sum(case((OpeningBalance.balance_type == "CREDIT", OpeningBalance.amount), else_=0)), 0).label("credit"),
             )
             .outerjoin(OpeningBalance, join_on)
-            .filter(ChartOfAccount.is_active.is_(True))
-            .filter(ChartOfAccount.is_posting.is_(True))
-            .filter(ChartOfAccount.account_type.in_(BALANCE_SHEET_TYPES))
+            .filter(or_(
+                and_(
+                    ChartOfAccount.is_active.is_(True),
+                    ChartOfAccount.is_posting.is_(True),
+                    ChartOfAccount.account_type.in_(BALANCE_SHEET_TYPES),
+                ),
+                OpeningBalance.id.isnot(None),
+            ))
             .group_by(
                 ChartOfAccount.id,
                 ChartOfAccount.account_number,
@@ -173,11 +178,15 @@ class OpeningBalanceService:
             account = self.db.get(ChartOfAccount, account_id)
             if account is None:
                 raise HTTPException(404, f"Account {account_id} not found")
-            if not account.is_active or not account.is_posting:
+            historical = self.db.query(OpeningBalance.id).filter(
+                OpeningBalance.fiscal_year == fiscal_year,
+                OpeningBalance.account_id == account_id,
+            ).first() is not None
+            if (not account.is_active or not account.is_posting) and not historical:
                 raise HTTPException(
                     400, f"Account {account.account_number} is not an active posting account"
                 )
-            if account.account_type not in BALANCE_SHEET_TYPES:
+            if account.account_type not in BALANCE_SHEET_TYPES and not historical:
                 raise HTTPException(
                     400,
                     f"Opening balances only apply to balance-sheet accounts "
