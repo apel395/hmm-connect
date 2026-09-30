@@ -125,7 +125,7 @@ export default function OpeningBalancesPage() {
         { label: "Balance-Sheet Accounts", value: acct.data?.count ?? 0 },
         { label: "Total Debit", value: fmt(displayTotals.debit) },
         { label: "Total Credit", value: fmt(displayTotals.credit) },
-        { label: "Difference", value: fmt(Math.abs(displayTotals.diff)), note: Math.abs(displayTotals.diff) >= 0.005 ? "Difference remains visible in reports" : "No difference" },
+        { label: "Difference", value: fmt(Math.abs(displayTotals.diff)) },
         { label: "Status", value: openingRecorded ? "RECORDED" : "NOT RECORDED", note: openingRecorded ? "Opening values already recorded for this fiscal year" : "Available for one-time entry" },
       ]} />
 
@@ -173,23 +173,18 @@ export default function OpeningBalancesPage() {
         </>}
       </Card>
 
-      {openingRecorded && Math.abs(displayTotals.diff) >= 0.005 && <Card className="border-amber-300 bg-amber-50 text-amber-950">
-        <strong>Recorded starting values have a debit–credit difference of {money(displayTotals.diff)}.</strong>
-        <p className="mt-1 text-sm">These are the amounts finance entered. No account or journal was added to make them balance.</p>
-      </Card>}
-
       {entryItems.length > 0 && (
         <Card>
           <div className="mb-3 flex items-center justify-between">
             <div><h3 className="text-lg font-semibold">Recorded Opening Balance — {fiscal_year}</h3><p className="text-xs text-slate-500">Original starting values retained for audit and tracing.</p></div>
           </div>
-          <Table variant="grid"><THead><TR><TH>Code</TH><TH>Name</TH><TH>Type</TH><TH>Amount</TH><TH>Recorded</TH></TR></THead>
+          <Table variant="grid"><THead><TR><TH>Code</TH><TH>Name</TH><TH>Debit</TH><TH>Credit</TH><TH>Recorded</TH></TR></THead>
             <TBody>{entryItems.map((e) => (
               <TR key={e.id}>
                 <TD className="font-mono">{e.account_code}</TD>
                 <TD>{e.account_name}</TD>
-                <TD><span className={`rounded px-2 py-1 text-xs font-medium ${e.balance_type === "DEBIT" ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}>{e.balance_type}</span></TD>
-                <TD className="font-mono">{money(e.amount)}</TD>
+                <TD className="font-mono">{e.balance_type === "DEBIT" ? money(e.amount) : "—"}</TD>
+                <TD className="font-mono">{e.balance_type === "CREDIT" ? money(e.amount) : "—"}</TD>
                 <TD className="text-xs text-slate-500">{e.posted_at ? new Date(e.posted_at).toLocaleString() : "—"}</TD>
               </TR>
             ))}</TBody>
@@ -201,12 +196,12 @@ export default function OpeningBalancesPage() {
         <DialogContent><DialogHeader><DialogTitle>Opening Balances Preview — {fiscal_year}</DialogTitle></DialogHeader>
         <DialogBody className="space-y-4">
           {preview && <>
-            <Table variant="grid"><THead><TR><TH>Account</TH><TH>Type</TH><TH>Amount</TH></TR></THead>
+            <Table variant="grid"><THead><TR><TH>Account</TH><TH>Debit</TH><TH>Credit</TH></TR></THead>
               <TBody>{(preview.lines ?? []).map((l: any, i: number) => (
                 <TR key={i}>
                   <TD className="font-mono">{l.account_code}</TD>
-                  <TD><span className={`rounded px-2 py-1 text-xs font-medium ${l.balance_type === "DEBIT" ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}>{l.balance_type}</span></TD>
-                  <TD className="font-mono">{money(l.amount)}</TD>
+                  <TD className="font-mono">{l.balance_type === "DEBIT" ? money(l.amount) : "—"}</TD>
+                  <TD className="font-mono">{l.balance_type === "CREDIT" ? money(l.amount) : "—"}</TD>
                 </TR>
               ))}</TBody>
             </Table>
