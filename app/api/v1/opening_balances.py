@@ -28,6 +28,10 @@ class OpeningBalanceSubmit(BaseModel):
     lines: list[OpeningLine]
 
 
+class OpeningBalanceRevision(OpeningBalanceSubmit):
+    expected_version: str
+
+
 @router.get("/accounts")
 def accounts(
     fiscal_year: int = Query(...),
@@ -80,6 +84,24 @@ def submit(
         location_id=data.location_id,
         lines=[line.model_dump() for line in data.lines],
         description=data.description,
+    )
+
+
+@router.put("")
+def revise(
+    data: OpeningBalanceRevision,
+    db: Session = Depends(get_db),
+    user=Depends(journal_manage_user),
+):
+    if data.location_id:
+        enforce_location_access(user, data.location_id)
+    return OpeningBalanceService(db).revise(
+        user=user,
+        fiscal_year=data.fiscal_year,
+        location_id=data.location_id,
+        lines=[line.model_dump() for line in data.lines],
+        description=data.description,
+        expected_version=data.expected_version,
     )
 
 
