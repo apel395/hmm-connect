@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   AlertCircle, ArrowRight, Box, CheckCircle2, ClipboardCheck, ClipboardList,
   Clock3, Coins, PackageCheck, RefreshCw, ShoppingCart, TrendingUp,
@@ -18,12 +19,25 @@ type LowStock = {
   id: number; product_code: string; product_name: string; warehouse_name: string;
   quantity: string; minimum_stock: string; shortage: string; uom: string;
 };
+type ItemRanking = {
+  product_id: number; product_code: string; product_name: string; uom: string;
+  quantity: string; received_value: string; receipt_count: number;
+};
+type SupplierRanking = {
+  supplier_id: number | null; supplier_code: string | null; supplier_name: string;
+  receipt_count: number; received_value: string;
+};
+type Rankings = {
+  year: number; month: number; source: string; cost_basis: string;
+  top_items_by_quantity: ItemRanking[]; top_items_by_cost: ItemRanking[];
+  top_suppliers_by_receipts: SupplierRanking[]; top_suppliers_by_cost: SupplierRanking[];
+};
 type Overview = {
   generated_at: string;
   scope: { location_id: number | null; location_name: string | null };
   purchasing: {
     pr_waiting?: number; pr_draft?: number; po_waiting?: number; po_open?: number;
-    rr_waiting?: number; rr_ready?: number; recent_orders?: Order[];
+    rr_waiting?: number; rr_ready?: number; recent_orders?: Order[]; rankings?: Rankings;
   };
   inventory: null | {
     stock_lines: number; stock_value: string; reorder_required: number; low_stock: LowStock[];
@@ -74,9 +88,13 @@ function QueueCard({ item }: { item: QueueItem }) {
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
+  const jakartaMonth = Number(new Intl.DateTimeFormat("en-US", { month: "numeric", timeZone: "Asia/Jakarta" }).format(new Date()));
+  const jakartaYear = Number(new Intl.DateTimeFormat("en-US", { year: "numeric", timeZone: "Asia/Jakarta" }).format(new Date()));
+  const [month, setMonth] = useState(jakartaMonth);
+  const [year, setYear] = useState(jakartaYear);
   const query = useQuery({
-    queryKey: ["dashboard", "overview", user?.id],
-    queryFn: async () => (await api.get<Overview>("/dashboard/overview")).data,
+    queryKey: ["dashboard", "overview", user?.id, month, year],
+    queryFn: async () => (await api.get<Overview>("/dashboard/overview", { params: { month, year } })).data,
     staleTime: 30_000,
     refetchInterval: 120_000,
   });
@@ -101,6 +119,25 @@ export default function DashboardPage() {
   const recent = p?.recent_orders ?? [];
   const stock = data?.inventory;
   const finance = data?.finance;
+  const rankings = p?.rankings;
+  const rankingPanels = rankings ? [
+    { title: "Most purchased items", metric: "Quantity", rows: rankings.top_items_by_quantity.map(row => ({
+      id: row.product_id, name: row.product_name, detail: row.product_code,
+      value: `${number(row.quantity)} ${row.uom}`, href: `/inventory/movements?product_id=${row.product_id}`,
+    })) },
+    { title: "Highest item cost", metric: "Net receiving cost", rows: rankings.top_items_by_cost.map(row => ({
+      id: row.product_id, name: row.product_name, detail: row.product_code,
+      value: rupiah(row.received_value), href: `/inventory/movements?product_id=${row.product_id}`,
+    })) },
+    { title: "Most active suppliers", metric: "Posted receipts", rows: rankings.top_suppliers_by_receipts.map(row => ({
+      id: row.supplier_id, name: row.supplier_name, detail: row.supplier_code ?? "Supplier",
+      value: `${number(row.receipt_count)} receipts`, href: "/reports/purchasing",
+    })) },
+    { title: "Highest supplier cost", metric: "Net receiving cost", rows: rankings.top_suppliers_by_cost.map(row => ({
+      id: row.supplier_id, name: row.supplier_name, detail: row.supplier_code ?? "Supplier",
+      value: rupiah(row.received_value), href: "/reports/purchasing",
+    })) },
+  ] : [];
 
   return <div className="mx-auto max-w-[1600px] space-y-7 pb-10">
     <header className="relative overflow-hidden rounded-2xl bg-slate-900 px-6 py-7 text-white sm:px-8 sm:py-8">
@@ -176,6 +213,40 @@ export default function DashboardPage() {
             </div>
           </Card>}
         </div>
+      </section>}
+
+      {rankings && <section className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <SectionHeading eyebrow="Purchasing insights" title="Top purchases & suppliers" href="/reports/purchasing" link="Price history & reports" />
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-slate-600">Month
+              <select className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm" value={month}
+                onChange={e => setMonth(Number(e.target.value))}>
+                {Array.from({ length: 12 }, (_, index) => index + 1).map(value =>
+                  <option key={value} value={value}>{new Intl.DateTimeFormat("en-US", { month: "long" }).format(new Date(2026, value - 1, 1))}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-slate-600">Year
+              <select className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm" value={year}
+                onChange={e => setYear(Number(e.target.value))}>
+                {Array.from({ length: Math.max(1, jakartaYear - 2025) }, (_, index) => 2026 + index).map(value =>
+                  <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">Posted receiving in the selected month. Cost excludes tax. Item quantity and receipt counts use separate rankings.</p>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{rankingPanels.map(panel => <Card key={panel.title} className="p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{panel.metric}</div>
+          <h3 className="mt-1 font-semibold text-slate-900">{panel.title}</h3>
+          {panel.rows.length ? <ol className="mt-4 divide-y divide-slate-100">{panel.rows.map((row, index) =>
+            <li key={row.id ?? index} className="flex items-center gap-2 py-2 text-sm">
+              <span className="w-5 shrink-0 text-xs font-semibold text-slate-400">{index + 1}</span>
+              <Link to={row.href} className="min-w-0 flex-1 truncate text-slate-700 hover:text-emerald-700" title={row.name}>{row.name}
+                <span className="block truncate text-xs text-slate-400">{row.detail}</span></Link>
+              <span className="shrink-0 text-right font-semibold tabular-nums text-slate-900">{row.value}</span>
+            </li>)}</ol> : <p className="mt-4 text-sm text-slate-500">No posted receipts for this period.</p>}
+        </Card>)}</div>
       </section>}
 
       {(stock || p?.recent_orders) && <section className="grid gap-5 xl:grid-cols-5">
