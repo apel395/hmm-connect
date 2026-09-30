@@ -9,9 +9,11 @@ export type InventoryListParams = {
   location_id?: number;
   as_of?: string;
   health?: "HEALTHY" | "LOW_STOCK";
+  movement_class?: "FAST" | "SLOW" | "DEAD";
 };
 
 export const inventoryApi = {
   list: (params: InventoryListParams = {}) => api.get("/inventory", { params }),
   detail: (id: number) => api.get(`/inventory/${id}`),
+  accounts: async () => (await api.get<{ id: number; account_number: string; account_name: string }[]>("/inventory/accounts")).data,
 };
