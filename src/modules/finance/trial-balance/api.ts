@@ -67,7 +67,7 @@ export async function exportTrialBalanceXlsx(params: TrialBalanceFilters) {
 
   const rows: (string | number)[][] = [
     ["Trial Balance"],
-    ["From", params.date_from, "To", params.date_to],
+    ["Opening as of", `${params.date_from.slice(0, 4)}-01-01`, "Movement through", params.date_to],
     ...(params.search ? [["Account search", params.search]] : []),
     ...(params.location_id ? [["Location ID", params.location_id]] : []),
     [],
