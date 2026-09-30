@@ -42,17 +42,49 @@ export type ReconciliationCounterpart = {
   counterpart_credit: number;
 };
 
+export type ReconciliationReceipt = {
+  receipt_id: number;
+  receipt_number: string;
+  date: string;
+  supplier_id: number | null;
+  received_amount: number;
+  invoiced_amount: number;
+  outstanding_amount: number;
+  invoice_numbers: string[];
+};
+
+export type ReconciliationApDocument = {
+  kind: "INVOICE" | "PAYMENT" | "GL_ONLY_JOURNAL" | "OPENING_GL" | "SOURCE_BALANCE_DRIFT";
+  document_id: number | null;
+  document_number: string;
+  date: string | null;
+  supplier_id: number | null;
+  source_amount: number | null;
+  gl_amount: number;
+  difference: number;
+  journal_ids: number[];
+  reference_type?: string | null;
+};
+
 export type ReconciliationRow = {
   control: "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "CLEARING_SUSPENSE" | "INVENTORY";
   source_balance: number | null;
   gl_balance: number;
   difference: number | null;
-  status: "RECONCILED" | "OUT_OF_BALANCE" | "NOT_CONFIGURED" | "HISTORY_UNAVAILABLE";
+  status: "RECONCILED" | "OUT_OF_BALANCE" | "OPEN_ITEMS" | "NOT_CONFIGURED" | "HISTORY_UNAVAILABLE";
   note?: string;
   accounts: ReconciliationAccount[];
   detail?: ReconciliationDetail[];
   counterparts?: ReconciliationCounterpart[];
   exceptions?: ReconciliationException[];
+  receipt_evidence?: ReconciliationReceipt[];
+  ap_documents?: ReconciliationApDocument[];
+  ap_document_summary?: {
+    source_activity: number;
+    source_balance_drift: number;
+    opening_gl: number;
+    document_difference_total: number;
+  };
   period?: {
     opening_source: number | null;
     opening_gl: number;
@@ -66,6 +98,7 @@ export type ReconciliationReport = {
   summary: {
     reconciled: number;
     out_of_balance: number;
+    open_items: number;
     not_configured: number;
     history_unavailable: number;
   };
