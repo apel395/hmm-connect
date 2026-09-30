@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from math import ceil
 
@@ -98,6 +98,7 @@ def list_inventory(
     account_id: int | None = None,
     location_id: int | None = None,
     as_of: date | None = None,
+    movement_class: str | None = None,
     health: str | None = Query(default=None, pattern="^(HEALTHY|LOW_STOCK|REORDER|BELOW_MINIMUM)$"),
     search: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
@@ -105,6 +106,8 @@ def list_inventory(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
+    if movement_class not in (None, "FAST", "SLOW", "DEAD"):
+        raise HTTPException(422, "Invalid stock movement class")
     scoped = _inventory_base(db, user, warehouse_id)
     if account_id:
         scoped = scoped.filter(Product.inventory_account_id == account_id)
@@ -145,6 +148,37 @@ def list_inventory(
             - func.coalesce(later.c.value, 0)
         )
 
+    as_of_date = as_of or date.today()
+    movement_date = _effective_movement_date()
+    history = (
+        db.query(
+            StockMovement.product_id.label("product_id"),
+            StockMovement.warehouse_id.label("warehouse_id"),
+            func.max(case(
+                (StockMovement.movement_type == "OUT", movement_date),
+                else_=None,
+            )).label("last_out"),
+            func.max(movement_date).label("last_movement"),
+        )
+        .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
+        .filter(movement_date <= as_of_date)
+        .group_by(StockMovement.product_id, StockMovement.warehouse_id)
+        .subquery()
+    )
+    scoped = scoped.outerjoin(
+        history,
+        (history.c.product_id == Inventory.product_id)
+        & (history.c.warehouse_id == Inventory.warehouse_id),
+    )
+    recent_cutoff = as_of_date - timedelta(days=30)
+    dead_cutoff = as_of_date - timedelta(days=90)
+    movement_status = case(
+        (quantity <= 0, "EMPTY"),
+        (history.c.last_out >= recent_cutoff, "FAST"),
+        (func.coalesce(history.c.last_movement, date(as_of_date.year, 1, 1)) < dead_cutoff, "DEAD"),
+        else_="SLOW",
+    )
+
     minimum = func.coalesce(Product.minimum_stock, 0)
     monitored = minimum > 0
     low_stock = monitored & (quantity <= minimum)
@@ -156,6 +190,16 @@ def list_inventory(
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term), Warehouse.name.ilike(term)))
+
+    movement_totals = query.with_entities(*[
+        func.coalesce(func.sum(case((movement_status == label, 1), else_=0)), 0)
+        for label in ("FAST", "SLOW", "DEAD")
+    ], *[
+        func.coalesce(func.sum(case((movement_status == label, stock_value), else_=0)), 0)
+        for label in ("FAST", "SLOW", "DEAD")
+    ]).one()
+    if movement_class:
+        query = query.filter(movement_status == movement_class)
 
     summary_rows = query.with_entities(
         func.count(Inventory.id),
@@ -173,12 +217,20 @@ def list_inventory(
         Warehouse.location_id, Location.name,
     ).order_by(ChartOfAccount.account_number, Warehouse.location_id).all()
     rows = query.add_entity(ChartOfAccount).add_columns(
-        quantity.label("as_of_quantity"), stock_value.label("as_of_value")
+        quantity.label("as_of_quantity"), stock_value.label("as_of_value"),
+        movement_status.label("movement_class"),
+        history.c.last_out, history.c.last_movement,
     ).order_by(Product.code, Warehouse.code).offset((page - 1) * page_size).limit(page_size).all()
     result = _paged([
-        inventory_row(inventory, product, warehouse, account,
-                      quantity=as_of_quantity, stock_value=as_of_value)
-        for inventory, product, warehouse, account, as_of_quantity, as_of_value in rows
+        {
+            **inventory_row(inventory, product, warehouse, account,
+                            quantity=as_of_quantity, stock_value=as_of_value),
+            "movement_class": velocity,
+            "last_out": last_out,
+            "last_movement": last_movement,
+        }
+        for inventory, product, warehouse, account, as_of_quantity, as_of_value,
+            velocity, last_out, last_movement in rows
     ], page=page, page_size=page_size, total=total)
     result["as_of"] = as_of
     result["summary"] = {
@@ -188,6 +240,12 @@ def list_inventory(
         "low_stock": int(summary_rows[3] or 0),
         "needs_reorder": int(summary_rows[3] or 0),
         "below_minimum": int(summary_rows[3] or 0),
+        "movement_days": {"fast": 30, "dead": 90},
+        "movement_classes": {
+            label: {"stock_lines": int(movement_totals[index] or 0),
+                    "stock_value": movement_totals[index + 3] or 0}
+            for index, label in enumerate(("FAST", "SLOW", "DEAD"))
+        },
     }
     result["totals_by_account_location"] = [
         {
@@ -212,6 +270,32 @@ def list_inventory(
         by_account.values(), key=lambda row: row["account_code"] or ""
     )
     return result
+
+
+@router.get("/accounts")
+def inventory_accounts(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    # Include configured inventory accounts and the hotel's inventory COA family,
+    # while excluding unrelated cash, receivable, expense, and header accounts.
+    mapped = db.query(Product.inventory_account_id).filter(
+        Product.inventory_account_id.is_not(None)
+    )
+    rows = db.query(ChartOfAccount).filter(
+        ChartOfAccount.is_active.is_(True),
+        ChartOfAccount.is_posting.is_(True),
+        ChartOfAccount.account_type == "ASSET",
+        or_(
+            ChartOfAccount.account_number.like("100-300-%"),
+            ChartOfAccount.id.in_(mapped),
+        ),
+    ).order_by(ChartOfAccount.account_number).all()
+    return [
+        {"id": row.id, "account_number": row.account_number,
+         "account_name": row.account_name}
+        for row in rows
+    ]
 
 
 @router.get("/movements")
