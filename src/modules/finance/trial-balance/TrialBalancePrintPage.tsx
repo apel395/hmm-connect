@@ -79,6 +79,7 @@ export default function TrialBalancePrintPage() {
         { label: "Credit Movement", align: "right", render: (row) => money(row.period_credit) },
         { label: "Closing Debit", align: "right", render: (row) => money(row.closing_debit) },
         { label: "Closing Credit", align: "right", render: (row) => money(row.closing_credit) },
+        { label: "Status", render: (row) => row.status === "ABNORMAL" ? "Abnormal" : "Normal" },
       ]}
       rows={rows}
       rowKey={(row) => row.account_id}
@@ -91,15 +92,8 @@ export default function TrialBalancePrintPage() {
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalCredit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(closingDebit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(closingCredit)}</td>
+          <td className="border border-slate-700 px-1.5 py-1">{query.data.summary.is_balanced ? "Balanced" : "Unbalanced"}</td>
         </tr>
-      }
-      control={
-        <div className="mx-auto grid w-80 grid-cols-2 gap-y-1">
-          <span>Period Debits</span><span className="text-right tabular-nums">{money(totalDebit)}</span>
-          <span>Period Credits</span><span className="text-right tabular-nums">{money(totalCredit)}</span>
-          <span>Opening Difference</span><span className="text-right tabular-nums">{money(query.data.summary.opening_difference)}</span>
-          <span className="font-bold">Closing Difference</span><span className="text-right font-bold tabular-nums">{money(query.data.summary.closing_difference)}</span>
-        </div>
       }
     />
   );

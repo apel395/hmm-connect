@@ -26,6 +26,8 @@ export const openingBalanceApi = {
     api.post("/opening-balances/preview", { fiscal_year, lines }),
   post: (fiscal_year: number, lines: OpeningBalanceLine[], description?: string, location_id?: number) =>
     api.post("/opening-balances", { fiscal_year, lines, description, location_id: location_id || undefined }),
+  revise: (fiscal_year: number, lines: OpeningBalanceLine[], expected_version: string, description?: string, location_id?: number) =>
+    api.put("/opening-balances", { fiscal_year, lines, expected_version, description, location_id: location_id || undefined }),
   void: (fiscal_year: number, location_id?: number) =>
     api.delete("/opening-balances", { params: { fiscal_year, location_id: location_id || undefined } }),
 };

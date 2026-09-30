@@ -70,10 +70,8 @@ export async function exportTrialBalanceXlsx(params: TrialBalanceFilters) {
     ["From", params.date_from, "To", params.date_to],
     ...(params.search ? [["Account search", params.search]] : []),
     ...(params.location_id ? [["Location ID", params.location_id]] : []),
-    ["Opening debit-credit difference", Number(first.summary.opening_difference ?? 0)],
-    ["Closing debit-credit difference", Number(first.summary.closing_difference ?? 0)],
     [],
-    ["COA No.", "COA Name", "Opening Debit", "Opening Credit", "Debit Movement", "Credit Movement", "Closing Debit", "Closing Credit"],
+    ["COA No.", "COA Name", "Opening Debit", "Opening Credit", "Debit Movement", "Credit Movement", "Closing Debit", "Closing Credit", "Status"],
     ...items.map((row) => [
       row.account_code,
       row.account_name,
@@ -83,12 +81,15 @@ export async function exportTrialBalanceXlsx(params: TrialBalanceFilters) {
       Number(row.period_credit),
       Number(row.closing_debit),
       Number(row.closing_credit),
+      row.status === "ABNORMAL" ? "Abnormal" : "Normal",
     ]),
+    ["Trial Balance", "", "", "", "", "", "", "", first.summary.is_balanced ? "Balanced" : "Unbalanced"],
+
   ];
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   sheet["!cols"] = [
     { wch: 18 }, { wch: 44 }, { wch: 20 }, { wch: 20 },
-    { wch: 20 }, { wch: 20 }, { wch: 20 },
+    { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 16 },
   ];
   const headerRow = rows.findIndex((row) => row[0] === "COA No.");
   for (let r = headerRow + 1; r < rows.length; r += 1) {
