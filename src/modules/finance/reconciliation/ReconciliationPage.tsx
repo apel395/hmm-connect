@@ -31,7 +31,8 @@ const input = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3
 function Evidence({ row }: { row: ReconciliationRow }) {
   const detail = row.detail ?? [];
   const exceptions = row.exceptions ?? [];
-  if (!detail.length && !exceptions.length && !row.note) {
+  const counterparts = row.counterparts ?? [];
+  if (!detail.length && !counterparts.length && !exceptions.length && !row.note) {
     return <p className="text-sm text-slate-500">No document detail is available for this control.</p>;
   }
   return <div className="space-y-4 text-sm">
@@ -52,6 +53,24 @@ function Evidence({ row }: { row: ReconciliationRow }) {
       </table>
       {row.control === "INVENTORY" &&
         <p className="mt-2 text-xs text-slate-500">Stock source uses inventory quantity × average cost. Movement values are a separate diagnostic and exclude manually entered opening stock.</p>}
+    </div>}
+    {!!counterparts.length && <div className="overflow-x-auto">
+      <div className="mb-2 font-semibold">Opposing accounts in posted journals</div>
+      <table className="w-full min-w-[720px] text-left">
+        <thead><tr className="border-b text-slate-500">
+          <th className="py-2">Control COA</th><th className="py-2">Other COA</th>
+          <th className="py-2 text-right">Journals</th>
+          <th className="py-2 text-right">Other debit</th><th className="py-2 text-right">Other credit</th>
+        </tr></thead>
+        <tbody>{counterparts.map(entry => <tr key={`${entry.account_id}-${entry.counterpart_account_id}`} className="border-b">
+          <td className="py-2">{row.accounts.find(account => account.account_id === entry.account_id)?.account_code ?? entry.account_id}</td>
+          <td className="py-2">{entry.counterpart_code} — {entry.counterpart_name}</td>
+          <td className="py-2 text-right">{entry.journal_count}</td>
+          <td className="py-2 text-right">{money(entry.counterpart_debit)}</td>
+          <td className="py-2 text-right">{money(entry.counterpart_credit)}</td>
+        </tr>)}</tbody>
+      </table>
+      <p className="mt-2 text-xs text-slate-500">These accounts occur in the same posted journals. A journal can contain several lines, so the amounts are not allocated to one control account.</p>
     </div>}
     {!!exceptions.length && <div className="overflow-x-auto">
       <div className="mb-2 font-semibold">

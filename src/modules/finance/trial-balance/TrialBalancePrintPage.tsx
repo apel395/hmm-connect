@@ -61,7 +61,7 @@ export default function TrialBalancePrintPage() {
   return (
     <FinancialReportPrintTemplate
       title="Trial Balance"
-      subtitle={params.date_from + " — " + params.date_to}
+      subtitle={`Opening ${params.date_from.slice(0, 4)}-01-01 · Movement through ${params.date_to}`}
       filters={[
         { label: "Search", value: params.search || "All accounts" },
         { label: "Location ID", value: params.location_id || "All" },

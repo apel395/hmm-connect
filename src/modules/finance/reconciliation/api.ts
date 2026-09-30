@@ -32,6 +32,16 @@ export type ReconciliationException = {
   credit?: number;
 };
 
+export type ReconciliationCounterpart = {
+  account_id: number;
+  counterpart_account_id: number;
+  counterpart_code: string;
+  counterpart_name: string;
+  journal_count: number;
+  counterpart_debit: number;
+  counterpart_credit: number;
+};
+
 export type ReconciliationRow = {
   control: "ACCOUNTS_PAYABLE" | "ACCOUNTS_RECEIVABLE" | "CLEARING_SUSPENSE" | "INVENTORY";
   source_balance: number | null;
@@ -41,6 +51,7 @@ export type ReconciliationRow = {
   note?: string;
   accounts: ReconciliationAccount[];
   detail?: ReconciliationDetail[];
+  counterparts?: ReconciliationCounterpart[];
   exceptions?: ReconciliationException[];
   period?: {
     opening_source: number | null;

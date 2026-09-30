@@ -15,4 +15,7 @@ export interface Inventory {
   shortage: number;
   below_minimum?: boolean;
   needs_reorder?: boolean;
+  movement_class?: "FAST" | "SLOW" | "DEAD" | "EMPTY";
+  last_out?: string | null;
+  last_movement?: string | null;
 }
