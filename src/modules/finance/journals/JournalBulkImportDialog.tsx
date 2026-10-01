@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, CheckCircle2, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { Download, Upload } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Dialog, {
   DialogBody,
@@ -11,9 +11,12 @@ import Dialog, {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import {
+  confirmJournalImport,
+  downloadJournalImportCorrections,
   downloadJournalImportTemplate,
   getJournalImport,
   getJournalImportErrors,
+  getJournalImportPreview,
   uploadJournalImport,
 } from "./api";
 
@@ -23,7 +26,13 @@ type Props = {
   onImported: () => void;
 };
 
-const TERMINAL = new Set(["IMPORTED", "FAILED"]);
+const POLL_TERMINAL = new Set(["VALIDATED", "IMPORTED", "IMPORTED_WITH_ERRORS", "FAILED"]);
+const IMPORT_DONE = new Set(["IMPORTED", "IMPORTED_WITH_ERRORS"]);
+
+const currency = new Intl.NumberFormat("id-ID", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
 
 export default function JournalBulkImportDialog({
   open,
@@ -33,7 +42,7 @@ export default function JournalBulkImportDialog({
   const [file, setFile] = useState<File | null>(null);
   const [batchName, setBatchName] = useState("Bulk Journal Import");
   const [jobId, setJobId] = useState<number>();
-  const [uploading, setUploading] = useState(false);
+  const [action, setAction] = useState<"upload" | "draft" | "post" | "correction" | null>(null);
 
   const job = useQuery({
     queryKey: ["journal-import", jobId],
@@ -41,178 +50,230 @@ export default function JournalBulkImportDialog({
     enabled: open && Boolean(jobId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && TERMINAL.has(status) ? false : 2000;
+      return status && POLL_TERMINAL.has(status) ? false : 2000;
     },
   });
 
+  const status = job.data?.status;
+  const hasPreview = Boolean(jobId && status && ["VALIDATED", "IMPORTED", "IMPORTED_WITH_ERRORS"].includes(status));
+  const preview = useQuery({
+    queryKey: ["journal-import-preview", jobId, status],
+    queryFn: () => getJournalImportPreview(jobId!),
+    enabled: open && hasPreview,
+  });
   const errors = useQuery({
-    queryKey: ["journal-import-errors", jobId],
+    queryKey: ["journal-import-errors", jobId, status],
     queryFn: () => getJournalImportErrors(jobId!),
-    enabled: open && Boolean(jobId) && job.data?.status === "FAILED",
+    enabled: open && Boolean(jobId) && Boolean(status && ["VALIDATED", "IMPORTED_WITH_ERRORS", "FAILED"].includes(status)),
   });
 
   useEffect(() => {
-    if (job.data?.status === "IMPORTED") {
-      onImported();
-    }
-  }, [job.data?.status, onImported]);
+    if (status && IMPORT_DONE.has(status)) onImported();
+  }, [status, onImported]);
+
+  const validJournals = useMemo(
+    () => preview.data?.journals.filter((row) => row.status === "VALID") ?? [],
+    [preview.data],
+  );
+  const rejectedJournals = useMemo(
+    () => preview.data?.journals.filter((row) => row.status === "ERROR") ?? [],
+    [preview.data],
+  );
+
+  const busy = Boolean(action) || Boolean(status && !POLL_TERMINAL.has(status));
 
   const reset = () => {
     setFile(null);
     setBatchName("Bulk Journal Import");
     setJobId(undefined);
-    setUploading(false);
+    setAction(null);
   };
 
   const close = () => {
-    if (uploading) return;
+    if (busy) return;
     reset();
     onOpenChange(false);
   };
 
   const start = async () => {
-    if (!file) {
-      toast.error("Select an XLSX or CSV file.");
-      return;
-    }
-    if (!batchName.trim()) {
-      toast.error("Enter an import name.");
-      return;
-    }
-
+    if (!file) return toast.error("Select an XLSX or CSV file.");
+    if (!batchName.trim()) return toast.error("Enter an import name.");
     try {
-      setUploading(true);
+      setAction("upload");
       const result = await uploadJournalImport(file, batchName.trim());
       setJobId(result.id);
-      toast.success("Journal import queued on the EC2 worker.");
+      toast.success("File uploaded. Validation is running.");
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || error?.message || "Journal import failed to start.");
+      toast.error(error?.response?.data?.detail || error?.message || "Journal validation could not start.");
     } finally {
-      setUploading(false);
+      setAction(null);
     }
   };
 
-  const status = job.data?.status;
-  const busy = uploading || Boolean(status && !TERMINAL.has(status));
+  const confirm = async (postValid: boolean) => {
+    if (!jobId) return;
+    try {
+      setAction(postValid ? "post" : "draft");
+      await confirmJournalImport(jobId, postValid);
+      await job.refetch();
+      toast.success(postValid ? "Valid journals are being imported and posted." : "Valid journals are being imported as Draft.");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || error?.message || "Import could not start.");
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const downloadCorrections = async () => {
+    if (!jobId) return;
+    try {
+      setAction("correction");
+      await downloadJournalImportCorrections(jobId);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Correction file could not be downloaded.");
+    } finally {
+      setAction(null);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && (next ? onOpenChange(true) : close())}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>Import Bulk Journal</DialogTitle>
+          <DialogTitle>Easy Bulk Journal Import</DialogTitle>
         </DialogHeader>
 
         <DialogBody className="space-y-5">
           {!jobId ? (
-            <>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                Upload one XLSX or CSV file. <strong>document_number is optional</strong>; leave it blank
-                and ERP will generate it automatically. Consecutive blank rows belong to the same journal.
-                The EC2 worker validates the entire file before creating any journal.
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="text-sm font-medium">
-                  Import Name
-                  <input
-                    className="mt-1 h-10 w-full rounded border px-3"
-                    value={batchName}
-                    onChange={(event) => setBatchName(event.target.value)}
-                    placeholder="Salary August 2026"
-                  />
-                </label>
-
-                <label className="text-sm font-medium">
-                  File
-                  <input
-                    className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-                    type="file"
-                    accept=".xlsx,.csv"
-                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-              </div>
-
-              {file && (
-                <div className="rounded border p-3 text-sm">
-                  <strong>{file.name}</strong> · {(file.size / 1024 / 1024).toFixed(2)} MB
-                </div>
-              )}
-
-              <div className="rounded border p-4 text-sm">
-                <div className="mb-2 font-semibold">Import rules</div>
-                <ul className="list-disc space-y-1 pl-5 text-slate-600">
-                  <li>Every journal must balance debit = credit.</li>
-                  <li>Account, business unit and location codes must exist.</li>
-                  <li>Document number is optional. Leave it blank for automatic ERP numbering.</li>
-                  <li>If supplied, repeat the same document number for every line of that journal.</li>
-                  <li>Existing journal document numbers are rejected.</li>
-                  <li>Status DRAFT keeps the journal unposted; POSTED posts it to GL.</li>
-                  <li>Maximum 5,000 rows / 500 journals per import.</li>
-                </ul>
-              </div>
-            </>
+            <UploadStep
+              file={file}
+              batchName={batchName}
+              setFile={setFile}
+              setBatchName={setBatchName}
+            />
           ) : (
-            <div className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-4">
-                <Metric label="Status" value={status || "—"} />
-                <Metric label="Rows" value={job.data?.total_rows ?? 0} />
+            <>
+              <div className="grid gap-3 sm:grid-cols-5">
+                <Metric label="Status" value={statusLabel(status)} />
                 <Metric label="Journals" value={job.data?.total_documents ?? 0} />
-                <Metric label="Imported" value={job.data?.imported_rows ?? 0} />
+                <Metric label="Valid" value={status === "VALIDATED" ? job.data?.success_count ?? 0 : validJournals.length} tone="good" />
+                <Metric label="Rejected" value={job.data?.failed_count ?? 0} tone={job.data?.failed_count ? "bad" : undefined} />
+                <Metric label="Rows" value={job.data?.total_rows ?? 0} />
               </div>
 
+              {status && ["QUEUED", "PROCESSING"].includes(status) && (
+                <Info>Validating the file. No journal is created during this step.</Info>
+              )}
+              {status && ["IMPORT_QUEUED", "IMPORTING"].includes(status) && (
+                <Info>Importing each valid journal independently. Rejected journals remain available for correction.</Info>
+              )}
               {status === "FAILED" && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-                  <div className="font-semibold">Import failed</div>
-                  <div className="mt-1">{job.data?.worker_error_message || "Validation failed."}</div>
+                  <div className="font-semibold">The worker could not complete this batch.</div>
+                  <div className="mt-1">{job.data?.worker_error_message || "Unexpected worker failure."}</div>
                 </div>
               )}
-
-              {status === "IMPORTED" && (
+              {status === "VALIDATED" && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                  Validation is complete. Review the journal totals below before importing.
+                </div>
+              )}
+              {status && IMPORT_DONE.has(status) && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                  Imported {job.data?.success_count ?? 0} journal(s) and {job.data?.imported_rows ?? 0} row(s).
+                  Imported {job.data?.success_count ?? 0} journal(s) and {job.data?.imported_rows ?? 0} line(s).
+                  {status === "IMPORTED_WITH_ERRORS" ? " Rejected journals were not created." : ""}
                 </div>
               )}
 
-              {status === "PROCESSING" || status === "QUEUED" ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  The file is being processed by the EC2 worker. This window will update automatically.
+              {preview.data?.journals.length ? (
+                <div className="overflow-hidden rounded-lg border">
+                  <div className="max-h-80 overflow-auto">
+                    <table className="w-full min-w-[760px] text-sm">
+                      <thead className="sticky top-0 bg-slate-100 text-left text-xs uppercase text-slate-600">
+                        <tr>
+                          <th className="px-3 py-2">Group</th>
+                          <th className="px-3 py-2">Date / Description</th>
+                          <th className="px-3 py-2">Lines</th>
+                          <th className="px-3 py-2 text-right">Debit</th>
+                          <th className="px-3 py-2 text-right">Credit</th>
+                          <th className="px-3 py-2 text-right">Difference</th>
+                          <th className="px-3 py-2">Result</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {preview.data.journals.map((row, index) => (
+                          <tr key={`${row.journal_group}-${index}`} className="border-t align-top">
+                            <td className="px-3 py-2 font-medium">{row.journal_group}</td>
+                            <td className="px-3 py-2">
+                              <div>{row.posting_date || "—"}</div>
+                              <div className="max-w-xs truncate text-xs text-slate-500">{row.description || row.location || "—"}</div>
+                            </td>
+                            <td className="px-3 py-2">{row.line_count}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{currency.format(Number(row.debit))}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{currency.format(Number(row.credit))}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{currency.format(Number(row.difference))}</td>
+                            <td className="px-3 py-2">
+                              {row.status === "VALID" ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 size={15} /> Ready</span>
+                              ) : (
+                                <div className="text-red-700">
+                                  <span className="inline-flex items-center gap-1 font-medium"><AlertTriangle size={15} /> Needs correction</span>
+                                  {row.errors.slice(0, 2).map((message) => <div key={message} className="mt-1 max-w-sm text-xs">{message}</div>)}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : null}
 
-              {errors.data?.rows?.length ? (
-                <div className="max-h-72 overflow-y-auto rounded border">
-                  {errors.data.rows.map((row) => (
-                    <div key={`${row.row_number}-${row.document_number}`} className="border-b p-3 text-sm last:border-b-0">
-                      <div className="font-medium">
-                        Row {row.row_number} · {row.document_number || "No document number"}
-                      </div>
-                      {row.errors.map((message) => (
-                        <div key={message} className="mt-1 text-red-700">{message}</div>
-                      ))}
-                    </div>
-                  ))}
+              {errors.data?.rows.length ? (
+                <div className="text-sm text-slate-600">
+                  {rejectedJournals.length || job.data?.failed_count || 0} journal(s) need correction. Downloading the correction file keeps only the rejected rows and their messages.
                 </div>
               ) : null}
-            </div>
+            </>
           )}
         </DialogBody>
 
         <DialogFooter>
           {!jobId ? (
             <>
-              <Button variant="outline" onClick={close} disabled={uploading}>Cancel</Button>
-              <Button variant="outline" onClick={() => downloadJournalImportTemplate()} disabled={uploading}>
-                <Download size={16} /> Template
+              <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
+              <Button variant="outline" onClick={() => downloadJournalImportTemplate()} disabled={busy}>
+                <Download size={16} /> Easy Template
               </Button>
-              <Button onClick={start} loading={uploading} disabled={!file}>
-                <Upload size={16} /> Upload & Import
+              <Button onClick={start} loading={action === "upload"} disabled={!file}>
+                <Upload size={16} /> Upload & Validate
+              </Button>
+            </>
+          ) : status === "VALIDATED" ? (
+            <>
+              <Button variant="outline" onClick={close} disabled={busy}>Close</Button>
+              {errors.data?.rows.length ? (
+                <Button variant="outline" onClick={downloadCorrections} loading={action === "correction"}>
+                  <Download size={16} /> Correction File
+                </Button>
+              ) : null}
+              <Button variant="secondary" onClick={() => confirm(false)} loading={action === "draft"} disabled={!validJournals.length}>
+                Import Valid as Draft
+              </Button>
+              <Button onClick={() => confirm(true)} loading={action === "post"} disabled={!validJournals.length}>
+                Import & Post Valid
               </Button>
             </>
           ) : (
-            <Button onClick={close} disabled={busy}>
-              {status === "IMPORTED" || status === "FAILED" ? "Close" : "Processing..."}
-            </Button>
+            <>
+              {errors.data?.rows.length ? (
+                <Button variant="outline" onClick={downloadCorrections} loading={action === "correction"}>
+                  <Download size={16} /> Correction File
+                </Button>
+              ) : null}
+              <Button onClick={close} disabled={busy}>{busy ? "Processing..." : "Close"}</Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>
@@ -220,11 +281,66 @@ export default function JournalBulkImportDialog({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string | number }) {
+function UploadStep({
+  file,
+  batchName,
+  setFile,
+  setBatchName,
+}: {
+  file: File | null;
+  batchName: string;
+  setFile: (file: File | null) => void;
+  setBatchName: (value: string) => void;
+}) {
   return (
-    <div className="rounded border bg-slate-50 p-3">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 font-semibold">{value}</div>
-    </div>
+    <>
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        <div className="font-semibold">Simple journal blocks</div>
+        <div className="mt-1">Enter a journal group, date and location once. Blank header cells continue the group above. ERP generates the official journal number.</div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="text-sm font-medium">
+          Import Name
+          <input className="mt-1 h-10 w-full rounded border px-3" value={batchName} onChange={(event) => setBatchName(event.target.value)} placeholder="January 2026 adjustments" />
+        </label>
+        <label className="text-sm font-medium">
+          File
+          <input className="mt-1 block w-full rounded border px-3 py-2 text-sm" type="file" accept=".xlsx,.csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+        </label>
+      </div>
+      {file ? <div className="rounded border p-3 text-sm"><strong>{file.name}</strong> · {(file.size / 1024 / 1024).toFixed(2)} MB</div> : null}
+      <div className="grid gap-3 text-sm md:grid-cols-3">
+        <Rule title="1. Upload">The file is validated without creating journals.</Rule>
+        <Rule title="2. Review">See each journal’s debit, credit, difference and errors.</Rule>
+        <Rule title="3. Import">Import valid journals as Draft or explicitly Post them.</Rule>
+      </div>
+    </>
   );
+}
+
+function Rule({ title, children }: { title: string; children: ReactNode }) {
+  return <div className="rounded border p-3"><div className="font-semibold">{title}</div><div className="mt-1 text-slate-600">{children}</div></div>;
+}
+
+function Info({ children }: { children: ReactNode }) {
+  return <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">{children}</div>;
+}
+
+function Metric({ label, value, tone }: { label: string; value: string | number; tone?: "good" | "bad" }) {
+  const valueColor = tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-red-700" : "text-slate-900";
+  return <div className="rounded border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className={`mt-1 font-semibold ${valueColor}`}>{value}</div></div>;
+}
+
+function statusLabel(status?: string) {
+  const labels: Record<string, string> = {
+    QUEUED: "Queued",
+    PROCESSING: "Validating",
+    VALIDATED: "Ready to import",
+    IMPORT_QUEUED: "Import queued",
+    IMPORTING: "Importing",
+    IMPORTED: "Imported",
+    IMPORTED_WITH_ERRORS: "Partially imported",
+    FAILED: "Worker failed",
+  };
+  return status ? labels[status] || status : "—";
 }
