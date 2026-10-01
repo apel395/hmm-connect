@@ -193,9 +193,9 @@ export default function InventoryPage() {
         {(["FAST", "SLOW", "DEAD"] as const).map(status => {
           const current = movementCounts[status];
           const detail = status === "FAST"
-            ? `Still on hand; outbound within ${movementDays.fast} days`
-            : status === "SLOW" ? `Stock active within ${movementDays.dead} days, without recent outbound`
-            : `No movement for over ${movementDays.dead} days`;
+            ? `Oldest remaining stock is at most ${movementDays.fast} days old`
+            : status === "SLOW" ? `Oldest remaining stock is ${movementDays.fast + 1}–${movementDays.dead} days old`
+            : `Some stock has remained for over ${movementDays.dead} days`;
           return <button type="button" key={status} onClick={() => changeMovement(movementClass === status ? "ALL" : status)}
             className={`rounded-xl border p-4 text-left shadow-sm transition hover:border-emerald-400 ${movementClass === status ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white"}`}>
             <div className="text-xs uppercase tracking-wide text-slate-500">{status} STOCK</div>
@@ -205,6 +205,7 @@ export default function InventoryPage() {
           </button>;
         })}
       </div>
+      <p className="text-xs text-slate-500">Age is estimated from remaining receipt layers using FIFO. Stock entered as the 2026 opening balance is dated January 1, 2026; this classification does not change inventory value.</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Closing Stock Lines</div><div className="mt-2 text-2xl font-bold">{summary.stock_lines ?? 0}</div></Card>
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Closing Stock Value</div><div className="mt-2 text-2xl font-bold">Rp {money(summary.stock_value)}</div>{hasRange && <div className="mt-1 text-xs text-slate-500">Opening: Rp {money(openingSummary.stock_value)} · Change: Rp {money(Number(summary.stock_value ?? 0) - Number(openingSummary.stock_value ?? 0))}</div>}</Card>
