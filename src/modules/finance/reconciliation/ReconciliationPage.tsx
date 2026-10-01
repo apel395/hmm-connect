@@ -146,6 +146,37 @@ export default function ReconciliationPage() {
                       </Link>)}
                   </div>
                 : <span className="text-slate-500">Posting rule not configured.</span>}
+              {row.control === "CLEARING_SUSPENSE" && <div className="mt-5 border-t border-slate-200 pt-4">
+                <div className="mb-2 font-semibold text-slate-700">Receiving awaiting posted invoices ({row.receipt_evidence?.length ?? 0})</div>
+                {row.receipt_evidence?.length ? <div className="max-h-96 overflow-auto rounded border border-slate-200 bg-white">
+                  <table className="w-full min-w-[820px] text-xs">
+                    <thead className="sticky top-0 bg-slate-100"><tr>
+                      <th className="px-3 py-2 text-left">Receiving</th>
+                      <th className="px-3 py-2 text-left">Supplier</th>
+                      <th className="px-3 py-2 text-right">Received</th>
+                      <th className="px-3 py-2 text-right">Invoiced at receipt cost</th>
+                      <th className="px-3 py-2 text-right">Still open</th>
+                      <th className="px-3 py-2 text-left">Supplier invoices</th>
+                    </tr></thead>
+                    <tbody>{row.receipt_evidence.map(receipt => <tr key={receipt.receipt_id} className="border-t align-top">
+                      <td className="whitespace-nowrap px-3 py-2"><Link className="font-medium text-blue-700 hover:underline" to={`/receiving/${receipt.receipt_id}`}>{receipt.receipt_number}</Link><div className="text-slate-500">{receipt.date} · {receipt.items?.length ?? 0} open item(s)</div></td>
+                      <td className="px-3 py-2">{receipt.supplier_name || (receipt.supplier_id ? `Supplier #${receipt.supplier_id}` : "—")}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">{money(receipt.received_amount)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">{money(receipt.invoiced_amount)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{money(receipt.outstanding_amount)}</td>
+                      <td className="px-3 py-2">
+                        {receipt.posted_invoices?.map(invoice => <div key={invoice.invoice_id}><Link className="text-blue-700 hover:underline" to={`/supplier-invoices/${invoice.invoice_id}`}>{invoice.invoice_number}</Link> · Posted</div>)}
+                        {receipt.pending_invoices?.map(invoice => <div key={invoice.invoice_id}><Link className="text-blue-700 hover:underline" to={`/supplier-invoices/${invoice.invoice_id}`}>{invoice.invoice_number}</Link> · {invoice.status}</div>)}
+                        {!receipt.posted_invoices?.length && !receipt.pending_invoices?.length && <span className="text-slate-500">No linked invoice</span>}
+                      </td>
+                    </tr>)}</tbody>
+                  </table>
+                </div> : <p className="text-slate-500">No receiving quantities awaiting a posted invoice.</p>}
+                {Boolean(row.price_variance_evidence?.length) && <div className="mt-3 text-xs text-amber-800">
+                  Price differences: {row.price_variance_evidence?.map(item => <span key={item.receipt_id} className="mr-3 inline-block"><Link className="underline" to={`/receiving/${item.receipt_id}`}>{item.receipt_number}</Link> {money(item.price_difference)}</span>)}
+                </div>}
+                {Boolean(row.match_issues?.length) && <p className="mt-2 text-xs text-red-700">{row.match_issues?.length} receiving-to-invoice link issue(s) need review.</p>}
+              </div>}
             </td>
           </tr>}
           </Fragment>)}</tbody>
