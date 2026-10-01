@@ -76,8 +76,6 @@ def test_journal_group_inherits_blank_header_cells(db):
             "credit": "0",
         }),
     ])
-    db.flush()
-
     assert list(groups) == ["GROUP:1", "GROUP:2"]
     first_group = groups["GROUP:1"]
     assert len(first_group) == 2
