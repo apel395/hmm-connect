@@ -456,7 +456,7 @@ Route: `/financial-reconciliation`
 Purpose:
 
 - read-only overview of AP, AR, AP Suspense, and Inventory source balances against posted GL
-- date range summary of balances before the period, movement, and closing balances
+- as-of summary of source and posted GL closing balances, differences, and status; period analysis belongs in each module
 - linked COAs open the filtered General Ledger; module links open AP, Receiving, AR, or Inventory for document-level review
 - source documents, journal evidence, and corrections belong in their owning modules; this overview creates no journal
 
