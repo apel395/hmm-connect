@@ -194,6 +194,21 @@ def test_global_setting_policy_rejects_bank_as_grni():
     assert error.value.status_code == 422
 
 
+def test_purchase_price_variance_requires_expense_mapping():
+    from app.api.v1.accounting import _validate_direct_setting_account
+
+    variance = coa(30, "EXPENSE", "DEBIT")
+    service = DirectCoaService(FakeDb({30: variance}, setting_account_id=30))
+    _validate_direct_setting_account("purchase_price_variance_account_id", variance)
+    assert service.purchase_price_variance_account().id == 30
+
+    with pytest.raises(HTTPException) as error:
+        _validate_direct_setting_account(
+            "purchase_price_variance_account_id", coa(31, "LIABILITY", "CREDIT"),
+        )
+    assert error.value.status_code == 422
+
+
 def test_supplier_adjustment_uses_direct_payable_resolver():
     import inspect
 

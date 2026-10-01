@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import aliased
@@ -594,17 +594,24 @@ class FinancialReconciliationService:
         if location_id is not None:
             receipts = receipts.filter(GoodsReceipt.location_id == location_id)
         receipt_rows = receipts.order_by(GoodsReceipt.received_at, GoodsReceipt.id).all()
+        receipt_by_id = {receipt.id: receipt for receipt in receipt_rows}
         receipt_ids = [receipt.id for receipt in receipt_rows]
         received = {}
         invoiced = {}
+        invoice_net = {}
+        item_rows = {}
+        invoiced_quantity = {}
+        match_issues = []
         invoice_numbers: dict[int, set[str]] = {}
         if receipt_ids:
-            for receipt_id, quantity, unit_cost in (self.db.query(
-                    GoodsReceiptItem.goods_receipt_id, GoodsReceiptItem.quantity,
-                    GoodsReceiptItem.unit_cost)
-                    .filter(GoodsReceiptItem.goods_receipt_id.in_(receipt_ids)).all()):
-                received[receipt_id] = (received.get(receipt_id, ZERO)
-                                        + Decimal(quantity or 0) * Decimal(unit_cost or 0))
+            for item in (self.db.query(GoodsReceiptItem)
+                         .filter(GoodsReceiptItem.goods_receipt_id.in_(receipt_ids)).all()):
+                item_rows[item.id] = item
+                receipt_cost = (Decimal(item.quantity or 0)
+                                * Decimal(item.unit_cost or 0)).quantize(CENT, rounding=ROUND_HALF_UP)
+                received[item.goods_receipt_id] = (
+                    received.get(item.goods_receipt_id, ZERO) + receipt_cost
+                )
             invoice_lines = (self.db.query(SupplierInvoiceLine, SupplierInvoice,
                                            GoodsReceiptItem.goods_receipt_id)
                              .join(SupplierInvoice, SupplierInvoice.id == SupplierInvoiceLine.supplier_invoice_id)
@@ -616,24 +623,92 @@ class FinancialReconciliationService:
             if location_id is not None:
                 invoice_lines = invoice_lines.filter(SupplierInvoice.location_id == location_id)
             for line, invoice, receipt_id in invoice_lines.all():
-                invoiced[receipt_id] = (invoiced.get(receipt_id, ZERO)
-                                        + Decimal(line.line_amount or 0))
+                receipt = receipt_by_id[receipt_id]
+                item = item_rows[line.goods_receipt_item_id]
+                if (receipt.supplier_id is not None
+                        and invoice.supplier_id != receipt.supplier_id):
+                    match_issues.append({
+                        "receipt_id": receipt_id, "receipt_item_id": item.id,
+                        "invoice_id": invoice.id, "issue": "SUPPLIER_MISMATCH",
+                    })
+                    continue
+                if (receipt.location_id is not None and invoice.location_id is not None
+                        and invoice.location_id != receipt.location_id):
+                    match_issues.append({
+                        "receipt_id": receipt_id, "receipt_item_id": item.id,
+                        "invoice_id": invoice.id, "issue": "LOCATION_MISMATCH",
+                    })
+                    continue
+                if line.product_id is not None and line.product_id != item.product_id:
+                    match_issues.append({
+                        "receipt_id": receipt_id, "receipt_item_id": item.id,
+                        "invoice_id": invoice.id, "issue": "PRODUCT_MISMATCH",
+                    })
+                    continue
+                invoiced_quantity[line.goods_receipt_item_id] = (
+                    invoiced_quantity.get(line.goods_receipt_item_id, ZERO)
+                    + Decimal(line.quantity or 0)
+                )
+                invoice_net[receipt_id] = (
+                    invoice_net.get(receipt_id, ZERO)
+                    + Decimal(line.line_amount or 0)
+                )
                 invoice_numbers.setdefault(receipt_id, set()).add(invoice.internal_invoice_number)
 
+        open_items: dict[int, list[dict]] = {}
+        for item in item_rows.values():
+            quantity = Decimal(item.quantity or 0)
+            billed_quantity = invoiced_quantity.get(item.id, ZERO)
+            if billed_quantity > quantity:
+                match_issues.append({
+                    "receipt_id": item.goods_receipt_id,
+                    "receipt_item_id": item.id,
+                    "issue": "INVOICED_QUANTITY_EXCEEDS_RECEIVED",
+                    "received_quantity": quantity,
+                    "invoiced_quantity": billed_quantity,
+                })
+            # A fully invoiced receipt item must clear exactly the amount
+            # originally accrued, including any cent rounding at receipt.
+            received_value = (quantity * Decimal(item.unit_cost or 0)).quantize(CENT, rounding=ROUND_HALF_UP)
+            open_quantity = quantity - billed_quantity
+            open_value = (open_quantity * Decimal(item.unit_cost or 0)).quantize(CENT, rounding=ROUND_HALF_UP)
+            if open_quantity != ZERO:
+                open_items.setdefault(item.goods_receipt_id, []).append({
+                    "receipt_item_id": item.id, "product_id": item.product_id,
+                    "received_quantity": quantity, "invoiced_quantity": billed_quantity,
+                    "outstanding_quantity": open_quantity,
+                    "receipt_unit_cost": Decimal(item.unit_cost or 0),
+                    "outstanding_amount": open_value,
+                })
+            invoiced[item.goods_receipt_id] = (
+                invoiced.get(item.goods_receipt_id, ZERO) + received_value - open_value
+            )
+
         evidence = []
+        price_evidence = []
         source = ZERO
         for receipt in receipt_rows:
-            gross = received.get(receipt.id, ZERO).quantize(CENT)
-            cleared = invoiced.get(receipt.id, ZERO).quantize(CENT)
+            gross = received.get(receipt.id, ZERO)
+            cleared = invoiced.get(receipt.id, ZERO)
+            invoice_amount = invoice_net.get(receipt.id, ZERO).quantize(CENT)
             outstanding = gross - cleared
             source += outstanding
+            if invoice_amount != cleared:
+                price_evidence.append({
+                    "receipt_id": receipt.id, "receipt_number": receipt.receipt_number,
+                    "invoice_numbers": sorted(invoice_numbers.get(receipt.id, set())),
+                    "cleared_receipt_cost": cleared, "invoice_net_amount": invoice_amount,
+                    "price_difference": invoice_amount - cleared,
+                })
             if outstanding != ZERO:
                 evidence.append({
                     "receipt_id": receipt.id, "receipt_number": receipt.receipt_number,
                     "date": receipt.received_at.date(), "supplier_id": receipt.supplier_id,
                     "received_amount": gross, "invoiced_amount": cleared,
                     "outstanding_amount": outstanding,
+                    "invoice_net_amount": invoice_amount,
                     "invoice_numbers": sorted(invoice_numbers.get(receipt.id, set())),
+                    "items": open_items.get(receipt.id, []),
                 })
 
         gl = self._gl_balance([account.id], location_id, as_of)
@@ -646,7 +721,11 @@ class FinancialReconciliationService:
         )
         if row["status"] == "RECONCILED" and source != ZERO:
             row.update(status="OPEN_ITEMS", visual="AMBER")
+        if match_issues:
+            row.update(status="OUT_OF_BALANCE", visual="RED")
         row["receipt_evidence"] = evidence
+        row["price_variance_evidence"] = price_evidence
+        row["match_issues"] = match_issues
         row["exceptions"] = self._suspense_journals([account.id], location_id, as_of)
         if source != ZERO:
             row["note"] = ("Open receipt accrual is expected until matching invoices clear it. "

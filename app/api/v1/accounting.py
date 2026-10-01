@@ -14,6 +14,7 @@ class DirectCoaSettingsInput(BaseModel):
     accounts_payable_account_id: int | None = None
     grni_account_id: int | None = None
     purchase_discount_account_id: int | None = None
+    purchase_price_variance_account_id: int | None = None
     withholding_tax_payable_account_id: int | None = None
 
 
@@ -22,6 +23,7 @@ DIRECT_COA_SETTING_FIELDS = {
     "accounts_payable_account_id": "ACCOUNTS_PAYABLE_ACCOUNT",
     "grni_account_id": "GRNI_ACCOUNT",
     "purchase_discount_account_id": "PURCHASE_DISCOUNT_ACCOUNT",
+    "purchase_price_variance_account_id": "PURCHASE_PRICE_VARIANCE_ACCOUNT",
     "withholding_tax_payable_account_id": "WITHHOLDING_TAX_PAYABLE_ACCOUNT",
 }
 
@@ -30,6 +32,7 @@ DIRECT_COA_SETTING_DESCRIPTIONS = {
     "ACCOUNTS_PAYABLE_ACCOUNT": "Global direct COA for supplier accounts payable",
     "GRNI_ACCOUNT": "Global direct COA for goods received not invoiced",
     "PURCHASE_DISCOUNT_ACCOUNT": "Global direct COA for purchase discounts",
+    "PURCHASE_PRICE_VARIANCE_ACCOUNT": "Global direct COA for receipt-to-invoice purchase price differences",
     "WITHHOLDING_TAX_PAYABLE_ACCOUNT": "Global direct COA for withholding tax payable",
 }
 
@@ -90,6 +93,9 @@ def _validate_direct_setting_account(field_name: str, account: ChartOfAccount) -
             "withholding_tax_payable_account_id": "Withholding Tax Payable",
         }
         message = f"{labels[field_name]} COA must be an active credit-balance posting liability"
+    elif field_name == "purchase_price_variance_account_id":
+        valid = account.account_type == "EXPENSE" and account.normal_balance == "DEBIT"
+        message = "Purchase Price Variance COA must be an active debit-balance posting expense"
     else:
         valid = (
             account.account_type in {"INCOME", "EXPENSE"}
@@ -115,7 +121,7 @@ def _serialize_direct_coa_settings(db: Session) -> dict:
     missing = [
         field_name
         for field_name, account_id in result.items()
-        if account_id is None
+        if account_id is None and field_name != "purchase_price_variance_account_id"
     ]
     return {
         **result,
