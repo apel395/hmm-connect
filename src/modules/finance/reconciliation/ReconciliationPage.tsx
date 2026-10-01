@@ -58,22 +58,17 @@ const statusClass: Record<ReconciliationRow["status"], string> = {
 const input = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
 export default function ReconciliationPage() {
-  const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
   const query = useQuery({
-    queryKey: ["financial-reconciliation", dateFrom, dateTo],
+    queryKey: ["financial-reconciliation", dateTo],
     queryFn: () => reconciliationApi.report({
-      date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
     }),
-    enabled: !invalidRange,
   });
   const report = query.data;
 
   const ledgerPath = (accountId: number) => {
     const params = new URLSearchParams({ account_id: String(accountId) });
-    if (dateFrom) params.set("date_from", dateFrom);
     if (dateTo) params.set("date_to", dateTo);
     return `/journal/general-ledger?${params.toString()}`;
   };
@@ -82,34 +77,23 @@ export default function ReconciliationPage() {
     <PageHeader title="Financial Reconciliation"
       description="Read-only overview by finance and inventory module. Review documents in their owning module."
       actions={<div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => query.refetch()} disabled={query.isFetching || invalidRange}>
+        <Button variant="secondary" onClick={() => query.refetch()} disabled={query.isFetching}>
           <RefreshCw className="mr-2 h-4 w-4"/> Refresh
         </Button>
         <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
       </div>}
     />
     <Card className="p-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="text-xs font-medium text-slate-600">From date
-          <input className={input} type="date" value={dateFrom} max={dateTo || undefined}
-            onChange={event => setDateFrom(event.target.value)}/>
-        </label>
-        <label className="text-xs font-medium text-slate-600">To date
-          <input className={input} type="date" value={dateTo} min={dateFrom || undefined}
-            onChange={event => setDateTo(event.target.value)}/>
-        </label>
-      </div>
-      <p className="mt-2 text-xs text-slate-500">
-        {dateFrom
-          ? `Balances before ${dateFrom}, movement through ${dateTo || "today"}, and closing balances.`
-          : `Closing balances ${dateTo ? `through ${dateTo}` : "as of today"}. Add From date to show movement.`}
-      </p>
-      {invalidRange && <p className="mt-2 text-sm text-red-700">From date must be on or before To date.</p>}
+      <label className="block max-w-sm text-xs font-medium text-slate-600">As of date
+        <input className={input} type="date" value={dateTo}
+          onChange={event => setDateTo(event.target.value)}/>
+      </label>
+      <p className="mt-2 text-xs text-slate-500">Leave blank for current balances. Use each module for period movement and document details.</p>
     </Card>
 
     {query.isError && <Card className="p-4 text-sm text-red-600">Financial reconciliation could not be loaded.</Card>}
     {query.isLoading && <Card className="p-6 text-sm text-slate-500">Loading financial reconciliation…</Card>}
-    {!invalidRange && report && <>
+    {report && <>
       <div className="grid gap-4 md:grid-cols-5">
         <Card className="p-4"><div className="text-xs text-slate-500">Reconciled</div><div className="mt-1 text-2xl font-semibold">{report.summary.reconciled}</div></Card>
         <Card className="p-4"><div className="text-xs text-slate-500">Out of Balance</div><div className="mt-1 text-2xl font-semibold">{report.summary.out_of_balance}</div></Card>
@@ -119,14 +103,10 @@ export default function ReconciliationPage() {
       </div>
 
       <Card className="p-0"><div className="overflow-x-auto">
-        <table className={`w-full text-xs ${dateFrom ? "min-w-[1500px]" : "min-w-[1080px]"}`}>
+        <table className="w-full min-w-[1080px] text-xs">
           <thead><tr>
             <th className="px-4 py-3 text-left">Module</th>
             <th className="px-4 py-3 text-left">Linked COA</th>
-            {dateFrom && <th className="px-4 py-3 text-right">Before: Source</th>}
-            {dateFrom && <th className="px-4 py-3 text-right">Before: GL</th>}
-            {dateFrom && <th className="px-4 py-3 text-right">Movement: Source</th>}
-            {dateFrom && <th className="px-4 py-3 text-right">Movement: GL</th>}
             <th className="px-4 py-3 text-right">Closing Source</th>
             <th className="px-4 py-3 text-right">Closing GL</th>
             <th className="px-4 py-3 text-right">Difference</th>
@@ -143,10 +123,6 @@ export default function ReconciliationPage() {
                 </div>)
               : <span className="text-slate-400">Posting rule not configured</span>}
             </td>
-            {dateFrom && <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.period?.opening_source)}</td>}
-            {dateFrom && <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.period?.opening_gl)}</td>}
-            {dateFrom && <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.period?.source_change)}</td>}
-            {dateFrom && <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.period?.gl_change)}</td>}
             <td className="whitespace-nowrap px-4 py-3 text-right">{row.status === "NOT_CONFIGURED" ? "Unavailable" : money(row.source_balance)}</td>
             <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.gl_balance)}</td>
             <td className="whitespace-nowrap px-4 py-3 text-right font-medium">{money(row.difference)}</td>
