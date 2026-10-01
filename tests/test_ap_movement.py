@@ -95,7 +95,7 @@ def test_opening_invoice_payment_and_unallocated_amount(db):
     ]
     summary = result["summary"]
     assert summary["opening_balance"] == Decimal("200")
-    assert summary["invoice_total"] == Decimal("150")
+    assert summary["invoice_total"] == Decimal("150"), result
     assert summary["payment_total"] == Decimal("40")
     assert summary["closing_balance"] == Decimal("310")
     assert result["items"][0]["movement_type"] == "OPENING"
