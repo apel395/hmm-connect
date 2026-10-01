@@ -1,5 +1,6 @@
 import base64
 import io
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -120,8 +121,26 @@ def _serialize(batch: ImportBatch) -> dict:
 
 
 def _decimal(value) -> Decimal:
+    if value is None or str(value).strip() == "":
+        return Decimal("0")
+    if isinstance(value, (int, float, Decimal)):
+        return Decimal(str(value))
+    raw = re.sub(r"(?i)rp", "", str(value)).replace(" ", "")
+    if "," in raw and "." in raw:
+        raw = raw.replace(".", "").replace(",", ".") if raw.rfind(",") > raw.rfind(".") else raw.replace(",", "")
+    elif raw.count(".") > 1:
+        raw = raw.replace(".", "")
+    elif raw.count(",") > 1:
+        raw = raw.replace(",", "")
+    elif "," in raw:
+        left, right = raw.split(",", 1)
+        raw = f"{left}.{right}" if len(right) in {1, 2} else left + right
+    elif "." in raw:
+        left, right = raw.split(".", 1)
+        if len(right) == 3 and left not in {"0", "-0"}:
+            raw = left + right
     try:
-        return Decimal(str(value or 0).replace(",", ""))
+        return Decimal(raw)
     except InvalidOperation:
         return Decimal("0")
 
