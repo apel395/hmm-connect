@@ -16,6 +16,9 @@ export interface Inventory {
   below_minimum?: boolean;
   needs_reorder?: boolean;
   movement_class?: "FAST" | "SLOW" | "DEAD" | "EMPTY";
+  oldest_stock_date?: string | null;
+  stock_age_days?: number | null;
+  aging_quantities?: { FAST: number; SLOW: number; DEAD: number };
   last_out?: string | null;
   last_movement?: string | null;
 }
