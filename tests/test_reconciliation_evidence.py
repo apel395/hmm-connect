@@ -125,6 +125,9 @@ def test_suspense_compares_posted_receipt_less_posted_matched_invoice(db):
     still_pending = service.clearing_suspense()
     assert still_pending["source_balance"] == Decimal("120")
     assert still_pending["receipt_evidence"][0]["invoice_numbers"] == []
+    assert still_pending["receipt_evidence"][0]["pending_invoices"] == [
+        {"invoice_id": draft.id, "invoice_number": "INV-DRAFT", "status": "DRAFT"}
+    ]
     draft.status = "VOID"
     db.commit()
 
@@ -146,6 +149,7 @@ def test_suspense_compares_posted_receipt_less_posted_matched_invoice(db):
     current = service.clearing_suspense()
     assert current["source_balance"] == current["gl_balance"] == Decimal("60")
     assert current["receipt_evidence"][0]["invoice_numbers"] == ["INV-2026-1"]
+    assert current["receipt_evidence"][0]["posted_invoices"][0]["invoice_id"] == invoice.id
     assert current["receipt_evidence"][0]["invoiced_amount"] == Decimal("60")
     assert current["receipt_evidence"][0]["invoice_net_amount"] == Decimal("60")
     assert current["receipt_evidence"][0]["items"][0]["outstanding_quantity"] == Decimal("5")
