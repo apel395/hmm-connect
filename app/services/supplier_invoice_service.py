@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
 from sqlalchemy import func
@@ -21,6 +21,7 @@ from app.services.location_access import enforce_location_access
 from app.services.payable_balance import sync_account_payable, sync_invoice_balance
 
 ZERO = Decimal("0")
+MONEY = Decimal("0.01")
 PRICE_TOLERANCE = Decimal("0.01")
 
 
@@ -299,6 +300,17 @@ class SupplierInvoiceService:
         ).filter(
             SupplierInvoiceLine.goods_receipt_item_id == receipt_item_id,
             SupplierInvoice.status.notin_({"REJECTED", "VOID"}),
+        )
+        if invoice.id:
+            query = query.filter(SupplierInvoice.id != invoice.id)
+        return Decimal(query.scalar() or 0)
+
+    def _posted_invoiced_quantity(self, invoice: SupplierInvoice, receipt_item_id: int) -> Decimal:
+        query = self.db.query(func.coalesce(func.sum(SupplierInvoiceLine.quantity), 0)).join(
+            SupplierInvoice, SupplierInvoice.id == SupplierInvoiceLine.supplier_invoice_id,
+        ).filter(
+            SupplierInvoiceLine.goods_receipt_item_id == receipt_item_id,
+            SupplierInvoice.status == "POSTED",
         )
         if invoice.id:
             query = query.filter(SupplierInvoice.id != invoice.id)
@@ -601,17 +613,59 @@ class SupplierInvoiceService:
 
         resolver = DirectCoaService(self.db)
         uses_grni = resolver.receipt_uses_grni(invoice)
+        linked_receipts = self._invoice_receipts(invoice) if any(
+            line.goods_receipt_item_id for line in invoice.lines
+        ) else []
+        for receipt in linked_receipts:
+            receipt_journal = self.db.query(JournalEntry.id).filter(
+                JournalEntry.reference_type == "GOODS_RECEIPT",
+                JournalEntry.reference_id == receipt.id,
+                JournalEntry.status == "POSTED",
+            ).first()
+            if receipt.status != "POSTED" or receipt_journal is None:
+                raise HTTPException(
+                    409, f"Post receiving journal for {receipt.receipt_number} before invoicing",
+                )
         grouped = {}
+        purchase_price_variance = ZERO
+        posted_quantities = {}
         if uses_grni:
             grni_account = resolver.grni_account()
             for line in invoice.lines:
                 if line.goods_receipt_item_id:
                     account = grni_account
+                    receipt_item = self.db.get(GoodsReceiptItem, line.goods_receipt_item_id)
+                    if receipt_item is None:
+                        raise HTTPException(409, "Linked receiving item no longer exists")
+                    if receipt_item.id not in posted_quantities:
+                        posted_quantities[receipt_item.id] = self._posted_invoiced_quantity(
+                            invoice, receipt_item.id,
+                        )
+                    previous_quantity = posted_quantities[receipt_item.id]
+                    next_quantity = previous_quantity + Decimal(line.quantity or 0)
+                    received_quantity = Decimal(receipt_item.quantity or 0)
+                    if next_quantity > received_quantity:
+                        raise HTTPException(409, "Invoice quantity exceeds uninvoiced receiving quantity")
+                    receipt_value = (
+                        received_quantity * Decimal(receipt_item.unit_cost or 0)
+                    ).quantize(MONEY, rounding=ROUND_HALF_UP)
+
+                    def cleared_at(invoiced_quantity):
+                        remaining = (
+                            (received_quantity - invoiced_quantity)
+                            * Decimal(receipt_item.unit_cost or 0)
+                        ).quantize(MONEY, rounding=ROUND_HALF_UP)
+                        return receipt_value - remaining
+
+                    clearing_amount = cleared_at(next_quantity) - cleared_at(previous_quantity)
+                    posted_quantities[receipt_item.id] = next_quantity
+                    purchase_price_variance += Decimal(line.line_amount or 0) - clearing_amount
                 else:
                     account = resolver.snapshot_invoice_line(invoice, line)
+                    clearing_amount = Decimal(line.line_amount or 0)
                 grouped[account.id] = (
                     grouped.get(account.id, ZERO)
-                    + Decimal(line.line_amount or 0)
+                    + clearing_amount
                 )
         else:
             for line in invoice.lines:
@@ -622,6 +676,10 @@ class SupplierInvoiceService:
                 )
 
         payable_account = resolver.payable_account(invoice.supplier, invoice.location_id)
+        variance_account = (
+            resolver.purchase_price_variance_account()
+            if purchase_price_variance != ZERO else None
+        )
         input_vat_account = resolver.input_vat_account() if Decimal(invoice.tax_amount or 0) > ZERO else None
         discount_account = (
             resolver.purchase_discount_account()
@@ -660,6 +718,20 @@ class SupplierInvoiceService:
                 business_unit_id=invoice.business_unit_id,
                 department_id=invoice.department_id,
                 location_id=invoice.location_id,
+                supplier_id=invoice.supplier_id,
+            ))
+            line_number += 1
+
+        if variance_account is not None:
+            journal.lines.append(JournalLine(
+                line_number=line_number,
+                account_id=variance_account.id,
+                debit=max(purchase_price_variance, ZERO),
+                credit=max(-purchase_price_variance, ZERO),
+                description=f"Receiving price difference for {invoice.internal_invoice_number}",
+                business_unit_id=invoice.business_unit_id,
+                location_id=invoice.location_id,
+                department_id=invoice.department_id,
                 supplier_id=invoice.supplier_id,
             ))
             line_number += 1
