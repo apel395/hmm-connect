@@ -89,6 +89,9 @@ def test_opening_invoice_payment_and_unallocated_amount(db):
         (invoice.id, "POSTED", date(2026, 1, 5)),
         (invoice.id + 1, "POSTED", date(2026, 1, 5)),
     ]
+    assert [(row.total_amount, row.balance_amount) for row in db.query(SupplierInvoice).all()] == [
+        (Decimal("100"), Decimal("100")), (Decimal("50"), Decimal("50")),
+    ]
     result = report(db, admin)
     assert [row["document_number"] for row in result["items"]] == [
         "Opening AP", "INV-1", "INV-2", "PAY-1",
