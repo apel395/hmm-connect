@@ -38,6 +38,7 @@ const modules: Record<Control, {
     links: [
       { label: "Stock", to: "/inventory" },
       { label: "Stock Movements", to: "/inventory/movements" },
+      { label: "Stock Consolidation", to: "/financial-reconciliation/stock" },
     ],
   },
 };
