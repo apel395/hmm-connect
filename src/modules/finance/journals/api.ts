@@ -82,7 +82,6 @@ export const createJournal = async (payload: JournalCreatePayload) => (await api
 export const updateJournal = async (id: number, payload: JournalUpdatePayload) => (await api.patch<Journal>(`/journal-entries/${id}`, payload)).data;
 export const journalAction = async (id: number, action: string) => (await api.post<Journal>(`/journal-entries/${id}/${action}`)).data;
 
-
 export type CurrentPeriodPreview = {
   period_id: number;
   period_name: string;
@@ -95,27 +94,19 @@ export type CurrentPeriodPreview = {
 export const getCurrentPeriodPreview = async () =>
   (await api.get<CurrentPeriodPreview>("/journal-entries/bulk/current-period-preview")).data;
 
-export const bulkJournalAction = async (
-  journalIds: number[],
-  action: "post" | "unpost",
-) =>
-  (
-    await api.post<{ processed: number; status: string; journal_ids: number[] }>(
-      `/journal-entries/bulk/${action}`,
-      { journal_ids: journalIds },
-    )
-  ).data;
+export const bulkJournalAction = async (journalIds: number[], action: "post" | "unpost") =>
+  (await api.post<{ processed: number; status: string; journal_ids: number[] }>(
+    `/journal-entries/bulk/${action}`,
+    { journal_ids: journalIds },
+  )).data;
 
 export const recreateCurrentPeriod = async () =>
-  (
-    await api.post<{
-      period_id: number;
-      period_name: string;
-      journals_recreated: number;
-      ledger_rows_recreated: number;
-    }>("/journal-entries/bulk/recreate-current-period")
-  ).data;
-
+  (await api.post<{
+    period_id: number;
+    period_name: string;
+    journals_recreated: number;
+    ledger_rows_recreated: number;
+  }>("/journal-entries/bulk/recreate-current-period")).data;
 
 export type JournalImportJob = {
   id: number;
@@ -136,23 +127,42 @@ export type JournalImportJob = {
   period_to?: string | null;
   worker_error_message?: string | null;
   created_at?: string | null;
+  validated_at?: string | null;
   imported_at?: string | null;
+};
+
+export type JournalImportPreviewRow = {
+  journal_group: string;
+  posting_date?: string | null;
+  description?: string | null;
+  location?: string | null;
+  line_count: number;
+  debit: number;
+  credit: number;
+  difference: number;
+  status: "VALID" | "ERROR";
+  errors: string[];
+};
+
+export type JournalImportErrorRow = {
+  row_number: number;
+  sheet_name?: string | null;
+  document_number?: string | null;
+  journal_group?: string | null;
+  status: string;
+  errors: string[];
+  warnings: string[];
+  data?: Record<string, unknown>;
 };
 
 export const createJournalImport = async (batch_name: string) =>
   (await api.post<JournalImportJob>("/journal-imports", { batch_name })).data;
 
-export const getJournalImportUploadUrl = async (
-  id: number,
-  filename: string,
-  content_type: string,
-) =>
-  (
-    await api.post<{ upload_url: string; content_type: string }>(
-      `/journal-imports/${id}/upload-url`,
-      { filename, content_type },
-    )
-  ).data;
+export const getJournalImportUploadUrl = async (id: number, filename: string, content_type: string) =>
+  (await api.post<{ upload_url: string; content_type: string }>(
+    `/journal-imports/${id}/upload-url`,
+    { filename, content_type },
+  )).data;
 
 export const completeJournalImportUpload = async (id: number) =>
   (await api.post<JournalImportJob>(`/journal-imports/${id}/complete`)).data;
@@ -160,23 +170,40 @@ export const completeJournalImportUpload = async (id: number) =>
 export const startJournalImport = async (id: number) =>
   (await api.post<JournalImportJob>(`/journal-imports/${id}/start`)).data;
 
+export const confirmJournalImport = async (id: number, postValid = false) =>
+  (await api.post<JournalImportJob>(`/journal-imports/${id}/confirm`, { post_valid: postValid })).data;
+
 export const getJournalImport = async (id: number) =>
   (await api.get<JournalImportJob>(`/journal-imports/${id}`)).data;
 
+export const getJournalImportPreview = async (id: number) =>
+  (await api.get<{ job_id: number; status: string; journals: JournalImportPreviewRow[] }>(
+    `/journal-imports/${id}/preview`,
+  )).data;
+
 export const getJournalImportErrors = async (id: number) =>
-  (
-    await api.get<{
-      job_id: number;
-      rows: Array<{
-        row_number: number;
-        sheet_name?: string | null;
-        document_number?: string | null;
-        status: string;
-        errors: string[];
-        warnings: string[];
-      }>;
-    }>(`/journal-imports/${id}/errors`)
-  ).data;
+  (await api.get<{ job_id: number; rows: JournalImportErrorRow[] }>(
+    `/journal-imports/${id}/errors`,
+  )).data;
+
+const downloadBase64File = (data: {
+  filename: string;
+  content_base64: string;
+  content_type: string;
+}) => {
+  const binary = atob(data.content_base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  const blob = new Blob([bytes], { type: data.content_type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = data.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
 
 export const downloadJournalImportTemplate = async () => {
   const response = await api.get<{
@@ -184,46 +211,30 @@ export const downloadJournalImportTemplate = async () => {
     content_base64: string;
     content_type: string;
   }>("/journal-imports/template");
+  downloadBase64File(response.data);
+};
 
-  const binary = atob(response.data.content_base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-
-  const blob = new Blob([bytes], {
-    type:
-      response.data.content_type ||
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = response.data.filename || "hmm-journal-import-template.xlsx";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+export const downloadJournalImportCorrections = async (id: number) => {
+  const response = await api.get<{
+    filename: string;
+    content_base64: string;
+    content_type: string;
+  }>(`/journal-imports/${id}/correction-file`);
+  downloadBase64File(response.data);
 };
 
 export const uploadJournalImport = async (file: File, batchName: string) => {
   const job = await createJournalImport(batchName);
-  const contentType =
-    file.type ||
-    (file.name.toLowerCase().endsWith(".csv")
-      ? "text/csv"
-      : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  const contentType = file.type || (file.name.toLowerCase().endsWith(".csv")
+    ? "text/csv"
+    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   const upload = await getJournalImportUploadUrl(job.id, file.name, contentType);
-
   const response = await fetch(upload.upload_url, {
     method: "PUT",
     headers: { "Content-Type": upload.content_type },
     body: file,
   });
-  if (!response.ok) {
-    throw new Error(`S3 upload failed: HTTP ${response.status}`);
-  }
-
+  if (!response.ok) throw new Error(`S3 upload failed: HTTP ${response.status}`);
   await completeJournalImportUpload(job.id);
   return startJournalImport(job.id);
 };
