@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from math import ceil
 
@@ -16,6 +16,7 @@ from app.models.product import Product
 from app.models.stock_movement import StockMovement
 from app.models.warehouse import Warehouse
 from app.services.location_access import apply_warehouse_scope, resolve_location_id
+from app.services.stock_aging_service import START_DATE, age_remaining_stock
 
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -170,15 +171,6 @@ def list_inventory(
         (history.c.product_id == Inventory.product_id)
         & (history.c.warehouse_id == Inventory.warehouse_id),
     )
-    recent_cutoff = as_of_date - timedelta(days=30)
-    dead_cutoff = as_of_date - timedelta(days=90)
-    movement_status = case(
-        (quantity <= 0, "EMPTY"),
-        (history.c.last_out >= recent_cutoff, "FAST"),
-        (func.coalesce(history.c.last_movement, date(as_of_date.year, 1, 1)) < dead_cutoff, "DEAD"),
-        else_="SLOW",
-    )
-
     minimum = func.coalesce(Product.minimum_stock, 0)
     monitored = minimum > 0
     low_stock = monitored & (quantity <= minimum)
@@ -191,15 +183,57 @@ def list_inventory(
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term), Warehouse.name.ilike(term)))
 
-    movement_totals = query.with_entities(*[
-        func.coalesce(func.sum(case((movement_status == label, 1), else_=0)), 0)
+    # Age the quantity still on hand. A recent sale must not turn an old,
+    # remaining receipt layer into fast stock. Aggregate receipt dates in one
+    # query for the whole filtered scope rather than querying per stock line.
+    snapshots = query.with_entities(
+        Inventory.id, Inventory.product_id, Inventory.warehouse_id,
+        quantity.label("as_of_quantity"), stock_value.label("as_of_value"),
+    ).all()
+    inbound_by_key = {}
+    if snapshots:
+        inbound_rows = (
+            db.query(
+                StockMovement.product_id, StockMovement.warehouse_id,
+                movement_date.label("received_date"),
+                func.sum(StockMovement.quantity),
+            )
+            .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
+            .filter(
+                StockMovement.movement_type == "IN",
+                StockMovement.product_id.in_({row.product_id for row in snapshots}),
+                StockMovement.warehouse_id.in_({row.warehouse_id for row in snapshots}),
+                movement_date >= START_DATE, movement_date <= as_of_date,
+            )
+            .group_by(StockMovement.product_id, StockMovement.warehouse_id, movement_date)
+            .all()
+        )
+        for product_id, warehouse_id, received_date, received_qty in inbound_rows:
+            inbound_by_key.setdefault((product_id, warehouse_id), []).append(
+                (received_date, received_qty)
+            )
+
+    ages = {
+        row.id: age_remaining_stock(
+            row.as_of_quantity,
+            inbound_by_key.get((row.product_id, row.warehouse_id), []),
+            as_of_date,
+        )
+        for row in snapshots
+    }
+    movement_totals = {
+        label: {"stock_lines": 0, "stock_value": Decimal("0")}
         for label in ("FAST", "SLOW", "DEAD")
-    ], *[
-        func.coalesce(func.sum(case((movement_status == label, stock_value), else_=0)), 0)
-        for label in ("FAST", "SLOW", "DEAD")
-    ]).one()
+    }
+    for row in snapshots:
+        label = ages[row.id]["movement_class"]
+        if label in movement_totals:
+            movement_totals[label]["stock_lines"] += 1
+            movement_totals[label]["stock_value"] += Decimal(row.as_of_value or 0)
     if movement_class:
-        query = query.filter(movement_status == movement_class)
+        query = query.filter(Inventory.id.in_(
+            row.id for row in snapshots if ages[row.id]["movement_class"] == movement_class
+        ))
 
     summary_rows = query.with_entities(
         func.count(Inventory.id),
@@ -218,19 +252,18 @@ def list_inventory(
     ).order_by(ChartOfAccount.account_number, Warehouse.location_id).all()
     rows = query.add_entity(ChartOfAccount).add_columns(
         quantity.label("as_of_quantity"), stock_value.label("as_of_value"),
-        movement_status.label("movement_class"),
         history.c.last_out, history.c.last_movement,
     ).order_by(Product.code, Warehouse.code).offset((page - 1) * page_size).limit(page_size).all()
     result = _paged([
         {
             **inventory_row(inventory, product, warehouse, account,
                             quantity=as_of_quantity, stock_value=as_of_value),
-            "movement_class": velocity,
+            **ages[inventory.id],
             "last_out": last_out,
             "last_movement": last_movement,
         }
         for inventory, product, warehouse, account, as_of_quantity, as_of_value,
-            velocity, last_out, last_movement in rows
+            last_out, last_movement in rows
     ], page=page, page_size=page_size, total=total)
     result["as_of"] = as_of
     result["summary"] = {
@@ -241,11 +274,8 @@ def list_inventory(
         "needs_reorder": int(summary_rows[3] or 0),
         "below_minimum": int(summary_rows[3] or 0),
         "movement_days": {"fast": 30, "dead": 90},
-        "movement_classes": {
-            label: {"stock_lines": int(movement_totals[index] or 0),
-                    "stock_value": movement_totals[index + 3] or 0}
-            for index, label in enumerate(("FAST", "SLOW", "DEAD"))
-        },
+        "aging_basis": "FIFO receipt layers; residual opening stock dated 2026-01-01",
+        "movement_classes": movement_totals,
     }
     result["totals_by_account_location"] = [
         {

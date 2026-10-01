@@ -14,7 +14,7 @@ from app.models.stock_movement import StockMovement
 from app.models.warehouse import Warehouse
 
 
-def test_stock_velocity_uses_outbound_age_at_selected_date_and_inventory_coa_only():
+def test_stock_age_uses_remaining_receipts_at_selected_date_and_inventory_coa_only():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, expire_on_commit=False)()
@@ -35,11 +35,11 @@ def test_stock_velocity_uses_outbound_age_at_selected_date_and_inventory_coa_onl
         db.add_all([stock_account, cash_account, warehouse])
         db.flush()
         cases = [
-            ("FAST-ITEM", date(2026, 9, 5), "OUT"),
-            ("SLOW-ITEM", date(2026, 8, 10), "IN"),
-            ("DEAD-ITEM", date(2026, 3, 1), "IN"),
+            ("FAST-ITEM", date(2026, 9, 5), "6", True),
+            ("SLOW-ITEM", date(2026, 8, 10), "5", False),
+            ("DEAD-ITEM", date(2026, 3, 1), "6", True),
         ]
-        for code, movement_date, kind in cases:
+        for code, movement_date, received_qty, recent_out in cases:
             product = Product(code=code, name=code, group_code="1", group_name="Food",
                               subgroup_code="1", subgroup_name="Food", uom="PCS",
                               usage_uom="PCS", is_active=True,
@@ -51,10 +51,18 @@ def test_stock_velocity_uses_outbound_age_at_selected_date_and_inventory_coa_onl
             db.add(StockMovement(
                 product_id=product.id, warehouse_id=warehouse.id,
                 inventory_account_id=stock_account.id,
-                movement_type=kind, quantity=Decimal("1"), unit_cost=Decimal("10"),
+                movement_type="IN", quantity=Decimal(received_qty), unit_cost=Decimal("10"),
                 created_at=datetime(movement_date.year, movement_date.month,
                                     movement_date.day, tzinfo=timezone.utc),
             ))
+            if recent_out:
+                # Recent outbound does not reset the age of stock left behind.
+                db.add(StockMovement(
+                    product_id=product.id, warehouse_id=warehouse.id,
+                    inventory_account_id=stock_account.id,
+                    movement_type="OUT", quantity=Decimal("1"), unit_cost=Decimal("10"),
+                    created_at=datetime(2026, 9, 29, tzinfo=timezone.utc),
+                ))
         db.commit()
 
         params = dict(warehouse_id=None, account_id=None, location_id=None,
@@ -76,3 +84,4 @@ def test_stock_velocity_uses_outbound_age_at_selected_date_and_inventory_coa_onl
     finally:
         db.close()
         engine.dispose()
+
