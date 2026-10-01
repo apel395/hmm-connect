@@ -47,10 +47,29 @@ export type ReconciliationReceipt = {
   receipt_number: string;
   date: string;
   supplier_id: number | null;
+  supplier_name?: string | null;
   received_amount: number;
   invoiced_amount: number;
   outstanding_amount: number;
+  invoice_net_amount?: number;
   invoice_numbers: string[];
+  posted_invoices?: ReconciliationLinkedInvoice[];
+  pending_invoices?: ReconciliationLinkedInvoice[];
+  items?: {
+    receipt_item_id: number;
+    product_id: number;
+    received_quantity: number;
+    invoiced_quantity: number;
+    outstanding_quantity: number;
+    receipt_unit_cost: number;
+    outstanding_amount: number;
+  }[];
+};
+
+export type ReconciliationLinkedInvoice = {
+  invoice_id: number;
+  invoice_number: string;
+  status: string;
 };
 
 export type ReconciliationApDocument = {
@@ -78,6 +97,18 @@ export type ReconciliationRow = {
   counterparts?: ReconciliationCounterpart[];
   exceptions?: ReconciliationException[];
   receipt_evidence?: ReconciliationReceipt[];
+  price_variance_evidence?: {
+    receipt_id: number;
+    receipt_number: string;
+    price_difference: number;
+    invoice_numbers: string[];
+  }[];
+  match_issues?: {
+    receipt_id: number;
+    receipt_item_id: number;
+    invoice_id?: number;
+    issue: string;
+  }[];
   ap_documents?: ReconciliationApDocument[];
   ap_document_summary?: {
     source_activity: number;
