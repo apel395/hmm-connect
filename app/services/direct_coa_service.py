@@ -167,16 +167,6 @@ class DirectCoaService:
             )
         return account
 
-    def purchase_price_variance_account(self) -> ChartOfAccount:
-        account = self.setting_account(
-            "PURCHASE_PRICE_VARIANCE_ACCOUNT", "Purchase Price Variance",
-        )
-        if account is None:
-            raise HTTPException(409, "Purchase Price Variance requires an active direct COA mapping")
-        if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
-            raise HTTPException(409, "Purchase Price Variance COA must be a debit-balance expense")
-        return account
-
     def withholding_tax_payable_account(self) -> ChartOfAccount:
         account = self.setting_account(
             "WITHHOLDING_TAX_PAYABLE_ACCOUNT",

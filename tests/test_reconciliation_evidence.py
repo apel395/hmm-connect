@@ -116,10 +116,10 @@ def test_suspense_compares_posted_receipt_less_posted_matched_invoice(db):
 
     draft = SupplierInvoice(internal_invoice_number="INV-DRAFT", supplier_invoice_number="EXT-DRAFT",
                             supplier_id=1, invoice_date=date(2026, 9, 20),
-                            subtotal=Decimal("70"), total_amount=Decimal("70"), status="DRAFT")
+                            subtotal=Decimal("60"), total_amount=Decimal("60"), status="DRAFT")
     draft.lines.append(SupplierInvoiceLine(
         description="Not yet posted", product_id=product.id, goods_receipt_item_id=item.id,
-        quantity=Decimal("5"), unit_price=Decimal("14"), line_amount=Decimal("70")))
+        quantity=Decimal("5"), unit_price=Decimal("12"), line_amount=Decimal("60")))
     db.add(draft)
     db.commit()
     still_pending = service.clearing_suspense()
@@ -130,11 +130,11 @@ def test_suspense_compares_posted_receipt_less_posted_matched_invoice(db):
 
     invoice = SupplierInvoice(internal_invoice_number="INV-2026-1",
                               supplier_invoice_number="EXT-1", supplier_id=1,
-                              invoice_date=date(2026, 9, 21), subtotal=Decimal("70"),
-                              total_amount=Decimal("70"), status="POSTED")
+                              invoice_date=date(2026, 9, 21), subtotal=Decimal("60"),
+                              total_amount=Decimal("60"), status="POSTED")
     invoice.lines.append(SupplierInvoiceLine(
         description="Matched food", product_id=product.id, goods_receipt_item_id=item.id,
-        quantity=Decimal("5"), unit_price=Decimal("14"), line_amount=Decimal("70")))
+        quantity=Decimal("5"), unit_price=Decimal("12"), line_amount=Decimal("60")))
     db.add(invoice)
     db.flush()
     journal(db, "SI-J", suspense.id, debit="60",
@@ -147,17 +147,17 @@ def test_suspense_compares_posted_receipt_less_posted_matched_invoice(db):
     assert current["source_balance"] == current["gl_balance"] == Decimal("60")
     assert current["receipt_evidence"][0]["invoice_numbers"] == ["INV-2026-1"]
     assert current["receipt_evidence"][0]["invoiced_amount"] == Decimal("60")
-    assert current["receipt_evidence"][0]["invoice_net_amount"] == Decimal("70")
+    assert current["receipt_evidence"][0]["invoice_net_amount"] == Decimal("60")
     assert current["receipt_evidence"][0]["items"][0]["outstanding_quantity"] == Decimal("5")
     assert current["status"] == "OPEN_ITEMS"
 
     final_invoice = SupplierInvoice(internal_invoice_number="INV-2026-2",
                                     supplier_invoice_number="EXT-2", supplier_id=1,
-                                    invoice_date=date(2026, 9, 22), subtotal=Decimal("70"),
-                                    total_amount=Decimal("70"), status="POSTED")
+                                    invoice_date=date(2026, 9, 22), subtotal=Decimal("60"),
+                                    total_amount=Decimal("60"), status="POSTED")
     final_invoice.lines.append(SupplierInvoiceLine(
         description="Remaining food", product_id=product.id, goods_receipt_item_id=item.id,
-        quantity=Decimal("5"), unit_price=Decimal("14"), line_amount=Decimal("70")))
+        quantity=Decimal("5"), unit_price=Decimal("12"), line_amount=Decimal("60")))
     db.add(final_invoice)
     db.flush()
     journal(db, "SI-J-2", suspense.id, debit="60",
@@ -168,26 +168,61 @@ def test_suspense_compares_posted_receipt_less_posted_matched_invoice(db):
     assert cleared["source_balance"] == cleared["gl_balance"] == Decimal("0")
     assert cleared["status"] == "RECONCILED"
     assert cleared["receipt_evidence"] == []
-    assert cleared["price_variance_evidence"][0]["price_difference"] == Decimal("20")
+    assert cleared["price_variance_evidence"] == []
 
 
-@pytest.mark.parametrize(("invoice_price", "invoice_total", "variance_debit", "variance_credit"), [
-    ("14", "70", "10", "0"),
-    ("10", "50", "0", "10"),
+def test_fully_invoiced_price_difference_remains_visible_in_suspense_gl(db):
+    suspense = account(db, "200-100-999", "AP Suspense", "LIABILITY")
+    db.add(AccountingSetting(setting_key="AP_SUSPENSE_ACCOUNT", account_id=suspense.id))
+    warehouse = Warehouse(code="WH-PRICE", name="Warehouse")
+    product = Product(code="FOOD-PRICE", name="Food", group_code="1", group_name="Food",
+                      subgroup_code="1", subgroup_name="Food", uom="PCS", usage_uom="PCS")
+    db.add_all([warehouse, product])
+    db.flush()
+    receipt = GoodsReceipt(receipt_number="GR-PRICE", status="POSTED",
+                           destination_type="WAREHOUSE", warehouse_id=warehouse.id,
+                           received_at=datetime(2026, 9, 20, tzinfo=timezone.utc))
+    item = GoodsReceiptItem(product_id=product.id, quantity=Decimal("10"), unit_cost=Decimal("12"))
+    receipt.items.append(item)
+    db.add(receipt)
+    db.flush()
+    journal(db, "GR-PRICE-J", suspense.id, credit="120",
+            reference_type="GOODS_RECEIPT", reference_id=receipt.id)
+    invoice = SupplierInvoice(internal_invoice_number="INV-PRICE", supplier_invoice_number="EXT-PRICE",
+                              supplier_id=1, invoice_date=date(2026, 9, 21), subtotal=Decimal("140"),
+                              total_amount=Decimal("140"), status="POSTED")
+    invoice.lines.append(SupplierInvoiceLine(
+        description="Food", product_id=product.id, goods_receipt_item_id=item.id,
+        quantity=Decimal("10"), unit_price=Decimal("14"), line_amount=Decimal("140")))
+    db.add(invoice)
+    db.flush()
+    journal(db, "INV-PRICE-J", suspense.id, debit="140",
+            reference_type="SUPPLIER_INVOICE", reference_id=invoice.id, day=21)
+    db.commit()
+
+    row = FinancialReconciliationService(db).clearing_suspense()
+    assert row["source_balance"] == Decimal("0")
+    assert row["gl_balance"] == Decimal("-20")
+    assert row["status"] == "OUT_OF_BALANCE"
+    assert row["receipt_evidence"] == []
+    assert row["price_variance_evidence"][0]["price_difference"] == Decimal("20")
+
+
+@pytest.mark.parametrize(("invoice_price", "invoice_total"), [
+    ("14", "70"),
+    ("10", "50"),
 ])
-def test_invoice_journal_clears_receipt_cost_and_posts_price_variance(
-    db, monkeypatch, invoice_price, invoice_total, variance_debit, variance_credit,
+def test_invoice_journal_debits_suspense_and_credits_payable_without_extra_setup(
+    db, monkeypatch, invoice_price, invoice_total,
 ):
     import app.services.supplier_invoice_service as invoice_module
     from app.services.supplier_invoice_service import SupplierInvoiceService
 
     suspense = account(db, "200-100-999", "AP Suspense", "LIABILITY")
     payable = account(db, "200-100-1", "Trade AP", "LIABILITY")
-    variance = account(db, "500-200-100", "Purchase Price Variance", "EXPENSE")
     db.add_all([
         AccountingSetting(setting_key="AP_SUSPENSE_ACCOUNT", account_id=suspense.id),
         AccountingSetting(setting_key="ACCOUNTS_PAYABLE_ACCOUNT", account_id=payable.id),
-        AccountingSetting(setting_key="PURCHASE_PRICE_VARIANCE_ACCOUNT", account_id=variance.id),
     ])
     supplier = Supplier(code="SUP-V", name="Supplier", is_active=True)
     warehouse = Warehouse(code="WH-V", name="Warehouse")
@@ -225,9 +260,9 @@ def test_invoice_journal_clears_receipt_cost_and_posts_price_variance(
 
     created = service.generate_journal(invoice, type("User", (), {"id": 1})(), commit=False)
     amounts = {line.account_id: (Decimal(line.debit), Decimal(line.credit)) for line in created.lines}
-    assert amounts[suspense.id] == (Decimal("60"), Decimal("0"))
-    assert amounts[variance.id] == (Decimal(variance_debit), Decimal(variance_credit))
+    assert amounts[suspense.id] == (Decimal(invoice_total), Decimal("0"))
     assert amounts[payable.id] == (Decimal("0"), Decimal(invoice_total))
+    assert len(amounts) == 2
 
 
 def test_ap_bridge_exposes_orphan_payment_and_manual_opening(db):
