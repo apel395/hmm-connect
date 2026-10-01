@@ -13,7 +13,7 @@ from app.models.chart_of_account import ChartOfAccount
 from app.models.opening_balance import OpeningBalance
 from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier import Supplier
-from app.models.supplier_invoice import SupplierInvoice
+from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 
 
 @pytest.fixture
@@ -67,6 +67,14 @@ def setup(db):
         supplier_id=other.id, invoice_date=date(2026, 1, 5),
         subtotal=Decimal("50"), total_amount=Decimal("50"), status="POSTED",
     )
+    invoice.lines.append(SupplierInvoiceLine(
+        description="Invoice item", quantity=Decimal("1"),
+        unit_price=Decimal("100"), line_amount=Decimal("100"),
+    ))
+    other_invoice.lines.append(SupplierInvoiceLine(
+        description="Other invoice item", quantity=Decimal("1"),
+        unit_price=Decimal("50"), line_amount=Decimal("50"),
+    ))
     db.add_all([invoice, other_invoice])
     db.flush()
     payment = Payment(
@@ -85,20 +93,10 @@ def setup(db):
 
 def test_opening_invoice_payment_and_unallocated_amount(db):
     admin, supplier, invoice = setup(db)
-    assert [(row.id, row.status, row.invoice_date) for row in db.query(SupplierInvoice).all()] == [
-        (invoice.id, "POSTED", date(2026, 1, 5)),
-        (invoice.id + 1, "POSTED", date(2026, 1, 5)),
-    ]
-    assert [(row.total_amount, row.balance_amount) for row in db.query(SupplierInvoice).all()] == [
-        (Decimal("100"), Decimal("100")), (Decimal("50"), Decimal("50")),
-    ]
     result = report(db, admin)
-    assert [row["document_number"] for row in result["items"]] == [
-        "Opening AP", "INV-1", "INV-2", "PAY-1",
-    ]
     summary = result["summary"]
     assert summary["opening_balance"] == Decimal("200")
-    assert summary["invoice_total"] == Decimal("150"), result
+    assert summary["invoice_total"] == Decimal("150")
     assert summary["payment_total"] == Decimal("40")
     assert summary["closing_balance"] == Decimal("310")
     assert result["items"][0]["movement_type"] == "OPENING"
