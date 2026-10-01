@@ -1,18 +1,13 @@
 import base64
 import io
 import re
+import zipfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from xml.sax.saxutils import escape, quoteattr
 
 from fastapi import APIRouter, Depends, HTTPException
-from openpyxl import Workbook
-from openpyxl.workbook.defined_name import DefinedName
-from openpyxl.comments import Comment
-from openpyxl.formatting.rule import FormulaRule
-from openpyxl.styles import Font, PatternFill
-from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.datavalidation import DataValidation
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -145,27 +140,135 @@ def _decimal(value) -> Decimal:
         return Decimal("0")
 
 
-def _xlsx_bytes(workbook: Workbook) -> bytes:
+def _column_name(index: int) -> str:
+    result = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+
+def _sheet_xml(
+    rows: list[list],
+    *,
+    widths: list[int] | None = None,
+    validations: list[tuple[str, str]] | None = None,
+    auto_filter: str | None = None,
+) -> str:
+    row_xml = []
+    for row_index, row in enumerate(rows, 1):
+        cells = []
+        for column_index, value in enumerate(row, 1):
+            if value is None or value == "":
+                continue
+            reference = f"{_column_name(column_index)}{row_index}"
+            cells.append(
+                f'<c r="{reference}" t="inlineStr"><is><t xml:space="preserve">'
+                f'{escape(str(value))}</t></is></c>'
+            )
+        row_xml.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+
+    columns = ""
+    if widths:
+        columns = "<cols>" + "".join(
+            f'<col min="{index}" max="{index}" width="{width}" customWidth="1"/>'
+            for index, width in enumerate(widths, 1)
+        ) + "</cols>"
+    filter_xml = f'<autoFilter ref="{auto_filter}"/>' if auto_filter else ""
+    validation_xml = ""
+    if validations:
+        entries = "".join(
+            '<dataValidation type="list" allowBlank="1" showErrorMessage="1" '
+            f'errorTitle="Invalid master-data code" '
+            f'error="Select a value from current ERP master data." sqref="{cell_range}">'
+            f'<formula1>{escape(range_name)}</formula1></dataValidation>'
+            for cell_range, range_name in validations
+        )
+        validation_xml = f'<dataValidations count="{len(validations)}">{entries}</dataValidations>'
+    pane = (
+        '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" '
+        'activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'{pane}{columns}<sheetData>{"".join(row_xml)}</sheetData>{filter_xml}{validation_xml}'
+        '</worksheet>'
+    )
+
+
+def _build_xlsx(
+    sheets: list[dict],
+    *,
+    defined_names: list[tuple[str, str]] | None = None,
+) -> bytes:
+    content_overrides = "".join(
+        f'<Override PartName="/xl/worksheets/sheet{index}.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        for index in range(1, len(sheets) + 1)
+    )
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        f'{content_overrides}</Types>'
+    )
+    root_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="xl/workbook.xml"/></Relationships>'
+    )
+    sheet_entries = "".join(
+        f'<sheet name={quoteattr(sheet["title"])} sheetId="{index}" r:id="rId{index}"'
+        f'{" state=\"hidden\"" if sheet.get("hidden") else ""}/>'
+        for index, sheet in enumerate(sheets, 1)
+    )
+    names_xml = ""
+    if defined_names:
+        names_xml = "<definedNames>" + "".join(
+            f'<definedName name={quoteattr(name)}>{escape(reference)}</definedName>'
+            for name, reference in defined_names
+        ) + "</definedNames>"
+    workbook = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f'<sheets>{sheet_entries}</sheets>{names_xml}</workbook>'
+    )
+    workbook_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        + "".join(
+            f'<Relationship Id="rId{index}" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+            f'Target="worksheets/sheet{index}.xml"/>'
+            for index in range(1, len(sheets) + 1)
+        )
+        + '</Relationships>'
+    )
+
     output = io.BytesIO()
-    workbook.save(output)
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", root_rels)
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        for index, sheet in enumerate(sheets, 1):
+            archive.writestr(
+                f"xl/worksheets/sheet{index}.xml",
+                _sheet_xml(
+                    sheet["rows"],
+                    widths=sheet.get("widths"),
+                    validations=sheet.get("validations"),
+                    auto_filter=sheet.get("auto_filter"),
+                ),
+            )
     return output.getvalue()
-
-
-def _master_sheet(workbook: Workbook, title: str, headers: list[str], rows: list[tuple]) -> None:
-    sheet = workbook.create_sheet(title)
-    sheet.append(headers)
-    for row in rows:
-        sheet.append(row)
-    sheet.sheet_state = "hidden"
-
-
-def _add_list_validation(sheet, formula: str, cell_range: str) -> None:
-    validation = DataValidation(type="list", formula1=f"={formula}", allow_blank=True)
-    validation.error = "Select a value from current ERP master data."
-    validation.errorTitle = "Invalid master-data code"
-    validation.showErrorMessage = True
-    sheet.add_data_validation(validation)
-    validation.add(cell_range)
 
 
 def _build_template(db: Session, user: User) -> bytes:
@@ -182,59 +285,50 @@ def _build_template(db: Session, user: User) -> bytes:
     ).order_by(ChartOfAccount.account_number).all()
     suppliers = db.query(Supplier).filter(Supplier.is_active.is_(True)).order_by(Supplier.code).all()
 
-    workbook = Workbook()
-    instructions = workbook.active
-    instructions.title = "Instructions"
-    instructions.append(["Easy Bulk Journal Import"])
-    instructions.append(["1", "Enter journal_group only on the first line of a journal. Blank group cells continue the journal above."])
-    instructions.append(["2", "Enter date, description, location and optional dimensions only on the first line; blank cells inherit them."])
-    instructions.append(["3", "Enter one account line per row. Each row must contain either debit or credit."])
-    instructions.append(["4", "Upload first validates only. Review the preview, then import valid journals as Draft or Post them."])
-    instructions.append(["5", "One invalid journal does not block other valid journals."])
-    instructions.column_dimensions["A"].width = 8
-    instructions.column_dimensions["B"].width = 110
-    instructions["A1"].font = Font(bold=True, size=14)
+    instructions = [
+        ["Easy Bulk Journal Import"],
+        ["1", "Enter journal_group only on the first line of a journal. Blank group cells continue the journal above."],
+        ["2", "Enter date, description, location and optional dimensions only on the first line; blank cells inherit them."],
+        ["3", "Enter one account line per row. Each row must contain either debit or credit."],
+        ["4", "Upload first validates only. Review the preview, then import valid journals as Draft or Post them."],
+        ["5", "One invalid journal does not block other valid journals."],
+    ]
+    validations = []
+    defined_names = []
+    master_specs = [
+        ("D2:D501", "LocationCodes", "Master Locations", locations),
+        ("E2:E501", "BusinessUnitCodes", "Master Business Units", units),
+        ("F2:F501", "DepartmentCodes", "Master Departments", departments),
+        ("G2:G501", "AccountCodes", "Master Accounts", accounts),
+        ("K2:K501", "SupplierCodes", "Master Suppliers", suppliers),
+    ]
+    for cell_range, range_name, sheet_name, values in master_specs:
+        if values:
+            validations.append((cell_range, range_name))
+            defined_names.append((range_name, f"'{sheet_name}'!$A$2:$A${len(values) + 1}"))
 
-    sheet = workbook.create_sheet("Journal Import")
-    sheet.append(TEMPLATE_HEADERS)
-    sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = "A1:L501"
-    widths = [16, 15, 30, 18, 24, 22, 18, 30, 18, 18, 22, 28]
-    for index, width in enumerate(widths, 1):
-        sheet.column_dimensions[get_column_letter(index)].width = width
-    for cell in sheet[1]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="1D4ED8")
-    sheet["A1"].comment = Comment("Enter a new group only on the first row. Blank rows continue the group above.", "HMM Connect")
-    sheet["B1"].comment = Comment("Accepted: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, or a real Excel date.", "HMM Connect")
-    sheet["I1"].comment = Comment("Indonesian and international number formats are accepted.", "HMM Connect")
-
-    _master_sheet(workbook, "Master Locations", ["code", "name", "business_unit"], [
-        (row.code, row.name, row.business_unit.code if row.business_unit else "") for row in locations
-    ])
-    _master_sheet(workbook, "Master Business Units", ["code", "name"], [(row.code, row.name) for row in units])
-    _master_sheet(workbook, "Master Departments", ["code", "name"], [(row.code, row.name) for row in departments])
-    _master_sheet(workbook, "Master Accounts", ["code", "name"], [(row.account_number, row.account_name) for row in accounts])
-    _master_sheet(workbook, "Master Suppliers", ["code", "name"], [(row.code, row.name) for row in suppliers])
-
-    ranges = {
-        "D2:D501": ("LocationCodes", "Master Locations", len(locations)),
-        "E2:E501": ("BusinessUnitCodes", "Master Business Units", len(units)),
-        "F2:F501": ("DepartmentCodes", "Master Departments", len(departments)),
-        "G2:G501": ("AccountCodes", "Master Accounts", len(accounts)),
-        "K2:K501": ("SupplierCodes", "Master Suppliers", len(suppliers)),
-    }
-    for cell_range, (range_name, master, count) in ranges.items():
-        if count:
-            workbook.defined_names.add(DefinedName(
-                range_name,
-                attr_text=f"'{master}'!$A$2:$A${count + 1}",
-            ))
-            _add_list_validation(sheet, range_name, cell_range)
-
-    red_fill = PatternFill("solid", fgColor="FEE2E2")
-    sheet.conditional_formatting.add("I2:J501", FormulaRule(formula=["AND($I2>0,$J2>0)"], fill=red_fill))
-    return _xlsx_bytes(workbook)
+    sheets = [
+        {"title": "Instructions", "rows": instructions, "widths": [8, 110]},
+        {
+            "title": "Journal Import",
+            "rows": [TEMPLATE_HEADERS],
+            "widths": [16, 15, 30, 18, 24, 22, 18, 30, 18, 18, 22, 28],
+            "validations": validations,
+            "auto_filter": "A1:L501",
+        },
+        {
+            "title": "Master Locations",
+            "hidden": True,
+            "rows": [["code", "name", "business_unit"], *[
+                [row.code, row.name, row.business_unit.code if row.business_unit else ""] for row in locations
+            ]],
+        },
+        {"title": "Master Business Units", "hidden": True, "rows": [["code", "name"], *[[row.code, row.name] for row in units]]},
+        {"title": "Master Departments", "hidden": True, "rows": [["code", "name"], *[[row.code, row.name] for row in departments]]},
+        {"title": "Master Accounts", "hidden": True, "rows": [["code", "name"], *[[row.account_number, row.account_name] for row in accounts]]},
+        {"title": "Master Suppliers", "hidden": True, "rows": [["code", "name"], *[[row.code, row.name] for row in suppliers]]},
+    ]
+    return _build_xlsx(sheets, defined_names=defined_names)
 
 
 @router.get("/template")
@@ -470,12 +564,9 @@ def correction_file(
     ).order_by(ImportRow.id).all()
     if not rows:
         raise HTTPException(404, "This import has no rejected rows")
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Correction"
     headers = [*TEMPLATE_HEADERS, "validation_errors"]
-    sheet.append(headers)
     keys = ["journal_group", "posting_date", "description", "location_code", "business_unit_code", "department_code", "account_code", "line_description", "debit", "credit", "supplier_code", "external_reference"]
+    output_rows = [headers]
     previous_group = None
     for row in rows:
         data = row.normalized_data_json or {}
@@ -484,11 +575,13 @@ def correction_file(
         previous_group = group
         values = [output_group, *[data.get(key, "") for key in keys[1:]]]
         values.append(" | ".join(row.error_messages_json or []))
-        sheet.append(values)
-    sheet.freeze_panes = "A2"
-    for index in range(1, len(headers) + 1):
-        sheet.column_dimensions[get_column_letter(index)].width = 22 if index != len(headers) else 70
-    payload = _xlsx_bytes(workbook)
+        output_rows.append(values)
+    payload = _build_xlsx([{
+        "title": "Correction",
+        "rows": output_rows,
+        "widths": [22] * (len(headers) - 1) + [70],
+        "auto_filter": f"A1:M{len(output_rows)}",
+    }])
     return {
         "filename": f"{batch.batch_number}-corrections.xlsx",
         "content_base64": base64.b64encode(payload).decode("ascii"),
