@@ -603,6 +603,8 @@ class FinancialReconciliationService:
         invoiced_quantity = {}
         match_issues = []
         invoice_numbers: dict[int, set[str]] = {}
+        posted_documents: dict[int, dict[int, dict]] = {}
+        pending_documents: dict[int, dict[int, dict]] = {}
         if receipt_ids:
             for item in (self.db.query(GoodsReceiptItem)
                          .filter(GoodsReceiptItem.goods_receipt_id.in_(receipt_ids)).all()):
@@ -616,13 +618,22 @@ class FinancialReconciliationService:
                                            GoodsReceiptItem.goods_receipt_id)
                              .join(SupplierInvoice, SupplierInvoice.id == SupplierInvoiceLine.supplier_invoice_id)
                              .join(GoodsReceiptItem, GoodsReceiptItem.id == SupplierInvoiceLine.goods_receipt_item_id)
-                             .filter(SupplierInvoice.status == "POSTED",
+                             .filter(SupplierInvoice.status.in_(("POSTED", "DRAFT", "VERIFIED")),
                                      GoodsReceiptItem.goods_receipt_id.in_(receipt_ids)))
             if as_of is not None:
                 invoice_lines = invoice_lines.filter(SupplierInvoice.invoice_date <= as_of)
             if location_id is not None:
                 invoice_lines = invoice_lines.filter(SupplierInvoice.location_id == location_id)
             for line, invoice, receipt_id in invoice_lines.all():
+                document = {
+                    "invoice_id": invoice.id,
+                    "invoice_number": invoice.internal_invoice_number,
+                    "status": invoice.status,
+                }
+                if invoice.status != "POSTED":
+                    pending_documents.setdefault(receipt_id, {})[invoice.id] = document
+                    continue
+                posted_documents.setdefault(receipt_id, {})[invoice.id] = document
                 receipt = receipt_by_id[receipt_id]
                 item = item_rows[line.goods_receipt_item_id]
                 if (receipt.supplier_id is not None
@@ -704,10 +715,13 @@ class FinancialReconciliationService:
                 evidence.append({
                     "receipt_id": receipt.id, "receipt_number": receipt.receipt_number,
                     "date": receipt.received_at.date(), "supplier_id": receipt.supplier_id,
+                    "supplier_name": receipt.supplier.name if receipt.supplier else None,
                     "received_amount": gross, "invoiced_amount": cleared,
                     "outstanding_amount": outstanding,
                     "invoice_net_amount": invoice_amount,
                     "invoice_numbers": sorted(invoice_numbers.get(receipt.id, set())),
+                    "posted_invoices": sorted(posted_documents.get(receipt.id, {}).values(), key=lambda doc: doc["invoice_number"]),
+                    "pending_invoices": sorted(pending_documents.get(receipt.id, {}).values(), key=lambda doc: doc["invoice_number"]),
                     "items": open_items.get(receipt.id, []),
                 })
 
