@@ -10,21 +10,31 @@ def _bucket() -> str:
     return bucket
 
 
-def trigger_journal_import_job(job_id: int) -> str:
+def trigger_journal_import_job(
+    job_id: int,
+    *,
+    mode: str = "validate",
+    post_valid: bool = False,
+) -> str:
     if not settings.EXPORT_EC2_INSTANCE_ID:
         raise RuntimeError("EXPORT_EC2_INSTANCE_ID is not configured")
+    if mode not in {"validate", "import"}:
+        raise ValueError("Unsupported journal import worker mode")
 
-    ssm = boto3.client("ssm", region_name=settings.AWS_REGION or None)
     command = (
         f"cd {settings.EXPORT_WORKDIR} && "
         f"{settings.EXPORT_PYTHON_BIN} -m app.scripts.journal_import_worker "
-        f"--job-id {job_id}"
+        f"--job-id {int(job_id)} --mode {mode}"
     )
+    if post_valid:
+        command += " --post-valid"
+
+    ssm = boto3.client("ssm", region_name=settings.AWS_REGION or None)
     response = ssm.send_command(
         InstanceIds=[settings.EXPORT_EC2_INSTANCE_ID],
         DocumentName="AWS-RunShellScript",
         Parameters={"commands": [command]},
-        Comment=f"HMM Connect journal import {job_id}",
+        Comment=f"HMM Connect journal import {job_id} ({mode})",
         TimeoutSeconds=settings.EXPORT_COMMAND_TIMEOUT_SECONDS,
     )
     return response["Command"]["CommandId"]
@@ -45,11 +55,7 @@ def presigned_upload_url(*, user_id: int, job_id: int, filename: str, content_ty
     s3 = boto3.client("s3", region_name=settings.AWS_REGION or None)
     url = s3.generate_presigned_url(
         "put_object",
-        Params={
-            "Bucket": _bucket(),
-            "Key": key,
-            "ContentType": content_type,
-        },
+        Params={"Bucket": _bucket(), "Key": key, "ContentType": content_type},
         ExpiresIn=settings.JOURNAL_IMPORT_UPLOAD_URL_EXPIRES_SECONDS,
         HttpMethod="PUT",
     )
