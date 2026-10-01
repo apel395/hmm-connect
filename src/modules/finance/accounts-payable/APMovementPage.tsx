@@ -24,6 +24,7 @@ type MovementRow = {
   decrease: number | string;
   running_balance: number | string;
   status?: string | null;
+  unallocated_amount?: number | string | null;
 };
 
 type MovementResponse = {
@@ -34,6 +35,7 @@ type MovementResponse = {
     payment_total: number | string;
     adjustment_total: number | string;
     closing_balance: number | string;
+    opening_unassigned?: boolean;
   };
   page: number;
   page_size: number;
@@ -124,7 +126,7 @@ export default function APMovementPage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">AP Movement</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Trace supplier invoices, payments, and adjustments into the Accounts Payable balance.
+          Follow posted invoices, payments, and adjustments through the AP balance. Open a document to review its details.
         </p>
       </div>
 
@@ -167,20 +169,25 @@ export default function APMovementPage() {
         </form>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label="Opening AP" value={money(movement.data?.summary?.opening_balance)} />
+      {movement.data?.summary?.opening_unassigned && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          The manual opening AP is recorded by account and cannot be assigned to this supplier or AP user. These balances show document activity only.
+        </div>
+      )}
+      {movement.data && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric label={movement.data.summary.opening_unassigned ? "Brought forward activity" : "Opening AP"} value={money(movement.data.summary.opening_balance)} />
         <Metric label="Invoices +" value={money(movement.data?.summary?.invoice_total)} />
         <Metric label="Payments −" value={money(movement.data?.summary?.payment_total)} />
         <Metric label="Adjustments" value={money(movement.data?.summary?.adjustment_total)} />
-        <Metric label="Closing AP" value={money(movement.data?.summary?.closing_balance)} strong />
-      </div>
+        <Metric label={movement.data.summary.opening_unassigned ? "Closing activity" : "Closing AP"} value={money(movement.data.summary.closing_balance)} strong />
+      </div>}
 
       <Card className="p-0">
         {movement.isLoading ? (
           <div className="p-10 text-center text-sm text-slate-500">Loading AP movement…</div>
         ) : movement.isError ? (
           <div className="p-10 text-center text-sm text-amber-700">
-            AP Movement data endpoint is not available yet.
+            AP Movement could not be loaded. <button type="button" className="font-semibold underline" onClick={() => movement.refetch()}>Retry</button>
           </div>
         ) : (
           <>
@@ -198,6 +205,7 @@ export default function APMovementPage() {
                 </TR>
               </THead>
               <TBody>
+                {rows.length === 0 && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No AP movements match these filters.</TD></TR>}
                 {rows.map((row) => {
                   const link = movementLink(row);
                   return (
@@ -207,7 +215,9 @@ export default function APMovementPage() {
                       <TD>
                         <TableCellStack
                           primary={link ? <Link className="font-medium text-emerald-700 hover:underline" to={link}>{row.document_number || "—"}</Link> : row.document_number || "—"}
-                          secondary={row.supplier_reference || undefined}
+                          secondary={row.unallocated_amount && Number(row.unallocated_amount) > 0
+                            ? `Unallocated payment: Rp ${money(row.unallocated_amount)}`
+                            : row.supplier_reference || undefined}
                         />
                       </TD>
                       <TD>{row.movement_type.replaceAll("_", " ")}</TD>
