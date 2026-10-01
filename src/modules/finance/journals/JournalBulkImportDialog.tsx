@@ -112,6 +112,9 @@ export default function JournalBulkImportDialog({
 
   const confirm = async (postValid: boolean) => {
     if (!jobId) return;
+    if (postValid && !window.confirm(
+      `Post ${validJournals.length} valid journal(s) now? This will create General Ledger entries and apply accounting-period controls.`,
+    )) return;
     try {
       setAction(postValid ? "post" : "draft");
       await confirmJournalImport(jobId, postValid);
