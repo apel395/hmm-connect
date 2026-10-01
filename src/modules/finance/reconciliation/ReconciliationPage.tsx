@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { RefreshCw, Printer } from "lucide-react";
+import { ChevronRight, RefreshCw, Printer } from "lucide-react";
 
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
@@ -60,6 +60,7 @@ const input = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3
 
 export default function ReconciliationPage() {
   const [dateTo, setDateTo] = useState("");
+  const [expandedModule, setExpandedModule] = useState<Control | null>(null);
   const query = useQuery({
     queryKey: ["financial-reconciliation", dateTo],
     queryFn: () => reconciliationApi.report({
@@ -104,25 +105,25 @@ export default function ReconciliationPage() {
       </div>
 
       <Card className="p-0"><div className="overflow-x-auto">
-        <table className="w-full min-w-[1080px] text-xs">
+        <table className="w-full min-w-[920px] text-xs">
           <thead><tr>
             <th className="px-4 py-3 text-left">Module</th>
-            <th className="px-4 py-3 text-left">Linked COA</th>
             <th className="px-4 py-3 text-right">Closing Source</th>
             <th className="px-4 py-3 text-right">Closing GL</th>
             <th className="px-4 py-3 text-right">Difference</th>
             <th className="px-4 py-3 text-left">Status</th>
             <th className="px-4 py-3 text-left">Review in module</th>
           </tr></thead>
-          <tbody>{report.items.map(row => <tr key={row.control} className="border-t align-top">
-            <td className="px-4 py-3 font-medium">{modules[row.control].label}</td>
-            <td className="px-4 py-3">{row.accounts.length
-              ? row.accounts.map(account => <div key={account.account_id} className="whitespace-nowrap">
-                  <Link className="text-blue-700 hover:underline" to={ledgerPath(account.account_id)}>
-                    {account.account_code} — {account.account_name}
-                  </Link>
-                </div>)
-              : <span className="text-slate-400">Posting rule not configured</span>}
+          <tbody>{report.items.map(row => <Fragment key={row.control}>
+          <tr className="border-t align-top">
+            <td className="px-4 py-3 font-medium">
+              <button type="button" className="inline-flex items-center gap-1.5 text-left text-blue-700 hover:underline"
+                aria-expanded={expandedModule === row.control}
+                aria-controls={`reconciliation-accounts-${row.control.toLowerCase()}`}
+                onClick={() => setExpandedModule(expandedModule === row.control ? null : row.control)}>
+                <ChevronRight size={15} className={expandedModule === row.control ? "rotate-90" : ""}/>
+                {modules[row.control].label}
+              </button>
             </td>
             <td className="whitespace-nowrap px-4 py-3 text-right">{row.status === "NOT_CONFIGURED" ? "Unavailable" : money(row.source_balance)}</td>
             <td className="whitespace-nowrap px-4 py-3 text-right">{money(row.gl_balance)}</td>
@@ -132,7 +133,22 @@ export default function ReconciliationPage() {
               {modules[row.control].links.map(link =>
                 <Link key={link.to} className="whitespace-nowrap text-blue-700 hover:underline" to={link.to}>{link.label}</Link>)}
             </div></td>
-          </tr>)}</tbody>
+          </tr>
+          {expandedModule === row.control && <tr id={`reconciliation-accounts-${row.control.toLowerCase()}`} className="border-t bg-slate-50">
+            <td colSpan={6} className="px-8 py-4">
+              <div className="mb-2 font-semibold text-slate-700">Linked accounts</div>
+              {row.accounts.length
+                ? <div className="flex flex-wrap gap-x-6 gap-y-2">
+                    {row.accounts.map(account =>
+                      <Link key={account.account_id} className="text-blue-700 hover:underline"
+                        to={ledgerPath(account.account_id)}>
+                        {account.account_code} — {account.account_name}
+                      </Link>)}
+                  </div>
+                : <span className="text-slate-500">Posting rule not configured.</span>}
+            </td>
+          </tr>}
+          </Fragment>)}</tbody>
         </table>
       </div></Card>
       <p className="text-xs text-slate-500">This overview does not create or adjust journals. Review supporting records in each module.</p>
