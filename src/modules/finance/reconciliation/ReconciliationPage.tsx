@@ -146,6 +146,31 @@ export default function ReconciliationPage() {
                       </Link>)}
                   </div>
                 : <span className="text-slate-500">Posting rule not configured.</span>}
+              {Boolean(row.accounts.length) && <div className="mt-5 border-t border-slate-200 pt-4">
+                <div className="mb-1 font-semibold text-slate-700">Other accounts in the same posted journals</div>
+                <p className="mb-3 text-xs text-slate-500">These are journal counterparts for the linked accounts above. A journal with multiple lines may appear under several accounts; these amounts are not allocated to a specific pair.</p>
+                {row.counterparts?.length ? <div className="max-h-80 overflow-auto rounded border border-slate-200 bg-white">
+                  <table className="w-full min-w-[740px] text-xs">
+                    <thead className="sticky top-0 bg-slate-100"><tr>
+                      <th className="px-3 py-2 text-left">Linked account</th>
+                      <th className="px-3 py-2 text-left">Other account</th>
+                      <th className="px-3 py-2 text-right">Journals</th>
+                      <th className="px-3 py-2 text-right">Other debit</th>
+                      <th className="px-3 py-2 text-right">Other credit</th>
+                    </tr></thead>
+                    <tbody>{row.counterparts.map(item => {
+                      const linked = row.accounts.find(account => account.account_id === item.account_id);
+                      return <tr key={`${item.account_id}-${item.counterpart_account_id}`} className="border-t">
+                        <td className="px-3 py-2"><Link className="text-blue-700 hover:underline" to={ledgerPath(item.account_id)}>{linked ? `${linked.account_code} — ${linked.account_name}` : `Account #${item.account_id}`}</Link></td>
+                        <td className="px-3 py-2"><Link className="text-blue-700 hover:underline" to={ledgerPath(item.counterpart_account_id)}>{item.counterpart_code} — {item.counterpart_name}</Link></td>
+                        <td className="px-3 py-2 text-right">{item.journal_count}</td>
+                        <td className="px-3 py-2 text-right">{money(item.counterpart_debit)}</td>
+                        <td className="px-3 py-2 text-right">{money(item.counterpart_credit)}</td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </div> : <p className="text-xs text-slate-500">No other accounts in posted operational journals for this module.</p>}
+              </div>}
               {row.control === "CLEARING_SUSPENSE" && <div className="mt-5 border-t border-slate-200 pt-4">
                 <div className="mb-2 font-semibold text-slate-700">Receiving awaiting posted invoices ({row.receipt_evidence?.length ?? 0})</div>
                 {row.receipt_evidence?.length ? <div className="max-h-96 overflow-auto rounded border border-slate-200 bg-white">
