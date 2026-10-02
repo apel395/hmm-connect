@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.account_payable import AccountPayable
 from app.models.bank_transfer import BankTransfer
 from app.models.general_ledger import GeneralLedger
+from app.models.fixed_asset import FixedAsset
 from app.models.goods_receipt import GoodsReceipt
 from app.models.journal_entry import JournalEntry
 from app.models.payment import Payment, PaymentAllocation
@@ -207,6 +208,14 @@ def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
         if not invoice:
             raise HTTPException(status_code=409, detail="Supplier invoice linked to this journal was not found")
         _assert_invoice_has_no_posted_dependents(db, invoice)
+        assets = db.query(FixedAsset).filter(
+            FixedAsset.purchase_invoice_id == invoice.id,
+            FixedAsset.source_invoice_line_id.isnot(None),
+        ).all()
+        if any(asset.status in ("ACTIVE", "FULLY_DEPRECIATED", "DISPOSED", "WRITTEN_OFF") for asset in assets):
+            raise HTTPException(409, "Undo asset capitalization or depreciation before unposting this invoice")
+        for asset in assets:
+            asset.status = "SOURCE_UNPOSTED"
         invoice.status = "VERIFIED"
         invoice.posted_at = None
         return
@@ -361,6 +370,14 @@ def unpost_journal(
     if not gl_rows:
         raise HTTPException(status_code=409, detail="Journal has no matching ledger rows to unpost")
 
+    if journal.document_type == "SUPPLIER_INVOICE_ASSET_RECLASS":
+        asset = db.query(FixedAsset).filter(
+            FixedAsset.source_invoice_line_id == journal.reference_id,
+        ).with_for_update().one_or_none()
+        if asset:
+            if asset.status in ("ACTIVE", "FULLY_DEPRECIATED", "DISPOSED", "WRITTEN_OFF"):
+                raise HTTPException(409, "Undo asset capitalization or depreciation before unposting this correction")
+            asset.status = "SOURCE_UNPOSTED"
     _reverse_source_state(db, journal)
     for row in gl_rows:
         db.delete(row)

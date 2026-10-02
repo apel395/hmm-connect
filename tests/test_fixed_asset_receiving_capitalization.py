@@ -24,6 +24,11 @@ def asset():
         goods_receipt_id=10,
         acquisition_cost=Decimal("1000000"),
         asset_account_id=200,
+        asset_category_id=1,
+        useful_life_months=60,
+        accumulated_depreciation_account_id=201,
+        depreciation_expense_account_id=301,
+        purchase_invoice_id=None,
         capitalization_date=None,
         depreciation_start_date=None,
     )

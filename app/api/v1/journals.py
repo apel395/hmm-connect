@@ -208,6 +208,36 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
     journal.status = "POSTED"
     journal.posted_by_id = user.id
     journal.posted_at = datetime.now(timezone.utc)
+    if journal.document_type == "SUPPLIER_INVOICE_ASSET_RECLASS":
+        from app.models.supplier_invoice import SupplierInvoiceLine
+        from app.models.chart_of_account import ChartOfAccount
+        from app.services.invoice_asset_registration import register_invoice_asset
+
+        invoice_line = db.get(SupplierInvoiceLine, journal.reference_id)
+        debit_line = next((item for item in journal.lines if Decimal(item.debit or 0) > ZERO), None)
+        account = db.get(ChartOfAccount, debit_line.account_id) if debit_line else None
+        if not invoice_line or not account or not account.account_number.startswith("100-600-"):
+            raise HTTPException(409, "Asset correction journal is missing its invoice line or asset account")
+        register_invoice_asset(
+            db, invoice=invoice_line.invoice, line=invoice_line,
+            account_id=account.id, journal=journal, user=user,
+        )
+    if source_type == "SUPPLIER_INVOICE":
+        from app.models.supplier_invoice import SupplierInvoice
+        from app.models.chart_of_account import ChartOfAccount
+        from app.services.invoice_asset_registration import register_invoice_asset
+
+        invoice = db.get(SupplierInvoice, journal.reference_id)
+        if invoice and not invoice.goods_receipt_id:
+            for invoice_line in invoice.lines:
+                if invoice_line.goods_receipt_item_id or not invoice_line.account_id:
+                    continue
+                account = db.get(ChartOfAccount, invoice_line.account_id)
+                if account and account.account_number.startswith("100-600-"):
+                    register_invoice_asset(
+                        db, invoice=invoice, line=invoice_line, account_id=account.id,
+                        journal=journal, user=user,
+                    )
     record_audit(
         db,
         user,

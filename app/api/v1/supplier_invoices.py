@@ -13,6 +13,7 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import is_superuser, require_permission
 from app.models.journal_entry import JournalEntry
 from app.models.chart_of_account import ChartOfAccount
+from app.models.fixed_asset import FixedAsset
 from app.models.payment import Payment, PaymentAllocation
 from app.models.payment_voucher import PaymentVoucher, PaymentVoucherAllocation
 from app.models.goods_receipt import GoodsReceipt
@@ -25,6 +26,7 @@ from app.schemas.supplier_invoice import SupplierInvoiceInput
 from app.schemas.journal import JournalCreate, JournalLineCreate
 from app.services.accounting_unpost import unpost_journal
 from app.services.journal_service import JournalService
+from app.services.invoice_asset_registration import register_invoice_asset
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
 from app.services.direct_coa_service import DirectCoaService
@@ -102,6 +104,18 @@ def result(db, invoice, user):
     data["three_way_match"] = match
     readiness = DirectCoaService(db).supplier_invoice_readiness(invoice)
     data["accounting_readiness"] = readiness
+    asset_by_line = {
+        asset.source_invoice_line_id: asset
+        for asset in db.query(FixedAsset).filter(
+            FixedAsset.source_invoice_line_id.in_([line.id for line in invoice.lines]),
+        ).all()
+    } if invoice.lines else {}
+    for item in data["lines"]:
+        asset = asset_by_line.get(item["id"])
+        if asset:
+            item["fixed_asset"] = {
+                "id": asset.id, "asset_number": asset.asset_number, "status": asset.status,
+            }
     line_ids = [line.id for line in invoice.lines]
     if line_ids:
         reclasses = db.query(JournalEntry).filter(
@@ -360,6 +374,7 @@ def reclassify_asset(
             ],
         ),
     )
+    register_invoice_asset(db, invoice=invoice, line=line, account_id=asset.id, journal=journal, user=user)
     record_audit(
         db, user, "SUPPLIER_INVOICE_ASSET_RECLASSIFIED", "SUPPLIER_INVOICE",
         description, entity_id=invoice.id,
