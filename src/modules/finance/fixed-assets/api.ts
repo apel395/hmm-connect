@@ -16,3 +16,5 @@ export const listAmortizations = async () => (await api.get("/amortizations")).d
 export const createAmortization = async (data: any) => (await api.post("/amortizations", data)).data;
 export const updateAmortization = async (id: number, data: any) => (await api.patch(`/amortizations/${id}`, data)).data;
 export const postNextAmortization = async (id: number) => (await api.post(`/amortizations/${id}/post-next`)).data;
+
+export const syncInvoiceAssets = async () => (await api.post<{ registered: number }>("/fixed-assets/sync-invoice-assets")).data;
