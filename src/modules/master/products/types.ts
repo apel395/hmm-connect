@@ -29,6 +29,14 @@ export interface Product {
   inventory_treatment: InventoryTreatment;
   is_market_item: boolean;
   is_active: boolean;
+  description?: string | null;
+}
+
+export interface ProductDetail {
+  item: Product;
+  stock: Array<{ warehouse_id: number; warehouse: string | null; quantity: string | number; average_cost: string | number; value: string | number }>;
+  purchases: Array<{ order_id: number; po_number: string; order_date: string; supplier: string; quantity: string | number; unit_price: string | number; uom: string }>;
+  receiving: Array<{ receipt_id: number; receipt_number: string; received_at: string; quantity: string | number; unit_cost: string | number; warehouse_id: number | null }>;
 }
 
 export interface ProductGroup {
