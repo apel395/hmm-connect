@@ -67,6 +67,28 @@ class FixedAssetService:
         self.db.add(FixedAssetMovement(fixed_asset_id=asset.id, movement_type="ACQUISITION", to_business_unit_id=asset.business_unit_id, to_location_id=asset.location_id, to_department_id=asset.department_id, movement_date=asset.acquisition_date, reference_number=asset.external_reference, created_by_id=user.id))
         return asset
 
+    def assign_category(self, asset, category_id: int):
+        if asset.status not in ("PENDING_SETUP", "DRAFT"):
+            raise HTTPException(409, "Only pending or draft assets can change category")
+        category = self.db.get(FixedAssetCategory, category_id)
+        if not category or not category.is_active:
+            raise HTTPException(422, "Active asset category is required")
+        if category.asset_account_id != asset.asset_account_id:
+            raise HTTPException(422, "Asset category must use the already posted asset COA")
+        asset.asset_category_id = category.id
+        asset.useful_life_months = category.default_useful_life_months
+        asset.residual_value = (
+            Decimal(asset.acquisition_cost) * Decimal(category.default_residual_percentage or 0) / Decimal("100")
+        ).quantize(Decimal("0.01"))
+        if asset.residual_value >= asset.acquisition_cost:
+            raise HTTPException(422, "Residual value must be below acquisition cost")
+        asset.accumulated_depreciation_account_id = category.accumulated_depreciation_account_id
+        asset.depreciation_expense_account_id = category.depreciation_expense_account_id
+        asset.disposal_gain_account_id = category.disposal_gain_account_id
+        asset.disposal_loss_account_id = category.disposal_loss_account_id
+        asset.status = "DRAFT"
+        return asset
+
     def get(self, asset_id):
         asset = self.db.query(FixedAsset).options(joinedload(FixedAsset.category), joinedload(FixedAsset.schedules), joinedload(FixedAsset.movements)).filter(FixedAsset.id == asset_id).first()
         if not asset: raise HTTPException(404, "Fixed asset not found")
@@ -74,15 +96,19 @@ class FixedAssetService:
 
     @staticmethod
     def actions(asset):
-        return {"can_edit": asset.status == "DRAFT", "can_capitalize": asset.status == "DRAFT", "can_generate_schedule": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_transfer": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_dispose": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_write_off": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_print": True}
+        return {"can_edit": asset.status in ("DRAFT", "PENDING_SETUP"), "can_capitalize": asset.status == "DRAFT" and bool(asset.asset_category_id and asset.useful_life_months and asset.accumulated_depreciation_account_id and asset.depreciation_expense_account_id), "can_generate_schedule": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_transfer": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_dispose": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_write_off": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_print": True}
 
     def serialize(self, asset):
-        return {"id":asset.id,"asset_number":asset.asset_number,"asset_name":asset.asset_name,"category_id":asset.asset_category_id,"category":asset.category.name,"description":asset.description,"serial_number":asset.serial_number,"barcode":asset.barcode,"acquisition_date":asset.acquisition_date,"capitalization_date":asset.capitalization_date,"acquisition_cost":asset.acquisition_cost,"residual_value":asset.residual_value,"useful_life_months":asset.useful_life_months,"depreciation_method":asset.depreciation_method,"depreciation_start_date":asset.depreciation_start_date,"accumulated_depreciation":asset.accumulated_depreciation,"net_book_value":asset.net_book_value,"status":asset.status,"business_unit_id":asset.business_unit_id,"location_id":asset.location_id,"department_id":asset.department_id,"source_type":asset.source_type,"external_reference":asset.external_reference,"notes":asset.notes,"allowed_actions":self.actions(asset),"schedules":[{"id":s.id,"period":f"{s.period_year}-{s.period_month:02d}","opening_book_value":s.opening_book_value,"depreciation_amount":s.depreciation_amount,"accumulated_depreciation":s.accumulated_depreciation,"closing_book_value":s.closing_book_value,"status":s.status,"journal_entry_id":s.journal_entry_id} for s in sorted(asset.schedules,key=lambda x:(x.period_year,x.period_month))],"movements":[{"id":m.id,"movement_type":m.movement_type,"movement_date":m.movement_date,"from_business_unit_id":m.from_business_unit_id,"to_business_unit_id":m.to_business_unit_id,"from_location_id":m.from_location_id,"to_location_id":m.to_location_id,"notes":m.notes} for m in asset.movements]}
+        return {"id":asset.id,"asset_number":asset.asset_number,"asset_name":asset.asset_name,"category_id":asset.asset_category_id,"category":asset.category.name if asset.category else None,"source_invoice_line_id":asset.source_invoice_line_id,"purchase_invoice_id":asset.purchase_invoice_id,"asset_account_id":asset.asset_account_id,"description":asset.description,"serial_number":asset.serial_number,"barcode":asset.barcode,"acquisition_date":asset.acquisition_date,"capitalization_date":asset.capitalization_date,"acquisition_cost":asset.acquisition_cost,"residual_value":asset.residual_value,"useful_life_months":asset.useful_life_months,"depreciation_method":asset.depreciation_method,"depreciation_start_date":asset.depreciation_start_date,"accumulated_depreciation":asset.accumulated_depreciation,"net_book_value":asset.net_book_value,"status":asset.status,"business_unit_id":asset.business_unit_id,"location_id":asset.location_id,"department_id":asset.department_id,"source_type":asset.source_type,"external_reference":asset.external_reference,"notes":asset.notes,"allowed_actions":self.actions(asset),"schedules":[{"id":s.id,"period":f"{s.period_year}-{s.period_month:02d}","opening_book_value":s.opening_book_value,"depreciation_amount":s.depreciation_amount,"accumulated_depreciation":s.accumulated_depreciation,"closing_book_value":s.closing_book_value,"status":s.status,"journal_entry_id":s.journal_entry_id} for s in sorted(asset.schedules,key=lambda x:(x.period_year,x.period_month))],"movements":[{"id":m.id,"movement_type":m.movement_type,"movement_date":m.movement_date,"from_business_unit_id":m.from_business_unit_id,"to_business_unit_id":m.to_business_unit_id,"from_location_id":m.from_location_id,"to_location_id":m.to_location_id,"notes":m.notes} for m in asset.movements]}
 
     def capitalize(self, asset, value, user):
-        if asset.status != "DRAFT": raise HTTPException(409, "Only draft assets can be capitalized")
+        if asset.status != "DRAFT": raise HTTPException(409, "Only configured draft assets can be capitalized")
+        if not all((getattr(asset, "asset_category_id", None), getattr(asset, "useful_life_months", None), getattr(asset, "accumulated_depreciation_account_id", None), getattr(asset, "depreciation_expense_account_id", None))):
+            raise HTTPException(409, "Set an asset category and depreciation accounts before capitalization")
         if value.depreciation_start_date < value.capitalization_date: raise HTTPException(422, "Depreciation start cannot precede capitalization")
         if value.create_journal:
+            if asset.purchase_invoice_id:
+                raise HTTPException(409, "Invoice already posted the asset acquisition; capitalize without another journal")
             if asset.goods_receipt_id:
                 receipt = self.db.get(GoodsReceipt, asset.goods_receipt_id)
                 if receipt and receipt.status == "POSTED":
