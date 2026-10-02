@@ -44,7 +44,7 @@ export default function FixedAssetListPage() {
       <Link to="/reports/fixed-assets"><Card className="h-full p-4 hover:border-emerald-300"><FileBarChart className="mb-2 h-5 w-5 text-emerald-700"/><div className="font-semibold">Asset Reports</div><div className="mt-1 text-xs text-slate-500">Book value and depreciation reporting</div></Card></Link>
     </div>
 
-    {sync.isError && <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Invoice asset registration could not be synchronized. Refresh after the asset registry migration is applied.</div>}
+    {sync.isError && <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Invoice asset registration could not be synchronized. Refresh after the backend is updated.</div>}
     <Card className="overflow-x-auto p-0">
       <div className="border-b px-4 py-3 font-semibold">Asset Register</div>
       <Table className={`min-w-[900px] ${assets.isFetching ? "opacity-70" : ""}`} containerClassName="rounded-none border-0 shadow-none">
