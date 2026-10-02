@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 from app.models.chart_of_account import ChartOfAccount
 from app.models.fixed_asset import FixedAsset, FixedAssetCategory, FixedAssetDepreciationSchedule, FixedAssetMovement, FixedAssetDepreciationRun
+from app.models.goods_receipt import GoodsReceipt
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.services.document_number import next_document_number
@@ -81,9 +82,14 @@ class FixedAssetService:
     def capitalize(self, asset, value, user):
         if asset.status != "DRAFT": raise HTTPException(409, "Only draft assets can be capitalized")
         if value.depreciation_start_date < value.capitalization_date: raise HTTPException(422, "Depreciation start cannot precede capitalization")
+        if value.create_journal:
+            if asset.goods_receipt_id:
+                receipt = self.db.get(GoodsReceipt, asset.goods_receipt_id)
+                if receipt and receipt.status == "POSTED":
+                    raise HTTPException(409, "Receiving has already posted the asset acquisition; capitalize without creating another journal")
+            if not value.offset_account_id: raise HTTPException(422, "Offset account is required")
         asset.capitalization_date=value.capitalization_date; asset.depreciation_start_date=value.depreciation_start_date; asset.status="ACTIVE"
         if value.create_journal:
-            if not value.offset_account_id: raise HTTPException(422, "Offset account is required")
             self._journal(value.capitalization_date,"FIXED_ASSET_CAPITALIZATION",asset.id,asset.asset_number,[(asset.asset_account_id,asset.acquisition_cost,ZERO),(value.offset_account_id,ZERO,asset.acquisition_cost)],asset,user)
         self.generate_schedule(asset)
         return asset
