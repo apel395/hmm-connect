@@ -16,6 +16,12 @@ export interface Product {
   item_type: ItemType;
   cost_price: string | number;
   selling_price: string | number;
+  sales_service_name?: string | null;
+  sales_business_unit_id?: number | null;
+  sales_location_id?: number | null;
+  pbjt_rate?: string | number;
+  sales_ppn_rate?: string | number;
+  pph23_rate?: string | number;
   tax_category: TaxCategory;
   is_taxable: boolean;
   tax_rate: string | number;
@@ -34,6 +40,7 @@ export interface Product {
 
 export interface ProductDetail {
   item: Product;
+  sales_scope?: { business_unit: string | null; location: string | null };
   stock: Array<{ warehouse_id: number; warehouse: string | null; quantity: string | number; average_cost: string | number; value: string | number }>;
   purchases: Array<{ order_id: number; po_number: string; order_date: string; supplier: string; quantity: string | number; unit_price: string | number; uom: string }>;
   receiving: Array<{ receipt_id: number; receipt_number: string; received_at: string; quantity: string | number; unit_cost: string | number; warehouse_id: number | null }>;
@@ -60,6 +67,12 @@ export interface ProductCreateRequest {
   item_type: ItemType;
   cost_price: number;
   selling_price: number;
+  sales_service_name?: string | null;
+  sales_business_unit_id?: number | null;
+  sales_location_id?: number | null;
+  pbjt_rate?: number;
+  sales_ppn_rate?: number;
+  pph23_rate?: number;
   tax_category: TaxCategory;
   is_taxable: boolean;
   tax_rate: number;
