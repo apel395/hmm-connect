@@ -8,6 +8,7 @@ interface Props {
   rows?: Product[];
   accounts?: AccountLookup[];
   onEdit?: (product: Product) => void;
+  onView?: (product: Product) => void;
 }
 
 const taxLabel = (row: Product) => {
@@ -27,7 +28,7 @@ const treatmentLabel = (value: Product["inventory_treatment"]) => ({
 const treatmentVariant = (value: Product["inventory_treatment"]) =>
   value === "REVIEW_REQUIRED" ? "warning" : value === "STOCK" ? "success" : "secondary";
 
-export default function ProductTable({ rows = [], accounts = [], onEdit }: Props) {
+export default function ProductTable({ rows = [], accounts = [], onEdit, onView }: Props) {
   const byId = new Map(accounts.map((account) => [account.id, account]));
 
   const mappedAccount = (row: Product) => {
@@ -95,7 +96,10 @@ export default function ProductTable({ rows = [], accounts = [], onEdit }: Props
                     <Badge variant={state === "Ready" ? "success" : "warning"}>{state}</Badge>
                   </TD>
                   <TD><Badge variant={row.is_active ? "success" : "secondary"}>{row.is_active ? "Active" : "Inactive"}</Badge></TD>
-                  <TD><div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => onEdit?.(row)}>Edit</Button></div></TD>
+                  <TD><div className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => onView?.(row)}>Details</Button>
+                    <Button size="sm" variant="outline" onClick={() => onEdit?.(row)}>Edit</Button>
+                  </div></TD>
                 </TR>
               );
             })}
