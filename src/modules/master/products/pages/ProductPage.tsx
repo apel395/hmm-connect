@@ -10,7 +10,7 @@ import Loading from "@/components/ui/Loading";
 import ProductTable from "../components/ProductTable";
 import ProductForm from "../components/ProductForm";
 import ProductDetailDialog from "../components/ProductDetailDialog";
-import type { InventoryTreatment, Product, TaxCategory } from "../types";
+import type { InventoryTreatment, ItemType, Product, TaxCategory } from "../types";
 import { productApi } from "../api/productApi";
 import { exportApi } from "../api/exportApi";
 import { useProducts, useCreateProduct, useUpdateProduct } from "../hooks/useProducts";
@@ -33,12 +33,13 @@ export default function ProductPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [treatmentFilter, setTreatmentFilter] = useState<InventoryTreatment | "">("");
+  const [itemTypeFilter, setItemTypeFilter] = useState<ItemType | "">("");
   const [taxFilter, setTaxFilter] = useState<TaxCategory | "">("");
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const query = useProducts({ page, page_size: PAGE_SIZE, search: debouncedSearch || undefined, inventory_treatment: treatmentFilter || undefined, tax_category: taxFilter || undefined });
+  const query = useProducts({ page, page_size: PAGE_SIZE, search: debouncedSearch || undefined, item_type: itemTypeFilter || undefined, inventory_treatment: treatmentFilter || undefined, tax_category: taxFilter || undefined });
   const classification = useQuery({
     queryKey: ["product-classification-master"],
     queryFn: async () => (await productApi.classificationMaster()).data,
@@ -56,7 +57,7 @@ export default function ProductPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => setPage(1), [debouncedSearch, treatmentFilter, taxFilter]);
+  useEffect(() => setPage(1), [debouncedSearch, itemTypeFilter, treatmentFilter, taxFilter]);
 
   useEffect(() => {
     if (!query.isFetching && data.total_pages != null && page > pages) setPage(pages);
@@ -173,8 +174,11 @@ export default function ProductPage() {
         </div>
       )}
       <Card>
-        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(260px,1fr)_220px_220px]">
+        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(260px,1fr)_150px_220px_220px]">
           <SearchBox value={search} onChange={setSearch} placeholder="Search item code or name..." />
+          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={itemTypeFilter} onChange={(event) => setItemTypeFilter(event.target.value as ItemType | "")}>
+            <option value="">Buy and sell</option><option value="BUY">Buy items</option><option value="SELL">Sell items</option>
+          </select>
           <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={treatmentFilter} onChange={(event) => setTreatmentFilter(event.target.value as InventoryTreatment | "")}>
             <option value="">All treatments</option>
             <option value="REVIEW_REQUIRED">Treatment Review Required</option>
