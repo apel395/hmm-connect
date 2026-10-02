@@ -20,6 +20,8 @@ def register_invoice_asset(
     account_id: int, journal: JournalEntry, user,
 ) -> FixedAsset:
     """Store the asset source once. Accounting was already posted by the journal."""
+    if invoice.status != "POSTED" or journal.status != "POSTED":
+        raise HTTPException(409, "A posted invoice and accounting journal are required for asset registration")
     existing = db.query(FixedAsset).filter(
         FixedAsset.source_invoice_line_id == line.id,
     ).with_for_update().one_or_none()
@@ -29,8 +31,6 @@ def register_invoice_asset(
         if existing.status == "SOURCE_UNPOSTED":
             existing.status = "DRAFT" if existing.asset_category_id else "PENDING_SETUP"
         return existing
-    if invoice.status != "POSTED" or journal.status != "POSTED":
-        raise HTTPException(409, "A posted invoice and accounting journal are required for asset registration")
     if invoice.goods_receipt_id or line.goods_receipt_item_id:
         raise HTTPException(409, "Receipt-backed assets must use the receiving asset flow")
     if Decimal(line.line_amount or 0) <= 0:
