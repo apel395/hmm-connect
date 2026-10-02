@@ -10,9 +10,10 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
 from app.models.fixed_asset import FixedAsset, FixedAssetCategory, FixedAssetDepreciationRun, FixedAssetDepreciationSchedule
-from app.schemas.fixed_asset import AssetInput, AssetUpdate, CapitalizeInput, CategoryInput, DisposalInput, RunInput, TransferInput, WriteOffInput
+from app.schemas.fixed_asset import AssetInput, AssetUpdate, CapitalizeInput, CategoryAssignmentInput, CategoryInput, DisposalInput, RunInput, TransferInput, WriteOffInput
 from app.services.document_number import next_document_number
 from app.services.fixed_asset_service import DepreciationRunService, FixedAssetService, ZERO
+from app.services.invoice_asset_registration import sync_posted_invoice_assets
 
 
 router = APIRouter(prefix="/fixed-assets", tags=["Fixed Assets"])
@@ -48,6 +49,14 @@ def update_category(category_id: int, data: CategoryInput, db: Session = Depends
     for key, value in data.model_dump().items(): setattr(item, key, value)
     db.commit(); db.refresh(item)
     return item
+
+
+@router.post("/sync-invoice-assets")
+def sync_invoice_assets(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user)
+    created = sync_posted_invoice_assets(db, user=user)
+    db.commit()
+    return {"registered": created}
 
 
 @router.get("")
@@ -116,6 +125,15 @@ def update(asset_id: int, data: AssetUpdate, db: Session = Depends(get_db), user
     db.commit(); return service.serialize(service.get(asset_id))
 
 
+@router.post("/{asset_id}/assign-category")
+def assign_category(asset_id: int, data: CategoryAssignmentInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user)
+    service = FixedAssetService(db)
+    asset = service.assign_category(service.get(asset_id), data.asset_category_id)
+    db.commit()
+    return service.serialize(service.get(asset.id))
+
+
 @router.post("/{asset_id}/capitalize")
 def capitalize(asset_id: int, data: CapitalizeInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user); service = FixedAssetService(db); item = service.capitalize(service.get(asset_id), data, user); db.commit(); return service.serialize(service.get(item.id))
@@ -142,7 +160,7 @@ def write_off(asset_id: int, data: WriteOffInput, db: Session = Depends(get_db),
 
 
 def asset_report(db: Session):
-    return [{"id": item.id, "asset_number": item.asset_number, "asset_name": item.asset_name, "category": item.category.name, "acquisition_date": item.acquisition_date, "capitalization_date": item.capitalization_date, "acquisition_cost": item.acquisition_cost, "accumulated_depreciation": item.accumulated_depreciation, "net_book_value": item.net_book_value, "residual_value": item.residual_value, "status": item.status} for item in db.query(FixedAsset).all()]
+    return [{"id": item.id, "asset_number": item.asset_number, "asset_name": item.asset_name, "category": item.category.name if item.category else "Category setup required", "acquisition_date": item.acquisition_date, "capitalization_date": item.capitalization_date, "acquisition_cost": item.acquisition_cost, "accumulated_depreciation": item.accumulated_depreciation, "net_book_value": item.net_book_value, "residual_value": item.residual_value, "status": item.status} for item in db.query(FixedAsset).all()]
 
 
 @reports_router.get("/fixed-assets")
