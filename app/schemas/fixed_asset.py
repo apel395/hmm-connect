@@ -90,3 +90,6 @@ class RunInput(BaseModel):
     business_unit_id: int | None = None
     location_id: int | None = None
     notes: str | None = None
+
+class CategoryAssignmentInput(BaseModel):
+    asset_category_id: int
