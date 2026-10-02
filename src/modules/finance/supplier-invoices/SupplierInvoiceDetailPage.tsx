@@ -24,7 +24,7 @@ export default function SupplierInvoiceDetailPage(){
  const [assetAccountId,setAssetAccountId]=useState<number|null>(null);
  const [reclassDate,setReclassDate]=useState(()=>new Date().toISOString().slice(0,10));
  const assetAccounts=useQuery({queryKey:["fixed-asset-accounts-invoice"],queryFn:async()=>{
-   const result=await getAccounts({page:1,page_size:100,search:"100-600",is_active:true,is_posting:true});
+   const result=await getAccounts({page:1,page_size:100,search:"100-600",is_active:true,is_posting:true,sort_by:"account_code",sort_order:"asc"});
    return (result.items as Array<{id:number;account_code:string;account_name:string;account_type:string}>).filter(account=>account.account_code?.startsWith("100-600-")&&account.account_type==="ASSET");
  },enabled:reclassLineId!==null});
  const query=useQuery({queryKey:["supplier-invoice",id],queryFn:()=>getInvoice(Number(id)),enabled:!!id,refetchOnMount:"always"});
