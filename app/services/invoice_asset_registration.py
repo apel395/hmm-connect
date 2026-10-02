@@ -20,6 +20,7 @@ def register_invoice_asset(
     account_id: int, journal: JournalEntry, user,
 ) -> FixedAsset:
     """Store the asset source once. Accounting was already posted by the journal."""
+    db.query(SupplierInvoice.id).filter(SupplierInvoice.id == invoice.id).with_for_update().one()
     if invoice.status != "POSTED" or journal.status != "POSTED":
         raise HTTPException(409, "A posted invoice and accounting journal are required for asset registration")
     existing = db.query(FixedAsset).filter(
