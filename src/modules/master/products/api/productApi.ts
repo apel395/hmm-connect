@@ -15,6 +15,7 @@ export type ProductListParams = {
   active_only?: boolean;
   market_only?: boolean;
   exclude_market?: boolean;
+  item_type?: ItemType;
   inventory_treatment?: InventoryTreatment;
   tax_category?: TaxCategory;
 };

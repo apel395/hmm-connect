@@ -6,6 +6,7 @@ import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import type { InventoryTreatment, ItemType, Product, ProductGroup, TaxCategory } from "../types";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { filterBusinessUnits, listLocations } from "@/modules/admin/organization/api";
 
 const UOMS = ["Kg", "Gram", "Liter", "Ml", "Bottle", "Box", "Pack", "Pcs", "Can", "Roll", "Meter", "Set"];
 const TAX_CATEGORIES: { value: TaxCategory; label: string; help: string }[] = [
@@ -35,6 +36,8 @@ interface Props {
 
 const blank = () => ({
   code: "", name: "", item_type: "BUY" as ItemType,
+  sales_service_name: "", sales_business_unit_id: null as number | null, sales_location_id: null as number | null,
+  pbjt_rate: 0, sales_ppn_rate: 0, pph23_rate: 0,
   group_code: "", group_name: "", subgroup_code: "", subgroup_name: "",
   uom: "", usage_uom: "", conversion: 1, minimum_stock: 0, cost_price: 0, selling_price: 0,
   inventory_treatment: "REVIEW_REQUIRED" as InventoryTreatment,
@@ -55,10 +58,20 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
     queryKey: ["product-coa-lookup", "all-active-posting"],
     queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }),
   });
+  const units = useQuery({
+    queryKey: ["product-sales-business-units"],
+    queryFn: () => filterBusinessUnits({ is_active: true }),
+    enabled: open && form.item_type === "SELL",
+  });
+  const locations = useQuery({
+    queryKey: ["product-sales-locations", form.sales_business_unit_id],
+    queryFn: () => listLocations({ business_unit_id: form.sales_business_unit_id!, is_active: true }),
+    enabled: open && form.item_type === "SELL" && Boolean(form.sales_business_unit_id),
+  });
 
   const groupOptions = useMemo(() => {
     const set = new Map<string, { code: string; name: string; item_type?: ItemType }>();
-    groups.forEach((item) => set.set(item.code, { code: item.code, name: item.name, item_type: item.item_type }));
+    groups.filter((item) => item.item_type === form.item_type).forEach((item) => set.set(item.code, { code: item.code, name: item.name, item_type: item.item_type }));
     if (product?.group_code && product.group_name) {
       set.set(product.group_code, {
         code: product.group_code,
@@ -73,7 +86,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
         label: `${item.code} — ${item.name}`,
         keywords: [item.code, item.name, item.item_type ?? ""],
       }));
-  }, [groups, product]);
+  }, [groups, product, form.item_type]);
 
   const subGroupOptions = useMemo(() => {
     const selected = groups.find((group) => group.code === form.group_code);
@@ -126,6 +139,12 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
       minimum_stock: Number(product.minimum_stock ?? 0),
       cost_price: Number(product.cost_price ?? 0),
       selling_price: Number(product.selling_price ?? 0),
+      sales_service_name: product.sales_service_name ?? "",
+      sales_business_unit_id: product.sales_business_unit_id ?? null,
+      sales_location_id: product.sales_location_id ?? null,
+      pbjt_rate: Number(product.pbjt_rate ?? 0),
+      sales_ppn_rate: Number(product.sales_ppn_rate ?? 0),
+      pph23_rate: Number(product.pph23_rate ?? 0),
       inventory_treatment: product.inventory_treatment ?? "REVIEW_REQUIRED",
       tax_category: product.tax_category ?? "REVIEW_REQUIRED",
       is_taxable: Boolean(product.is_taxable),
@@ -145,10 +164,21 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
     setForm((current) => ({
       ...current,
       item_type: value,
+      inventory_treatment: value === "SELL" ? "NON_STOCK" : "REVIEW_REQUIRED",
+      inventory_account_id: null,
+      purchase_account_id: null,
+      cogs_account_id: null,
+      asset_account_id: null,
       group_code: "",
       group_name: "",
       subgroup_code: "",
       subgroup_name: "",
+      sales_service_name: value === "SELL" ? current.sales_service_name : "",
+      sales_business_unit_id: value === "SELL" ? current.sales_business_unit_id : null,
+      sales_location_id: value === "SELL" ? current.sales_location_id : null,
+      pbjt_rate: value === "SELL" ? current.pbjt_rate : 0,
+      sales_ppn_rate: value === "SELL" ? current.sales_ppn_rate : 0,
+      pph23_rate: value === "SELL" ? current.pph23_rate : 0,
     }));
   };
 
@@ -159,6 +189,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
       inventory_account_id: value === "STOCK" ? current.inventory_account_id : null,
       purchase_account_id: ["DIRECT_USE", "NON_STOCK"].includes(value) ? current.purchase_account_id : null,
       asset_account_id: value === "FIXED_ASSET" ? current.asset_account_id : null,
+      cogs_account_id: value === "STOCK" ? current.cogs_account_id : null,
     }));
   };
 
@@ -195,6 +226,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
   const accountingReady =
     form.inventory_treatment === "REVIEW_REQUIRED" ||
     (form.inventory_treatment === "STOCK" && Boolean(form.inventory_account_id)) ||
+    (form.item_type === "SELL" && form.inventory_treatment === "NON_STOCK") ||
     (["DIRECT_USE", "NON_STOCK"].includes(form.inventory_treatment) && Boolean(form.purchase_account_id)) ||
     (form.inventory_treatment === "FIXED_ASSET" && Boolean(form.asset_account_id));
 
@@ -211,6 +243,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
     (!subgroupRequired || form.subgroup_code) &&
     form.uom.trim() &&
     form.usage_uom.trim() &&
+    (form.item_type !== "SELL" || Number(form.selling_price) >= 0) &&
     Number(form.conversion) > 0 &&
     Number(form.minimum_stock) >= 0 &&
     accountingReady &&
@@ -270,6 +303,42 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
           <SearchableSelect label="Group" value={form.group_code || undefined} required placeholder="Type group code or name..." options={groupOptions} onChange={updateGroup} />
           <SearchableSelect label="Sub Group" value={form.subgroup_code || undefined} required={subgroupRequired} disabled={!form.group_code} placeholder={form.group_code ? "Type subgroup code or name..." : "Select Group first"} options={subGroupOptions} onChange={updateSubgroup} />
 
+          {form.item_type === "SELL" && <div className="col-span-2 grid gap-4 rounded-lg border border-blue-200 bg-blue-50/30 p-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <div className="font-semibold">Selling item</div>
+              <p className="text-xs text-slate-500">Numeric Product ID is assigned when saved. Choose Food, Beverage, Room, or Service as the group.</p>
+            </div>
+            <label className="text-sm font-medium">Service
+              <Input className="mt-1" maxLength={120} value={form.sales_service_name} onChange={(event) => update("sales_service_name", event.target.value)} />
+            </label>
+            <label className="text-sm font-medium">Selling price
+              <Input className="mt-1" type="number" min="0" step="0.01" value={form.selling_price} onChange={(event) => update("selling_price", Number(event.target.value))} />
+            </label>
+            <label className="text-sm font-medium">Business unit
+              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3" value={form.sales_business_unit_id ?? ""} onChange={(event) => setForm((current) => ({ ...current, sales_business_unit_id: event.target.value ? Number(event.target.value) : null, sales_location_id: null }))}>
+                <option value="">Select business unit</option>{units.data?.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+              </select>
+            </label>
+            <label className="text-sm font-medium">Location
+              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3" disabled={!form.sales_business_unit_id} value={form.sales_location_id ?? ""} onChange={(event) => update("sales_location_id", event.target.value ? Number(event.target.value) : null)}>
+                <option value="">Select location</option>{locations.data?.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+              </select>
+            </label>
+            <label className="text-sm font-medium">Sales tax
+              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3" value={form.pbjt_rate > 0 ? "PBJT" : form.sales_ppn_rate > 0 ? "PPN" : "NONE"} onChange={(event) => setForm((current) => ({ ...current, pbjt_rate: event.target.value === "PBJT" ? 10 : 0, sales_ppn_rate: event.target.value === "PPN" ? 11 : 0 }))}>
+                <option value="NONE">None</option><option value="PBJT">PBJT</option><option value="PPN">PPN</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium">Sales tax rate (%)
+              <Input className="mt-1" type="number" min="0" max="100" step="0.01" disabled={!form.pbjt_rate && !form.sales_ppn_rate} value={form.pbjt_rate || form.sales_ppn_rate} onChange={(event) => update(form.pbjt_rate > 0 ? "pbjt_rate" : "sales_ppn_rate", Number(event.target.value))} />
+            </label>
+            <label className="text-sm font-medium">PPh 23 withholding (%), if applicable
+              <Input className="mt-1" type="number" min="0" max="100" step="0.01" value={form.pph23_rate} onChange={(event) => update("pph23_rate", Number(event.target.value))} />
+            </label>
+            <p className="self-end text-xs text-slate-500">Typical PPh 23 service rate is 2%. Tax classification and payer determine applicability.</p>
+            <p className="md:col-span-2 text-xs text-amber-800">Sales tax fields are item setup only. POS posting for items with PBJT, PPN, or PPh 23 requires the corresponding tax accounting flow.</p>
+          </div>}
+
           <label className="text-sm font-medium">Purchase UOM
             <Input className="mt-1" list="purchase-uom-options" value={form.uom} onChange={(event) => update("uom", event.target.value)} />
             <datalist id="purchase-uom-options">{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
@@ -295,7 +364,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
               <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.inventory_treatment} onChange={(event) => changeTreatment(event.target.value as InventoryTreatment)}>
                 {TREATMENTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
-              <span className="mt-1 block text-xs font-normal text-slate-500">{selectedTreatment?.help}</span>
+              <span className="mt-1 block text-xs font-normal text-slate-500">{form.item_type === "SELL" && form.inventory_treatment === "NON_STOCK" ? "Selling service does not enter warehouse stock." : selectedTreatment?.help}</span>
             </label>
 
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -310,7 +379,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
               {["DIRECT_USE", "NON_STOCK"].includes(form.inventory_treatment) && <SearchableSelect
                 label="Expense / Consumption COA"
                 value={form.purchase_account_id ?? undefined}
-                required
+                required={form.item_type === "BUY"}
                 placeholder="Type expense COA..."
                 options={coaOptions(expenseAccounts)}
                 onChange={(value) => update("purchase_account_id", value ? Number(value) : null)}
@@ -333,7 +402,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
             </div>
           </div>
 
-          <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          {form.item_type === "BUY" && <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="mb-3">
               <div className="font-semibold text-slate-900">PPN / Tax Profile</div>
               <div className="text-xs text-slate-500">Tax profile is snapshotted into future purchasing documents. Do not infer tax from classification.</div>
@@ -355,7 +424,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
                 <Input className="mt-1" value={form.tax_reference} onChange={(event) => update("tax_reference", event.target.value)} />
               </label>
             </div>
-          </div>
+          </div>}
         </div>
       </DialogBody>
       <DialogFooter>

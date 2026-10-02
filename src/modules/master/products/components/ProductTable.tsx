@@ -12,6 +12,10 @@ interface Props {
 }
 
 const taxLabel = (row: Product) => {
+  if (row.item_type === "SELL") {
+    const pbjt = Number(row.pbjt_rate || 0), ppn = Number(row.sales_ppn_rate || 0);
+    return pbjt > 0 ? `PBJT ${pbjt}%` : ppn > 0 ? `PPN ${ppn}%` : "No sales tax";
+  }
   if (row.tax_category === "REVIEW_REQUIRED") return "Tax Review";
   if (!row.is_taxable) return row.tax_category === "EXEMPT" ? "Exempt" : "Non PPN";
   return `PPN ${Number(row.tax_rate || 0).toLocaleString()}%`;
@@ -41,6 +45,7 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
   };
 
   const readiness = (row: Product) => {
+    if (row.item_type === "SELL") return Number(row.pbjt_rate || 0) > 0 || Number(row.sales_ppn_rate || 0) > 0 || Number(row.pph23_rate || 0) > 0 ? "Tax posting pending" : "Catalogued";
     const taxReady = row.tax_category !== "REVIEW_REQUIRED";
     const accountingReady =
       row.inventory_treatment === "STOCK" ? Boolean(row.inventory_account_id) :
@@ -55,10 +60,11 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="overflow-x-auto">
-        <Table className="min-w-[1180px]">
+        <Table className="min-w-[1280px]">
           <THead>
             <TR>
               <TH>Product</TH>
+              <TH>Type / Price</TH>
               <TH>Classification</TH>
               <TH>Treatment</TH>
               <TH>UOM</TH>
@@ -71,7 +77,7 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
           </THead>
           <TBody>
             {rows.length === 0 ? (
-              <TR><TD colSpan={9} className="py-10 text-center">No Products</TD></TR>
+              <TR><TD colSpan={10} className="py-10 text-center">No Products</TD></TR>
             ) : rows.map((row) => {
               const account = mappedAccount(row);
               const state = readiness(row);
@@ -79,11 +85,12 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
               return (
                 <TR key={row.id}>
                   <TD><TableCellStack primary={row.name} secondary={row.code}/></TD>
+                  <TD><TableCellStack primary={row.item_type === "SELL" ? "Sell" : "Buy"} secondary={row.item_type === "SELL" ? `Rp ${Number(row.selling_price ?? 0).toLocaleString("id-ID")}` : ""}/></TD>
                   <TD><TableCellStack primary={row.group_name} secondary={subgroup}/></TD>
                   <TD><Badge variant={treatmentVariant(row.inventory_treatment)}>{treatmentLabel(row.inventory_treatment)}</Badge></TD>
                   <TD><TableCellStack primary={row.uom} secondary={`${row.usage_uom} · ×${Number(row.conversion).toLocaleString("id-ID")}`}/></TD>
                   <TD>
-                    <Badge variant={row.tax_category === "REVIEW_REQUIRED" ? "warning" : row.is_taxable ? "info" : "secondary"}>
+                    <Badge variant={row.item_type === "SELL" ? "info" : row.tax_category === "REVIEW_REQUIRED" ? "warning" : row.is_taxable ? "info" : "secondary"}>
                       {taxLabel(row)}
                     </Badge>
                   </TD>
@@ -93,7 +100,7 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
                       : <span className="text-sm text-slate-400">—</span>}
                   </TD>
                   <TD>
-                    <Badge variant={state === "Ready" ? "success" : "warning"}>{state}</Badge>
+                    <Badge variant={state === "Ready" ? "success" : state === "Catalogued" ? "secondary" : "warning"}>{state}</Badge>
                   </TD>
                   <TD><Badge variant={row.is_active ? "success" : "secondary"}>{row.is_active ? "Active" : "Inactive"}</Badge></TD>
                   <TD><div className="flex justify-end gap-2">

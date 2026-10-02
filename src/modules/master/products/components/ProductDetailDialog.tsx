@@ -40,14 +40,24 @@ export default function ProductDetailDialog({ productId, accounts, onClose, onEd
         {item && detail && <div className="space-y-5 text-sm">
           <section className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-3">
             <div><div className="text-slate-500">Classification</div><strong>{item.group_name} / {item.subgroup_name}</strong></div>
+            <div><div className="text-slate-500">Product ID</div><strong>{item.id}</strong></div>
             <div><div className="text-slate-500">Treatment</div><strong>{item.inventory_treatment.replace(/_/g, " ")}</strong></div>
             <div><div className="text-slate-500">Purchase → Usage UOM</div><strong>{item.uom} → {quantity(item.conversion)} {item.usage_uom}</strong></div>
-            <div><div className="text-slate-500">Posting account</div><strong>{account(primaryAccount)}</strong></div>
+            {item.item_type === "BUY" && <div><div className="text-slate-500">Posting account</div><strong>{account(primaryAccount)}</strong></div>}
             {item.inventory_treatment === "STOCK" && <div><div className="text-slate-500">Issue / COGS account</div><strong>{account(item.cogs_account_id)}</strong></div>}
             <div><div className="text-slate-500">Tax profile</div><strong>{item.tax_category}{item.is_taxable ? ` · ${quantity(item.tax_rate)}%` : ""}</strong></div>
             <div><div className="text-slate-500">Status</div><strong>{item.is_active ? "Active" : "Inactive"}</strong></div>
             {item.description && <p className="md:col-span-3">{item.description}</p>}
           </section>
+
+          {item.item_type === "SELL" && <section className="grid gap-3 rounded-lg border border-blue-200 bg-blue-50/30 p-4 md:grid-cols-3">
+            <div><div className="text-slate-500">Service</div><strong>{item.sales_service_name || "—"}</strong></div>
+            <div><div className="text-slate-500">Selling price</div><strong>Rp {amount(item.selling_price)}</strong></div>
+            <div><div className="text-slate-500">Business unit / Location</div><strong>{detail.sales_scope?.business_unit || "—"} / {detail.sales_scope?.location || "—"}</strong></div>
+            <div><div className="text-slate-500">PBJT</div><strong>{quantity(item.pbjt_rate || 0)}%</strong></div>
+            <div><div className="text-slate-500">PPN</div><strong>{quantity(item.sales_ppn_rate || 0)}%</strong></div>
+            <div><div className="text-slate-500">PPh 23</div><strong>{quantity(item.pph23_rate || 0)}%</strong></div>
+          </section>}
 
           {item.inventory_treatment === "STOCK" && <section>
             <h3 className="mb-2 font-semibold">Stock by warehouse</h3>
