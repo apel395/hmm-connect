@@ -60,7 +60,8 @@ function updateInput(input: HTMLInputElement, periods: FiscalPeriod[]) {
   if (!isAccountingDate(input)) return;
   const open = periods.filter((period) => period.is_open && !period.is_closed);
   if (open.length) {
-    const start = open.map((period) => period.start_date).sort()[0];
+    const openStart = open.map((period) => period.start_date).sort()[0];
+    const start = input.dataset.minDate && input.dataset.minDate > openStart ? input.dataset.minDate : openStart;
     const end = open.map((period) => period.end_date).sort().at(-1)!;
     input.min = input.type === "datetime-local" ? `${start}T00:00` : start;
     input.max = input.type === "datetime-local" ? `${end}T23:59` : end;
