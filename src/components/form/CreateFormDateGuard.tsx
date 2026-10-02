@@ -30,7 +30,7 @@ function isAccountingDate(input: HTMLInputElement): boolean {
   const label = input.closest("label")?.textContent ?? "";
   const text = `${input.name} ${input.id} ${label}`.toLowerCase();
   if (/\b(due|expiry|expiration|expected|delivery|tax invoice|faktur|birth|check.in|check.out)\b/.test(text)) return false;
-  return /\b(posting|payment|invoice|voucher|journal|transaction|receipt|receiving|transfer|adjustment|purchase|stock|document)\b/.test(text)
+  return /\b(posting|payment|invoice|voucher|journal|transaction|receipt|receiving|transfer|adjustment|purchase|acquisition|stock|document)\b/.test(text)
     && /\b(date|time|at)\b/.test(text);
 }
 
