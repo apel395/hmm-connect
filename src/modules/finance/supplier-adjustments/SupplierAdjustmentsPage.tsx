@@ -12,7 +12,7 @@ import CurrencyInput from "@/components/form/CurrencyInput";
 import useAuthorization from "@/hooks/useAuthorization";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listInvoices } from "@/modules/finance/supplier-invoices/api";
-import { isBeforeToday, todayLocal } from "@/utils/dateConstraints";
+import { todayLocal } from "@/utils/dateConstraints";
 import { createSupplierAdjustment, listSupplierAdjustments, supplierAdjustmentAction } from "./api";
 
 const today = todayLocal;
@@ -68,7 +68,7 @@ export default function SupplierAdjustmentsPage() {
 
   const submit = () => {
     if (!form.supplier_invoice_id) return toast.error("Select a posted supplier invoice");
-    if (!form.adjustment_date || isBeforeToday(form.adjustment_date)) return toast.error("Adjustment Date cannot be before today");
+    if (!form.adjustment_date) return toast.error("Adjustment Date is required");
     if (form.amount <= 0) return toast.error("Amount must be greater than zero");
     if (!form.adjustment_account_id) return toast.error("Select an adjustment account");
     if (!form.reason.trim()) return toast.error("Reason is required");
@@ -82,7 +82,7 @@ export default function SupplierAdjustmentsPage() {
       <div className="grid gap-3 md:grid-cols-3">
         <label className="text-sm">Document Type<select className={input} value={form.adjustment_type} onChange={(event) => setForm({ ...form, adjustment_type: event.target.value })}><option value="CREDIT_NOTE">Supplier Credit Note</option><option value="DEBIT_NOTE">Supplier Debit Note</option></select></label>
         <label className="text-sm md:col-span-2">Supplier Invoice<select className={input} value={form.supplier_invoice_id || ""} onChange={(event) => setForm({ ...form, supplier_invoice_id: Number(event.target.value) })}><option value="">Select posted invoice</option>{invoices.data?.items?.filter((invoice: any) => Number(invoice.balance_amount ?? invoice.total_amount) > 0).map((invoice: any) => <option key={invoice.id} value={invoice.id}>{invoice.internal_invoice_number} — {invoice.supplier_name} — Outstanding {money(invoice.balance_amount ?? invoice.total_amount)}</option>)}</select></label>
-        <label className="text-sm">Adjustment Date<input type="date" min={today()} className={input} value={form.adjustment_date} onChange={(event) => setForm({ ...form, adjustment_date: event.target.value })} /></label>
+        <label className="text-sm">Adjustment Date<input type="date" data-accounting-date="true" className={input} value={form.adjustment_date} onChange={(event) => setForm({ ...form, adjustment_date: event.target.value })} /></label>
         <label className="text-sm">Amount<CurrencyInput value={Number(form.amount)} onValueChange={(value) => setForm({ ...form, amount: value })} /></label>
         <label className="text-sm">Adjustment Account<select className={input} value={form.adjustment_account_id || ""} onChange={(event) => setForm({ ...form, adjustment_account_id: Number(event.target.value) })}><option value="">Select posting account</option>{accounts.data?.map((account: any) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>
         <label className="text-sm md:col-span-2">Reason<input className={input} value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></label>

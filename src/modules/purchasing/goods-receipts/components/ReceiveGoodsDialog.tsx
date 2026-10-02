@@ -19,7 +19,7 @@ import {
 } from "@/modules/admin/organization/api";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
 import type { PurchaseOrder } from "@/modules/purchasing/purchase-order/types";
-import { isBeforeNow, nowLocal } from "@/utils/dateConstraints";
+import { nowLocal } from "@/utils/dateConstraints";
 import {
   useReceivablePurchaseOrders,
   useReceiveGoods,
@@ -49,7 +49,7 @@ const money = (value: unknown) => Number(value ?? 0).toLocaleString("en-US", { m
 
 export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Props) {
   const { data: warehouses = [] } = useWarehouses();
-  const { isSuperuser, canAccess, canBackdate } = useAuthorization();
+  const { isSuperuser, canAccess } = useAuthorization();
   const canCorrectCost = isSuperuser() || canAccess(["GENERAL MANAGER", "FINANCE MANAGER", "PURCHASING MANAGER", "PROCUREMENT MANAGER"]);
   const receivable = useReceivablePurchaseOrders(open && !purchaseOrder);
   const [purchaseOrderId, setPurchaseOrderId] = useState<number>();
@@ -88,7 +88,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
     if (!purchaseOrderId) return alert("Select an approved purchase order.");
     if (destinationType === "WAREHOUSE" && !warehouseId) return alert("Warehouse is required.");
     if (!receivedAt || receivedAt < "2026-01-01T00:00") return alert("Receiving dated before 2026 is excluded from stock.");
-    if (isBeforeNow(receivedAt) && !canBackdate()) return alert("Receipt Date/Time cannot be before now.");
+    
     const selected = lines.filter((line) => line.quantity > 0);
     if (!selected.length) return alert("Enter a received quantity greater than zero.");
     if (selected.some((line) => line.unit_cost <= 0)) return alert("Unit cost must be greater than zero.");
@@ -112,7 +112,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
         <div className="space-y-4">
           {!purchaseOrder && <SearchableSelect label="Approved Purchase Order" required value={purchaseOrderId} disabled={receivable.isLoading} placeholder={receivable.isLoading ? "Loading approved POs..." : "Type PO number or supplier..."} options={poOptions} onChange={setPurchaseOrderId}/>} 
           {selectedPO && <div className="grid gap-3 rounded-lg border bg-slate-50 p-3 md:grid-cols-3"><div><span className="text-xs text-slate-500">Business Unit</span><div className="font-medium">{businessUnitName}</div></div><div><span className="text-xs text-slate-500">Department</span><div className="font-medium">{departmentName}</div></div><div><span className="text-xs text-slate-500">Location</span><div className="font-medium">{locationName}</div></div></div>}
-          <div className="grid gap-3 md:grid-cols-2"><label>Receipt Date<input type="datetime-local" data-allow-past-date={canBackdate() ? "true" : undefined} min={canBackdate() ? "2026-01-01T00:00" : nowLocal()} className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)}/></label><label>Delivery Note Number<input className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={deliveryNote} onChange={(event) => setDeliveryNote(event.target.value)}/></label></div>
+          <div className="grid gap-3 md:grid-cols-2"><label>Receipt Date<input type="datetime-local" data-accounting-date="true" data-min-date="2026-01-01" min="2026-01-01T00:00" className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)}/></label><label>Delivery Note Number<input className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={deliveryNote} onChange={(event) => setDeliveryNote(event.target.value)}/></label></div>
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">Partial receiving is supported. Enter only the quantity physically received. Remaining quantities stay open for the next Receiving Report.{isPartial && <strong className="ml-1">This draft is a partial receipt.</strong>}</div>
           <label>Destination<select className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={destinationType} onChange={(event) => setDestinationType(event.target.value as "WAREHOUSE" | "DIRECT_USE")}><option value="WAREHOUSE">Warehouse</option><option value="DIRECT_USE">Direct Use</option></select></label>
           {destinationType === "WAREHOUSE" && <SearchableSelect label="Warehouse" required value={warehouseId ?? undefined} disabled={warehouses.length===0} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={(value)=>setWarehouseId(value ?? null)}/>} 

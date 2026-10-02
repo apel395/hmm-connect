@@ -8,7 +8,7 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { filterBusinessUnits, listLocations, listDepartments } from "@/modules/admin/organization/api";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
-import { isBeforeToday, todayLocal } from "@/utils/dateConstraints";
+import { todayLocal } from "@/utils/dateConstraints";
 import { createAsset, listCategories } from "./api";
 
 const input = "h-9 rounded border px-2 text-sm";
@@ -37,7 +37,7 @@ export default function FixedAssetFormPage() {
   const save = async () => {
     if (!f.asset_name.trim()) return toast.error("Asset Name is required");
     if (!f.asset_category_id) return toast.error("Select an Asset Category");
-    if (!f.acquisition_date || isBeforeToday(f.acquisition_date)) return toast.error("Acquisition Date cannot be before today");
+    if (!f.acquisition_date) return toast.error("Acquisition Date is required");
     if (!(Number(f.acquisition_cost) > 0)) return toast.error("Acquisition Cost must be greater than zero");
     if (!f.business_unit_id) return toast.error("Select a Business Unit for this asset");
     if (!f.asset_account_id || !f.accumulated_depreciation_account_id || !f.depreciation_expense_account_id) return toast.error("Complete all required asset posting accounts");
@@ -55,7 +55,7 @@ export default function FixedAssetFormPage() {
     <Card className="grid gap-3 p-4 md:grid-cols-3">
       <label>Asset Name *<input className={`${input} block w-full`} value={f.asset_name} onChange={(e) => set("asset_name", e.target.value)} /></label>
       <label>Category *<select className={`${input} block w-full`} value={f.asset_category_id} onChange={(e) => { const c = cats.data?.find((x: any) => x.id === Number(e.target.value)); setF({ ...f, asset_category_id: e.target.value, useful_life_months: c?.default_useful_life_months || f.useful_life_months, asset_account_id: c?.asset_account_id || "", accumulated_depreciation_account_id: c?.accumulated_depreciation_account_id || "", depreciation_expense_account_id: c?.depreciation_expense_account_id || "", disposal_gain_account_id: c?.disposal_gain_account_id || null, disposal_loss_account_id: c?.disposal_loss_account_id || null }); }}><option value="">Select</option>{cats.data?.map((x: any) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-      <label>Acquisition Date *<input className={`${input} block w-full`} type="date" min={todayLocal()} value={f.acquisition_date} onChange={(e) => set("acquisition_date", e.target.value)} /></label>
+      <label>Acquisition Date *<input className={`${input} block w-full`} type="date" data-accounting-date="true" value={f.acquisition_date} onChange={(e) => set("acquisition_date", e.target.value)} /></label>
       <label>Acquisition Cost *<input className={`${input} block w-full text-right`} type="number" min={0} value={f.acquisition_cost} onChange={(e) => set("acquisition_cost", e.target.value)} /></label>
       <label>Residual Value<input className={`${input} block w-full text-right`} type="number" min={0} value={f.residual_value} onChange={(e) => set("residual_value", e.target.value)} /></label>
       <label>Useful Life Months *<input className={`${input} block w-full`} type="number" min={1} value={f.useful_life_months} onChange={(e) => set("useful_life_months", e.target.value)} /></label>

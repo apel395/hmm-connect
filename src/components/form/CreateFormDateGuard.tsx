@@ -30,7 +30,7 @@ function isAccountingDate(input: HTMLInputElement): boolean {
   const label = input.closest("label")?.textContent ?? "";
   const text = `${input.name} ${input.id} ${label}`.toLowerCase();
   if (/\b(due|expiry|expiration|expected|delivery|tax invoice|faktur|birth|check.in|check.out)\b/.test(text)) return false;
-  return /\b(posting|payment|invoice|voucher|journal|transaction|receipt|receiving|transfer|adjustment|purchase|stock|document)\b/.test(text)
+  return /\b(posting|payment|invoice|voucher|journal|transaction|receipt|receiving|transfer|adjustment|purchase|acquisition|stock|document)\b/.test(text)
     && /\b(date|time|at)\b/.test(text);
 }
 
@@ -60,7 +60,8 @@ function updateInput(input: HTMLInputElement, periods: FiscalPeriod[]) {
   if (!isAccountingDate(input)) return;
   const open = periods.filter((period) => period.is_open && !period.is_closed);
   if (open.length) {
-    const start = open.map((period) => period.start_date).sort()[0];
+    const openStart = open.map((period) => period.start_date).sort()[0];
+    const start = input.dataset.minDate && input.dataset.minDate > openStart ? input.dataset.minDate : openStart;
     const end = open.map((period) => period.end_date).sort().at(-1)!;
     input.min = input.type === "datetime-local" ? `${start}T00:00` : start;
     input.max = input.type === "datetime-local" ? `${end}T23:59` : end;

@@ -22,7 +22,7 @@ import {
 } from "@/modules/admin/organization/api";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
-import { isBeforeNow, nowLocal } from "@/utils/dateConstraints";
+import { nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
 
 type Line = { product_id: number; quantity: number; unit_cost: number };
@@ -124,8 +124,8 @@ export default function DirectReceiveDialog({
       );
     if (destinationType === "WAREHOUSE" && !warehouseId)
       return alert("Warehouse is required.");
-    if (!receivedAt || isBeforeNow(receivedAt))
-      return alert("Receipt Date/Time cannot be before now.");
+    if (!receivedAt)
+      return alert("Receipt Date/Time is required.");
     const items = lines
       .filter((line) => line.product_id && line.quantity > 0)
       .map((line) => ({
@@ -219,7 +219,9 @@ export default function DirectReceiveDialog({
               Receipt Date
               <input
                 type="datetime-local"
-                min={nowLocal()}
+                data-accounting-date="true"
+                data-min-date="2026-01-01"
+                min="2026-01-01T00:00"
                 className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
                 value={receivedAt}
                 onChange={(e) => setReceivedAt(e.target.value)}
