@@ -12,6 +12,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { listLocations } from "@/modules/admin/organization/api";
 import { createVoucher, listEligibleInvoices, listVouchers } from "../api";
+import { todayLocal } from "@/utils/dateConstraints";
 
 const money = (v: unknown) => Number(v || 0).toLocaleString("id-ID", { minimumFractionDigits: 2 });
 
@@ -19,6 +20,7 @@ export default function PaymentVoucherListPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [locationId, setLocationId] = useState<number | undefined>(undefined);
+  const [voucherDate, setVoucherDate] = useState(todayLocal);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [page, setPage] = useState(1);
   const [fromDate, setFromDate] = useState("");
@@ -61,12 +63,13 @@ export default function PaymentVoucherListPage() {
       const ids = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
       if (!locationId) throw new Error("Select a location");
       if (!ids.length) throw new Error("Select at least one invoice");
+      if (!voucherDate) throw new Error("Voucher Date is required");
       const rows = (eligible.data ?? []).filter((r: any) => ids.includes(r.id));
       // group by invoice, use available_balance as allocated_amount
       const allocations = rows.map((r: any) => ({ supplier_invoice_id: r.id, allocated_amount: Number(r.available_balance) }));
       const payload = {
         location_id: locationId,
-        voucher_date: new Date().toISOString().slice(0, 10),
+        voucher_date: voucherDate,
         allocations,
       };
       return (await createVoucher(payload)).data;
@@ -90,7 +93,8 @@ export default function PaymentVoucherListPage() {
         <div className="mb-3 font-semibold">Create Voucher — Select Location + Invoices</div>
         <div className="grid gap-3 md:grid-cols-3">
           <SearchableSelect label="Location (locked per voucher)" value={locationId} placeholder="Type location code or name..." options={(locations.data ?? []).map((l: any) => ({ id: l.id, label: `${l.code} — ${l.name}`, keywords: [l.code, l.name] }))} onChange={(id) => { setLocationId(id as number); setSelected({}); }} />
-          <div className="flex items-end"><Button loading={create.isPending} disabled={!locationId || !Object.values(selected).some(Boolean)} onClick={() => create.mutate()}>Create Voucher</Button></div>
+          <label className="text-sm">Voucher Date<input type="date" data-accounting-date="true" className="mt-1 h-10 w-full rounded border border-slate-300 px-3" value={voucherDate} onChange={(event) => setVoucherDate(event.target.value)} /></label>
+          <div className="flex items-end"><Button loading={create.isPending} disabled={!locationId || !voucherDate || !Object.values(selected).some(Boolean)} onClick={() => create.mutate()}>Create Voucher</Button></div>
         </div>
         {locationId && (
           <div className="mt-4 overflow-x-auto rounded border">
