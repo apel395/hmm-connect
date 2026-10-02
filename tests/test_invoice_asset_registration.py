@@ -42,6 +42,9 @@ class Db:
     def query(self, model):
         return Query(self, model)
 
+    def get(self, model, ident):
+        return SimpleNamespace(business_unit_id=1)
+
     def add(self, item):
         if isinstance(item, FixedAsset):
             self.asset = item
