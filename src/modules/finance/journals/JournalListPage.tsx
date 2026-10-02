@@ -15,7 +15,7 @@ import JournalBulkImportDialog from "./JournalBulkImportDialog";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { supplierApi } from "@/modules/master/suppliers/api/supplierApi";
-import { isBeforeToday, todayLocal } from "@/utils/dateConstraints";
+import { todayLocal } from "@/utils/dateConstraints";
 import { bulkJournalAction, createJournal, journalAction, listJournals } from "./api";
 import { sourceDocumentPath } from "./sourceDocument";
 import { paymentAction } from "@/modules/finance/payments/api";
@@ -65,9 +65,9 @@ export default function JournalListPage() {
   const save = useMutation({ mutationFn: () => createJournal({ posting_date: postingDate, document_type: "MANUAL_JOURNAL", document_number: documentNumber.trim(), reference_type: "MANUAL", reference_id: 0, description: description.trim() || undefined, business_unit_id: businessUnitId!, department_id: departmentId ?? null, location_id: locationId ?? null, lines: validLines.map((line) => ({ ...line, description: line.description || undefined, business_unit_id: businessUnitId, department_id: departmentId ?? null, location_id: locationId ?? null })) }), onSuccess: (journal) => { toast.success("Journal entry created."); setOpen(false); setPostingDate(todayLocal()); setDocumentNumber(""); setDescription("Salary journal"); setDepartmentId(undefined); setLocationId(undefined); setBusinessUnitId(businessUnits.data?.length === 1 ? businessUnits.data[0].id : undefined); setLines([blankLine(), blankLine()]); refreshFinance(); nav(`/journal-entries/${journal.id}`); }, onError: (error: any) => toast.error(typeof error?.response?.data?.detail === "string" ? error.response.data.detail : "Journal entry could not be created.") });
   const updateLine = (index: number, patch: Partial<Line>) => setLines(lines.map((line, i) => i === index ? { ...line, ...patch } : line));
   const balanced = totals.debit > 0 && Math.abs(totals.debit - totals.credit) < 0.005;
-  const valid = Boolean(documentNumber.trim() && businessUnitId && locationId && validLines.length >= 2 && balanced && postingDate && !isBeforeToday(postingDate));
+  const valid = Boolean(documentNumber.trim() && businessUnitId && locationId && validLines.length >= 2 && balanced && postingDate);
   const changeBusinessUnit = (value?: number) => { setBusinessUnitId(value); setDepartmentId(undefined); setLocationId(undefined); };
-  const createJournalEntry = () => { if (!locationId) return toast.error("Select a work location."); if (isBeforeToday(postingDate)) return toast.error("Posting Date cannot be before today."); save.mutate(); };
+  const createJournalEntry = () => { if (!locationId) return toast.error("Select a work location."); save.mutate(); };
   const visibleRows: any[] = useMemo(() => q.data?.items ?? [], [q.data?.items]);
   const visibleTotals = useMemo(() => visibleRows.reduce((sum, row) => ({ debit: sum.debit + Number(row.total_debit || 0), credit: sum.credit + Number(row.total_credit || 0) }), { debit: 0, credit: 0 }), [visibleRows]);
   const filteredJournalTotals = q.data?.summary?.total_debit != null && q.data?.summary?.total_credit != null
@@ -98,7 +98,7 @@ export default function JournalListPage() {
 
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-6xl max-h-[92vh]"><DialogHeader className="py-3"><DialogTitle>Create Journal Entry</DialogTitle></DialogHeader><DialogBody className="space-y-3 overflow-y-auto py-3">
       <div className="grid gap-x-3 gap-y-2 md:grid-cols-3">
-        <label className="text-sm font-medium">Posting Date<Input className="mt-1" type="date" min={todayLocal()} value={postingDate} onChange={(e) => setPostingDate(e.target.value)} /></label>
+        <label className="text-sm font-medium">Posting Date<Input className="mt-1" type="date" data-accounting-date="true" value={postingDate} onChange={(e) => setPostingDate(e.target.value)} /></label>
         <label className="text-sm font-medium">Document Number<Input className="mt-1" placeholder="PAYROLL-2026-08" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} /></label>
         <label className="text-sm font-medium">Description<Input className="mt-1" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
         <SearchableSelect label="Business Unit" required value={businessUnitId} placeholder="Type business unit..." options={buOptions} onChange={changeBusinessUnit}/>
