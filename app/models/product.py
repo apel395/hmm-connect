@@ -23,6 +23,12 @@ class Product(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     selling_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    sales_service_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    sales_business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id"), nullable=True)
+    sales_location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
+    pbjt_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=0, nullable=False)
+    sales_ppn_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=0, nullable=False)
+    pph23_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=0, nullable=False)
 
     tax_category: Mapped[str] = mapped_column(String(30), default="REVIEW_REQUIRED", nullable=False)
     is_taxable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

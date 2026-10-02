@@ -1,4 +1,5 @@
 from math import ceil
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,6 +10,8 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import is_superuser, require_permission
 from app.models.item_group import ItemGroup
+from app.models.business_unit import BusinessUnit
+from app.models.location import Location
 from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
 from app.models.inventory import Inventory
 from app.models.product import Product
@@ -60,16 +63,37 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
 
 def _validate_treatment(payload: dict, product: Product | None = None) -> None:
     treatment = payload.get("inventory_treatment", getattr(product, "inventory_treatment", "REVIEW_REQUIRED") if product else "REVIEW_REQUIRED")
+    item_type = payload.get("item_type", getattr(product, "item_type", "BUY") if product else "BUY")
     inventory_account_id = payload.get("inventory_account_id", product.inventory_account_id if product else None)
     purchase_account_id = payload.get("purchase_account_id", product.purchase_account_id if product else None)
     asset_account_id = payload.get("asset_account_id", getattr(product, "asset_account_id", None) if product else None)
 
     if treatment == "STOCK" and not inventory_account_id:
         raise HTTPException(422, "STOCK items require an Inventory Asset COA")
-    if treatment in {"DIRECT_USE", "NON_STOCK"} and not purchase_account_id:
+    if treatment in {"DIRECT_USE", "NON_STOCK"} and not purchase_account_id and not (item_type == "SELL" and treatment == "NON_STOCK"):
         raise HTTPException(422, f"{treatment} items require an Expense / Consumption COA")
     if treatment == "FIXED_ASSET" and not asset_account_id:
         raise HTTPException(422, "FIXED_ASSET items require a Fixed Asset COA")
+
+
+def _validate_sales_profile(db: Session, payload: dict, product: Product | None = None) -> None:
+    if any(field in payload and payload[field] is None for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate")):
+        raise HTTPException(422, "Sales tax rates must be numbers between 0 and 100")
+    values = {field: payload.get(field, getattr(product, field, None) if product else None)
+              for field in ("sales_business_unit_id", "sales_location_id", "pbjt_rate", "sales_ppn_rate", "pph23_rate")}
+    if Decimal(values["pbjt_rate"] or 0) > 0 and Decimal(values["sales_ppn_rate"] or 0) > 0:
+        raise HTTPException(422, "PBJT and PPN cannot both apply to the same selling item")
+    business_unit_id, location_id = values["sales_business_unit_id"], values["sales_location_id"]
+    if business_unit_id:
+        unit = db.get(BusinessUnit, business_unit_id)
+        if not unit or not unit.is_active:
+            raise HTTPException(422, "Select an active sales business unit")
+    if location_id:
+        location = db.get(Location, location_id)
+        if not location or not location.is_active:
+            raise HTTPException(422, "Select an active sales location")
+        if not business_unit_id or location.business_unit_id != business_unit_id:
+            raise HTTPException(422, "Sales location must belong to the selected business unit")
 
 
 def _last_purchase_prices(db: Session, product_ids: list[int]) -> dict[int, dict]:
@@ -160,7 +184,11 @@ def product_detail(product_id: int, db: Session = Depends(get_db), _=Depends(get
                   "received_at": receipt.received_at, "quantity": line.quantity,
                   "unit_cost": line.unit_cost, "warehouse_id": receipt.warehouse_id}
                  for line, receipt in receipts]
-    return {"item": product, "stock": stock, "purchases": purchases, "receiving": receiving}
+    unit = db.get(BusinessUnit, product.sales_business_unit_id) if product.sales_business_unit_id else None
+    location = db.get(Location, product.sales_location_id) if product.sales_location_id else None
+    return {"item": product, "stock": stock, "purchases": purchases, "receiving": receiving,
+            "sales_scope": {"business_unit": unit.name if unit else None,
+                            "location": location.name if location else None}}
 
 @router.post("", status_code=201)
 def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -179,6 +207,7 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
     _validate_treatment(payload)
     _validate_coa_mappings(db, payload)
+    _validate_sales_profile(db, payload)
     product = Product(**payload)
     db.add(product)
     db.commit()
@@ -209,6 +238,7 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
         payload["subgroup_name"] = "GROCERIES"
     _validate_treatment(payload, product)
     _validate_coa_mappings(db, payload, product)
+    _validate_sales_profile(db, payload, product)
     for field, value in payload.items():
         if field != "is_market_item":
             setattr(product, field, value)

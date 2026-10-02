@@ -21,6 +21,12 @@ class ProductCreate(BaseModel):
     item_type: Literal["BUY", "SELL"] = "BUY"
     cost_price: Decimal = Decimal("0")
     selling_price: Decimal = Decimal("0")
+    sales_service_name: str | None = Field(default=None, max_length=120)
+    sales_business_unit_id: int | None = None
+    sales_location_id: int | None = None
+    pbjt_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    sales_ppn_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    pph23_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     tax_category: TaxCategory = "REVIEW_REQUIRED"
     is_taxable: bool = False
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
@@ -58,6 +64,12 @@ class ProductUpdate(BaseModel):
     item_type: Literal["BUY", "SELL"] | None = None
     cost_price: Decimal | None = None
     selling_price: Decimal | None = None
+    sales_service_name: str | None = Field(default=None, max_length=120)
+    sales_business_unit_id: int | None = None
+    sales_location_id: int | None = None
+    pbjt_rate: Decimal | None = Field(default=None, ge=0, le=100)
+    sales_ppn_rate: Decimal | None = Field(default=None, ge=0, le=100)
+    pph23_rate: Decimal | None = Field(default=None, ge=0, le=100)
     tax_category: TaxCategory | None = None
     is_taxable: bool | None = None
     tax_rate: Decimal | None = Field(default=None, ge=0, le=100)
