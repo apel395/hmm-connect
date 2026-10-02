@@ -9,9 +9,12 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import is_superuser, require_permission
 from app.models.item_group import ItemGroup
+from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
+from app.models.inventory import Inventory
 from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
+from app.models.supplier import Supplier
 from app.schemas.product import ProductCreate, ProductTaxProfileUpdate, ProductUpdate
 from app.services.direct_coa_service import DirectCoaService
 
@@ -119,6 +122,45 @@ def lookup_products(search: Annotated[str, Query(max_length=100)] = "", market_o
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
     price_history = _last_purchase_prices(db, [row.id for row in rows])
     return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "inventory_treatment": row.inventory_treatment, "inventory_account_id": row.inventory_account_id, "purchase_account_id": row.purchase_account_id, "cogs_account_id": row.cogs_account_id, "asset_account_id": row.asset_account_id, "is_market_item": _is_market_subgroup(row.subgroup_name), **price_history.get(row.id, {"last_purchase_price": None, "last_purchase_date": None, "last_purchase_po_number": None})} for row in rows]
+
+@router.get("/{product_id}")
+def product_detail(product_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    stock = []
+    if product.inventory_treatment == "STOCK":
+        inventory_rows = (db.query(Inventory).options(selectinload(Inventory.warehouse))
+                          .filter(Inventory.product_id == product_id)
+                          .order_by(Inventory.warehouse_id).all())
+        stock = [{"warehouse_id": row.warehouse_id,
+                  "warehouse": row.warehouse.name if row.warehouse else None,
+                  "quantity": row.quantity, "average_cost": row.average_cost,
+                  "value": row.quantity * row.average_cost} for row in inventory_rows]
+
+    orders = (db.query(PurchaseOrderItem, PurchaseOrder, Supplier)
+              .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
+              .join(Supplier, Supplier.id == PurchaseOrder.supplier_id)
+              .filter(PurchaseOrderItem.product_id == product_id,
+                      PurchaseOrder.status.notin_(("DRAFT", "REJECTED", "CANCELLED", "EXPIRED")))
+              .order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc(), PurchaseOrderItem.id.desc())
+              .limit(20).all())
+    purchases = [{"order_id": order.id, "po_number": order.po_number,
+                  "order_date": order.order_date, "supplier": supplier.name,
+                  "quantity": line.quantity, "unit_price": line.unit_price,
+                  "uom": line.uom or product.uom} for line, order, supplier in orders]
+
+    receipts = (db.query(GoodsReceiptItem, GoodsReceipt)
+                .join(GoodsReceipt, GoodsReceipt.id == GoodsReceiptItem.goods_receipt_id)
+                .filter(GoodsReceiptItem.product_id == product_id, GoodsReceipt.status == "POSTED")
+                .order_by(GoodsReceipt.received_at.desc(), GoodsReceipt.id.desc(), GoodsReceiptItem.id.desc())
+                .limit(20).all())
+    receiving = [{"receipt_id": receipt.id, "receipt_number": receipt.receipt_number,
+                  "received_at": receipt.received_at, "quantity": line.quantity,
+                  "unit_cost": line.unit_cost, "warehouse_id": receipt.warehouse_id}
+                 for line, receipt in receipts]
+    return {"item": product, "stock": stock, "purchases": purchases, "receiving": receiving}
 
 @router.post("", status_code=201)
 def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
