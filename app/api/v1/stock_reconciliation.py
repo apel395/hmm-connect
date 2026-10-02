@@ -59,7 +59,7 @@ def _rows(db: Session, user, fiscal_year: int, location_id: int | None, warehous
         if moment is None:
             continue
         effective_date = moment.date()
-        signed = Decimal(movement.quantity or 0) * (-1 if movement.movement_type == "OUT" else 1)
+        signed = abs(Decimal(movement.quantity or 0)) * (-1 if movement.movement_type == "OUT" else 1)
         target = historical if effective_date < cutoff else period
         target[key] = target.get(key, ZERO) + signed
         if receipt_in and effective_date < cutoff and signed > ZERO:

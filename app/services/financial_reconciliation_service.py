@@ -119,8 +119,8 @@ class FinancialReconciliationService:
                       as_of: date | None = None) -> dict[int, Decimal]:
         """Signed movement values, retained as a diagnostic beside stock valuation."""
         signed = case(
-            (StockMovement.movement_type == "OUT", -StockMovement.quantity),
-            else_=StockMovement.quantity,
+            (StockMovement.movement_type == "OUT", -func.abs(StockMovement.quantity)),
+            else_=func.abs(StockMovement.quantity),
         ) * StockMovement.unit_cost
         query = (
             self.db.query(StockMovement.inventory_account_id, func.coalesce(func.sum(signed), 0))
@@ -149,8 +149,8 @@ class FinancialReconciliationService:
         later = {}
         if as_of is not None:
             signed_qty = case(
-                (StockMovement.movement_type == "OUT", -StockMovement.quantity),
-                else_=StockMovement.quantity,
+                (StockMovement.movement_type == "OUT", -func.abs(StockMovement.quantity)),
+                else_=func.abs(StockMovement.quantity),
             )
             movements = (self.db.query(
                 StockMovement.product_id, StockMovement.warehouse_id,
@@ -192,8 +192,8 @@ class FinancialReconciliationService:
         value = sum((Decimal(item.quantity or 0) * Decimal(item.average_cost or 0)
                      for item in query.all()), ZERO)
         if as_of is not None:
-            signed = case((StockMovement.movement_type == "OUT", -StockMovement.quantity),
-                          else_=StockMovement.quantity) * StockMovement.unit_cost
+            signed = case((StockMovement.movement_type == "OUT", -func.abs(StockMovement.quantity)),
+                          else_=func.abs(StockMovement.quantity)) * StockMovement.unit_cost
             later = (self.db.query(func.coalesce(func.sum(signed), 0))
                      .join(Product, Product.id == StockMovement.product_id)
                      .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
