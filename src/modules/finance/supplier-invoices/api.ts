@@ -21,6 +21,14 @@ export type InvoiceLine = {
   account_name?: string | null;
   department_id?: number | null;
   notes?: string | null;
+  fixed_asset?: { id: number; asset_number: string; status: string } | null;
+  asset_reclassification?: {
+    journal_id: number;
+    journal_number: string;
+    status: string;
+    account_code: string | null;
+    account_name: string | null;
+  } | null;
 };
 
 export type ThreeWayMatchLine = {
@@ -142,3 +150,8 @@ export const updateInvoice = async (id: number, payload: InvoicePayload) => (awa
 export const invoiceAction = async (id: number, action: string) => (await api.post(`/supplier-invoices/${id}/${action}`)).data;
 export const adminUnpostInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/unpost`)).data;
 export const adminReopenInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/reopen`)).data;
+
+export const reclassifyInvoiceAsset = async (
+  id: number,
+  payload: { line_id: number; asset_account_id: number; posting_date: string },
+) => (await api.post(`/supplier-invoices/${id}/reclassify-asset`, payload)).data;
