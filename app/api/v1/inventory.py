@@ -13,7 +13,10 @@ from app.models.goods_receipt import GoodsReceipt
 from app.models.inventory import Inventory
 from app.models.location import Location
 from app.models.product import Product
+from app.models.stock_adjustment import StockAdjustment
 from app.models.stock_movement import StockMovement
+from app.models.stock_opname import StockOpname
+from app.models.store_request import StoreRequest
 from app.models.warehouse import Warehouse
 from app.services.location_access import apply_warehouse_scope, resolve_location_id
 from app.services.stock_aging_service import START_DATE, age_remaining_stock
@@ -122,8 +125,8 @@ def list_inventory(
         # Roll the current snapshot back using movements after the selected day.
         # This keeps manually entered opening stock in the baseline.
         signed_qty = case(
-            (StockMovement.movement_type == "OUT", -StockMovement.quantity),
-            else_=StockMovement.quantity,
+            (StockMovement.movement_type == "OUT", -func.abs(StockMovement.quantity)),
+            else_=func.abs(StockMovement.quantity),
         )
         signed_value = signed_qty * func.coalesce(StockMovement.unit_cost, 0)
         later = (
@@ -328,6 +331,100 @@ def inventory_accounts(
     ]
 
 
+def _stock_source(movement: StockMovement) -> tuple[str, str]:
+    reference = (movement.reference_type or "").upper()
+    if reference == "GOODS_RECEIPT" and movement.movement_type == "IN":
+        return "PURCHASE", "Pembelian / Receiving"
+    if reference == "STORE_REQUEST" and movement.movement_type == "OUT":
+        return "USAGE", "Pemakaian"
+    if reference in {"OPENING_STOCK", "STOCK_OPENING", "OPENING_BALANCE"}:
+        return "OPENING", "Stock awal"
+    if reference == "STOCK_OPNAME":
+        return "ADJUSTMENT", "Stock opname"
+    if reference == "STOCK_ADJUSTMENT":
+        return "ADJUSTMENT", "Penyesuaian"
+    return "OTHER", "Masuk lain" if movement.movement_type == "IN" else "Keluar lain"
+
+
+def _movement_reference_number(movement: StockMovement, documents: dict) -> str:
+    if movement.goods_receipt:
+        return movement.goods_receipt.receipt_number
+    if movement.purchase_order:
+        return movement.purchase_order.po_number
+    if movement.reference_type and movement.reference_id:
+        return (documents.get(movement.reference_type, {}).get(movement.reference_id)
+                or f"{movement.reference_type}-{movement.reference_id}")
+    return "-"
+
+
+def _item_stock_history(db: Session, user, product_id: int, warehouse_id: int | None,
+                        location_id: int | None, date_from: date | None,
+                        date_to: date | None) -> tuple[dict[int, Decimal], list[dict]]:
+    """Rebuild a quantity timeline without treating opening stock as a transaction.
+
+    The balance at 2026-01-01 is the stored on-hand quantity less *all* recorded
+    movements from that date onward. Date and document filters affect visible
+    rows, never the running stock balance of an item/warehouse.
+    """
+    current = (db.query(Inventory.warehouse_id, Warehouse.code, Warehouse.name,
+                        Inventory.quantity)
+               .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
+               .filter(Inventory.product_id == product_id))
+    current = apply_warehouse_scope(current, user)
+    if warehouse_id:
+        current = current.filter(Inventory.warehouse_id == warehouse_id)
+    if location_id:
+        current = current.filter(Warehouse.location_id == location_id)
+    warehouses = {key: {"warehouse_id": key, "warehouse_code": code,
+                        "warehouse_name": name, "current_quantity": Decimal(qty or 0)}
+                  for key, code, name, qty in current.all()}
+
+    event_date = _effective_movement_date()
+    timeline = (db.query(StockMovement, Warehouse.code, Warehouse.name,
+                         event_date.label("event_date"))
+                .join(Warehouse, Warehouse.id == StockMovement.warehouse_id)
+                .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
+                .filter(StockMovement.product_id == product_id, event_date >= START_DATE))
+    timeline = apply_warehouse_scope(timeline, user)
+    if warehouse_id:
+        timeline = timeline.filter(StockMovement.warehouse_id == warehouse_id)
+    if location_id:
+        timeline = timeline.filter(Warehouse.location_id == location_id)
+    events = timeline.order_by(StockMovement.warehouse_id, event_date, StockMovement.id).all()
+    totals: dict[int, Decimal] = {}
+    for movement, code, name, _ in events:
+        key = movement.warehouse_id
+        warehouses.setdefault(key, {"warehouse_id": key, "warehouse_code": code,
+                                    "warehouse_name": name, "current_quantity": Decimal("0")})
+        amount = abs(Decimal(movement.quantity or 0))
+        totals[key] = totals.get(key, Decimal("0")) + (
+            -amount if movement.movement_type == "OUT" else amount
+        )
+
+    period_start = date_from or START_DATE
+    period_end = date_to or date.today()
+    balances = {key: info["current_quantity"] - totals.get(key, Decimal("0"))
+                for key, info in warehouses.items()}
+    opening = balances.copy()
+    closing = balances.copy()
+    by_movement: dict[int, Decimal] = {}
+    for movement, _, _, raw_date in events:
+        when = raw_date if isinstance(raw_date, date) else date.fromisoformat(raw_date)
+        key = movement.warehouse_id
+        amount = abs(Decimal(movement.quantity or 0))
+        balances[key] += -amount if movement.movement_type == "OUT" else amount
+        by_movement[movement.id] = balances[key]
+        if when < period_start:
+            opening[key] = balances[key]
+        if when <= period_end:
+            closing[key] = balances[key]
+    history = [{**info, "opening_quantity": opening[key],
+                "closing_quantity": closing[key]}
+               for key, info in sorted(warehouses.items(),
+                                       key=lambda pair: pair[1]["warehouse_code"])]
+    return by_movement, history
+
+
 @router.get("/movements")
 def list_movements(
     product_id: int | None = None,
@@ -337,6 +434,7 @@ def list_movements(
     location_id: int | None = None,
     department_id: int | None = None,
     account_id: int | None = None,
+    source_kind: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     search: str | None = Query(default=None, max_length=100),
@@ -347,6 +445,8 @@ def list_movements(
 ):
     if date_from and date_to and date_from > date_to:
         raise HTTPException(422, "From date must not exceed To date")
+    if source_kind not in (None, "PURCHASE", "USAGE", "OPENING", "ADJUSTMENT"):
+        raise HTTPException(422, "Invalid stock source")
     location_id = resolve_location_id(user, location_id)
     effective_date = _effective_movement_date()
     account_key = func.coalesce(StockMovement.inventory_account_id, Product.inventory_account_id)
@@ -367,11 +467,25 @@ def list_movements(
     if goods_receipt_id:
         query = query.filter(StockMovement.goods_receipt_id == goods_receipt_id)
     if location_id:
-        query = query.filter(StockMovement.location_id == location_id)
+        query = query.filter(Warehouse.location_id == location_id)
     if department_id:
         query = query.filter(StockMovement.department_id == department_id)
     if account_id:
         query = query.filter(account_key == account_id)
+    if source_kind == "PURCHASE":
+        query = query.filter(StockMovement.reference_type == "GOODS_RECEIPT",
+                             StockMovement.movement_type == "IN")
+    elif source_kind == "USAGE":
+        query = query.filter(StockMovement.reference_type == "STORE_REQUEST",
+                             StockMovement.movement_type == "OUT")
+    elif source_kind == "OPENING":
+        query = query.filter(StockMovement.reference_type.in_(
+            ("OPENING_STOCK", "STOCK_OPENING", "OPENING_BALANCE")
+        ))
+    elif source_kind == "ADJUSTMENT":
+        query = query.filter(StockMovement.reference_type.in_(
+            ("STOCK_ADJUSTMENT", "STOCK_OPNAME")
+        ))
     if date_from:
         query = query.filter(effective_date >= date_from)
     if date_to:
@@ -380,8 +494,9 @@ def list_movements(
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term), Warehouse.name.ilike(term)))
 
-    in_qty = case((StockMovement.movement_type == "IN", StockMovement.quantity), else_=0)
-    out_qty = case((StockMovement.movement_type == "OUT", StockMovement.quantity), else_=0)
+    absolute_qty = func.abs(StockMovement.quantity)
+    in_qty = case((StockMovement.movement_type == "IN", absolute_qty), else_=0)
+    out_qty = case((StockMovement.movement_type == "OUT", absolute_qty), else_=0)
     in_value = in_qty * func.coalesce(StockMovement.unit_cost, 0)
     out_value = out_qty * func.coalesce(StockMovement.unit_cost, 0)
     totals = query.with_entities(
@@ -394,11 +509,27 @@ def list_movements(
         func.coalesce(func.sum(in_value), 0), func.coalesce(func.sum(out_value), 0),
     ).group_by(ChartOfAccount.id, ChartOfAccount.account_number, ChartOfAccount.account_name).order_by(ChartOfAccount.account_number).all()
     total = query.count()
+    order = ((effective_date.asc(), StockMovement.id.asc()) if product_id else
+             (effective_date.desc(), StockMovement.id.desc()))
     rows = query.add_entity(ChartOfAccount).add_columns(
         effective_date.label("effective_date")
-    ).order_by(effective_date.desc(), StockMovement.id.desc()).offset(
+    ).order_by(*order).offset(
         (page - 1) * page_size
     ).limit(page_size).all()
+    running, history = (_item_stock_history(db, user, product_id, warehouse_id,
+                                            location_id, date_from, date_to)
+                        if product_id else ({}, []))
+    documents = {}
+    for reference, model, number_field in (
+        ("STORE_REQUEST", StoreRequest, StoreRequest.sr_number),
+        ("STOCK_ADJUSTMENT", StockAdjustment, StockAdjustment.adjustment_number),
+        ("STOCK_OPNAME", StockOpname, StockOpname.opname_number),
+    ):
+        ids = {movement.reference_id for movement, *_ in rows
+               if movement.reference_type == reference and movement.reference_id is not None}
+        if ids:
+            documents[reference] = dict(db.query(model.id, number_field)
+                                        .filter(model.id.in_(ids)).all())
     items = [
         {
             "id": movement.id,
@@ -406,13 +537,18 @@ def list_movements(
             "movement_date": movement_date,
             "recorded_at": movement.created_at,
             "movement_type": movement.movement_type,
+            "source_kind": _stock_source(movement)[0],
+            "source_label": _stock_source(movement)[1],
             "inventory_account_id": account.id if account else None,
             "inventory_account_code": account.account_number if account else None,
             "inventory_account_name": account.account_name if account else None,
             "product_id": product.id, "product_code": product.code, "product_name": product.name,
             "warehouse_id": warehouse.id, "warehouse_name": warehouse.name,
-            "quantity": movement.quantity, "unit_cost": movement.unit_cost,
-            "movement_value": Decimal(movement.quantity or 0) * Decimal(movement.unit_cost or 0),
+            "quantity": abs(Decimal(movement.quantity or 0)), "unit_cost": movement.unit_cost,
+            "movement_value": abs(Decimal(movement.quantity or 0)) * Decimal(movement.unit_cost or 0),
+            "in_quantity": abs(Decimal(movement.quantity or 0)) if movement.movement_type == "IN" else Decimal("0"),
+            "out_quantity": abs(Decimal(movement.quantity or 0)) if movement.movement_type == "OUT" else Decimal("0"),
+            "running_quantity": running.get(movement.id),
             "reference_type": movement.reference_type, "reference_id": movement.reference_id,
             "goods_receipt_id": movement.goods_receipt_id,
             "goods_receipt_item_id": movement.goods_receipt_item_id,
@@ -422,12 +558,7 @@ def list_movements(
             "purchase_order_number": movement.purchase_order.po_number if movement.purchase_order else None,
             "business_unit_id": movement.business_unit_id,
             "location_id": movement.location_id, "department_id": movement.department_id,
-            "reference_number": (
-                movement.goods_receipt.receipt_number if movement.goods_receipt
-                else movement.purchase_order.po_number if movement.purchase_order
-                else f"{movement.reference_type}-{movement.reference_id}"
-                if movement.reference_type and movement.reference_id else "-"
-            ),
+            "reference_number": _movement_reference_number(movement, documents),
             "notes": movement.notes,
         }
         for movement, product, warehouse, account, movement_date in rows
@@ -437,6 +568,10 @@ def list_movements(
         "in_qty": totals[0], "out_qty": totals[1], "net_qty": totals[0] - totals[1],
         "in_value": totals[2], "out_value": totals[3], "net_value": totals[2] - totals[3],
     }
+    if product_id:
+        result["history_balances"] = history
+        result["history_period"] = {"date_from": date_from or START_DATE,
+                                    "date_to": date_to or date.today()}
     result["totals_by_account"] = [
         {
             "account_id": row[0], "account_code": row[1], "account_name": row[2],
