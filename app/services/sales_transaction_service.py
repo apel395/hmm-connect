@@ -108,6 +108,8 @@ class SalesTransactionService:
             product = db.get(Product, line.product_id)
             if not product or not product.is_active:
                 raise HTTPException(404, f"Active product {line.product_id} not found")
+            if any(Decimal(getattr(product, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate")):
+                raise HTTPException(409, f"Sale tax profile for {product.code} is not supported by POS posting yet")
             inventory = (
                 db.query(Inventory)
                 .filter(
