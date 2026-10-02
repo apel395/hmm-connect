@@ -282,9 +282,9 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
           <label className="text-sm font-medium">Conversion
             <Input className="mt-1" type="number" min="0.0001" step="0.0001" value={form.conversion} onChange={(event) => update("conversion", Number(event.target.value))} />
           </label>
-          <label className="text-sm font-medium">Minimum Stock
+          {form.inventory_treatment === "STOCK" && <label className="text-sm font-medium">Minimum Stock
             <Input className="mt-1" type="number" min="0" step="0.01" value={form.minimum_stock} onChange={(event) => update("minimum_stock", Number(event.target.value))} />
-          </label>
+          </label>}
 
           <div className="col-span-2 rounded-lg border border-emerald-200 bg-emerald-50/30 p-4">
             <div className="mb-3">
@@ -319,7 +319,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
                 label="Fixed Asset COA"
                 value={form.asset_account_id ?? undefined}
                 required
-                placeholder="Type fixed asset COA..."
+                placeholder="For computers, select an account under 100-600..."
                 options={coaOptions(fixedAssetAccounts)}
                 onChange={(value) => update("asset_account_id", value ? Number(value) : null)}
               />}

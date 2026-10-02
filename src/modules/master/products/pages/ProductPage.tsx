@@ -9,6 +9,7 @@ import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import ProductTable from "../components/ProductTable";
 import ProductForm from "../components/ProductForm";
+import ProductDetailDialog from "../components/ProductDetailDialog";
 import type { InventoryTreatment, Product, TaxCategory } from "../types";
 import { productApi } from "../api/productApi";
 import { exportApi } from "../api/exportApi";
@@ -27,6 +28,7 @@ export default function ProductPage() {
   const canCreateProduct = isSuperuser(user);
   const [formOpen, setFormOpen] = useState(false);
   const [selected, setSelected] = useState<Product | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -191,11 +193,12 @@ export default function ProductPage() {
           </select>
         </div>
         {query.isLoading ? <Loading/> : <>
-          <ProductTable rows={rows} accounts={accountLookup.data ?? []} onEdit={handleEdit}/>
+          <ProductTable rows={rows} accounts={accountLookup.data ?? []} onEdit={handleEdit} onView={(product) => setDetailId(product.id)}/>
           <Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="products" onChange={setPage}/>
         </>}
       </Card>
     </div>
     <ProductForm open={formOpen} product={selected} groups={classification.data ?? []} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
+    <ProductDetailDialog productId={detailId} accounts={accountLookup.data ?? []} onClose={() => setDetailId(null)} onEdit={(product) => { setDetailId(null); handleEdit(product); }}/>
   </>;
 }

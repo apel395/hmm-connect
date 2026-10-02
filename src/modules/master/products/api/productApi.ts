@@ -3,6 +3,7 @@ import api from "@/api/client";
 import type { InventoryTreatment, ItemType, TaxCategory } from "../types";
 
 import type {
+  ProductDetail,
   ProductCreateRequest,
   ProductUpdateRequest,
 } from "../types";
@@ -37,7 +38,7 @@ export const productApi = {
     api.get("/products/lookup", { params: { search, limit, market_only: marketOnly, exclude_market: excludeMarket } }),
 
   detail: (id: number) =>
-    api.get(`/products/${id}`),
+    api.get<ProductDetail>(`/products/${id}`),
 
   create: (payload: ProductCreateRequest) =>
     api.post("/products", payload),
