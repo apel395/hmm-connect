@@ -1,5 +1,8 @@
 from datetime import date, datetime, timedelta, timezone
 from math import ceil
+from decimal import Decimal
+
+from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
@@ -9,6 +12,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import is_superuser, require_permission
 from app.models.journal_entry import JournalEntry
+from app.models.chart_of_account import ChartOfAccount
 from app.models.payment import Payment, PaymentAllocation
 from app.models.payment_voucher import PaymentVoucher, PaymentVoucherAllocation
 from app.models.goods_receipt import GoodsReceipt
@@ -18,7 +22,9 @@ from app.models.location import Location
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.supplier_invoice import SupplierInvoiceInput
+from app.schemas.journal import JournalCreate, JournalLineCreate
 from app.services.accounting_unpost import unpost_journal
+from app.services.journal_service import JournalService
 from app.services.audit import record_audit
 from app.services.document_context import document_context, print_metadata
 from app.services.direct_coa_service import DirectCoaService
@@ -26,6 +32,15 @@ from app.services.supplier_invoice_runtime_service import SupplierInvoiceService
 from app.services.location_access import apply_location_scope, enforce_location_access, resolve_location_id
 
 router = APIRouter(prefix="/supplier-invoices", tags=["Supplier Invoices"])
+
+ASSET_RECLASS_DOCUMENT_TYPE = "SUPPLIER_INVOICE_ASSET_RECLASS"
+
+
+class AssetReclassInput(BaseModel):
+    line_id: int
+    asset_account_id: int
+    posting_date: date
+
 
 invoice_view_user = require_permission("supplier_invoice.view")
 invoice_create_user = require_permission("supplier_invoice.create")
@@ -87,6 +102,27 @@ def result(db, invoice, user):
     data["three_way_match"] = match
     readiness = DirectCoaService(db).supplier_invoice_readiness(invoice)
     data["accounting_readiness"] = readiness
+    line_ids = [line.id for line in invoice.lines]
+    if line_ids:
+        reclasses = db.query(JournalEntry).filter(
+            JournalEntry.document_type == ASSET_RECLASS_DOCUMENT_TYPE,
+            JournalEntry.reference_type == "MANUAL",
+            JournalEntry.reference_id.in_(line_ids),
+            JournalEntry.status != "VOID",
+        ).all()
+        by_line = {journal.reference_id: journal for journal in reclasses}
+        for line in data["lines"]:
+            journal = by_line.get(line["id"])
+            if journal:
+                debit = next((item for item in journal.lines if item.debit > 0), None)
+                account = db.get(ChartOfAccount, debit.account_id) if debit else None
+                line["asset_reclassification"] = {
+                    "journal_id": journal.id,
+                    "journal_number": journal.journal_number,
+                    "status": journal.status,
+                    "account_code": account.account_number if account else None,
+                    "account_name": account.account_name if account else None,
+                }
     data.update(document_context(db, "SUPPLIER_INVOICE", invoice.id, invoice.status, user))
     data["allowed_actions"] = {
         "can_edit": invoice.status == "DRAFT",
@@ -242,6 +278,99 @@ def generate(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoic
     return {"id": journal.id, "journal_number": journal.journal_number, "status": journal.status}
 
 
+@router.post("/{invoice_id}/reclassify-asset")
+def reclassify_asset(
+    invoice_id: int,
+    payload: AssetReclassInput,
+    db: Session = Depends(get_db),
+    user=Depends(invoice_post_user),
+):
+    if not is_superuser(user):
+        raise HTTPException(403, "Administrator access required for posted invoice reclassification")
+    invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == invoice_id).with_for_update().one_or_none()
+    if not invoice:
+        raise HTTPException(404, "Supplier invoice not found")
+    enforce_location_access(user, _resolved_invoice_location_id(db, invoice))
+    if invoice.status != "POSTED":
+        raise HTTPException(409, "Only posted supplier invoices can be reclassified")
+    line = next((item for item in invoice.lines if item.id == payload.line_id), None)
+    if not line or line.goods_receipt_item_id or invoice.goods_receipt_id:
+        raise HTTPException(409, "Choose a direct supplier invoice line without a receiving link")
+    origin = DirectCoaService(db).account(line.account_id, "Original invoice line")
+    if origin.account_type != "EXPENSE" or origin.normal_balance != "DEBIT":
+        raise HTTPException(409, "Original invoice line must be an expense debit")
+    amount = Decimal(line.line_amount or 0)
+    if amount <= 0:
+        raise HTTPException(409, "Invoice line must have a positive amount")
+    asset = DirectCoaService(db).account(payload.asset_account_id, "Fixed asset")
+    if not (
+        asset.account_number.startswith("100-600-")
+        and asset.account_type == "ASSET"
+        and asset.normal_balance == "DEBIT"
+    ):
+        raise HTTPException(409, "Select a posting debit-balance fixed asset COA under 100-600")
+
+    source = db.query(JournalEntry).filter(
+        JournalEntry.reference_type == "SUPPLIER_INVOICE",
+        JournalEntry.reference_id == invoice.id,
+        JournalEntry.status == "POSTED",
+    ).one_or_none()
+    if not source:
+        raise HTTPException(409, "The original invoice journal must be posted")
+    source_debit = sum(
+        (Decimal(item.debit or 0) for item in source.lines if item.account_id == origin.id),
+        Decimal("0"),
+    )
+    invoice_expense = sum(
+        (Decimal(item.line_amount or 0) for item in invoice.lines if item.account_id == origin.id),
+        Decimal("0"),
+    )
+    if source_debit < invoice_expense:
+        raise HTTPException(409, "The original journal does not contain the invoice expense debit")
+
+    existing = db.query(JournalEntry).filter(
+        JournalEntry.document_type == ASSET_RECLASS_DOCUMENT_TYPE,
+        JournalEntry.reference_type == "MANUAL",
+        JournalEntry.reference_id == line.id,
+        JournalEntry.status != "VOID",
+    ).first()
+    if existing:
+        raise HTTPException(409, f"Line already has reclassification journal {existing.journal_number}")
+
+    location_id = _resolved_invoice_location_id(db, invoice)
+    description = f"Asset reclassification of {invoice.internal_invoice_number} line {line.id}"
+    journal = JournalService.post(
+        db=db,
+        user=user,
+        journal=JournalCreate(
+            business_unit_id=invoice.business_unit_id,
+            location_id=location_id,
+            department_id=line.department_id or invoice.department_id,
+            posting_date=payload.posting_date,
+            document_type=ASSET_RECLASS_DOCUMENT_TYPE,
+            document_number=invoice.internal_invoice_number,
+            reference_type="MANUAL",
+            reference_id=line.id,
+            description=description,
+            lines=[
+                JournalLineCreate(account_id=asset.id, debit=amount, credit=0,
+                                  description=description, supplier_id=invoice.supplier_id),
+                JournalLineCreate(account_id=origin.id, debit=0, credit=amount,
+                                  description=description, supplier_id=invoice.supplier_id),
+            ],
+        ),
+    )
+    record_audit(
+        db, user, "SUPPLIER_INVOICE_ASSET_RECLASSIFIED", "SUPPLIER_INVOICE",
+        description, entity_id=invoice.id,
+        before_data={"line_id": line.id, "account_id": origin.id},
+        after_data={"journal_id": journal.id, "asset_account_id": asset.id, "amount": str(amount)},
+        reference_document=invoice.internal_invoice_number,
+    )
+    db.commit()
+    return result(db, invoice, user)
+
+
 @router.post("/{invoice_id}/unpost")
 def admin_unpost(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_post_user)):
     if not is_superuser(user):
@@ -259,6 +388,14 @@ def admin_unpost(invoice_id: int, db: Session = Depends(get_db), user=Depends(in
     ).with_for_update().one_or_none()
     if not journal:
         raise HTTPException(409, "Posted supplier invoice journal not found")
+    reclass = db.query(JournalEntry.id).filter(
+        JournalEntry.document_type == ASSET_RECLASS_DOCUMENT_TYPE,
+        JournalEntry.reference_type == "MANUAL",
+        JournalEntry.reference_id.in_([line.id for line in invoice.lines]),
+        JournalEntry.status != "VOID",
+    ).first()
+    if reclass:
+        raise HTTPException(409, "Void the linked asset reclassification journal before unposting this invoice")
     unpost_journal(db, journal=journal, user=user, commit=False)
     db.commit()
     db.refresh(invoice)
