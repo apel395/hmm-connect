@@ -1,46 +1,240 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { Link, useSearchParams } from "react-router-dom";
+import { Printer, X } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
-import { Printer } from "lucide-react";
 import Pagination from "@/components/datatable/Pagination";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import { TABLE_UI } from "@/config/tableUi";
+import { inventoryApi } from "../api";
+import type { InventoryMovement, InventoryMovementFilters } from "../movement";
 import { useInventoryMovements } from "../useInventoryMovement";
 
-const money=(value:unknown)=>Number(value??0).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2});
-const input="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
-const PAGE_SIZE=50;
+const PAGE_SIZE = 50;
+const input = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
+const quantity = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", { maximumFractionDigits: 4 });
+const money = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+type SourceFilter = NonNullable<InventoryMovementFilters["source_kind"]> | "ALL";
 
-export default function InventoryMovementPage(){
- const[params]=useSearchParams();
- const[productId,setProductId]=useState(params.get("product_id")??"");
- const[warehouseId,setWarehouseId]=useState(params.get("warehouse_id")??"");
- const[poId,setPoId]=useState(params.get("purchase_order_id")??"");
- const[receiptId,setReceiptId]=useState(params.get("goods_receipt_id")??"");
- const[locationId,setLocationId]=useState(params.get("location_id")??"");
- const[departmentId,setDepartmentId]=useState(params.get("department_id")??"");
- const[search,setSearch]=useState("");const[page,setPage]=useState(1);
- const[dateFrom,setDateFrom]=useState(params.get("date_from")??"");const[dateTo,setDateTo]=useState(params.get("date_to")??"");
- const[accountId,setAccountId]=useState(params.get("account_id")??"");
- const accounts=useQuery({queryKey:["inventory-movement-coa"],queryFn:()=>getAllAccountLookup({is_active:true,is_posting:true})});
- const filters=useMemo(()=>({product_id:productId?Number(productId):undefined,warehouse_id:warehouseId?Number(warehouseId):undefined,purchase_order_id:poId?Number(poId):undefined,goods_receipt_id:receiptId?Number(receiptId):undefined,location_id:locationId?Number(locationId):undefined,department_id:departmentId?Number(departmentId):undefined,account_id:accountId?Number(accountId):undefined,date_from:dateFrom||undefined,date_to:dateTo||undefined,search:search.trim()||undefined,page,page_size:PAGE_SIZE}),[productId,warehouseId,poId,receiptId,locationId,departmentId,accountId,dateFrom,dateTo,search,page]);
- const query=useInventoryMovements(filters);const result=query.data;const rows=result?.items??[];const pages=Math.max(result?.total_pages??0,1);const total=result?.total_items??0;
- useEffect(()=>setPage(1),[productId,warehouseId,poId,receiptId,locationId,departmentId,accountId,dateFrom,dateTo,search]);useEffect(()=>{if(page>pages)setPage(pages)},[page,pages]);
- if(query.isLoading)return <Loading/>;
- const summary=result?.summary;const byAccount=result?.totals_by_account??[];
- const pageValue=rows.reduce((sum,row)=>sum+Number(row.movement_value||0),0);
- const numeric=(setter:(value:string)=>void)=>(e:React.ChangeEvent<HTMLInputElement>)=>setter(e.target.value.replace(/\D/g,""));
- return <div className="space-y-6">
-  <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Inventory Movement" description="Trace every posted stock movement back to Receiving, Purchase Order, warehouse, location and department."/>
-  <Card className="p-4"><div className="mb-3"><input className={input} placeholder="Search item code, item name or warehouse..." value={search} onChange={e=>setSearch(e.target.value)}/></div><div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6"><label className="text-xs font-medium text-slate-600">Product ID<input className={input} inputMode="numeric" value={productId} onChange={numeric(setProductId)} placeholder="All items"/></label><label className="text-xs font-medium text-slate-600">Warehouse ID<input className={input} inputMode="numeric" value={warehouseId} onChange={numeric(setWarehouseId)} placeholder="All warehouses"/></label><label className="text-xs font-medium text-slate-600">PO ID<input className={input} inputMode="numeric" value={poId} onChange={numeric(setPoId)} placeholder="All PO"/></label><label className="text-xs font-medium text-slate-600">Receiving ID<input className={input} inputMode="numeric" value={receiptId} onChange={numeric(setReceiptId)} placeholder="All RR"/></label><label className="text-xs font-medium text-slate-600">Location ID<input className={input} inputMode="numeric" value={locationId} onChange={numeric(setLocationId)} placeholder="All locations"/></label><label className="text-xs font-medium text-slate-600">Department ID<input className={input} inputMode="numeric" value={departmentId} onChange={numeric(setDepartmentId)} placeholder="All departments"/></label></div><div className="mt-3 grid gap-3 md:grid-cols-3"><label className="text-xs font-medium text-slate-600">From date<input type="date" className={input} value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></label><label className="text-xs font-medium text-slate-600">To date<input type="date" className={input} value={dateTo} min={dateFrom||undefined} onChange={e=>setDateTo(e.target.value)}/></label><label className="text-xs font-medium text-slate-600">Inventory account<select className={input} value={accountId} onChange={e=>setAccountId(e.target.value)}><option value="">All inventory COA</option>{(accounts.data??[]).map((account:any)=><option key={account.id} value={account.id}>{account.account_number} — {account.account_name}</option>)}</select></label></div></Card>
-  <div className="grid gap-3 md:grid-cols-3"><Card className="p-4"><div className="text-xs uppercase text-slate-500">Matching Movements</div><div className="mt-1 text-2xl font-bold">{total}</div></Card><Card className="p-4"><div className="text-xs uppercase text-slate-500">Filtered IN Value</div><div className="mt-1 text-2xl font-bold">Rp {money(summary?.in_value)}</div></Card><Card className="p-4"><div className="text-xs uppercase text-slate-500">Filtered OUT Value</div><div className="mt-1 text-2xl font-bold">Rp {money(summary?.out_value)}</div></Card></div>
-  <Card className="p-0"><div className="border-b px-4 py-3 font-semibold">Filtered Totals by Inventory Account</div><div className="overflow-x-auto"><table className="w-full min-w-[800px] text-sm"><thead><tr><th className="px-4 py-2 text-left">Inventory COA</th><th className="px-4 py-2 text-right">IN Qty</th><th className="px-4 py-2 text-right">OUT Qty</th><th className="px-4 py-2 text-right">Net Qty</th><th className="px-4 py-2 text-right">IN Value</th><th className="px-4 py-2 text-right">OUT Value</th><th className="px-4 py-2 text-right">Net Value</th></tr></thead><tbody>{byAccount.map(row=><tr key={row.account_id??"none"} className="border-t"><td className="px-4 py-2">{row.account_code?`${row.account_code} — ${row.account_name}`:"Unmapped"}</td>{([row.in_qty,row.out_qty,row.net_qty,row.in_value,row.out_value,row.net_value]).map((value,i)=><td key={i} className="px-4 py-2 text-right">{i>2?`Rp ${money(value)}`:Number(value??0).toLocaleString("id-ID")}</td>)}</tr>)}{!byAccount.length&&<tr><td colSpan={7} className="px-4 py-6 text-center text-slate-500">No movements for the selected dates.</td></tr>}</tbody></table></div><div className="border-t px-4 py-2 text-right text-sm font-semibold">Net: {Number(summary?.net_qty??0).toLocaleString("id-ID")} units · Rp {money(summary?.net_value)}</div></Card>
-  <Card className="overflow-hidden p-0"><Table className="min-w-[1100px]" containerClassName="rounded-none border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Movement</TH><TH>Product</TH><TH>Inventory COA</TH><TH>Storage</TH><TH numeric>Qty</TH><TH numeric>Unit Cost</TH><TH numeric>Value</TH><TH>Source Documents</TH><TH>Notes</TH></TR></THead><TBody>{!rows.length?<TR><TD colSpan={10} className="p-10 text-center text-slate-500">No inventory movements match the selected filters.</TD></TR>:rows.map(row=><TR key={row.id} className="whitespace-nowrap"><TD>{row.movement_date}</TD><TD><TableCellStack primary={row.movement_number} secondary={<Badge variant={Number(row.quantity)>=0?"success":"danger"}>{row.movement_type}</Badge>}/></TD><TD className="max-w-[240px]"><TableCellStack primary={row.product_name} secondary={row.product_code}/></TD><TD>{row.inventory_account_code??"Unmapped"}</TD><TD><TableCellStack primary={row.warehouse_name} secondary={[row.location_id && `Location ${row.location_id}`, row.department_id && `Department ${row.department_id}`].filter(Boolean).join(" · ")}/></TD><TD numeric className="font-semibold">{Number(row.quantity).toLocaleString("id-ID")}</TD><TD numeric>{money(row.unit_cost)}</TD><TD numeric className="font-medium">{money(row.movement_value)}</TD><TD><div className="flex flex-col gap-0.5">{row.goods_receipt_id?<Link className={TABLE_UI.documentLink} to={`/receiving/${row.goods_receipt_id}`}>{row.receipt_number??`RR #${row.goods_receipt_id}`}</Link>:null}{row.purchase_order_id?<Link className={TABLE_UI.documentLink} to={`/purchase-orders/${row.purchase_order_id}`}>{row.purchase_order_number??`PO #${row.purchase_order_id}`}</Link>:null}{!row.goods_receipt_id&&!row.purchase_order_id?"—":null}</div></TD><TD className="max-w-[240px]"><span className="block truncate" title={row.notes??row.reference_number??undefined}>{row.notes??row.reference_number??"—"}</span></TD></TR>)}</TBody></Table><div className="p-4"><div className="mb-2 text-right text-xs text-slate-500">Current page value: Rp {money(pageValue)}</div><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="movements" onChange={setPage}/></div></Card>
- </div>;
+function sourceDocuments(row: InventoryMovement) {
+  return <div className="flex flex-col gap-0.5">
+    {row.goods_receipt_id && <Link className={TABLE_UI.documentLink} to={`/receiving/${row.goods_receipt_id}`}>
+      {row.receipt_number ?? row.reference_number ?? `Receiving #${row.goods_receipt_id}`}
+    </Link>}
+    {row.purchase_order_id && <Link className={TABLE_UI.documentLink} to={`/purchase-orders/${row.purchase_order_id}`}>
+      {row.purchase_order_number ?? `PO #${row.purchase_order_id}`}
+    </Link>}
+    {row.reference_type === "STORE_REQUEST" && row.reference_id &&
+      <Link className={TABLE_UI.documentLink} to={`/store-requests/${row.reference_id}`}>{row.reference_number ?? `Store Request #${row.reference_id}`}</Link>}
+    {row.reference_type === "STOCK_OPNAME" && row.reference_id &&
+      <Link className={TABLE_UI.documentLink} to={`/stock-opnames/${row.reference_id}`}>{row.reference_number ?? `Stock Opname #${row.reference_id}`}</Link>}
+    {row.reference_type === "STOCK_ADJUSTMENT" && row.reference_id &&
+      <Link className={TABLE_UI.documentLink} to="/stock-adjustments">{row.reference_number ?? `Stock Adjustment #${row.reference_id}`}</Link>}
+    {!row.goods_receipt_id && !row.purchase_order_id &&
+      !["STORE_REQUEST", "STOCK_OPNAME", "STOCK_ADJUSTMENT"].includes(row.reference_type ?? "") &&
+      <span className="text-slate-500">{row.reference_number && row.reference_number !== "-" ? row.reference_number : "—"}</span>}
+  </div>;
+}
+
+export default function InventoryMovementPage() {
+  const [params, setParams] = useSearchParams();
+  const [productId, setProductId] = useState(params.get("product_id") ?? "");
+  const [warehouseId, setWarehouseId] = useState(params.get("warehouse_id") ?? "");
+  const [poId, setPoId] = useState(params.get("purchase_order_id") ?? "");
+  const [receiptId, setReceiptId] = useState(params.get("goods_receipt_id") ?? "");
+  const [locationId, setLocationId] = useState(params.get("location_id") ?? "");
+  const [departmentId, setDepartmentId] = useState(params.get("department_id") ?? "");
+  const [accountId, setAccountId] = useState(params.get("account_id") ?? "");
+  const [sourceKind, setSourceKind] = useState<SourceFilter>("ALL");
+  const [dateFrom, setDateFrom] = useState(params.get("date_from") ?? "");
+  const [dateTo, setDateTo] = useState(params.get("date_to") ?? "");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  const accounts = useQuery({ queryKey: ["inventory-coa-filter"], queryFn: inventoryApi.accounts });
+  const filters = useMemo<InventoryMovementFilters>(() => ({
+    product_id: productId ? Number(productId) : undefined,
+    warehouse_id: warehouseId ? Number(warehouseId) : undefined,
+    purchase_order_id: poId ? Number(poId) : undefined,
+    goods_receipt_id: receiptId ? Number(receiptId) : undefined,
+    location_id: locationId ? Number(locationId) : undefined,
+    department_id: departmentId ? Number(departmentId) : undefined,
+    account_id: accountId ? Number(accountId) : undefined,
+    source_kind: sourceKind === "ALL" ? undefined : sourceKind,
+    date_from: dateFrom || undefined, date_to: dateTo || undefined,
+    search: search.trim() || undefined, page, page_size: PAGE_SIZE,
+  }), [productId, warehouseId, poId, receiptId, locationId, departmentId, accountId,
+    sourceKind, dateFrom, dateTo, search, page]);
+  const query = useInventoryMovements(filters);
+  const result = query.data;
+  const rows = result?.items ?? [];
+  const history = result?.history_balances ?? [];
+  const pages = Math.max(result?.total_pages ?? 0, 1);
+  const total = result?.total_items ?? 0;
+  const summary = result?.summary;
+  const byAccount = result?.totals_by_account ?? [];
+  const focused = Boolean(productId);
+  const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
+  const openingQuantity = history.reduce((sum, item) => sum + Number(item.opening_quantity), 0);
+  const closingQuantity = history.reduce((sum, item) => sum + Number(item.closing_quantity), 0);
+
+  useEffect(() => setPage(1), [productId, warehouseId, poId, receiptId, locationId,
+    departmentId, accountId, sourceKind, dateFrom, dateTo, search]);
+  useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
+
+  const numeric = (setter: (value: string) => void) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => setter(event.target.value.replace(/\D/g, ""));
+  const focusItem = (row: InventoryMovement) => {
+    setProductId(String(row.product_id));
+    setWarehouseId(String(row.warehouse_id));
+    setSearch("");
+    const next = new URLSearchParams(params);
+    next.set("product_id", String(row.product_id));
+    next.set("warehouse_id", String(row.warehouse_id));
+    setParams(next, { replace: true });
+  };
+  const clearItem = () => {
+    setProductId("");
+    setWarehouseId("");
+    const next = new URLSearchParams(params);
+    next.delete("product_id");
+    next.delete("warehouse_id");
+    setParams(next, { replace: true });
+  };
+
+  return <div className="space-y-6">
+    <PageHeader title={focused ? "Item Stock History" : "Stock Movement"}
+      description={focused
+        ? "Opening stock, purchases, usage, and adjustments in date order. The running quantity follows the item in each warehouse."
+        : "Search or select an item to see its complete stock history and running quantity."}
+      actions={<div className="flex gap-2">
+        {focused && <Button variant="secondary" onClick={clearItem}><X size={16} className="mr-1"/> All items</Button>}
+        <Button variant="outline" onClick={() => window.print()}><Printer size={16} className="mr-1"/> Print</Button>
+      </div>}/>
+
+    <Card className="p-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <label className="text-xs font-medium text-slate-600">Search item or warehouse
+          <input className={input} placeholder="Item code, name or warehouse" value={search} onChange={e => setSearch(e.target.value)}/>
+        </label>
+        <label className="text-xs font-medium text-slate-600">Item ID
+          <input className={input} inputMode="numeric" value={productId} onChange={numeric(setProductId)} placeholder="All items"/>
+        </label>
+        <label className="text-xs font-medium text-slate-600">Warehouse ID
+          <input className={input} inputMode="numeric" value={warehouseId} onChange={numeric(setWarehouseId)} placeholder="All warehouses"/>
+        </label>
+        <label className="text-xs font-medium text-slate-600">History event
+          <select className={input} value={sourceKind} onChange={e => setSourceKind(e.target.value as SourceFilter)}>
+            <option value="ALL">All events</option><option value="PURCHASE">Pembelian / Receiving</option>
+            <option value="USAGE">Pemakaian</option><option value="ADJUSTMENT">Penyesuaian / Stock Opname</option>
+          </select>
+        </label>
+        <label className="text-xs font-medium text-slate-600">From date
+          <input type="date" className={input} value={dateFrom} max={dateTo || undefined} onChange={e => setDateFrom(e.target.value)}/>
+        </label>
+        <label className="text-xs font-medium text-slate-600">To date
+          <input type="date" className={input} value={dateTo} min={dateFrom || undefined} onChange={e => setDateTo(e.target.value)}/>
+        </label>
+        <label className="text-xs font-medium text-slate-600">Inventory account
+          <select className={input} value={accountId} onChange={e => setAccountId(e.target.value)}>
+            <option value="">All inventory COA</option>
+            {(accounts.data ?? []).map(account => <option key={account.id} value={account.id}>
+              {account.account_number} — {account.account_name}
+            </option>)}
+          </select>
+        </label>
+        <label className="text-xs font-medium text-slate-600">PO ID
+          <input className={input} inputMode="numeric" value={poId} onChange={numeric(setPoId)} placeholder="All PO"/>
+        </label>
+        <label className="text-xs font-medium text-slate-600">Receiving ID
+          <input className={input} inputMode="numeric" value={receiptId} onChange={numeric(setReceiptId)} placeholder="All receiving"/>
+        </label>
+        <label className="text-xs font-medium text-slate-600">Location ID
+          <input className={input} inputMode="numeric" value={locationId} onChange={numeric(setLocationId)} placeholder="All locations"/>
+        </label>
+        <label className="text-xs font-medium text-slate-600">Department ID
+          <input className={input} inputMode="numeric" value={departmentId} onChange={numeric(setDepartmentId)} placeholder="All departments"/>
+        </label>
+      </div>
+      {invalidRange && <p className="mt-3 text-sm text-red-700">From date must be on or before To date.</p>}
+      {focused && <p className="mt-3 text-xs text-slate-500">Stock balances include every event for this item and warehouse, even when event or document filters narrow the visible rows.</p>}
+    </Card>
+
+    {query.isError && <Card className="p-4 text-sm text-red-700">Stock history could not be loaded. Check the filters and try again.</Card>}
+    {query.isLoading ? <Loading/> : <>
+      {focused && <>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Card className="p-4"><div className="text-xs uppercase text-slate-500">Stock awal · {result?.history_period?.date_from ?? "2026-01-01"}</div>
+            <div className="mt-1 text-2xl font-bold">{quantity(openingQuantity)}</div></Card>
+          <Card className="p-4"><div className="text-xs uppercase text-slate-500">Stock akhir · {result?.history_period?.date_to ?? "today"}</div>
+            <div className="mt-1 text-2xl font-bold">{quantity(closingQuantity)}</div></Card>
+          <Card className="p-4"><div className="text-xs uppercase text-slate-500">Matching events</div>
+            <div className="mt-1 text-2xl font-bold">{total}</div></Card>
+        </div>
+        <Card className="overflow-x-auto p-0">
+          <div className="border-b px-4 py-3 font-semibold">Opening and closing by warehouse</div>
+          <table className="w-full min-w-[580px] text-sm"><thead><tr>
+            <th className="px-4 py-2 text-left">Warehouse</th><th className="px-4 py-2 text-right">Opening qty</th>
+            <th className="px-4 py-2 text-right">Closing qty</th>
+          </tr></thead><tbody>{history.map(item => <tr key={item.warehouse_id} className="border-t">
+            <td className="px-4 py-2">{item.warehouse_code} — {item.warehouse_name}</td>
+            <td className="px-4 py-2 text-right">{quantity(item.opening_quantity)}</td>
+            <td className="px-4 py-2 text-right font-semibold">{quantity(item.closing_quantity)}</td>
+          </tr>)}</tbody></table>
+          <p className="border-t px-4 py-2 text-xs text-slate-500">Opening quantity is reconstructed from current stock and recorded movements. It is a balance, not an additional stock transaction.</p>
+        </Card>
+      </>}
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {!focused && <Card className="p-4"><div className="text-xs uppercase text-slate-500">Matching events</div><div className="mt-1 text-2xl font-bold">{total}</div></Card>}
+        <Card className="p-4"><div className="text-xs uppercase text-slate-500">Filtered stock in</div><div className="mt-1 text-xl font-bold">{quantity(summary?.in_qty)} · Rp {money(summary?.in_value)}</div></Card>
+        <Card className="p-4"><div className="text-xs uppercase text-slate-500">Filtered stock out</div><div className="mt-1 text-xl font-bold">{quantity(summary?.out_qty)} · Rp {money(summary?.out_value)}</div></Card>
+      </div>
+
+      <Card className="overflow-x-auto p-0">
+        <div className="border-b px-4 py-3 font-semibold">Filtered totals by inventory account</div>
+        <table className="w-full min-w-[790px] text-sm"><thead><tr>
+          <th className="px-4 py-2 text-left">Inventory COA</th><th className="px-4 py-2 text-right">IN Qty</th>
+          <th className="px-4 py-2 text-right">OUT Qty</th><th className="px-4 py-2 text-right">Net Qty</th>
+          <th className="px-4 py-2 text-right">IN Value</th><th className="px-4 py-2 text-right">OUT Value</th>
+        </tr></thead><tbody>{byAccount.map(row => <tr key={row.account_id ?? "none"} className="border-t">
+          <td className="px-4 py-2">{row.account_code ? `${row.account_code} — ${row.account_name}` : "Unmapped"}</td>
+          <td className="px-4 py-2 text-right">{quantity(row.in_qty)}</td><td className="px-4 py-2 text-right">{quantity(row.out_qty)}</td>
+          <td className="px-4 py-2 text-right">{quantity(row.net_qty)}</td><td className="px-4 py-2 text-right">Rp {money(row.in_value)}</td>
+          <td className="px-4 py-2 text-right">Rp {money(row.out_value)}</td>
+        </tr>)}{!byAccount.length && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-500">No events for the selected filters.</td></tr>}</tbody></table>
+      </Card>
+
+      <Card className="overflow-hidden p-0">
+        <div className="border-b px-4 py-3 font-semibold">{focused ? "Item timeline · oldest first" : "Recent item events · select an item for its timeline"}</div>
+        <Table className="min-w-[1320px]" containerClassName="rounded-none border-0 shadow-none">
+          <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Event</TH><TH>Item</TH><TH>Warehouse</TH>
+            <TH numeric>In</TH><TH numeric>Out</TH>{focused && <TH numeric>On hand</TH>}
+            <TH numeric>Unit cost</TH><TH numeric>Event value</TH><TH>Source document</TH><TH>Notes</TH>
+          </TR></THead>
+          <TBody>{!rows.length ? <TR><TD colSpan={focused ? 11 : 10} className="p-10 text-center text-slate-500">No stock events match these filters.</TD></TR>
+            : rows.map(row => <TR key={row.id} className="whitespace-nowrap">
+              <TD>{row.movement_date}</TD>
+              <TD><TableCellStack primary={row.source_label} secondary={row.movement_number}/></TD>
+              <TD className="max-w-[230px]"><button type="button" className="text-left text-blue-700 hover:underline" onClick={() => focusItem(row)}>
+                <TableCellStack primary={row.product_name} secondary={row.product_code}/>
+              </button></TD>
+              <TD><TableCellStack primary={row.warehouse_name} secondary={row.inventory_account_code ?? "Unmapped"}/></TD>
+              <TD numeric className="font-semibold text-emerald-700">{Number(row.in_quantity) ? quantity(row.in_quantity) : "—"}</TD>
+              <TD numeric className="font-semibold text-rose-700">{Number(row.out_quantity) ? quantity(row.out_quantity) : "—"}</TD>
+              {focused && <TD numeric className="font-bold">{row.running_quantity == null ? "—" : quantity(row.running_quantity)}</TD>}
+              <TD numeric>Rp {money(row.unit_cost)}</TD><TD numeric>Rp {money(row.movement_value)}</TD>
+              <TD>{sourceDocuments(row)}</TD>
+              <TD className="max-w-[240px]"><span className="block truncate" title={row.notes ?? undefined}>{row.notes ?? "—"}</span></TD>
+            </TR>)}</TBody>
+        </Table>
+        <div className="p-4"><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="events" onChange={setPage}/></div>
+      </Card>
+    </>}
+  </div>;
 }
