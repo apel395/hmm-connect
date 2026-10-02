@@ -42,43 +42,31 @@ def posting_status(
         FiscalPeriod.start_date <= posting_date,
         FiscalPeriod.end_date >= posting_date,
     ).first()
-    latest_open = (
-        db.query(FiscalPeriod)
-        .filter(
-            FiscalPeriod.is_open.is_(True),
-            FiscalPeriod.is_closed.is_(False),
-            FiscalPeriod.end_date >= posting_date,
-        )
-        .order_by(FiscalPeriod.end_date.desc())
-        .first()
-    )
-    effective = period or latest_open
-    can_post = latest_open is not None
-    if not effective:
+    if not period:
         return {
             "configured": False,
             "can_post": False,
             "posting_date": posting_date,
             "fiscal_year": posting_date.year,
-            "message": "No open accounting period covers or follows this posting date.",
+            "message": "No accounting period covers this posting date.",
         }
+    can_post = period.is_open and not period.is_closed
     return {
-        "configured": period is not None,
+        "configured": True,
         "can_post": can_post,
         "posting_date": posting_date,
-        "period_id": effective.id,
-        "period_name": effective.period_name,
-        "fiscal_year": effective.fiscal_year,
-        "fiscal_month": effective.fiscal_month,
-        "is_open": effective.is_open,
-        "is_closed": effective.is_closed,
+        "period_id": period.id,
+        "period_name": period.period_name,
+        "fiscal_year": period.fiscal_year,
+        "fiscal_month": period.fiscal_month,
+        "is_open": period.is_open,
+        "is_closed": period.is_closed,
         "message": (
             "Posting date is allowed by the open accounting period."
             if can_post
-            else f"Fiscal period {effective.period_name} is closed."
+            else f"Fiscal period {period.period_name} is closed."
         ),
     }
-
 
 @router.post("/initialize-year")
 def initialize_year(

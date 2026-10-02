@@ -27,22 +27,10 @@ class FiscalPeriodService:
             .first()
         )
 
-        # Finance rule: an OPEN accounting period opens that period and all
-        # earlier posting dates. This supports historical finance entry without
-        # requiring every older month to be reopened individually.
-        latest_open = (
-            db.query(FiscalPeriod)
-            .filter(
-                FiscalPeriod.is_open.is_(True),
-                FiscalPeriod.is_closed.is_(False),
-                FiscalPeriod.end_date >= posting_date,
-            )
-            .order_by(FiscalPeriod.end_date.desc())
-            .first()
-        )
-
-        if latest_open:
-            return period or latest_open
+        # Posting is governed by the period containing the selected date.
+        # An open later month must not silently reopen a closed earlier month.
+        if period and period.is_open and not period.is_closed:
+            return period
 
         if period:
             raise HTTPException(
@@ -53,7 +41,7 @@ class FiscalPeriodService:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"No open accounting period covers or follows {posting_date.isoformat()}. "
+                f"No open accounting period covers {posting_date.isoformat()}. "
                 "Open a Finance accounting period before posting this date."
             ),
         )
