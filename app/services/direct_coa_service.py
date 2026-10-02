@@ -191,10 +191,14 @@ class DirectCoaService:
             raise HTTPException(409, "Supplier invoice cannot debit a cash or bank account")
         if subtype in self.RECEIVABLE_SUBTYPES or code.startswith(("100-200-", "100-210-")):
             raise HTTPException(409, "Supplier invoice cannot debit an accounts receivable account")
-        expected_type = "ASSET" if inventory else "EXPENSE"
-        if account.account_type != expected_type or account.normal_balance != "DEBIT":
-            label = "inventory asset" if inventory else "expense"
-            raise HTTPException(409, f"Supplier invoice line requires a debit-balance {label} COA")
+        fixed_asset = code.startswith("100-600-")
+        if inventory and (account.account_type != "ASSET" or account.normal_balance != "DEBIT" or fixed_asset):
+            raise HTTPException(409, "Warehouse supplier invoice line requires a debit-balance inventory asset COA")
+        if not inventory and not (
+            (account.account_type == "EXPENSE" and account.normal_balance == "DEBIT")
+            or (fixed_asset and account.account_type == "ASSET" and account.normal_balance == "DEBIT")
+        ):
+            raise HTTPException(409, "Direct supplier invoice line requires a debit-balance expense or 100-600 fixed asset COA")
 
     def receipt_uses_grni(self, invoice: SupplierInvoice) -> bool:
         receipt_ids=set()
@@ -258,7 +262,11 @@ class DirectCoaService:
                     account = (
                         self.inventory_account(current.product, invoice.location_id)
                         if inventory
-                        else self.expense_account(current.product)
+                        else (
+                            self.fixed_asset_account(current.product)
+                            if getattr(current.product, "inventory_treatment", None) == "FIXED_ASSET"
+                            else self.expense_account(current.product)
+                        )
                     )
                 else:
                     raise HTTPException(409, f"Invoice line {index} requires a direct COA")
@@ -273,7 +281,15 @@ class DirectCoaService:
         if line.account_id:
             account = self.account(line.account_id, "Supplier invoice line")
         elif line.product:
-            account = self.inventory_account(line.product, invoice.location_id) if inventory else self.expense_account(line.product)
+            account = (
+                self.inventory_account(line.product, invoice.location_id)
+                if inventory
+                else (
+                    self.fixed_asset_account(line.product)
+                    if getattr(line.product, "inventory_treatment", None) == "FIXED_ASSET"
+                    else self.expense_account(line.product)
+                )
+            )
             line.account_id = account.id
         else:
             raise HTTPException(409, "Manual supplier invoice line requires a direct COA")
