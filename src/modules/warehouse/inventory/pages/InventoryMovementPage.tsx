@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { Printer, X } from "lucide-react";
+import { Printer, SlidersHorizontal, X } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Card from "@/components/ui/Card";
@@ -14,7 +14,6 @@ import { inventoryApi } from "../api";
 import type { InventoryMovement, InventoryMovementFilters } from "../movement";
 import { useInventoryMovements } from "../useInventoryMovement";
 
-const PAGE_SIZE = 50;
 const input = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const quantity = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", { maximumFractionDigits: 4 });
 const money = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", {
@@ -75,6 +74,8 @@ export default function InventoryMovementPage() {
   const [dateTo, setDateTo] = useState(params.get("date_to") ?? "");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("stock-movement-page-size")) === 100 ? 100 : 50);
+  const [showFilters, setShowFilters] = useState(false);
 
   const accounts = useQuery({ queryKey: ["inventory-coa-filter"], queryFn: inventoryApi.accounts });
   const locations = useQuery({ queryKey: ["stock-movement-locations"], queryFn: () => listLocations({ is_active: true, assigned_only: true }) });
@@ -88,9 +89,9 @@ export default function InventoryMovementPage() {
     account_id: accountId ? Number(accountId) : undefined,
     source_kind: sourceKind === "ALL" ? undefined : sourceKind,
     date_from: dateFrom || undefined, date_to: dateTo || undefined,
-    search: search.trim() || undefined, page, page_size: PAGE_SIZE,
+    search: search.trim() || undefined, page, page_size: pageSize,
   }), [productId, warehouseId, poId, receiptId, locationId, departmentId, accountId,
-    sourceKind, dateFrom, dateTo, search, page]);
+    sourceKind, dateFrom, dateTo, search, page, pageSize]);
   const query = useInventoryMovements(filters);
   const result = query.data;
   const rows = result?.items ?? [];
@@ -105,7 +106,8 @@ export default function InventoryMovementPage() {
   const closingQuantity = history.reduce((sum, item) => sum + Number(item.closing_quantity), 0);
 
   useEffect(() => setPage(1), [productId, warehouseId, poId, receiptId, locationId,
-    departmentId, accountId, sourceKind, dateFrom, dateTo, search]);
+    departmentId, accountId, sourceKind, dateFrom, dateTo, search, pageSize]);
+  useEffect(() => window.localStorage.setItem("stock-movement-page-size", String(pageSize)), [pageSize]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
   const numeric = (setter: (value: string) => void) =>
@@ -138,22 +140,27 @@ export default function InventoryMovementPage() {
         <Button variant="outline" onClick={() => window.print()}><Printer size={16} className="mr-1"/> Print</Button>
       </div>}/>
 
-    <Card className="p-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <label className="text-xs font-medium text-slate-600">Search item or warehouse
+    <Card className="p-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="min-w-[220px] flex-1 text-xs font-medium text-slate-600">Search item or warehouse
           <input className={input} placeholder="Item code, name or warehouse" value={search} onChange={e => setSearch(e.target.value)}/>
         </label>
+        <label className="min-w-[180px] text-xs font-medium text-slate-600">History event
+          <select className={input} value={sourceKind} onChange={e => setSourceKind(e.target.value as SourceFilter)}>
+            <option value="ALL">All events</option><option value="PURCHASE">Pembelian / Receiving</option>
+            <option value="USAGE">Pemakaian</option><option value="ADJUSTMENT">Penyesuaian / Stock Opname</option>
+          </select>
+        </label>
+        <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
+          <SlidersHorizontal size={15}/> Filters{[productId,warehouseId,poId,receiptId,locationId,departmentId,accountId,dateFrom,dateTo].filter(Boolean).length ? ` (${[productId,warehouseId,poId,receiptId,locationId,departmentId,accountId,dateFrom,dateTo].filter(Boolean).length})` : ""}
+        </Button>
+      </div>
+      {showFilters && <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 md:grid-cols-2 xl:grid-cols-4">
         <label className="text-xs font-medium text-slate-600">Item ID
           <input className={input} inputMode="numeric" value={productId} onChange={numeric(setProductId)} placeholder="All items"/>
         </label>
         <label className="text-xs font-medium text-slate-600">Warehouse ID
           <input className={input} inputMode="numeric" value={warehouseId} onChange={numeric(setWarehouseId)} placeholder="All warehouses"/>
-        </label>
-        <label className="text-xs font-medium text-slate-600">History event
-          <select className={input} value={sourceKind} onChange={e => setSourceKind(e.target.value as SourceFilter)}>
-            <option value="ALL">All events</option><option value="PURCHASE">Pembelian / Receiving</option>
-            <option value="USAGE">Pemakaian</option><option value="ADJUSTMENT">Penyesuaian / Stock Opname</option>
-          </select>
         </label>
         <label className="text-xs font-medium text-slate-600">From date
           <input type="date" className={input} value={dateFrom} max={dateTo || undefined} onChange={e => setDateFrom(e.target.value)}/>
@@ -189,7 +196,7 @@ export default function InventoryMovementPage() {
         <label className="text-xs font-medium text-slate-600">Department ID
           <input className={input} inputMode="numeric" value={departmentId} onChange={numeric(setDepartmentId)} placeholder="All departments"/>
         </label>
-      </div>
+      </div>}
       {invalidRange && <p className="mt-3 text-sm text-red-700">From date must be on or before To date.</p>}
       {focused && <p className="mt-3 text-xs text-slate-500">Stock balances include every event for this item and warehouse, even when event or document filters narrow the visible rows.</p>}
     </Card>
@@ -262,7 +269,7 @@ export default function InventoryMovementPage() {
               <TD className="max-w-[240px]"><span className="block truncate" title={row.notes ?? undefined}>{row.notes ?? "—"}</span></TD>
             </TR>)}</TBody>
         </Table>
-        <div className="p-4"><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="events" onChange={setPage}/></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 print:hidden"><label className="text-xs text-slate-600">Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => setPageSize(Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option></select></label><Pagination page={page} pages={pages} total={total} pageSize={pageSize} noun="events" onChange={setPage}/></div>
       </Card>
     </>}
   </div>;
