@@ -18,7 +18,6 @@ import { useAuthStore } from "@/store/auth";
 import { isSuperuser } from "@/lib/access";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 
-const PAGE_SIZE = 25;
 const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
 const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
 const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -30,6 +29,8 @@ export default function ProductPage() {
   const [selected, setSelected] = useState<Product | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("products-page-size")) === 100 ? 100 : 50);
+  const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [treatmentFilter, setTreatmentFilter] = useState<InventoryTreatment | "">("");
@@ -39,7 +40,7 @@ export default function ProductPage() {
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const query = useProducts({ page, page_size: PAGE_SIZE, search: debouncedSearch || undefined, item_type: itemTypeFilter || undefined, inventory_treatment: treatmentFilter || undefined, tax_category: taxFilter || undefined });
+  const query = useProducts({ page, page_size: pageSize, search: debouncedSearch || undefined, item_type: itemTypeFilter || undefined, inventory_treatment: treatmentFilter || undefined, tax_category: taxFilter || undefined });
   const classification = useQuery({
     queryKey: ["product-classification-master"],
     queryFn: async () => (await productApi.classificationMaster()).data,
@@ -57,7 +58,9 @@ export default function ProductPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => setPage(1), [debouncedSearch, itemTypeFilter, treatmentFilter, taxFilter]);
+  useEffect(() => setPage(1), [debouncedSearch, itemTypeFilter, treatmentFilter, taxFilter, pageSize]);
+
+  useEffect(() => window.localStorage.setItem("products-page-size", String(pageSize)), [pageSize]);
 
   useEffect(() => {
     if (!query.isFetching && data.total_pages != null && page > pages) setPage(pages);
@@ -174,9 +177,9 @@ export default function ProductPage() {
         </div>
       )}
       <Card>
-        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(260px,1fr)_150px_220px_220px]">
-          <SearchBox value={search} onChange={setSearch} placeholder="Search item code or name..." />
-          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={itemTypeFilter} onChange={(event) => setItemTypeFilter(event.target.value as ItemType | "")}>
+        <div className="mb-2 flex flex-wrap items-center gap-2"><div className="min-w-[250px] flex-1">          <SearchBox value={search} onChange={setSearch} placeholder="Search item code or name..." />
+</div><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value=>!value)}>Filters{[itemTypeFilter,treatmentFilter,taxFilter].filter(Boolean).length ? ` (${[itemTypeFilter,treatmentFilter,taxFilter].filter(Boolean).length})` : ""}</Button></div>
+        {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-3">          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={itemTypeFilter} onChange={(event) => setItemTypeFilter(event.target.value as ItemType | "")}>
             <option value="">Buy and sell</option><option value="BUY">Buy items</option><option value="SELL">Sell items</option>
           </select>
           <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={treatmentFilter} onChange={(event) => setTreatmentFilter(event.target.value as InventoryTreatment | "")}>
@@ -195,10 +198,10 @@ export default function ProductPage() {
             <option value="NON_TAXABLE">Non PPN</option>
             <option value="SPECIAL">Special Tax</option>
           </select>
-        </div>
+</div>}
         {query.isLoading ? <Loading/> : <>
           <ProductTable rows={rows} accounts={accountLookup.data ?? []} onEdit={handleEdit} onView={(product) => setDetailId(product.id)}/>
-          <Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="products" onChange={setPage}/>
+          <div className="flex flex-wrap items-center justify-between gap-2"><label className="text-xs">Rows per page <select className="ml-1 rounded border border-slate-300 px-2 py-1" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1)}}><option value={50}>50</option><option value={100}>100</option></select></label><Pagination page={page} pages={pages} total={total} pageSize={pageSize} noun="products" onChange={setPage}/></div>
         </>}
       </Card>
     </div>

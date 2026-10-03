@@ -24,7 +24,6 @@ import {
 
 type StatusFilter = "all" | "active" | "inactive";
 interface ValidationDetail { loc?: Array<string | number>; msg?: string; }
-const PAGE_SIZE = 25;
 
 function errorMessage(error: unknown): string {
   if (!axios.isAxiosError(error)) return "An unexpected error occurred. Please try again.";
@@ -73,9 +72,10 @@ export default function SupplierPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("suppliers-page-size")) === 100 ? 100 : 50);
   const suppliersQuery = useSupplierPage({
     page,
-    page_size: PAGE_SIZE,
+    page_size: pageSize,
     search: debouncedSearch || undefined,
     is_active: status === "all" ? undefined : status === "active",
   });
@@ -97,7 +97,8 @@ export default function SupplierPage() {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
-  useEffect(() => setPage(1), [debouncedSearch, status]);
+  useEffect(() => setPage(1), [debouncedSearch, status, pageSize]);
+  useEffect(() => window.localStorage.setItem("suppliers-page-size", String(pageSize)), [pageSize]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
   function openCreate() { setEditing(null); setFormError(null); setFormOpen(true); }
@@ -147,13 +148,13 @@ _canCreateSupplier ? <Button onClick={openCreate}>Add Supplier</Button> : undefi
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}/>
       <Card>
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row">
           <Input type="search" aria-label="Search suppliers" placeholder="Search supplier code or name..." value={search} className="sm:max-w-md" onChange={(event) => setSearch(event.target.value)}/>
           <select aria-label="Filter suppliers by status" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option>
           </select>
         </div>
-        {suppliersQuery.isLoading ? <div className="py-12"><Loading/></div> : suppliersQuery.isError ? <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center"><p className="text-sm text-red-700">{errorMessage(suppliersQuery.error)}</p><Button className="mt-4" size="sm" variant="outline" onClick={() => suppliersQuery.refetch()}>Try Again</Button></div> : <><SupplierTable rows={rows} busyId={actionId} onView={(supplier) => setViewId(supplier.id)} onEdit={openEdit} onToggle={toggleStatus} onDelete={remove}/><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="suppliers" onChange={setPage}/></>}
+        {suppliersQuery.isLoading ? <div className="py-12"><Loading/></div> : suppliersQuery.isError ? <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center"><p className="text-sm text-red-700">{errorMessage(suppliersQuery.error)}</p><Button className="mt-4" size="sm" variant="outline" onClick={() => suppliersQuery.refetch()}>Try Again</Button></div> : <><SupplierTable rows={rows} busyId={actionId} onView={(supplier) => setViewId(supplier.id)} onEdit={openEdit} onToggle={toggleStatus} onDelete={remove}/><div className="flex flex-wrap items-center justify-between gap-2"><label className="text-xs">Rows per page <select className="ml-1 rounded border border-slate-300 px-2 py-1" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1)}}><option value={50}>50</option><option value={100}>100</option></select></label><Pagination page={page} pages={pages} total={total} pageSize={pageSize} noun="suppliers" onChange={setPage}/></div></>}
       </Card>
     </div>
     <SupplierForm open={formOpen} supplier={editing} loading={createMutation.isPending || (updateMutation.isPending && actionId === null)} error={formError} onClose={() => { if (createMutation.isPending || updateMutation.isPending) return; setFormOpen(false); setEditing(null); setFormError(null); }} onSubmit={save}/>
