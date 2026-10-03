@@ -34,6 +34,6 @@ export type PriceHistoryPage = {
 
 export const purchasingReportsApi = {
   summary: (params: PurchasingSummaryParams = {}) => api.get("/purchasing/summary", { params }),
-  priceHistory: async (params: PurchasingSummaryParams & { search?: string; page?: number; page_size?: number } = {}) =>
+  priceHistory: async (params: PurchasingSummaryParams & { search?: string; product_id?: number; supplier_id?: number; page?: number; page_size?: number } = {}) =>
     (await api.get<PriceHistoryPage>("/purchasing/price-history", { params })).data,
 };
