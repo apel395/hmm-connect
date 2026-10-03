@@ -135,9 +135,9 @@ export function TableCellStack({
   className?: string;
 }) {
   return (
-    <span className={clsx("block min-w-0", className)}>
-      <span className="block truncate font-medium text-slate-800">{primary}</span>
-      {secondary ? <span className={clsx("block truncate", TABLE_UI.secondaryText)}>{secondary}</span> : null}
+    <span className={clsx("inline-flex min-w-0 max-w-full items-baseline gap-1.5 whitespace-nowrap", className)}>
+      <span className="min-w-0 truncate font-medium text-slate-800">{primary}</span>
+      {secondary ? <span className={clsx("min-w-0 truncate", TABLE_UI.secondaryText)}>{secondary}</span> : null}
     </span>
   );
 }

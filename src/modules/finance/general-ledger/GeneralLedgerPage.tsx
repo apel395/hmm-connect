@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
-import { Download } from "lucide-react";
+import { Download, SlidersHorizontal } from "lucide-react";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
@@ -21,16 +21,19 @@ const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 export default function GeneralLedgerPage() {
   const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("ledger-page-size")) === 100 ? 100 : 50);
+  const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<any>({ search: searchParams.get("search") || "", search_type: searchParams.get("search_type") || "ALL", account_id: searchParams.get("account_id") || "", account_from_id: searchParams.get("account_from_id") || "", account_to_id: searchParams.get("account_to_id") || "", date_from: searchParams.get("date_from") || "", date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
-  const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: 20 }).filter(([, value]) => value !== ""));
+  const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: pageSize }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
   const locations = useQuery({ queryKey: ["ledger-filter-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
   const accounts = useQuery({ queryKey: ["ledger-accounts", "all-active"], queryFn: () => getAllAccountLookup({ is_active: true }) });
   const summary = useQuery({ queryKey: ["ledger-summary", filters.account_id, filters.date_from, filters.date_to], queryFn: () => getAccountSummary(Number(filters.account_id), { date_from: filters.date_from || undefined, date_to: filters.date_to || undefined }), enabled: !!filters.account_id });
   const change = (key: string, value: string) => { setFilters({ ...filters, [key]: value }); setPage(1); };
+  useEffect(() => window.localStorage.setItem("ledger-page-size", String(pageSize)), [pageSize]);
   const input = "h-10 rounded border px-3";
 
   useEffect(() => {
@@ -141,13 +144,15 @@ export default function GeneralLedgerPage() {
     <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" />
   </div>} title="General Ledger" description="Read-only posted journal activity with server-calculated balances."/>
     {exportError && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div>}
-    <Card className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-[180px_minmax(260px,1fr)_220px_220px]">
+    <Card className="space-y-2 p-3">
+      <div className="grid gap-2 md:grid-cols-[160px_minmax(260px,1fr)_170px_170px]">
         <label className="text-sm">Search Type<select className={`${input} mt-1 w-full`} value={filters.search_type} onChange={event=>change("search_type",event.target.value)}><option value="ALL">All fields</option><option value="JOURNAL">Journal No.</option><option value="DOCUMENT">Document No.</option><option value="DESCRIPTION">Description</option><option value="ACCOUNT">Account</option><option value="SUPPLIER">Supplier</option></select></label>
         <label className="text-sm">Search<input className={`${input} mt-1 w-full`} placeholder="Type exact or partial value..." value={filters.search} onChange={event => change("search", event.target.value)}/></label>
         <label className="text-sm">From Date<input className={`${input} mt-1 w-full`} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/></label>
         <label className="text-sm">To Date<input className={`${input} mt-1 w-full`} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/></label>
       </div>
+      <div className="flex justify-end"><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}><SlidersHorizontal size={15}/> Filters{["account_id","account_from_id","account_to_id","reference_type","supplier_id","department_id","location_id","business_unit_id"].filter(key => filters[key]).length ? ` (${["account_id","account_from_id","account_to_id","reference_type","supplier_id","department_id","location_id","business_unit_id"].filter(key => filters[key]).length})` : ""}</Button></div>
+      {showFilters && <div className="space-y-3 border-t border-slate-100 pt-3">
       <div className="grid gap-3 md:grid-cols-3">
         <SearchableSelect label="Single Account" value={filters.account_id ? Number(filters.account_id) : undefined} disabled={accounts.isLoading} placeholder="Exact account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_id", id ? String(id) : "")} />
         <SearchableSelect label="From Account" value={filters.account_from_id ? Number(filters.account_from_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="Start account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_from_id", id ? String(id) : "")} />
@@ -159,6 +164,7 @@ export default function GeneralLedgerPage() {
         <input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/>
         <SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} />
       </div>
+      </div>}
     </Card>
     <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit)}</small></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.credit)}</small></div><div><small>Difference</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit-filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit-pageTotals.credit)}</small></div></div></Card>
     {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
@@ -182,7 +188,7 @@ export default function GeneralLedgerPage() {
           </TR>;
         })}</TBody>
       </Table>
-      <div className="mt-4 flex justify-end gap-2 print:hidden"><Button variant="outline" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs print:hidden"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{ledger.data?.total_items ?? 0} entries · Page {page} of {Math.max(ledger.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div>
     </Card>
   </div>;
 }
