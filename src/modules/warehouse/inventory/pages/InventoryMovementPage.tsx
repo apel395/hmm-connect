@@ -20,6 +20,25 @@ const money = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
 });
 type SourceFilter = NonNullable<InventoryMovementFilters["source_kind"]> | "ALL";
+const eventDirection = (row: InventoryMovement): "IN" | "OUT" | null => {
+  if (row.movement_type === "IN" || row.movement_type === "OUT") return row.movement_type;
+  if (Number(row.in_quantity) > 0 && Number(row.out_quantity) === 0) return "IN";
+  if (Number(row.out_quantity) > 0 && Number(row.in_quantity) === 0) return "OUT";
+  return null;
+};
+
+function eventName(row: InventoryMovement) {
+  const direction = eventDirection(row);
+  return <span className="inline-flex items-center gap-2">
+    {direction && <span className={direction === "IN"
+      ? "rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-bold text-emerald-800"
+      : "rounded bg-rose-100 px-1.5 py-0.5 text-xs font-bold text-rose-800"}>
+      {direction}
+    </span>}
+    <span>{row.source_label}</span>
+  </span>;
+}
+
 
 function sourceDocuments(row: InventoryMovement) {
   return <div className="flex flex-col gap-0.5">
@@ -220,7 +239,7 @@ export default function InventoryMovementPage() {
           <TBody>{!rows.length ? <TR><TD colSpan={focused ? 11 : 10} className="p-10 text-center text-slate-500">No stock events match these filters.</TD></TR>
             : rows.map(row => <TR key={row.id} className="whitespace-nowrap">
               <TD>{row.movement_date}</TD>
-              <TD><TableCellStack primary={row.source_label} secondary={row.movement_number}/></TD>
+              <TD><TableCellStack primary={eventName(row)} secondary={row.movement_number}/></TD>
               <TD className="max-w-[230px]"><button type="button" className="text-left text-blue-700 hover:underline" onClick={() => focusItem(row)}>
                 <TableCellStack primary={row.product_name} secondary={row.product_code}/>
               </button></TD>
