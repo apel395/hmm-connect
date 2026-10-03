@@ -15,15 +15,15 @@ export default function Pagination({ page, pages, onChange, total, pageSize, nou
   const end = total && pageSize ? Math.min(page * pageSize, total) : undefined;
 
   return (
-    <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+    <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-2 text-xs sm:flex-row sm:items-center sm:justify-between">
       <span className="text-slate-500">
         {typeof total === "number" && typeof start === "number" && typeof end === "number"
           ? total === 0 ? `0 ${noun}` : `Showing ${start}-${end} of ${total} ${noun}`
           : `Page ${page} of ${safePages}`}
       </span>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => onChange(page - 1)}>Previous</Button>
-        <span className="min-w-24 text-center">Page {page} of {safePages}</span>
+        <span className="min-w-20 text-center">Page {page} of {safePages}</span>
         <Button size="sm" variant="outline" disabled={page >= safePages} onClick={() => onChange(page + 1)}>Next</Button>
       </div>
     </div>
