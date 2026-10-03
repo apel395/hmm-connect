@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Printer } from "lucide-react";
+import { Printer, SlidersHorizontal } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Button from "@/components/ui/Button";
@@ -43,7 +43,8 @@ export default function InventoryPage() {
   const [health, setHealth] = useState<HealthFilter>(initialHealth);
   const initialClass = params.get("movement_class");
   const [movementClass, setMovementClass] = useState<MovementFilter>(initialClass === "FAST" || initialClass === "SLOW" || initialClass === "DEAD" ? initialClass : "ALL");
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("inventory-page-size")) === 100 ? 100 : 50);
+  const [showFilters, setShowFilters] = useState(false);
   const [accountId, setAccountId] = useState<number | undefined>();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -99,6 +100,7 @@ export default function InventoryPage() {
   })();
 
   useEffect(() => setPage(1), [search, health, accountId, movementClass, dateFrom, dateTo, pageSize]);
+  useEffect(() => window.localStorage.setItem("inventory-page-size", String(pageSize)), [pageSize]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
   const changeHealth = (value: HealthFilter) => {
@@ -134,52 +136,42 @@ export default function InventoryPage() {
     </div>
     <div className="hidden print:block"><PageHeader title="Inventory" description="Warehouse stock by date and account." /></div>
 
-    <Card className="p-4">
-      <div className="grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <label className="block min-w-0 text-xs font-medium text-slate-600">
+    <Card className="p-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[220px] flex-1">        <label className="block min-w-0 text-xs font-medium text-slate-600">
           Search item or warehouse
           <input className={input} placeholder="Code, name or warehouse"
             value={search} onChange={e => setSearch(e.target.value)}/>
         </label>
-        <label className="block min-w-0 text-xs font-medium text-slate-600">
-          Inventory account
-          <select className={input} value={accountId ?? ""}
-            onChange={e => setAccountId(e.target.value ? Number(e.target.value) : undefined)}>
-            <option value="">All inventory COA</option>
-            {(accounts.data ?? []).map((account: any) =>
-              <option key={account.id} value={account.id}>
-                {account.account_number} — {account.account_name}
-              </option>
-            )}
+</div>
+        <label className="text-xs font-medium text-slate-600">Stock status
+          <select className={input} value={health} onChange={e => changeHealth(e.target.value as HealthFilter)}>
+            <option value="ALL">All stock</option><option value="HEALTHY">Healthy</option><option value="LOW_STOCK">Low stock</option>
           </select>
         </label>
-        <label className="block min-w-0 text-xs font-medium text-slate-600">
-          Stock status
-          <select className={input} value={health}
-            onChange={e => changeHealth(e.target.value as HealthFilter)}>
-            <option value="ALL">All stock</option>
-            <option value="HEALTHY">Healthy</option>
-            <option value="LOW_STOCK">Low Stock / Reorder Required</option>
-          </select>
-        </label>
-        <label className="block min-w-0 text-xs font-medium text-slate-600">
-          Movement class
-          <select className={input} value={movementClass} onChange={e => changeMovement(e.target.value as MovementFilter)}>
-            <option value="ALL">All movement</option><option value="FAST">Fast</option>
-            <option value="SLOW">Slow</option><option value="DEAD">Dead</option>
-          </select>
-        </label>
-        <label className="block min-w-0 text-xs font-medium text-slate-600">
-          From date
-          <input type="date" className={input} value={dateFrom} disabled={movementClass !== "ALL"}
-            max={dateTo || undefined} onChange={e => setDateFrom(e.target.value)}/>
-        </label>
-        <label className="block min-w-0 text-xs font-medium text-slate-600">
-          To date
-          <input type="date" className={input} value={dateTo}
-            min={dateFrom || undefined} onChange={e => setDateTo(e.target.value)}/>
-        </label>
+        <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
+          <SlidersHorizontal size={15}/> Filters{[accountId,movementClass !== "ALL" ? movementClass : "",dateFrom,dateTo].filter(Boolean).length ? ` (${[accountId,movementClass !== "ALL" ? movementClass : "",dateFrom,dateTo].filter(Boolean).length})` : ""}
+        </Button>
       </div>
+      {showFilters && <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+        <label className="block min-w-0 text-xs font-medium text-slate-600">Inventory account
+          <select className={input} value={accountId ?? ""} onChange={e => setAccountId(e.target.value ? Number(e.target.value) : undefined)}>
+            <option value="">All inventory COA</option>
+            {(accounts.data ?? []).map((account: any) => <option key={account.id} value={account.id}>{account.account_number} — {account.account_name}</option>)}
+          </select>
+        </label>
+        <label className="block min-w-0 text-xs font-medium text-slate-600">Movement class
+          <select className={input} value={movementClass} onChange={e => changeMovement(e.target.value as MovementFilter)}>
+            <option value="ALL">All movement</option><option value="FAST">Fast</option><option value="SLOW">Slow</option><option value="DEAD">Dead</option>
+          </select>
+        </label>
+        <label className="block min-w-0 text-xs font-medium text-slate-600">From date
+          <input type="date" className={input} value={dateFrom} disabled={movementClass !== "ALL"} max={dateTo || undefined} onChange={e => setDateFrom(e.target.value)}/>
+        </label>
+        <label className="block min-w-0 text-xs font-medium text-slate-600">To date
+          <input type="date" className={input} value={dateTo} min={dateFrom || undefined} onChange={e => setDateTo(e.target.value)}/>
+        </label>
+      </div>}
       <p className="mt-3 text-xs text-slate-500">
         {hasRange
           ? `Opening: before ${dateFrom} · Closing: ${dateTo || "current stock"} · Change: closing minus opening.`
@@ -245,8 +237,7 @@ export default function InventoryPage() {
         </div>
       </Card>
 
-      <Card className="p-0">
-        <div className="border-b px-4 py-3 font-semibold">Closing Totals by COA and Location</div>
+      <details className="rounded-lg border border-slate-200 bg-white"><summary className="cursor-pointer px-4 py-2 text-sm font-semibold">Closing totals by COA and location</summary>
         <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-sm">
           <thead><tr><th className="px-4 py-2 text-left">COA</th><th className="px-4 py-2 text-left">Location</th><th className="px-4 py-2 text-right">Quantity</th><th className="px-4 py-2 text-right">Stock Value</th></tr></thead>
           <tbody>{accountLocationTotals.map((row: any) =>
@@ -261,14 +252,14 @@ export default function InventoryPage() {
             <tr className="border-t"><td colSpan={4} className="px-4 py-6 text-center text-slate-500">No stock totals for the selected filters.</td></tr>}
           </tbody>
         </table></div>
-      </Card>
+      </details>
       <Card className="p-0">
         {loading ? <Loading/> : <>
           <InventoryTable rows={rows}/>
           <div className="flex flex-wrap items-center justify-between gap-3 p-4">
             <label className="text-sm text-slate-600">Rows per page
               <select className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => setPageSize(Number(e.target.value))}>
-                {[25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+                {[50, 100].map(size => <option key={size} value={size}>{size}</option>)}
               </select>
             </label>
             <Pagination page={page} pages={pages} total={total} pageSize={pageSize} noun="stock lines" onChange={setPage}/>
