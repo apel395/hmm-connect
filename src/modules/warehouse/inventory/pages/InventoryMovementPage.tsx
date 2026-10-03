@@ -9,6 +9,7 @@ import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import { TABLE_UI } from "@/config/tableUi";
+import { listLocations } from "@/modules/admin/organization/api";
 import { inventoryApi } from "../api";
 import type { InventoryMovement, InventoryMovementFilters } from "../movement";
 import { useInventoryMovements } from "../useInventoryMovement";
@@ -76,6 +77,7 @@ export default function InventoryMovementPage() {
   const [page, setPage] = useState(1);
 
   const accounts = useQuery({ queryKey: ["inventory-coa-filter"], queryFn: inventoryApi.accounts });
+  const locations = useQuery({ queryKey: ["stock-movement-locations"], queryFn: () => listLocations({ is_active: true, assigned_only: true }) });
   const filters = useMemo<InventoryMovementFilters>(() => ({
     product_id: productId ? Number(productId) : undefined,
     warehouse_id: warehouseId ? Number(warehouseId) : undefined,
@@ -173,8 +175,16 @@ export default function InventoryMovementPage() {
         <label className="text-xs font-medium text-slate-600">Receiving ID
           <input className={input} inputMode="numeric" value={receiptId} onChange={numeric(setReceiptId)} placeholder="All receiving"/>
         </label>
-        <label className="text-xs font-medium text-slate-600">Location ID
-          <input className={input} inputMode="numeric" value={locationId} onChange={numeric(setLocationId)} placeholder="All locations"/>
+        <label className="text-xs font-medium text-slate-600">Location
+          <select className={input} value={locationId} onChange={e => setLocationId(e.target.value)}>
+            <option value="">All locations</option>
+            {(locations.data ?? []).map(location => <option key={location.id} value={location.id}>
+              {location.name} ({location.code})
+            </option>)}
+            {locationId && !locations.isLoading && !locations.data?.some(location => String(location.id) === locationId) &&
+              <option value={locationId}>Location #{locationId} (unavailable)</option>}
+          </select>
+          {locations.isError && <span className="mt-1 block text-xs text-red-700">Locations could not be loaded.</span>}
         </label>
         <label className="text-xs font-medium text-slate-600">Department ID
           <input className={input} inputMode="numeric" value={departmentId} onChange={numeric(setDepartmentId)} placeholder="All departments"/>
