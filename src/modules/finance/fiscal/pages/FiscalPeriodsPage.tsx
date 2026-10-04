@@ -18,6 +18,7 @@ type FiscalPeriod = {
   end_date:string;
   is_open:boolean;
   is_closed:boolean;
+  allow_backdated_entries?:boolean;
 };
 
 const currentYear = new Date().getFullYear();
@@ -35,18 +36,24 @@ export default function FiscalPeriodsPage({ embedded = false }: { embedded?: boo
 
   const initialize=useMutation({
     mutationFn:async()=> (await api.post("/fiscal-periods/initialize-year",{fiscal_year:year})).data,
-    onSuccess:(data:any)=>{toast.success(data.message||`Accounting year ${year} initialized`);qc.invalidateQueries({queryKey:["fiscal-periods",year]})},
+    onSuccess:(data:any)=>{toast.success(data.message||`Accounting year ${year} initialized`);qc.invalidateQueries({queryKey:["fiscal-periods"]})},
     onError:(error:any)=>toast.error(error.response?.data?.detail||"Accounting year could not be initialized"),
   });
   const closePeriod=useMutation({
     mutationFn:async(id:number)=>(await api.post(`/fiscal-periods/${id}/close`)).data,
-    onSuccess:()=>{toast.success("Accounting period closed");qc.invalidateQueries({queryKey:["fiscal-periods",year]})},
+    onSuccess:()=>{toast.success("Accounting period closed");qc.invalidateQueries({queryKey:["fiscal-periods"]})},
     onError:(error:any)=>toast.error(error.response?.data?.detail||"Accounting period could not be closed"),
   });
   const reopenPeriod=useMutation({
     mutationFn:async({id,reason}:{id:number;reason:string})=>(await api.post(`/fiscal-periods/${id}/open`,{reason})).data,
-    onSuccess:()=>{toast.success("Accounting period reopened");qc.invalidateQueries({queryKey:["fiscal-periods",year]})},
+    onSuccess:()=>{toast.success("Accounting period reopened");qc.invalidateQueries({queryKey:["fiscal-periods"]})},
     onError:(error:any)=>toast.error(error.response?.data?.detail||"Accounting period could not be reopened"),
+  });
+
+  const backdatePolicy=useMutation({
+    mutationFn:async({id,allow}:{id:number;allow:boolean})=>(await api.patch(`/fiscal-periods/${id}/backdate-policy`,{allow_backdated_entries:allow})).data,
+    onSuccess:()=>{toast.success("Backdate setting saved");qc.invalidateQueries({queryKey:["fiscal-periods"]})},
+    onError:(error:any)=>toast.error(error.response?.data?.detail||"Backdate setting could not be saved"),
   });
 
   const reopen=(period:FiscalPeriod)=>{
@@ -71,10 +78,10 @@ export default function FiscalPeriodsPage({ embedded = false }: { embedded?: boo
 
     <Card className="overflow-x-auto p-0">
       <table className="w-full min-w-[850px] text-sm">
-        <thead><tr className="border-b text-left"><th className="p-3">Period</th><th>Start Date</th><th>End Date</th><th>Status</th><th className="text-right">Action</th></tr></thead>
-        <tbody>{periods.isLoading?<tr><td className="p-8 text-center text-slate-500" colSpan={5}>Loading accounting periods…</td></tr>:!periods.data?.length?<tr><td className="p-8 text-center text-slate-500" colSpan={5}>No accounting periods configured for {year}.</td></tr>:periods.data.map(period=>{const open=period.is_open&&!period.is_closed;return <tr key={period.id} className="border-b"><td className="p-3 font-medium">{period.period_name}</td><td>{period.start_date}</td><td>{period.end_date}</td><td><Badge variant={open?"success":"warning"}>{open?"OPEN":"CLOSED"}</Badge></td><td className="text-right">{open?<Button size="sm" variant="outline" disabled={closePeriod.isPending} onClick={()=>{if(window.confirm(`Close ${period.period_name}? Posting into this period will be blocked.`))closePeriod.mutate(period.id)}}>Close Period</Button>:<Button size="sm" variant="outline" disabled={reopenPeriod.isPending} onClick={()=>reopen(period)}>Reopen</Button>}</td></tr>})}</tbody>
+        <thead><tr className="border-b text-left"><th className="p-3">Period</th><th>Start Date</th><th>End Date</th><th>Status</th><th>Allow backdated entries</th><th className="text-right">Action</th></tr></thead>
+        <tbody>{periods.isLoading?<tr><td className="p-8 text-center text-slate-500" colSpan={6}>Loading accounting periods…</td></tr>:!periods.data?.length?<tr><td className="p-8 text-center text-slate-500" colSpan={6}>No accounting periods configured for {year}.</td></tr>:periods.data.map(period=>{const open=period.is_open&&!period.is_closed;return <tr key={period.id} className="border-b"><td className="p-3 font-medium">{period.period_name}</td><td>{period.start_date}</td><td>{period.end_date}</td><td><Badge variant={open?"success":"warning"}>{open?"OPEN":"CLOSED"}</Badge></td><td><input type="checkbox" aria-label={`Allow backdated entries in ${period.period_name}`} checked={period.allow_backdated_entries!==false} disabled={backdatePolicy.isPending} onChange={event=>backdatePolicy.mutate({id:period.id,allow:event.target.checked})}/></td><td className="text-right">{open?<Button size="sm" variant="outline" disabled={closePeriod.isPending} onClick={()=>{if(window.confirm(`Close ${period.period_name}? Posting into this period will be blocked.`))closePeriod.mutate(period.id)}}>Close Period</Button>:<Button size="sm" variant="outline" disabled={reopenPeriod.isPending} onClick={()=>reopen(period)}>Reopen</Button>}</td></tr>})}</tbody>
       </table>
     </Card>
-    <p className="text-xs text-slate-500">Administrators and Finance users may manage periods. Reopening requires a reason and is recorded in the audit trail. Closed periods are never bypassed automatically.</p>
+    <p className="text-xs text-slate-500">Backdated entries are allowed only when the selected date’s period is open and its backdate setting is enabled. Administrators and Finance users may manage periods. Reopening requires a reason and is recorded in the audit trail. Closed periods are never bypassed automatically.</p>
   </div>;
 }

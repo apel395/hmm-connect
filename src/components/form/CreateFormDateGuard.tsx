@@ -9,6 +9,7 @@ type FiscalPeriod = {
   period_name: string;
   is_open: boolean;
   is_closed: boolean;
+  allow_backdated_entries?: boolean;
 };
 
 function createScope(node: Element): HTMLElement | null {
@@ -42,25 +43,34 @@ function periodFor(value: string, periods: FiscalPeriod[]) {
   return periods.find((period) => period.start_date <= value && value <= period.end_date);
 }
 
+function businessToday() {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const part = (type: string) => parts.find(value => value.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function dateError(value: string, periods: FiscalPeriod[]) {
+  const period = periodFor(value, periods);
+  if (!period) return "No accounting period covers this date.";
+  if (!period.is_open || period.is_closed) return `Accounting period ${period.period_name} is closed. Reopen it before posting.`;
+  if (value < businessToday() && period.allow_backdated_entries === false) return `Backdated entries are disabled for ${period.period_name}. Enable them in Accounting Periods.`;
+  return "";
+}
+
 function validateInput(input: HTMLInputElement, periods: FiscalPeriod[]): boolean {
   if (!isAccountingDate(input) || !input.value) return true;
-  const period = periodFor(dateValue(input), periods);
-  if (period && period.is_open && !period.is_closed) {
-    input.setCustomValidity("");
-    return true;
-  }
-  input.setCustomValidity(period
-    ? `Accounting period ${period.period_name} is closed. Reopen it before posting.`
-    : "No accounting period covers this date.");
-  input.reportValidity();
-  return false;
+  const message = dateError(dateValue(input), periods);
+  input.setCustomValidity(message);
+  if (message) input.reportValidity();
+  return !message;
 }
 
 function updateInput(input: HTMLInputElement, periods: FiscalPeriod[]) {
   if (!isAccountingDate(input)) return;
   const open = periods.filter((period) => period.is_open && !period.is_closed);
   if (open.length) {
-    const openStart = open.map((period) => period.start_date).sort()[0];
+    const today = businessToday();
+    const openStart = open.map(period => period.allow_backdated_entries === false && period.start_date < today ? today : period.start_date).sort()[0];
     const start = input.dataset.minDate && input.dataset.minDate > openStart ? input.dataset.minDate : openStart;
     const end = open.map((period) => period.end_date).sort().at(-1)!;
     input.min = input.type === "datetime-local" ? `${start}T00:00` : start;
@@ -72,17 +82,14 @@ function updateInput(input: HTMLInputElement, periods: FiscalPeriod[]) {
   // The browser can show a continuous range. Validation above catches closed
   // months between separately opened accounting periods.
   if (input.value) {
-    const period = periodFor(dateValue(input), periods);
-    input.setCustomValidity(period?.is_open && !period.is_closed ? "" : period
-      ? `Accounting period ${period.period_name} is closed. Reopen it before posting.`
-      : "No accounting period covers this date.");
+    input.setCustomValidity(dateError(dateValue(input), periods));
   }
 }
 
 export default function CreateFormDateGuard() {
   const authenticated = useAuthStore((state) => state.authenticated);
   const { data: periods } = useQuery({
-    queryKey: ["accounting-period-date-guard"],
+    queryKey: ["fiscal-periods", "date-guard"],
     queryFn: async () => (await api.get<FiscalPeriod[]>("/fiscal-periods")).data,
     staleTime: 60_000,
     refetchInterval: 60_000,

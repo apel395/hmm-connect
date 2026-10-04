@@ -449,7 +449,9 @@ Purpose:
 - close / reopen periods
 - Finance posting-date validation
 
-Current finance rule: an open accounting period permits posting on that period and earlier dates. A date later than every open period is not automatically allowed.
+Posting follows the period containing the selected document date. Each period has an Allow backdated entries setting, enabled by default. A past date is allowed only when that period is open and backdating is enabled. Closed and missing periods reject posting. The frontend calendar and backend posting-status use the same policy; Finance can manage it from Accounting Periods or the System Settings link. Business today is calculated in Asia/Jakarta. The 2026 receiving cutoff remains in force.
+
+Migration required on EC2: `.venv/bin/alembic upgrade head` (revision `20261004_period_backdates`) before deploying the backend that reads the new period policy.
 
 Permission: `finance.manage`
 

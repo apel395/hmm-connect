@@ -77,7 +77,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           <div className="mt-1 text-xs text-slate-500">Source document and inherited organization dimensions are locked for traceability.</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-sm">Receipt Date *<input type="datetime-local" min="2026-01-01T00:00" className="mt-1 h-10 w-full rounded border px-3" value={receivedAt} onChange={e=>setReceivedAt(e.target.value)}/></label>
+          <label className="text-sm">Receipt Date *<input type="datetime-local" data-accounting-date="true" data-min-date="2026-01-01" min="2026-01-01T00:00" className="mt-1 h-10 w-full rounded border px-3" value={receivedAt} onChange={e=>setReceivedAt(e.target.value)}/></label>
           <label className="text-sm">Delivery Note / Reference<input className="mt-1 h-10 w-full rounded border px-3" value={reference} onChange={e=>setReference(e.target.value)}/></label>
           <label className="text-sm">Destination<select className="mt-1 h-10 w-full rounded border px-3" value={destination} onChange={e=>setDestination(e.target.value as any)}><option value="WAREHOUSE">Warehouse</option><option value="DIRECT_USE">Direct Use</option></select></label>
           {destination==="WAREHOUSE"&&<SearchableSelect label="Warehouse" required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>} 
