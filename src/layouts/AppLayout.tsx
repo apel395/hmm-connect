@@ -14,12 +14,12 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#F8F6F1] text-[#202723]">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      {sidebarOpen && <Sidebar open onClose={() => setSidebarOpen(false)} />}
       <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(true)} />
         <WorkspaceTabs />
         <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="mx-auto w-full max-w-[1600px] p-3 sm:p-4 lg:p-5">
+          <div data-workspace-content className="w-full p-2 sm:p-3">
             <Outlet />
           </div>
         </main>
