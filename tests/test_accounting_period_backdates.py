@@ -38,3 +38,28 @@ def test_only_the_selected_dates_open_period_allows_posting():
         assert status["configured"] is True
         assert status["can_post"] is False
         assert status["period_name"] == "February 2026"
+
+def test_open_period_backdate_setting_is_enforced(monkeypatch):
+    monkeypatch.setattr(FiscalPeriodService, "business_today", staticmethod(lambda: date(2026, 1, 20)))
+    engine = create_engine("sqlite:///:memory:")
+    FiscalPeriod.__table__.create(engine)
+    with Session(engine) as db:
+        period = FiscalPeriod(
+            fiscal_year=2026, fiscal_month=1, period_name="January 2026",
+            start_date=date(2026, 1, 1), end_date=date(2026, 1, 31),
+            is_open=True, is_closed=False, allow_backdated_entries=False,
+        )
+        db.add(period)
+        db.commit()
+        with pytest.raises(HTTPException, match="Backdated entries are disabled"):
+            FiscalPeriodService.validate_posting_date(db, date(2026, 1, 8))
+        assert posting_status(posting_date=date(2026, 1, 8), db=db, current_user=object())["can_post"] is False
+        assert FiscalPeriodService.validate_posting_date(db, date(2026, 1, 20)) == period
+        period.allow_backdated_entries = True
+        db.commit()
+        assert FiscalPeriodService.validate_posting_date(db, date(2026, 1, 8)) == period
+        assert posting_status(posting_date=date(2026, 1, 8), db=db, current_user=object())["can_post"] is True
+        period.is_closed = True
+        db.commit()
+        with pytest.raises(HTTPException, match="January 2026 is closed"):
+            FiscalPeriodService.validate_posting_date(db, date(2026, 1, 8))
