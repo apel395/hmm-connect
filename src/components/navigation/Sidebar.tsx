@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X } from "lucide-react";
+import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X, PanelLeftOpen, PanelLeftClose } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
 
-interface Props { open?: boolean; onClose?: () => void }
+interface Props { open?: boolean; onClose?: () => void; collapsed: boolean; onToggle: () => void }
 interface Child { title: string; url?: string; roles?: string[]; permission?: string; disabled?: boolean; badge?: string; exact?: boolean }
 interface Group { title: string; icon: typeof LayoutDashboard; url?: string; roles?: string[]; permission?: string; children?: Child[] }
 
@@ -70,15 +70,10 @@ const groups: Group[] = [
   ] },
 ];
 
-export default function Sidebar({ open = false, onClose }: Props) {
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose?.(); };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+export default function Sidebar({ open = false, onClose, collapsed, onToggle }: Props) {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
+  const [flyout, setFlyout] = useState<string | null>(null);
   const allowed = (roles?: string[], permission?: string) => canAccess(user, roles, permission);
   const childIsActive = (child: Child) => {
     if (!child.url) return false;
@@ -86,18 +81,102 @@ export default function Sidebar({ open = false, onClose }: Props) {
     const pathMatches = child.exact
       ? location.pathname === path
       : location.pathname === path || location.pathname.startsWith(`${path}/`);
-    if (!pathMatches) return false;
-    return query ? location.search === `?${query}` : true;
+    return pathMatches && (!query || location.search === `?${query}`);
   };
-  const activeParent = groups.find((group) => group.children?.some((child) => childIsActive(child)))?.title;
+  const visibleGroups = groups.filter(group => group.url
+    ? allowed(group.roles, group.permission)
+    : group.children?.some(child => allowed(child.roles, child.permission)));
+  const activeParent = visibleGroups.find(group => group.children?.some(childIsActive))?.title;
   const [expanded, setExpanded] = useState<string[]>(activeParent ? [activeParent] : []);
-  useEffect(() => { if (activeParent) setExpanded((value) => value.includes(activeParent) ? value : [...value, activeParent]); }, [activeParent]);
+  useEffect(() => {
+    if (activeParent) setExpanded(value => value.includes(activeParent) ? value : [...value, activeParent]);
+  }, [activeParent]);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setFlyout(null); onClose?.(); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+  const closeNavigation = () => { setFlyout(null); onClose?.(); };
+  const toggleSidebar = () => { setFlyout(null); onToggle(); };
+  const selectedGroup = visibleGroups.find(group => group.title === flyout);
+  const renderChildren = (group: Group) => (group.children ?? [])
+    .filter(child => allowed(child.roles, child.permission))
+    .map(child => child.disabled
+      ? <div key={child.title} className="flex h-8 items-center justify-between gap-2 px-2.5 text-xs text-emerald-100/35">
+          <span className="truncate">{child.title}</span><span className="text-[9px] uppercase">Soon</span>
+        </div>
+      : <NavLink key={child.title} to={child.url!} onClick={closeNavigation}
+          className={`flex h-8 items-center justify-between rounded-lg px-2.5 text-xs ${childIsActive(child) ? "bg-[#0F6758] text-white" : "text-emerald-50/70 hover:bg-white/10 hover:text-white"}`}
+          title={child.title}>
+          <span className="truncate">{child.title}</span>
+          {child.badge && <span className="ml-2 text-[8px] uppercase tracking-wide text-[#D4AA1D]">{child.badge}</span>}
+        </NavLink>);
 
   return <>
-    {open && <button className="fixed inset-0 z-40 bg-black/40" aria-label="Close navigation" onClick={onClose}/>} 
-    <aside className={`fixed inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col overflow-hidden bg-[#073F37] text-white transition-transform ${open ? "translate-x-0" : "-translate-x-full"}`}>
-      <div className="relative shrink-0 border-b border-white/10 px-4 py-3"><button className="absolute right-3 top-3 rounded-lg p-2 text-white/70 hover:bg-white/10" aria-label="Close navigation" onClick={onClose}><X className="h-5 w-5"/></button><div className="flex items-center gap-3 pr-9"><div className="grid h-12 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-white p-1"><img src="/mutiara-merdeka-logo.svg" alt="Mutiara Merdeka" className="h-full w-full object-contain" /></div><div className="min-w-0"><div className="truncate text-sm font-semibold tracking-wide">MMH-Connect</div><div className="truncate text-[11px] text-emerald-100/70">Hotel Mutiara Merdeka</div><div className="text-[9px] tracking-[0.12em] text-[#D4AA1D]">★★★★</div></div></div></div>
-      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden p-2.5">{groups.filter((group) => group.url ? allowed(group.roles, group.permission) : (group.children?.some((child) => allowed(child.roles, child.permission)) ?? false)).map((group) => { const Icon = group.icon; if (group.url) return <NavLink key={group.title} to={group.url} onClick={onClose} className={({isActive}) => `flex h-9 items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium ${isActive ? "bg-[#0F6758] text-white" : "text-emerald-50/75 hover:bg-white/10"}`}><Icon className="h-4 w-4 shrink-0"/><span className="truncate">{group.title}</span></NavLink>; const children = group.children?.filter((child) => allowed(child.roles, child.permission)) ?? []; const isExpanded = expanded.includes(group.title); return <div key={group.title}><button type="button" aria-expanded={isExpanded} onClick={() => setExpanded((value) => value.includes(group.title) ? value.filter((item) => item !== group.title) : [...value, group.title])} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium text-emerald-50/75 hover:bg-white/10"><Icon className="h-4 w-4 shrink-0"/><span className="min-w-0 flex-1 truncate text-left">{group.title}</span><ChevronDown className={`h-4 w-4 shrink-0 transition ${isExpanded ? "rotate-180" : ""}`}/></button>{isExpanded && <div className="ml-4 border-l border-white/10 pl-2">{children.map((child) => child.disabled ? <div key={child.title} className="flex h-8 items-center justify-between gap-2 px-2.5 text-xs text-emerald-100/35"><span className="truncate">{child.title}</span><span className="text-[9px] uppercase">Soon</span></div> : <NavLink key={child.title} to={child.url!} onClick={onClose} className={() => `flex h-8 items-center justify-between rounded-lg px-2.5 text-xs ${childIsActive(child) ? "bg-[#0F6758] text-white" : "text-emerald-50/70 hover:bg-white/10 hover:text-white"}`} title={child.title}><span className="truncate">{child.title}</span>{child.badge && <span className="ml-2 text-[8px] uppercase tracking-wide text-[#D4AA1D]">{child.badge}</span>}</NavLink>)}</div>}</div>; })}</nav>
+    {collapsed && <aside aria-label="Module navigation" className="relative z-50 hidden h-screen w-16 shrink-0 flex-col border-r border-white/10 bg-[#073F37] text-white lg:flex">
+      <div className="flex h-14 shrink-0 items-center justify-center border-b border-white/10">
+        <button type="button" onClick={toggleSidebar} title="Expand navigation" aria-label="Expand navigation" className="rounded-lg p-2 text-emerald-50/80 hover:bg-white/10">
+          <PanelLeftOpen className="h-5 w-5"/>
+        </button>
+      </div>
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+        {visibleGroups.map(group => {
+          const Icon = group.icon;
+          const active = group.title === activeParent || group.title === flyout;
+          const iconClass = `flex h-10 w-full items-center justify-center rounded-lg ${active ? "bg-[#0F6758] text-white" : "text-emerald-50/75 hover:bg-white/10"}`;
+          return group.url
+            ? <NavLink key={group.title} to={group.url} onClick={closeNavigation} title={group.title} aria-label={group.title}
+                className={({ isActive }) => `${iconClass} ${isActive ? "bg-[#0F6758] text-white" : ""}`}>
+                <Icon className="h-5 w-5"/>
+              </NavLink>
+            : <button key={group.title} type="button" title={group.title} aria-label={group.title}
+                aria-expanded={flyout === group.title} aria-controls="sidebar-module-flyout"
+                onClick={() => setFlyout(value => value === group.title ? null : group.title)} className={iconClass}>
+                <Icon className="h-5 w-5"/>
+              </button>;
+        })}
+      </nav>
+    </aside>}
+    {collapsed && selectedGroup && <>
+      <button type="button" className="fixed inset-0 z-40 hidden bg-black/10 lg:block" aria-label="Close module submenu" onClick={() => setFlyout(null)}/>
+      <section id="sidebar-module-flyout" aria-label={selectedGroup.title} className="fixed bottom-0 left-16 top-0 z-50 hidden w-64 flex-col border-l border-white/10 bg-[#073F37] text-white shadow-xl lg:flex">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-3">
+          <span className="text-sm font-semibold">{selectedGroup.title}</span>
+          <button type="button" aria-label="Close module submenu" onClick={() => setFlyout(null)} className="rounded p-2 hover:bg-white/10"><X className="h-4 w-4"/></button>
+        </div>
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">{renderChildren(selectedGroup)}</nav>
+      </section>
+    </>}
+    {open && <button type="button" className="fixed inset-0 z-40 bg-black/40 lg:hidden" aria-label="Close navigation" onClick={onClose}/>}
+    <aside aria-label="Full navigation" className={`fixed inset-y-0 left-0 z-50 h-screen w-64 shrink-0 flex-col overflow-hidden bg-[#073F37] text-white lg:static ${open ? "flex" : "hidden"} ${collapsed ? "lg:hidden" : "lg:flex"}`}>
+      <div className="relative shrink-0 border-b border-white/10 px-3 py-3">
+        <button type="button" className="absolute right-2 top-3 rounded-lg p-2 text-white/70 hover:bg-white/10 lg:hidden" aria-label="Close navigation" onClick={onClose}><X className="h-5 w-5"/></button>
+        <button type="button" className="absolute right-2 top-3 hidden rounded-lg p-2 text-white/70 hover:bg-white/10 lg:block" aria-label="Collapse navigation" title="Collapse navigation" onClick={toggleSidebar}><PanelLeftClose className="h-5 w-5"/></button>
+        <div className="flex items-center gap-2 pr-9">
+          <div className="grid h-10 w-12 shrink-0 place-items-center rounded-lg bg-white p-1"><img src="/mutiara-merdeka-logo.svg" alt="Mutiara Merdeka" className="h-full w-full object-contain"/></div>
+          <div className="min-w-0"><div className="truncate text-sm font-semibold">MMH-Connect</div><div className="truncate text-[10px] text-emerald-100/70">Hotel Mutiara Merdeka</div></div>
+        </div>
+      </div>
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden p-2.5">
+        {visibleGroups.map(group => {
+          const Icon = group.icon;
+          if (group.url) return <NavLink key={group.title} to={group.url} onClick={closeNavigation}
+            className={({ isActive }) => `flex h-9 items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium ${isActive ? "bg-[#0F6758] text-white" : "text-emerald-50/75 hover:bg-white/10"}`}>
+            <Icon className="h-4 w-4 shrink-0"/><span className="truncate">{group.title}</span>
+          </NavLink>;
+          const isExpanded = expanded.includes(group.title);
+          return <div key={group.title}>
+            <button type="button" aria-expanded={isExpanded}
+              onClick={() => setExpanded(value => value.includes(group.title) ? value.filter(item => item !== group.title) : [...value, group.title])}
+              className="flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium text-emerald-50/75 hover:bg-white/10">
+              <Icon className="h-4 w-4 shrink-0"/><span className="min-w-0 flex-1 truncate text-left">{group.title}</span><ChevronDown className={`h-4 w-4 shrink-0 transition ${isExpanded ? "rotate-180" : ""}`}/>
+            </button>
+            {isExpanded && <div className="ml-4 border-l border-white/10 pl-2">{renderChildren(group)}</div>}
+          </div>;
+        })}
+      </nav>
       <div className="shrink-0 border-t border-white/10 p-3 text-[11px] text-emerald-100/55"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#D4AA1D]"/>Premium hotel operations</div></div>
     </aside>
   </>;
