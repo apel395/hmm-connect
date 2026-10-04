@@ -12,6 +12,7 @@ class FiscalPeriodResponse(BaseModel):
     end_date: date
     is_open: bool
     is_closed: bool
+    allow_backdated_entries: bool = True
 
     class Config:
         from_attributes = True
@@ -31,3 +32,7 @@ class FiscalYearInitialize(BaseModel):
 
 class FiscalPeriodReason(BaseModel):
     reason: str = Field(min_length=3, max_length=255)
+
+
+class FiscalPeriodBackdatePolicy(BaseModel):
+    allow_backdated_entries: bool
