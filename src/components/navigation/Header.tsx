@@ -21,7 +21,7 @@ export default function Header({ onMenuClick }: Props) {
     <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-[#E8E2D8] bg-white/95 px-4 backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3">
         <button
-          className="rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] lg:hidden"
+          className="rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]"
           aria-label="Open navigation"
           onClick={onMenuClick}
         >
