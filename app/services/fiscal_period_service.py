@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import inspect
@@ -8,6 +9,10 @@ from app.models.fiscal_period import FiscalPeriod
 
 
 class FiscalPeriodService:
+
+    @staticmethod
+    def business_today() -> date:
+        return datetime.now(ZoneInfo("Asia/Jakarta")).date()
 
     @staticmethod
     def validate_posting_date(
@@ -30,6 +35,11 @@ class FiscalPeriodService:
         # Posting is governed by the period containing the selected date.
         # An open later month must not silently reopen a closed earlier month.
         if period and period.is_open and not period.is_closed:
+            if posting_date < FiscalPeriodService.business_today() and not period.allow_backdated_entries:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Backdated entries are disabled for {period.period_name}. Enable them in Accounting Periods.",
+                )
             return period
 
         if period:

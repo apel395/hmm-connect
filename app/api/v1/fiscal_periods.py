@@ -9,12 +9,14 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import require_permission
 from app.models.fiscal_period import FiscalPeriod
 from app.schemas.fiscal_period import (
+    FiscalPeriodBackdatePolicy,
     FiscalPeriodCreate,
     FiscalPeriodReason,
     FiscalPeriodResponse,
     FiscalYearInitialize,
 )
 from app.services.audit import record_audit
+from app.services.fiscal_period_service import FiscalPeriodService
 
 router = APIRouter(prefix="/fiscal-periods", tags=["Fiscal Period"])
 manage_access = require_permission("finance.manage")
@@ -50,7 +52,8 @@ def posting_status(
             "fiscal_year": posting_date.year,
             "message": "No accounting period covers this posting date.",
         }
-    can_post = period.is_open and not period.is_closed
+    backdate_allowed = posting_date >= FiscalPeriodService.business_today() or period.allow_backdated_entries
+    can_post = period.is_open and not period.is_closed and backdate_allowed
     return {
         "configured": True,
         "can_post": can_post,
@@ -61,10 +64,13 @@ def posting_status(
         "fiscal_month": period.fiscal_month,
         "is_open": period.is_open,
         "is_closed": period.is_closed,
+        "allow_backdated_entries": period.allow_backdated_entries,
         "message": (
             "Posting date is allowed by the open accounting period."
             if can_post
-            else f"Fiscal period {period.period_name} is closed."
+            else (f"Backdated entries are disabled for {period.period_name}."
+                  if period.is_open and not period.is_closed and not backdate_allowed
+                  else f"Fiscal period {period.period_name} is closed.")
         ),
     }
 
@@ -189,3 +195,26 @@ def reopen_period(
     )
     db.commit()
     return {"message": "Fiscal period reopened."}
+
+
+@router.patch("/{period_id}/backdate-policy", response_model=FiscalPeriodResponse)
+def update_backdate_policy(
+    period_id: int,
+    data: FiscalPeriodBackdatePolicy,
+    db: Session = Depends(get_db),
+    current_user=Depends(manage_access),
+):
+    period = db.query(FiscalPeriod).filter(FiscalPeriod.id == period_id).with_for_update().first()
+    if not period:
+        raise HTTPException(404, "Fiscal period not found.")
+    previous = period.allow_backdated_entries
+    period.allow_backdated_entries = data.allow_backdated_entries
+    record_audit(
+        db, current_user, "FISCAL_PERIOD_BACKDATE_POLICY_UPDATED", "FISCAL_PERIOD",
+        f"Updated backdate policy for {period.period_name}", entity_id=period.id,
+        before_data={"allow_backdated_entries": previous},
+        after_data={"allow_backdated_entries": data.allow_backdated_entries},
+    )
+    db.commit()
+    db.refresh(period)
+    return period
