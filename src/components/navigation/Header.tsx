@@ -1,12 +1,14 @@
-import { Bell, CircleHelp, Menu } from "lucide-react";
+import { Bell, CircleHelp, Menu, PanelLeftOpen, PanelLeftClose } from "lucide-react";
 import { Link } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 
 interface Props {
   onMenuClick: () => void;
+  sidebarCollapsed: boolean;
+  onSidebarToggle: () => void;
 }
 
-export default function Header({ onMenuClick }: Props) {
+export default function Header({ onMenuClick, sidebarCollapsed, onSidebarToggle }: Props) {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const name = user?.full_name || user?.username || "Hotel User";
@@ -21,11 +23,16 @@ export default function Header({ onMenuClick }: Props) {
     <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-[#E8E2D8] bg-white/95 px-4 backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3">
         <button
-          className="rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]"
+          className="rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] lg:hidden"
           aria-label="Open navigation"
           onClick={onMenuClick}
         >
           <Menu className="h-5 w-5" />
+        </button>
+        <button type="button" className="hidden rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] lg:block"
+          aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={onSidebarToggle}>
+          {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5"/> : <PanelLeftClose className="h-5 w-5"/>}
         </button>
         <div className="truncate text-sm font-semibold sm:text-base">
           Hotel Mutiara Merdeka Pekanbaru
