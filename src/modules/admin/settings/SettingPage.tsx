@@ -41,7 +41,7 @@ export default function SettingPage() {
         <Landmark className="mb-3 h-5 w-5 text-emerald-700"/>
         <h2 className="font-semibold">Finance Setup</h2>
         <p className="mt-1 text-sm text-slate-500">Maintain Chart of Accounts, Posting Rules, and Fiscal Periods outside daily Finance operations.</p>
-        <Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/finance-setup">Open Finance Setup</Link>
+        <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-emerald-700"><Link className="hover:underline" to="/finance-setup">Finance Setup</Link><Link className="hover:underline" to="/finance-setup/accounting-periods">Periods & Backdate Settings</Link></div>
       </Card>
 
       <Card>
