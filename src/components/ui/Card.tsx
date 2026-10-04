@@ -32,7 +32,7 @@ export function CardHeader({
   return (
     <div
       className={clsx(
-        "flex items-center justify-between border-b border-slate-200 px-4 py-3",
+        "flex items-center justify-between border-b border-slate-200 px-3 py-2",
         className
       )}
       {...props}
@@ -100,7 +100,7 @@ export function CardFooter({
   return (
     <div
       className={clsx(
-        "flex items-center justify-end gap-2 border-t border-slate-200 px-4 py-3",
+        "flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-2",
         className
       )}
       {...props}

@@ -51,6 +51,10 @@ The `AP` role is intentionally restricted to the Accounts Payable workspace and 
 
 There are **no documented default/trial users or passwords** in this repository. User accounts are managed from Administration > Users.
 
+## Workspace layout
+
+Navigation is hidden by default on desktop and mobile. The header menu button opens the navigation drawer; selecting a module, clicking outside, or pressing Escape closes it. Lists use compact single-line rows and reduced spacing between table sections. Stock Movement displays IN or OUT in the Event column, with source links in the Source document column.
+
 ## Module snapshot
 
 ### Dashboard

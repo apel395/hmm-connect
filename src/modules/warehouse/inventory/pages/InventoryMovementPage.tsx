@@ -35,13 +35,12 @@ function eventName(row: InventoryMovement) {
       : "rounded bg-rose-100 px-1.5 py-0.5 text-xs font-bold text-rose-800"}>
       {direction}
     </span>}
-    <span>{row.source_label}</span>
   </span>;
 }
 
 
 function sourceDocuments(row: InventoryMovement) {
-  return <div className="flex flex-col gap-0.5">
+  return <div className="inline-flex items-center gap-2 whitespace-nowrap">
     {row.goods_receipt_id && <Link className={TABLE_UI.documentLink} to={`/receiving/${row.goods_receipt_id}`}>
       {row.receipt_number ?? row.reference_number ?? `Receiving #${row.goods_receipt_id}`}
     </Link>}
@@ -130,7 +129,7 @@ export default function InventoryMovementPage() {
     setParams(next, { replace: true });
   };
 
-  return <div className="space-y-6">
+  return <div className="space-y-3">
     <PageHeader title={focused ? "Item Stock History" : "Stock Movement"}
       description={focused
         ? "Opening stock, purchases, usage, and adjustments in date order. The running quantity follows the item in each warehouse."
@@ -205,15 +204,15 @@ export default function InventoryMovementPage() {
     {query.isLoading ? <Loading/> : <>
       {focused && <>
         <div className="grid gap-3 md:grid-cols-3">
-          <Card className="p-4"><div className="text-xs uppercase text-slate-500">Stock awal · {result?.history_period?.date_from ?? "2026-01-01"}</div>
+          <Card className="p-3"><div className="text-xs uppercase text-slate-500">Stock awal · {result?.history_period?.date_from ?? "2026-01-01"}</div>
             <div className="mt-1 text-2xl font-bold">{quantity(openingQuantity)}</div></Card>
-          <Card className="p-4"><div className="text-xs uppercase text-slate-500">Stock akhir · {result?.history_period?.date_to ?? "today"}</div>
+          <Card className="p-3"><div className="text-xs uppercase text-slate-500">Stock akhir · {result?.history_period?.date_to ?? "today"}</div>
             <div className="mt-1 text-2xl font-bold">{quantity(closingQuantity)}</div></Card>
-          <Card className="p-4"><div className="text-xs uppercase text-slate-500">Matching events</div>
+          <Card className="p-3"><div className="text-xs uppercase text-slate-500">Matching events</div>
             <div className="mt-1 text-2xl font-bold">{total}</div></Card>
         </div>
         <Card className="overflow-x-auto p-0">
-          <div className="border-b px-4 py-3 font-semibold">Opening and closing by warehouse</div>
+          <div className="border-b px-3 py-2 font-semibold">Opening and closing by warehouse</div>
           <table className="w-full min-w-[580px] text-sm"><thead><tr>
             <th className="px-4 py-2 text-left">Warehouse</th><th className="px-4 py-2 text-right">Opening qty</th>
             <th className="px-4 py-2 text-right">Closing qty</th>
@@ -227,13 +226,13 @@ export default function InventoryMovementPage() {
       </>}
 
       <div className="grid gap-3 md:grid-cols-3">
-        {!focused && <Card className="p-4"><div className="text-xs uppercase text-slate-500">Matching events</div><div className="mt-1 text-2xl font-bold">{total}</div></Card>}
-        <Card className="p-4"><div className="text-xs uppercase text-slate-500">Filtered stock in</div><div className="mt-1 text-xl font-bold">{quantity(summary?.in_qty)} · Rp {money(summary?.in_value)}</div></Card>
-        <Card className="p-4"><div className="text-xs uppercase text-slate-500">Filtered stock out</div><div className="mt-1 text-xl font-bold">{quantity(summary?.out_qty)} · Rp {money(summary?.out_value)}</div></Card>
+        {!focused && <Card className="p-3"><div className="text-xs uppercase text-slate-500">Matching events</div><div className="mt-1 text-2xl font-bold">{total}</div></Card>}
+        <Card className="p-3"><div className="text-xs uppercase text-slate-500">Filtered stock in</div><div className="mt-1 text-xl font-bold">{quantity(summary?.in_qty)} · Rp {money(summary?.in_value)}</div></Card>
+        <Card className="p-3"><div className="text-xs uppercase text-slate-500">Filtered stock out</div><div className="mt-1 text-xl font-bold">{quantity(summary?.out_qty)} · Rp {money(summary?.out_value)}</div></Card>
       </div>
 
       <Card className="overflow-x-auto p-0">
-        <div className="border-b px-4 py-3 font-semibold">Filtered totals by inventory account</div>
+        <div className="border-b px-3 py-2 font-semibold">Filtered totals by inventory account</div>
         <table className="w-full min-w-[790px] text-sm"><thead><tr>
           <th className="px-4 py-2 text-left">Inventory COA</th><th className="px-4 py-2 text-right">IN Qty</th>
           <th className="px-4 py-2 text-right">OUT Qty</th><th className="px-4 py-2 text-right">Net Qty</th>
@@ -247,7 +246,7 @@ export default function InventoryMovementPage() {
       </Card>
 
       <Card className="overflow-hidden p-0">
-        <div className="border-b px-4 py-3 font-semibold">{focused ? "Item timeline · oldest first" : "Recent item events · select an item for its timeline"}</div>
+        <div className="border-b px-3 py-2 font-semibold">{focused ? "Item timeline · oldest first" : "Recent item events · select an item for its timeline"}</div>
         <Table className="min-w-[1320px]" containerClassName="rounded-none border-0 shadow-none">
           <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Event</TH><TH>Item</TH><TH>Warehouse</TH>
             <TH numeric>In</TH><TH numeric>Out</TH>{focused && <TH numeric>On hand</TH>}
@@ -256,7 +255,7 @@ export default function InventoryMovementPage() {
           <TBody>{!rows.length ? <TR><TD colSpan={focused ? 11 : 10} className="p-10 text-center text-slate-500">No stock events match these filters.</TD></TR>
             : rows.map(row => <TR key={row.id} className="whitespace-nowrap">
               <TD>{row.movement_date}</TD>
-              <TD><TableCellStack primary={eventName(row)} secondary={row.movement_number}/></TD>
+              <TD>{eventName(row)}</TD>
               <TD className="max-w-[230px]"><button type="button" className="text-left text-blue-700 hover:underline" onClick={() => focusItem(row)}>
                 <TableCellStack primary={row.product_name} secondary={row.product_code}/>
               </button></TD>
