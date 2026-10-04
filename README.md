@@ -53,7 +53,7 @@ There are **no documented default/trial users or passwords** in this repository.
 
 ## Workspace layout
 
-Navigation is hidden by default on desktop and mobile. The header menu button opens the navigation drawer; selecting a module, clicking outside, or pressing Escape closes it. Lists use compact single-line rows and reduced spacing between table sections. Stock Movement displays IN or OUT in the Event column, with source links in the Source document column.
+Desktop navigation starts as a narrow icon rail. Hovering shows the module name; clicking an icon opens its permitted submenu. The rail or header toggle expands the full sidebar, and the browser remembers the preference. Mobile uses the header menu drawer. Selecting a module, clicking outside, or pressing Escape closes the drawer or submenu. Lists use compact single-line rows and reduced spacing between table sections. Stock Movement displays IN or OUT in the Event column, with source links in the Source document column.
 
 ## Module snapshot
 
