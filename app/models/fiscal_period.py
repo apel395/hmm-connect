@@ -47,6 +47,10 @@ class FiscalPeriod(Base, TimestampMixin):
         nullable=False,
     )
 
+    allow_backdated_entries: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False,
+    )
+
     closed_at: Mapped[date | None] = mapped_column(
         Date,
         nullable=True,
