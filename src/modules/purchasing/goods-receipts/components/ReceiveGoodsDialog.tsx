@@ -49,7 +49,7 @@ const money = (value: unknown) => Number(value ?? 0).toLocaleString("en-US", { m
 
 export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Props) {
   const { data: warehouses = [] } = useWarehouses();
-  const { isSuperuser, canAccess } = useAuthorization();
+  const { isSuperuser, canAccess, hasPermission } = useAuthorization();
   const canCorrectCost = isSuperuser() || canAccess(["GENERAL MANAGER", "FINANCE MANAGER", "PURCHASING MANAGER", "PROCUREMENT MANAGER"]);
   const receivable = useReceivablePurchaseOrders(open && !purchaseOrder);
   const [purchaseOrderId, setPurchaseOrderId] = useState<number>();
@@ -58,6 +58,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
   const [destinationType, setDestinationType] = useState<"WAREHOUSE" | "DIRECT_USE">("WAREHOUSE");
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [receivedAt, setReceivedAt] = useState(nowLocal());
+  const [historical, setHistorical] = useState(false);
   const [deliveryNote, setDeliveryNote] = useState("");
   const [notes, setNotes] = useState("");
   const [costCorrectionReason, setCostCorrectionReason] = useState("");
@@ -73,7 +74,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
   useEffect(() => {
     if (!open) return;
     setPurchaseOrderId(purchaseOrder?.id);
-    setDestinationType("WAREHOUSE"); setWarehouseId(null); setReceivedAt(nowLocal()); setDeliveryNote(""); setNotes(""); setCostCorrectionReason(""); setLines([]);
+    setHistorical(false); setDestinationType("WAREHOUSE"); setWarehouseId(null); setReceivedAt(nowLocal()); setDeliveryNote(""); setNotes(""); setCostCorrectionReason(""); setLines([]);
   }, [open, purchaseOrder]);
   useEffect(() => {
     setLines((remaining.data ?? []).map((item: any) => ({ ...item, ordered_quantity: Number(item.ordered_quantity), received_quantity: Number(item.received_quantity), remaining_quantity: Number(item.remaining_quantity), quantity: 0, unit_cost: Number(item.unit_cost ?? 0), original_unit_cost: Number(item.unit_cost ?? 0), is_taxable: Boolean(item.is_taxable), tax_rate: Number(item.tax_rate ?? 0) })));
@@ -95,7 +96,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
     if (hasCostOverride && !canCorrectCost) return alert("Only an authorized manager can override PO unit cost.");
     if (hasCostOverride && costCorrectionReason.trim().length < 3) return alert("Enter a correction reason.");
     try {
-      await receive.mutateAsync({ purchaseOrderId, payload: { received_at: new Date(receivedAt).toISOString(), external_reference: deliveryNote || null, destination_type: destinationType, warehouse_id: destinationType === "WAREHOUSE" ? warehouseId : null, notes: notes || null, cost_correction_reason: hasCostOverride ? costCorrectionReason.trim() : null, items: selected.map((line) => ({ purchase_order_item_id: line.purchase_order_item_id, quantity: line.quantity, unit_cost: line.unit_cost })) } });
+      await receive.mutateAsync({ purchaseOrderId, payload: { source_type: historical ? "HISTORICAL_ENTRY" : "LIVE", received_at: new Date(receivedAt).toISOString(), external_reference: deliveryNote || null, destination_type: destinationType, warehouse_id: destinationType === "WAREHOUSE" ? warehouseId : null, notes: notes || null, cost_correction_reason: hasCostOverride ? costCorrectionReason.trim() : null, items: selected.map((line) => ({ purchase_order_item_id: line.purchase_order_item_id, quantity: line.quantity, unit_cost: line.unit_cost })) } });
       onClose();
     } catch (error) {
       const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
@@ -110,6 +111,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
       <DialogHeader><DialogTitle>Create Receiving Report</DialogTitle></DialogHeader>
       <DialogBody>
         <div className="space-y-4">
+          {hasPermission("receiving.post") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={historical} onChange={event => setHistorical(event.target.checked)}/> Historical entry (Draft → Post)</label>}
           {!purchaseOrder && <SearchableSelect label="Approved Purchase Order" required value={purchaseOrderId} disabled={receivable.isLoading} placeholder={receivable.isLoading ? "Loading approved POs..." : "Type PO number or supplier..."} options={poOptions} onChange={setPurchaseOrderId}/>} 
           {selectedPO && <div className="grid gap-3 rounded-lg border bg-slate-50 p-3 md:grid-cols-3"><div><span className="text-xs text-slate-500">Business Unit</span><div className="font-medium">{businessUnitName}</div></div><div><span className="text-xs text-slate-500">Department</span><div className="font-medium">{departmentName}</div></div><div><span className="text-xs text-slate-500">Location</span><div className="font-medium">{locationName}</div></div></div>}
           <div className="grid gap-3 md:grid-cols-2"><label>Receipt Date<input type="datetime-local" data-accounting-date="true" data-min-date="2026-01-01" min="2026-01-01T00:00" className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)}/></label><label>Delivery Note Number<input className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={deliveryNote} onChange={(event) => setDeliveryNote(event.target.value)}/></label></div>
