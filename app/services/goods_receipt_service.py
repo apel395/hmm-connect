@@ -330,10 +330,10 @@ class GoodsReceiptService:
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
         cls._check_access(user, "receiving.create")
-        if data.source_type == "HISTORICAL_ENTRY":
-            cls.check_historical_entry(db, data.received_at, user)
         if data.received_at and data.received_at.date() < STOCK_CUTOFF:
             raise HTTPException(422, "Receiving dated before 2026 is excluded from stock")
+        if data.source_type == "HISTORICAL_ENTRY":
+            cls.check_historical_entry(db, data.received_at, user)
         from app.services.organization_dimensions import validate_dimensions
 
         purchase_order = db.get(PurchaseOrder, data.purchase_order_id) if data.purchase_order_id else None
