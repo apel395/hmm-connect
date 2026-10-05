@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X, PanelLeftOpen, PanelLeftClose } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
@@ -74,6 +75,12 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const [flyout, setFlyout] = useState<string | null>(null);
+  const [tooltip, setTooltip] = useState<{ title: string; top: number } | null>(null);
+  const tooltipId = useId();
+  const showTooltip = (title: string, target: HTMLElement) => {
+    const bounds = target.getBoundingClientRect();
+    setTooltip({ title, top: Math.max(20, Math.min(window.innerHeight - 20, bounds.top + bounds.height / 2)) });
+  };
   const allowed = (roles?: string[], permission?: string) => canAccess(user, roles, permission);
   const childIsActive = (child: Child) => {
     if (!child.url) return false;
@@ -93,13 +100,22 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
   }, [activeParent]);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setFlyout(null); onClose?.(); }
+      if (event.key === "Escape") { setTooltip(null); setFlyout(null); onClose?.(); }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
-  const closeNavigation = () => { setFlyout(null); onClose?.(); };
-  const toggleSidebar = () => { setFlyout(null); onToggle(); };
+  useEffect(() => {
+    const hideTooltip = () => setTooltip(null);
+    window.addEventListener("resize", hideTooltip);
+    window.addEventListener("scroll", hideTooltip, true);
+    return () => {
+      window.removeEventListener("resize", hideTooltip);
+      window.removeEventListener("scroll", hideTooltip, true);
+    };
+  }, []);
+  const closeNavigation = () => { setTooltip(null); setFlyout(null); onClose?.(); };
+  const toggleSidebar = () => { setTooltip(null); setFlyout(null); onToggle(); };
   const selectedGroup = visibleGroups.find(group => group.title === flyout);
   const renderChildren = (group: Group) => (group.children ?? [])
     .filter(child => allowed(child.roles, child.permission))
@@ -117,7 +133,11 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
   return <>
     {collapsed && <aside aria-label="Module navigation" className="relative z-50 hidden h-screen w-16 shrink-0 flex-col border-r border-white/10 bg-[#073F37] text-white lg:flex">
       <div className="flex h-14 shrink-0 items-center justify-center border-b border-white/10">
-        <button type="button" onClick={toggleSidebar} title="Expand navigation" aria-label="Expand navigation" className="rounded-lg p-2 text-emerald-50/80 hover:bg-white/10">
+        <button type="button" onClick={toggleSidebar} aria-label="Expand navigation"
+          aria-describedby={tooltip?.title === "Expand navigation" ? tooltipId : undefined}
+          onMouseEnter={event => showTooltip("Expand navigation", event.currentTarget)}
+          onMouseLeave={() => setTooltip(null)} onFocus={event => showTooltip("Expand navigation", event.currentTarget)}
+          onBlur={() => setTooltip(null)} className="rounded-lg p-2 text-emerald-50/80 hover:bg-white/10">
           <PanelLeftOpen className="h-5 w-5"/>
         </button>
       </div>
@@ -127,18 +147,33 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
           const active = group.title === activeParent || group.title === flyout;
           const iconClass = `flex h-10 w-full items-center justify-center rounded-lg ${active ? "bg-[#0F6758] text-white" : "text-emerald-50/75 hover:bg-white/10"}`;
           return group.url
-            ? <NavLink key={group.title} to={group.url} onClick={closeNavigation} title={group.title} aria-label={group.title}
+            ? <NavLink key={group.title} to={group.url} onClick={closeNavigation} aria-label={group.title}
+                aria-describedby={tooltip?.title === group.title ? tooltipId : undefined}
+                onMouseEnter={event => showTooltip(group.title, event.currentTarget)}
+                onMouseLeave={() => setTooltip(null)} onFocus={event => showTooltip(group.title, event.currentTarget)}
+                onBlur={() => setTooltip(null)}
                 className={({ isActive }) => `${iconClass} ${isActive ? "bg-[#0F6758] text-white" : ""}`}>
                 <Icon className="h-5 w-5"/>
               </NavLink>
-            : <button key={group.title} type="button" title={group.title} aria-label={group.title}
+            : <button key={group.title} type="button" aria-label={group.title}
+                aria-describedby={tooltip?.title === group.title ? tooltipId : undefined}
+                onMouseEnter={event => showTooltip(group.title, event.currentTarget)}
+                onMouseLeave={() => setTooltip(null)} onFocus={event => showTooltip(group.title, event.currentTarget)}
+                onBlur={() => setTooltip(null)}
                 aria-expanded={flyout === group.title} aria-controls="sidebar-module-flyout"
-                onClick={() => setFlyout(value => value === group.title ? null : group.title)} className={iconClass}>
+                onClick={() => { setTooltip(null); setFlyout(value => value === group.title ? null : group.title); }} className={iconClass}>
                 <Icon className="h-5 w-5"/>
               </button>;
         })}
       </nav>
     </aside>}
+    {collapsed && tooltip && createPortal(
+      <div id={tooltipId} role="tooltip"
+        className="pointer-events-none fixed z-[100] hidden max-w-64 -translate-y-1/2 whitespace-nowrap rounded-md bg-[#073F37] px-3 py-2 text-xs font-medium text-white shadow-lg lg:block"
+        style={{ left: "4.5rem", top: tooltip.top }}>
+        <span aria-hidden="true" className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-[#073F37]" />
+        {tooltip.title}
+      </div>, document.body)}
     {collapsed && selectedGroup && <>
       <button type="button" className="fixed inset-0 z-40 hidden bg-black/10 lg:block" aria-label="Close module submenu" onClick={() => setFlyout(null)}/>
       <section id="sidebar-module-flyout" aria-label={selectedGroup.title} className="fixed bottom-0 left-16 top-0 z-50 hidden w-64 flex-col border-l border-white/10 bg-[#073F37] text-white shadow-xl lg:flex">
