@@ -71,5 +71,50 @@ class ClassificationCorrectionTests(unittest.TestCase):
         self.assertEqual(len({r['id'] for r in RULES}),93)
         self.assertEqual(len({r['code'] for r in RULES}),93)
 
+    def test_missing_food_catalog_uses_existing_item_codes(self):
+        snapshots=[{'group_code':'1','group_name':'FOOD','subgroup_code':'1-5','subgroup_name':'VEGETABLES'}]
+        group=module.resolve_group([],snapshots,'FOOD')
+        self.assertEqual(group['code'],'1')
+        self.assertTrue(group['_new'])
+        subgroup=module.resolve_subgroup([],snapshots,group,['VEGETABLES'])
+        self.assertEqual(subgroup['code'],'1-5')
+        rule=next(r for r in RULES if r['id']==4700)
+        product={**rule['expected'],'id':4700,'code':rule['code'],'name':rule['name'],
+                 'group_code':'4','subgroup_code':'4-2','cogs_account_id':40,
+                 'is_active':True,'item_type':'BUY','is_market_item':False}
+        account={'id':167,'account_number':'100-300-100','is_active':True,'is_posting':True,
+                 'account_type':'ASSET','normal_balance':'DEBIT'}
+        history={'has_stock':False,'has_movements':False,'has_posted_receipt':False}
+        changes,blocked,_=module.build_changes(product,rule,group,subgroup,account,history)
+        self.assertIsNone(blocked)
+        self.assertEqual(changes['group_name'],'FOOD')
+        self.assertEqual(changes['subgroup_name'],'VEGETABLES')
+        self.assertEqual(changes['inventory_account_id'],167)
+
+    def test_duplicate_group_labels_resolve_by_verified_code(self):
+        groups=[{'id':1,'code':'1','name':'FOOD','item_type':'BUY','is_active':True},
+                {'id':2,'code':'99','name':'FOOD','item_type':'BUY','is_active':True}]
+        self.assertEqual(module.resolve_group(groups,[{'group_code':'1','group_name':'FOOD'}],'FOOD')['id'],1)
+
+    def test_group_conflicts_and_inactive_entries_are_rejected(self):
+        snapshots=[{'group_code':'1','group_name':'FOOD'}]
+        for field,value in [('is_active',False),('name','ASSET'),('item_type','SELL')]:
+            group={'id':1,'code':'1','name':'FOOD','item_type':'BUY','is_active':True,field:value}
+            with self.assertRaises(ValueError):module.resolve_group([group],snapshots,'FOOD')
+        with self.assertRaises(ValueError):
+            module.resolve_group([],snapshots+[{'group_code':'9','group_name':'FOOD'}],'FOOD')
+
+    def test_subgroup_code_conflicts_are_rejected(self):
+        snapshots=[{'group_code':'1','group_name':'FOOD','subgroup_code':'1-5','subgroup_name':'VEGETABLES'}]
+        group={'id':1,'code':'1'}
+        for field,value in [('is_active',False),('name','FURNITURE'),('group_id',2)]:
+            subgroup={'id':5,'code':'1-5','name':'VEGETABLES','group_id':1,'is_active':True,field:value}
+            with self.assertRaises(ValueError):module.resolve_subgroup([subgroup],snapshots,group,['VEGETABLES'])
+
+    def test_new_subgroups_do_not_reuse_legacy_codes(self):
+        subgroup=module.resolve_subgroup([], [{'group_code':'1','subgroup_code':'1-1','subgroup_name':'MEAT'}],
+                                        {'id':1,'code':'1'}, ['PREPARED FOOD'])
+        self.assertEqual(subgroup['code'],'1-2')
+
 
 if __name__=='__main__':unittest.main()
