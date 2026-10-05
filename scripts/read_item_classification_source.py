@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Read the classification review. No database connection or seed operations.
+"""Read the authoritative local classification workbook. No database writes.
 
-Local: --file scripts/item-classification-review-237.xlsx
+Default source: item-classification-review-237.xlsx beside this script.
+Local override: --file scripts/item-classification-review-237.xlsx
 Public native Sheet: --drive-id FILE_ID
 Private Drive file/Sheet: --drive-id FILE_ID --credentials /secure/service-account.json
 Private access requires google-auth and sharing the file with the service account.
@@ -120,11 +121,13 @@ def inspect(content, sheet_name, expected_count):
             "sha256": sha256(content).hexdigest(),
             "sheet": sheet_name,
             "item_count": len(records),
+            "source_ready": True,
+            "source_role": "Authoritative item classification source",
             "findings": dict(Counter(str(r["Finding"]) for r in records)),
             "treatment_recommendations": dict(Counter(str(r["Treatment recommendation"]) for r in records)),
             "tax_decisions": dict(Counter(str(r["Tax decision"]) for r in records)),
             "seed_ready": False,
-            "reason": "Review proposals are not a seed manifest. Final treatment, exact COA IDs, tax evidence and posted-stock corrections are required.",
+            "reason": "The XLSX source is valid and accepted. Classification seeding remains pending final treatment, exact COA mappings, tax evidence and a correction plan for affected posted stock. No alternate source spreadsheet is required.",
             "records": records,
         }
     finally:
@@ -133,7 +136,7 @@ def inspect(content, sheet_name, expected_count):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group()
     source.add_argument("--file", type=Path)
     source.add_argument("--drive-id")
     parser.add_argument("--credentials", help="Service-account JSON path; never paste its contents into chat")
@@ -142,13 +145,15 @@ def main():
     parser.add_argument("--show-items", action="store_true")
     args = parser.parse_args()
     try:
-        if args.file:
-            if args.file.stat().st_size > MAX_BYTES:
+        if not args.drive_id:
+            path = args.file or Path(__file__).resolve().with_name("item-classification-review-237.xlsx")
+            if path.stat().st_size > MAX_BYTES:
                 raise ValueError("Source exceeds 20 MiB.")
-            content = args.file.read_bytes()
+            content = path.read_bytes()
         else:
             content = download(args.drive_id, args.credentials)
         report = inspect(content, args.sheet, args.expected_count)
+        report["source_file"] = path.name if not args.drive_id else "Google Drive file " + args.drive_id
         if not args.show_items:
             report.pop("records")
         print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
