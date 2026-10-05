@@ -87,10 +87,10 @@ def receipt_actions(receipt: GoodsReceipt, user, db: Session):
     )
     return {
         "can_edit": can_edit,
-        "can_submit": receipt.status == "DRAFT" and approval is None and has_permission(user, "receiving.submit"),
+        "can_submit": receipt.status == "DRAFT" and receipt.source_type != "HISTORICAL_ENTRY" and approval is None and has_permission(user, "receiving.submit"),
         "can_approve": can_decide and has_permission(user, "receiving.approve"),
         "can_reject": can_decide and has_permission(user, "receiving.approve"),
-        "can_post": receipt.status == "DRAFT" and approval_status == "APPROVED" and has_permission(user, "receiving.post"),
+        "can_post": receipt.status == "DRAFT" and (approval_status == "APPROVED" or (receipt.source_type == "HISTORICAL_ENTRY" and approval is None)) and has_permission(user, "receiving.post"),
         "can_return": receipt.status == "POSTED" and has_permission(user, "receiving.return"),
         "can_correct_cost": receipt.status == "POSTED" and GoodsReceiptService.can_correct_cost(user),
         "can_print": True,
@@ -304,7 +304,12 @@ def list_receipts(
     ).filter(GoodsReceipt.status == "DRAFT", ApprovalRequest.status == "APPROVED").count()
     posted = scoped_summary.filter(GoodsReceipt.status == "POSTED").count()
     return {
-        "items": [serialize_receipt_summary(item, approval_map.get(item.id)) for item in rows],
+        "items": [{**serialize_receipt_summary(item, approval_map.get(item.id)),
+                   "source_type": item.source_type,
+                   "allowed_actions": {
+                       "can_submit": item.status == "DRAFT" and item.source_type != "HISTORICAL_ENTRY" and item.id not in approval_map and has_permission(user, "receiving.submit"),
+                       "can_post": item.status == "DRAFT" and has_permission(user, "receiving.post") and ((item.source_type == "HISTORICAL_ENTRY" and item.id not in approval_map) or (item.id in approval_map and approval_map[item.id].status == "APPROVED")),
+                   }} for item in rows],
         "page": page,
         "page_size": page_size,
         "total_items": total,
@@ -408,6 +413,8 @@ def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(
     receipt = _scoped_receipt_for_update(db, receipt_id, user)
     if receipt.status != "DRAFT":
         raise HTTPException(409, "Only draft receiving reports can be submitted")
+    if receipt.source_type == "HISTORICAL_ENTRY":
+        raise HTTPException(409, "Historical receiving uses Draft then Post")
     start_approval(
         db,
         entity_type="GOODS_RECEIPT",
@@ -446,9 +453,10 @@ def reject_receipt(receipt_id: int, data: ApprovalDecisionRequest, db: Session =
 
 @router.post("/{receipt_id}/post")
 def post_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_post_user)):
-    receipt = _scoped_receipt(db, receipt_id, user)
+    receipt = _scoped_receipt_for_update(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
-    if not approval or approval.status != "APPROVED":
+    historical = receipt.source_type == "HISTORICAL_ENTRY" and approval is None
+    if not historical and (not approval or approval.status != "APPROVED"):
         raise HTTPException(409, "Receiving report must complete approval before posting")
     return serialize_receipt(GoodsReceiptService.post(db=db, receipt_id=receipt_id, user=user), db)
 
