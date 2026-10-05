@@ -106,6 +106,10 @@ class GoodsReceiptService:
                 status_code=409,
                 detail=f"Item Master inventory treatment review required before receiving can post: {', '.join(unresolved[:5])}",
             )
+        # Stockable goods may be purchased for immediate consumption. The
+        # receiving destination describes what actually happened to this batch.
+        if receipt.destination_type == "DIRECT_USE" and treatments <= {"STOCK", "DIRECT_USE", "NON_STOCK"}:
+            return
         if len(treatments) > 1:
             raise HTTPException(
                 status_code=409,
@@ -116,6 +120,17 @@ class GoodsReceiptService:
             raise HTTPException(status_code=409, detail="STOCK items must be received into a warehouse")
         if treatment in {"DIRECT_USE", "NON_STOCK", "FIXED_ASSET"} and receipt.destination_type == "WAREHOUSE":
             raise HTTPException(status_code=409, detail=f"{treatment} items cannot be received into warehouse stock")
+
+    @staticmethod
+    def _receiving_debit_account(resolver, receipt, product):
+        treatment = str(getattr(product, "inventory_treatment", "REVIEW_REQUIRED") or "REVIEW_REQUIRED").upper()
+        if treatment == "STOCK" and receipt.destination_type == "WAREHOUSE":
+            return resolver.inventory_account(product, receipt.location_id)
+        if treatment in {"STOCK", "DIRECT_USE", "NON_STOCK"} and receipt.destination_type == "DIRECT_USE":
+            return resolver.expense_account(product)
+        if treatment == "FIXED_ASSET" and receipt.destination_type != "WAREHOUSE":
+            return resolver.fixed_asset_account(product)
+        raise HTTPException(status_code=409, detail=f"Item {product.code} has an incompatible receiving destination or requires inventory treatment review")
 
     @staticmethod
     def _inventory_for_update(db: Session, product_id: int, warehouse_id: int) -> Inventory:
@@ -225,21 +240,7 @@ class GoodsReceiptService:
         grouped: dict[int, Decimal] = {}
 
         for item in receipt.items:
-            treatment = str(getattr(item.product, "inventory_treatment", "REVIEW_REQUIRED") or "REVIEW_REQUIRED").upper()
-            if treatment == "STOCK":
-                debit_account = resolver.inventory_account(
-                    item.product,
-                    receipt.location_id,
-                )
-                description = f"Inventory received via {receipt.receipt_number}"
-            elif treatment in {"DIRECT_USE", "NON_STOCK"}:
-                debit_account = resolver.expense_account(item.product)
-                description = f"Direct consumption received via {receipt.receipt_number}"
-            elif treatment == "FIXED_ASSET":
-                debit_account = resolver.fixed_asset_account(item.product)
-                description = f"Fixed asset received via {receipt.receipt_number}"
-            else:
-                raise HTTPException(status_code=409, detail=f"Item {item.product.code} requires inventory treatment review")
+            debit_account = cls._receiving_debit_account(resolver, receipt, item.product)
 
             amount = (
                 Decimal(item.quantity or 0) * Decimal(item.unit_cost or 0)
