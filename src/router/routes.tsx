@@ -1,3 +1,6 @@
+import BudgetListPage from "@/modules/finance/budgets/BudgetListPage";
+import BudgetFormPage from "@/modules/finance/budgets/BudgetFormPage";
+import BudgetDetailPage from "@/modules/finance/budgets/BudgetDetailPage";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import AppLayout from "@/layouts/AppLayout";
 import AuthGuard from "@/components/guard/AuthGuard";
@@ -227,6 +230,7 @@ const router = createBrowserRouter([
       { path: "reports/depreciation", element: <DepreciationReportPage /> },
       { path: "amortization", element: <AmortizationPage /> },
 
+      { path: "finance-setup/reports", element: <FinanceSetupWorkspacePage section="reports" /> },
       { path: "finance-setup", element: <FinanceSetupWorkspacePage section="coa" /> },
       { path: "finance-setup/coa/print", element: <FinanceSetupPrintPage section="coa" /> },
       { path: "finance-setup/posting-rules/print", element: <FinanceSetupPrintPage section="posting-rules" /> },
@@ -266,6 +270,10 @@ const router = createBrowserRouter([
       { path: "financial-reconciliation", element: <ReconciliationPage /> },
       { path: "financial-reconciliation/stock", element: <StockConsolidationPage /> },
       { path: "balance-sheet", element: <BalanceSheetPage /> },
+      { path: "budgets", element: <BudgetListPage /> },
+      { path: "budgets/new", element: <BudgetFormPage /> },
+      { path: "budgets/:id/edit", element: <BudgetFormPage /> },
+      { path: "budgets/:id", element: <BudgetDetailPage /> },
       { path: "profit-loss", element: <ProfitLossPage /> },
       { path: "inventory", element: <InventoryPage /> },
       { path: "inventory/movements", element: <InventoryMovementPage /> },

@@ -1,3 +1,6 @@
+import useAuthStore from "@/store/auth";
+import { toast } from "sonner";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { Printer } from "lucide-react";
@@ -16,21 +19,29 @@ export default function BudgetDetailPage() {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["budget", id], queryFn: () => getBudget(id) });
   const budget = query.data;
-  const actions = budget?.allowed_actions;
+  const canManage = useAuthStore(state => state.hasPermission("finance.manage"));
+  const actions = canManage ? budget?.allowed_actions : {};
+  const [busy, setBusy] = useState(false);
   const act = async (action: string) => {
-    await budgetAction(id, action);
-    queryClient.invalidateQueries({ queryKey: ["budget", id] });
+    setBusy(true);
+    try {
+      await budgetAction(id, action);
+      queryClient.invalidateQueries({ queryKey: ["budget", id] });
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["financial-report-comparison"] });
+    } catch (error: any) { toast.error(error.response?.data?.detail || "Budget action failed"); }
+    finally { setBusy(false); }
   };
 
   return <div className="space-y-4">
     <PageHeader title={budget?.budget_number || "Budget"} description={`${budget?.name || ""} · ${budget?.date_from || ""} to ${budget?.date_to || ""}`} actions={<>
       <Button variant="outline" onClick={() => navigate("/budgets")}>Back</Button>
       <Button variant="outline" onClick={() => window.print()}><Printer size={15} /></Button>
-      {actions?.can_submit && <Button onClick={() => act("submit")}>Submit</Button>}
-      {actions?.can_approve && <Button onClick={() => act("approve")}>Approve</Button>}
-      {actions?.can_reject && <Button variant="danger" onClick={() => act("reject")}>Reject</Button>}
-      {actions?.can_lock && <Button onClick={() => act("lock")}>Lock</Button>}
-      {actions?.can_cancel && <Button variant="outline" onClick={() => act("cancel")}>Cancel</Button>}
+      {actions?.can_submit && <Button disabled={busy} onClick={() => act("submit")}>Submit</Button>}
+      {actions?.can_approve && <Button disabled={busy} onClick={() => act("approve")}>Approve</Button>}
+      {actions?.can_reject && <Button disabled={busy} variant="danger" onClick={() => act("reject")}>Reject</Button>}
+      {actions?.can_lock && <Button disabled={busy} onClick={() => act("lock")}>Lock</Button>}
+      {actions?.can_cancel && <Button disabled={busy} variant="outline" onClick={() => act("cancel")}>Cancel</Button>}
     </>} />
     <Card className="grid gap-3 p-4 md:grid-cols-4"><div>Status<br /><Badge>{budget?.status}</Badge></div><div>Fiscal Year<br /><b>{budget?.fiscal_year}</b></div><div>Total Budget<br /><b className="tabular-nums">{money(budget?.total_budget)}</b></div><div>Approved By<br /><b>{budget?.approved_by || "—"}</b></div></Card>
     <Table variant="grid" stickyHeader><THead><TR><TH>Month</TH><TH>Account</TH><TH>Business Unit</TH><TH>Location</TH><TH>Department</TH><TH className="text-right">Budget</TH><TH>Notes</TH></TR></THead><TBody>{budget?.lines?.map((line: any) => <TR key={line.id}><TD>{line.month}</TD><TD>{line.account_code} — {line.account_name}</TD><TD>{line.business_unit_name || "—"}</TD><TD>{line.location_name || "All"}</TD><TD>{line.department_name || "All"}</TD><TD className="text-right tabular-nums">{money(line.budget_amount)}</TD><TD>{line.notes}</TD></TR>)}</TBody></Table>

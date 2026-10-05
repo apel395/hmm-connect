@@ -41,6 +41,7 @@ const groups: Group[] = [
     { title: "Sales", url: "/pos/sales", permission: "pos.view", roles: POS_ROLES },
   ] },
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"], children: [
+    { title: "Budgets", url: "/budgets", permission: "finance.view" },
     { title: "Finance Dashboard", url: "/finance-dashboard", permission: "finance.view" },
     { title: "Accounts Payable", url: "/accounts-payable", permission: "ap.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Accounts Receivable", url: "/accounts-receivable", permission: "finance.view" },
@@ -66,6 +67,7 @@ const groups: Group[] = [
   { title: "Administration", icon: Settings, roles: ["SYSTEM_ADMINISTRATOR"], children: [
     { title: "Users", url: "/users", permission: "admin.users.manage" },
     { title: "Roles", url: "/roles", permission: "admin.roles.manage" },
+    { title: "Report Setup", url: "/finance-setup/reports", permission: "finance.manage" },
     { title: "Finance Setup", url: "/finance-setup", permission: "finance.manage" },
     { title: "System Settings", url: "/settings", permission: "admin.settings.manage" },
   ] },

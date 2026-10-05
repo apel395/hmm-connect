@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ type FiscalPeriod = {
   is_open:boolean;
   is_closed:boolean;
   allow_backdated_entries?:boolean;
+  closing_journal_ids?:number[];
 };
 
 const currentYear = new Date().getFullYear();
@@ -78,8 +80,8 @@ export default function FiscalPeriodsPage({ embedded = false }: { embedded?: boo
 
     <Card className="overflow-x-auto p-0">
       <table className="w-full min-w-[850px] text-sm">
-        <thead><tr className="border-b text-left"><th className="p-3">Period</th><th>Start Date</th><th>End Date</th><th>Status</th><th>Allow backdated entries</th><th className="text-right">Action</th></tr></thead>
-        <tbody>{periods.isLoading?<tr><td className="p-8 text-center text-slate-500" colSpan={6}>Loading accounting periods…</td></tr>:!periods.data?.length?<tr><td className="p-8 text-center text-slate-500" colSpan={6}>No accounting periods configured for {year}.</td></tr>:periods.data.map(period=>{const open=period.is_open&&!period.is_closed;return <tr key={period.id} className="border-b"><td className="p-3 font-medium">{period.period_name}</td><td>{period.start_date}</td><td>{period.end_date}</td><td><Badge variant={open?"success":"warning"}>{open?"OPEN":"CLOSED"}</Badge></td><td><input type="checkbox" aria-label={`Allow backdated entries in ${period.period_name}`} checked={period.allow_backdated_entries!==false} disabled={backdatePolicy.isPending} onChange={event=>backdatePolicy.mutate({id:period.id,allow:event.target.checked})}/></td><td className="text-right">{open?<Button size="sm" variant="outline" disabled={closePeriod.isPending} onClick={()=>{if(window.confirm(`Close ${period.period_name}? Posting into this period will be blocked.`))closePeriod.mutate(period.id)}}>Close Period</Button>:<Button size="sm" variant="outline" disabled={reopenPeriod.isPending} onClick={()=>reopen(period)}>Reopen</Button>}</td></tr>})}</tbody>
+        <thead><tr className="border-b text-left"><th className="p-3">Period</th><th>Start Date</th><th>End Date</th><th>Status</th><th>Allow backdated entries</th><th>Closing journal</th><th className="text-right">Action</th></tr></thead>
+        <tbody>{periods.isLoading?<tr><td className="p-8 text-center text-slate-500" colSpan={7}>Loading accounting periods…</td></tr>:!periods.data?.length?<tr><td className="p-8 text-center text-slate-500" colSpan={7}>No accounting periods configured for {year}.</td></tr>:periods.data.map(period=>{const open=period.is_open&&!period.is_closed;return <tr key={period.id} className="border-b"><td className="p-3 font-medium">{period.period_name}</td><td>{period.start_date}</td><td>{period.end_date}</td><td><Badge variant={open?"success":"warning"}>{open?"OPEN":"CLOSED"}</Badge></td><td><input type="checkbox" aria-label={`Allow backdated entries in ${period.period_name}`} checked={period.allow_backdated_entries!==false} disabled={backdatePolicy.isPending} onChange={event=>backdatePolicy.mutate({id:period.id,allow:event.target.checked})}/></td><td>{period.closing_journal_ids?.map(id=><Link key={id} className="mr-2 text-blue-700 hover:underline" to={`/journal-entries/${id}`}>#{id}</Link>)}</td><td className="text-right">{open?<Button size="sm" variant="outline" disabled={closePeriod.isPending} onClick={()=>{if(window.confirm(`Close ${period.period_name}? The system will post the closing journal at the period end date and lock this period.`))closePeriod.mutate(period.id)}}>Close Period</Button>:<Button size="sm" variant="outline" disabled={reopenPeriod.isPending} onClick={()=>reopen(period)}>Reopen</Button>}</td></tr>})}</tbody>
       </table>
     </Card>
     <p className="text-xs text-slate-500">Backdated entries are allowed only when the selected date’s period is open and its backdate setting is enabled. Administrators and Finance users may manage periods. Reopening requires a reason and is recorded in the audit trail. Closed periods are never bypassed automatically.</p>
