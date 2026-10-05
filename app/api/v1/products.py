@@ -132,13 +132,40 @@ def list_products(
     total_pages = ceil(total / page_size) if total else 0
     return {"items": rows, "page": page, "page_size": page_size, "total_items": total, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
 
+def classification_catalog(groups, products, item_type=None):
+    catalog = {}
+    blocked_groups = {group.code for group in groups if not group.is_active}
+    blocked_subgroups = {sub.code for group in groups for sub in group.subgroups if not sub.is_active}
+    for group in groups:
+        kind = group.item_type or "BUY"
+        if not group.is_active or (item_type and kind != item_type):
+            continue
+        catalog[(kind, group.code)] = {
+            "id": group.id, "code": group.code, "name": group.name, "item_type": kind,
+            "subgroups": {sub.code: {"id": sub.id, "code": sub.code, "name": sub.name}
+                         for sub in group.subgroups if sub.is_active},
+        }
+    for kind, code, name, sub_code, sub_name in sorted(products, key=lambda row: tuple(str(value or "") for value in row)):
+        kind = kind or "BUY"
+        if not code or not name or code in blocked_groups or (item_type and kind != item_type):
+            continue
+        group = catalog.setdefault((kind, code), {
+            "id": 0, "code": code, "name": name, "item_type": kind, "subgroups": {},
+        })
+        if sub_code and sub_name and sub_code not in blocked_subgroups:
+            group["subgroups"].setdefault(sub_code, {"id": 0, "code": sub_code, "name": sub_name})
+    return [{**group, "subgroups": sorted(group["subgroups"].values(), key=lambda sub: sub["code"])}
+            for _, group in sorted(catalog.items())]
+
+
 @router.get("/classification-master")
 def classification_master(item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    query = db.query(ItemGroup).options(selectinload(ItemGroup.subgroups)).filter(ItemGroup.is_active.is_(True))
-    if item_type:
-        query = query.filter(ItemGroup.item_type == item_type)
-    groups = query.order_by(ItemGroup.code).all()
-    return [{"id": group.id, "code": group.code, "name": group.name, "item_type": group.item_type, "subgroups": [{"id": subgroup.id, "code": subgroup.code, "name": subgroup.name} for subgroup in sorted(group.subgroups, key=lambda item: item.code) if subgroup.is_active]} for group in groups]
+    # Imported products can predate the separate classification master tables.
+    # Include their existing classifications without changing product records.
+    groups = db.query(ItemGroup).options(selectinload(ItemGroup.subgroups)).order_by(ItemGroup.code).all()
+    products = db.query(Product.item_type, Product.group_code, Product.group_name,
+                        Product.subgroup_code, Product.subgroup_name).filter(Product.is_active.is_(True)).distinct().all()
+    return classification_catalog(groups, products, item_type)
 
 @router.get("/lookup")
 def lookup_products(search: Annotated[str, Query(max_length=100)] = "", market_only: bool = False, exclude_market: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
