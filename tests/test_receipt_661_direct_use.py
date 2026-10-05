@@ -33,6 +33,26 @@ class CompleteReceivingTests(unittest.TestCase):
         repair.validate_remaining_stock(ITEMS,movements,stock)
         self.assertEqual(sum(Decimal(r['quantity'])*Decimal(r['unit_cost']) for r in ITEMS),Decimal('1360000'))
 
+    def test_historical_entry_creation_timestamp_is_not_receiving_date(self):
+        movements,stock=self.stock()
+        for movement in movements:
+            movement['created_at']=datetime(2026,9,25,3,29,tzinfo=timezone.utc)
+            movement['journal_entry_id']=None
+        repair.validate_remaining_stock(ITEMS,movements,stock)
+
+    def test_failure_reports_the_actual_changed_field(self):
+        movements,stock=self.stock()
+        stock[0]['quantity']='99'
+        with self.assertRaisesRegex(ValueError, 'inventory.quantity.*99'):
+            repair.validate_remaining_stock(ITEMS,movements,stock)
+
+    def test_missing_journal_link_does_not_allow_another_receipt(self):
+        movements,stock=self.stock()
+        movements[0]['journal_entry_id']=None
+        movements[0]['goods_receipt_id']=666
+        with self.assertRaisesRegex(ValueError, 'goods_receipt_id'):
+            repair.validate_remaining_stock(ITEMS,movements,stock)
+
     def test_other_movements_or_warehouse_stock_refuse_deletion(self):
         movements,stock=self.stock()
         for altered in [movements[:-1],movements+[movements[0]]]:
