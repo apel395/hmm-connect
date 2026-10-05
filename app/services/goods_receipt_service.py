@@ -1,5 +1,8 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
+
+from app.services.fiscal_period_service import FiscalPeriodService
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -35,6 +38,17 @@ class GoodsReceiptService:
     def _check_access(user, permission_code: str):
         if not has_permission(user, permission_code):
             raise HTTPException(status_code=403, detail=f"{permission_code} permission required")
+
+    @classmethod
+    def check_historical_entry(cls, db: Session, received_at: datetime | None, user):
+        cls._check_access(user, "receiving.post")
+        if received_at is None:
+            raise HTTPException(422, "Historical entry requires a receipt date")
+        business_date = received_at.astimezone(ZoneInfo("Asia/Jakarta")).date() if received_at.tzinfo else received_at.date()
+        if business_date < STOCK_CUTOFF or business_date >= FiscalPeriodService.business_today():
+            raise HTTPException(422, "Historical entry must be dated from 2026 and before today")
+        if FiscalPeriodService.validate_posting_date(db, business_date) is None:
+            raise HTTPException(409, "Configure an open accounting period for historical entry")
 
     @staticmethod
     def can_correct_cost(user) -> bool:
@@ -316,6 +330,8 @@ class GoodsReceiptService:
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
         cls._check_access(user, "receiving.create")
+        if data.source_type == "HISTORICAL_ENTRY":
+            cls.check_historical_entry(db, data.received_at, user)
         if data.received_at and data.received_at.date() < STOCK_CUTOFF:
             raise HTTPException(422, "Receiving dated before 2026 is excluded from stock")
         from app.services.organization_dimensions import validate_dimensions
@@ -514,6 +530,8 @@ class GoodsReceiptService:
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
         if receipt.status != "DRAFT": raise HTTPException(status_code=409, detail="Only draft receipts can be posted")
+        if receipt.source_type == "HISTORICAL_ENTRY":
+            cls.check_historical_entry(db, receipt.received_at, user)
         if receipt.received_at.date() < STOCK_CUTOFF:
             raise HTTPException(409, "Pre-2026 receiving cannot be posted into current stock")
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
