@@ -16,6 +16,8 @@ from app.schemas.fiscal_period import (
     FiscalYearInitialize,
 )
 from app.services.audit import record_audit
+from app.services.period_closing_service import PeriodClosingService
+from app.services.location_access import assigned_location_id
 from app.services.fiscal_period_service import FiscalPeriodService
 
 router = APIRouter(prefix="/fiscal-periods", tags=["Fiscal Period"])
@@ -154,18 +156,11 @@ def close_period(
     db: Session = Depends(get_db),
     current_user=Depends(manage_access),
 ):
-    period = db.get(FiscalPeriod, period_id)
-    if not period:
-        raise HTTPException(status_code=404, detail="Fiscal period not found.")
-    if period.is_closed:
-        return {"message": "Fiscal period is already closed."}
-
-    period.is_open = False
-    period.is_closed = True
-    period.closed_at = date.today()
-    record_audit(db, current_user, "FISCAL_PERIOD_CLOSED", "FISCAL_PERIOD", f"Closed {period.period_name}", entity_id=period.id)
+    if assigned_location_id(current_user) is not None:
+        raise HTTPException(403, "Closing a company accounting period requires access to all locations")
+    result = PeriodClosingService.close(db, period_id, current_user)
     db.commit()
-    return {"message": "Fiscal period closed."}
+    return result
 
 
 @router.post("/{period_id}/open")
@@ -175,26 +170,11 @@ def reopen_period(
     db: Session = Depends(get_db),
     current_user=Depends(manage_access),
 ):
-    period = db.get(FiscalPeriod, period_id)
-    if not period:
-        raise HTTPException(status_code=404, detail="Fiscal period not found.")
-    if period.is_open and not period.is_closed:
-        return {"message": "Fiscal period is already open."}
-
-    period.is_open = True
-    period.is_closed = False
-    period.closed_at = None
-    record_audit(
-        db,
-        current_user,
-        "FISCAL_PERIOD_REOPENED",
-        "FISCAL_PERIOD",
-        f"Reopened {period.period_name}: {data.reason}",
-        entity_id=period.id,
-        after_data={"reason": data.reason},
-    )
+    if assigned_location_id(current_user) is not None:
+        raise HTTPException(403, "Reopening a company accounting period requires access to all locations")
+    result = PeriodClosingService.reopen(db, period_id, current_user, data.reason)
     db.commit()
-    return {"message": "Fiscal period reopened."}
+    return result
 
 
 @router.patch("/{period_id}/backdate-policy", response_model=FiscalPeriodResponse)

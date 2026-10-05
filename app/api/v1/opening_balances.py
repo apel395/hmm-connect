@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import require_permission
 from app.services.opening_balance_service import OpeningBalanceService
-from app.services.location_access import enforce_location_access
+from app.services.location_access import enforce_location_access, resolve_location_id
 
 
 router = APIRouter(prefix="/opening-balances", tags=["Opening Balances"])
@@ -39,8 +39,7 @@ def accounts(
     db: Session = Depends(get_db),
     user=Depends(journal_view_user),
 ):
-    if location_id:
-        enforce_location_access(user, location_id)
+    location_id = resolve_location_id(user, location_id)
     return OpeningBalanceService(db).accounts(fiscal_year=fiscal_year, location_id=location_id)
 
 
@@ -51,8 +50,7 @@ def list_entries(
     db: Session = Depends(get_db),
     user=Depends(journal_view_user),
 ):
-    if location_id:
-        enforce_location_access(user, location_id)
+    location_id = resolve_location_id(user, location_id)
     return OpeningBalanceService(db).list_entries(
         fiscal_year=fiscal_year, location_id=location_id
     )
@@ -112,8 +110,7 @@ def void(
     db: Session = Depends(get_db),
     user=Depends(journal_manage_user),
 ):
-    if location_id:
-        enforce_location_access(user, location_id)
+    location_id = resolve_location_id(user, location_id)
     return OpeningBalanceService(db).void(
         user=user, fiscal_year=fiscal_year, location_id=location_id
     )

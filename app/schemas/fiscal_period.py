@@ -13,6 +13,7 @@ class FiscalPeriodResponse(BaseModel):
     is_open: bool
     is_closed: bool
     allow_backdated_entries: bool = True
+    closing_journal_ids: list[int] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

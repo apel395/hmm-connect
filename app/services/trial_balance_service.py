@@ -3,7 +3,7 @@ from decimal import Decimal
 from math import ceil
 
 from sqlalchemy import exists, func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
@@ -35,6 +35,7 @@ class TrialBalanceService:
         date_from: date | None = None,
         date_to: date | None = None,
         before: date | None = None,
+        exclude_closing: bool = False,
         location_id: int | None = None,
         department_id: int | None = None,
         business_unit_id: int | None = None,
@@ -49,6 +50,8 @@ class TrialBalanceService:
             .filter(JournalEntry.status == "POSTED")
             .filter(JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")))
         )
+        if exclude_closing:
+            query = query.filter(JournalEntry.reference_type.notin_(("PERIOD_CLOSE", "YEAR_END")))
         if before:
             query = query.filter(JournalEntry.posting_date < before)
         if date_from:
@@ -102,9 +105,9 @@ class TrialBalanceService:
         # remains in the COA hierarchy but must not appear as a separate row.
         child = ChartOfAccount.__table__.alias("trial_balance_child")
         has_child = exists().where(child.c.parent_account_id == ChartOfAccount.id)
-        accounts_query = self.db.query(ChartOfAccount).filter(
+        accounts_query = self.db.query(ChartOfAccount).options(joinedload(ChartOfAccount.parent)).filter(
             ChartOfAccount.is_posting.is_(True),
-            ~has_child,
+            or_(~has_child, ChartOfAccount.account_number == "400"),
         )
         if not include_inactive:
             accounts_query = accounts_query.filter(ChartOfAccount.is_active.is_(True))

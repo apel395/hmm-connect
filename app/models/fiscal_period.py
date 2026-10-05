@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Boolean, Date, Integer, String
+from sqlalchemy import Boolean, Date, Integer, String, JSON
 
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -50,6 +50,8 @@ class FiscalPeriod(Base, TimestampMixin):
     allow_backdated_entries: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False,
     )
+
+    closing_journal_ids: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False, server_default="[]")
 
     closed_at: Mapped[date | None] = mapped_column(
         Date,

@@ -68,3 +68,5 @@ from app.models.payment_voucher import PaymentVoucher, PaymentVoucherAllocation
 from app.models import purchasing_item_policy as _purchasing_item_policy  # noqa: F401,E402
 
 __all__ = ["Base"]
+
+from app.models.financial_report_setting import FinancialReportSetting

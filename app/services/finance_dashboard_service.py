@@ -109,13 +109,13 @@ class FinanceDashboardService:
                 p=ap[self.period_key(inv.due_date,interval)];p["due_amount"]+=Decimal(inv.balance_amount)
                 if inv.due_date<date.today():p["overdue_amount"]+=Decimal(inv.balance_amount)
         profit=defaultdict(lambda:{"revenue":ZERO,"expense":ZERO})
-        profit_q=self.db.query(JournalEntry.posting_date,ChartOfAccount.account_type,func.sum(JournalLine.debit),func.sum(JournalLine.credit)).select_from(JournalEntry).join(JournalLine,JournalLine.journal_entry_id==JournalEntry.id).join(ChartOfAccount,ChartOfAccount.id==JournalLine.account_id).filter(JournalEntry.status=="POSTED",JournalEntry.posting_date>=date_from,JournalEntry.posting_date<=date_to,ChartOfAccount.account_type.in_(["REVENUE","EXPENSE"]))
+        profit_q=self.db.query(JournalEntry.posting_date,ChartOfAccount.account_type,func.sum(JournalLine.debit),func.sum(JournalLine.credit)).select_from(JournalEntry).join(JournalLine,JournalLine.journal_entry_id==JournalEntry.id).join(ChartOfAccount,ChartOfAccount.id==JournalLine.account_id).filter(JournalEntry.status=="POSTED",JournalEntry.posting_date>=date_from,JournalEntry.posting_date<=date_to,ChartOfAccount.account_type.in_(["REVENUE","INCOME","EXPENSE"]),JournalEntry.reference_type.notin_(("PERIOD_CLOSE","YEAR_END","OPENING_BALANCE","OPENING_BALANCE_ADJUSTMENT")))
         if location_id:profit_q=profit_q.filter(JournalLine.location_id==location_id)
         if department_id:profit_q=profit_q.filter(JournalLine.department_id==department_id)
         if business_unit_id:profit_q=profit_q.filter(JournalLine.business_unit_id==business_unit_id)
         rows=profit_q.group_by(JournalEntry.posting_date,ChartOfAccount.account_type).all()
         for d,kind,debit,credit in rows:
-            point=profit[self.period_key(d,interval)];point["revenue" if kind=="REVENUE" else "expense"]+=Decimal(credit)-Decimal(debit) if kind=="REVENUE" else Decimal(debit)-Decimal(credit)
+            point=profit[self.period_key(d,interval)];point["revenue" if kind in ("REVENUE","INCOME") else "expense"]+=Decimal(credit)-Decimal(debit) if kind in ("REVENUE","INCOME") else Decimal(debit)-Decimal(credit)
         purchase=defaultdict(lambda:{"planned_pr":ZERO,"committed_po":ZERO,"payable_invoices":ZERO,"actual_payments":ZERO})
         for pr in unconverted.all():
             if date_from<=pr.request_date<=date_to:purchase[self.period_key(pr.request_date,interval)]["planned_pr"]+=Decimal(pr.total_amount)

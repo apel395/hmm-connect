@@ -1,166 +1,31 @@
-from decimal import Decimal
-
+from datetime import date
 from fastapi import HTTPException
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
-from app.models.chart_of_account import ChartOfAccount
+from app.models.fiscal_period import FiscalPeriod
 from app.models.fiscal_year_close import FiscalYearClose
-from app.models.journal_entry import JournalEntry
-from app.models.journal_line import JournalLine
-
-from app.schemas.journal import (
-    JournalCreate,
-    JournalLineCreate,
-)
-
-# from app.services.accounting_setting_service import AccountingSettingService
-from app.services.journal_service import JournalService
+from app.services.period_closing_service import PeriodClosingService
+from app.services.audit import record_audit
 
 
 class YearEndService:
-
     @classmethod
-    def close_year(
-        cls,
-        *,
-        db: Session,
-        fiscal_year: int,
-        closing_date,
-        user,
-    ):
-
-        exists = (
-            db.query(FiscalYearClose)
-            .filter(
-                FiscalYearClose.fiscal_year == fiscal_year,
-            )
-            .first()
-        )
-
-        if exists:
-            raise HTTPException(
-                status_code=400,
-                detail="Fiscal year already closed.",
-            )
-
-        rows = (
-            db.query(
-                ChartOfAccount.id,
-                ChartOfAccount.account_type,
-                func.sum(JournalLine.debit).label("debit"),
-                func.sum(JournalLine.credit).label("credit"),
-            )
-            .join(
-                JournalLine,
-                JournalLine.account_id == ChartOfAccount.id,
-            )
-            .join(
-                JournalEntry,
-                JournalEntry.id == JournalLine.journal_entry_id,
-            )
-            .filter(
-                JournalEntry.fiscal_year == fiscal_year,
-                ChartOfAccount.account_type.in_(
-                    [
-                        "REVENUE",
-                        "EXPENSE",
-                    ]
-                ),
-            )
-            .group_by(
-                ChartOfAccount.id,
-                ChartOfAccount.account_type,
-            )
-            .all()
-        )
-
-        lines = []
-
-        net_profit = Decimal("0.00")
-
-        for row in rows:
-
-            if row.account_type == "REVENUE":
-
-                amount = Decimal(row.credit or 0) - Decimal(row.debit or 0)
-
-                if amount != 0:
-
-                    lines.append(
-                        JournalLineCreate(
-                            account_id=row.id,
-                            debit=amount,
-                            credit=Decimal("0"),
-                            description="Year End Closing",
-                        )
-                    )
-
-                    net_profit += amount
-
-            else:
-
-                amount = Decimal(row.debit or 0) - Decimal(row.credit or 0)
-
-                if amount != 0:
-
-                    lines.append(
-                        JournalLineCreate(
-                            account_id=row.id,
-                            debit=Decimal("0"),
-                            credit=amount,
-                            description="Year End Closing",
-                        )
-                    )
-
-                    net_profit -= amount
-
-        retained = 3200
-
-        if net_profit >= 0:
-
-            lines.append(
-                JournalLineCreate(
-                    account_id=retained,
-                    debit=Decimal("0"),
-                    credit=net_profit,
-                    description="Transfer Net Profit",
-                )
-            )
-
-        else:
-
-            lines.append(
-                JournalLineCreate(
-                    account_id=retained,
-                    debit=abs(net_profit),
-                    credit=Decimal("0"),
-                    description="Transfer Net Loss",
-                )
-            )
-
-        journal = JournalService.post(
-            db=db,
-            user=user,
-            journal=JournalCreate(
-                posting_date=closing_date,
-                document_type="YEAR_END",
-                document_number=f"YE-{fiscal_year}",
-                reference_type="YEAR_END",
-                reference_id=fiscal_year,
-                description=f"Year End Closing {fiscal_year}",
-                lines=lines,
-            ),
-        )
-
-        db.add(
-            FiscalYearClose(
-                fiscal_year=fiscal_year,
-                closing_date=closing_date,
-                journal_entry_id=journal.id,
-            )
-        )
-
+    def close_year(cls, *, db, fiscal_year, closing_date, user):
+        periods = db.query(FiscalPeriod).filter_by(fiscal_year=fiscal_year).order_by(FiscalPeriod.start_date).with_for_update().all()
+        if {p.fiscal_month for p in periods} != set(range(1, 13)):
+            raise HTTPException(409, "Initialize all twelve accounting periods before year closing")
+        record = db.query(FiscalYearClose).filter_by(fiscal_year=fiscal_year).with_for_update().first()
+        if record and record.is_closed:
+            return {"fiscal_year": fiscal_year, "message": "Fiscal year is already closed"}
+        ids = []
+        for period in periods:
+            ids.extend(PeriodClosingService.close(db, period.id, user)["closing_journal_ids"])
+        actual_date = date(fiscal_year, 12, 31)
+        if not record:
+            record = FiscalYearClose(fiscal_year=fiscal_year)
+            db.add(record)
+        record.closing_date = actual_date
+        record.journal_entry_id = ids[-1] if ids else None
+        record.is_closed = True
+        record_audit(db, user, "FISCAL_YEAR_CLOSED", "FISCAL_YEAR", f"Closed {fiscal_year}",
+                     after_data={"closing_journal_ids": ids, "closing_date": actual_date.isoformat()})
         db.commit()
-
-        return journal
+        return {"fiscal_year": fiscal_year, "closing_date": actual_date, "closing_journal_ids": ids, "message": "Fiscal year closed"}

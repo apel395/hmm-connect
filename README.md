@@ -44,7 +44,47 @@ The frontend lives on `main`; this branch supplies the FastAPI routes under
 
 Receiving before 2026-01-01 is rejected on creation, editing and posting.
 Previously posted historical records remain for audit and reconciliation.
-Opening balances can be recorded only once for a fiscal year; recorded
-amounts cannot be voided through the routine endpoint. Corrections require
-a separate controlled adjustment journal.
+Opening balances are manually entered annual starting values, separate from
+transaction journals. They are never automatically balanced with an equity
+contra. Corrections use the audited opening-balance revision while an accounting
+period in the year is open. Trial Balance keeps that opening separate from all
+activity in the selected fiscal year.
+
+## October 2026 reporting and closing
+
+Run `.venv/bin/alembic upgrade head` on EC2 after pulling `backend`. The API runs
+on AWS Lambda and deployment is triggered by a push/merge to `backend`; EC2 runs
+the database and heavy processing. The UI is deployed from `main`.
+
+- `/financial-reports/setup`: account visibility checklist, KAP header-only
+  display and the current-year earnings posting account. Display selection
+  changes detail only; report totals retain the complete scoped ledger.
+- `/financial-reports/comparison`: monthly (MTD) and annual (YTD) actual,
+  approved budget, previous month and same period of the previous year.
+  Comparisons use the same elapsed cutoff day, clipped for shorter months.
+  `/financial-reports/comparison/export` exports the same scope to Excel.
+- Profit & Loss uses only activity in the requested period and excludes
+  `PERIOD_CLOSE`/`YEAR_END` journals. Balance Sheet uses manual annual opening
+  values plus posted year activity, with credit-balance contra assets deducted.
+- P&L supports unit/location/department. Balance Sheet defaults to consolidated.
+  Assigned-location users are restricted on report reads and exports.
+- `/budgets`: monthly account budgets by business unit/location/department,
+  draft editing, submit/approve/reject/lock/cancel. Approved/locked budgets feed
+  comparisons. Missing budgets show unavailable; overlapping plans require an
+  explicit budget selection. P&L budgets are full-month plans. Balance Sheet
+  budgets are month-end balance targets, never the sum of monthly balances.
+- New revenue postings and budgets use account `400`. Migration activates that
+  account and maps POS revenue to it. Historical child-account postings are
+  preserved and grouped under `400` in the comparison report.
+- Closing `/fiscal-periods/{id}/close` automatically generates balanced journals
+  per unit/location/department, dated at the period end, transferring its result
+  to `CURRENT_YEAR_EARNINGS_ACCOUNT`. It then locks the period. Empty periods
+  create no zero journal; repeated closes return existing evidence.
+- Reopening voids those generated closing journals and removes their GL rows,
+  retaining audit evidence. Close/reopen share the posting period row lock.
+  Closing journals cannot be manually unposted. Year closing closes all twelve
+  months and records December 31 of the selected year, not the execution date.
+  Company period/year management requires unscoped location access.
+- Supplier invoice entry can already load received quantity, price, PPN and
+  dimensions directly from an eligible receiving document.
 
