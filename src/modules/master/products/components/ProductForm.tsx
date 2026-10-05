@@ -369,7 +369,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
 
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               {form.inventory_treatment === "STOCK" && <SearchableSelect
-                label="Inventory Asset COA"
+                label="Posting COA — Inventory"
                 value={form.inventory_account_id ?? undefined}
                 required
                 placeholder="Type inventory COA..."
@@ -377,7 +377,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
                 onChange={(value) => update("inventory_account_id", value ? Number(value) : null)}
               />}
               {["DIRECT_USE", "NON_STOCK"].includes(form.inventory_treatment) && <SearchableSelect
-                label="Expense / Consumption COA"
+                label="Posting COA — Expense"
                 value={form.purchase_account_id ?? undefined}
                 required={form.item_type === "BUY"}
                 placeholder="Type expense COA..."
@@ -385,20 +385,23 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
                 onChange={(value) => update("purchase_account_id", value ? Number(value) : null)}
               />}
               {form.inventory_treatment === "FIXED_ASSET" && <SearchableSelect
-                label="Fixed Asset COA"
+                label="Posting COA — Fixed Asset"
                 value={form.asset_account_id ?? undefined}
                 required
                 placeholder="For computers, select an account under 100-600..."
                 options={coaOptions(fixedAssetAccounts)}
                 onChange={(value) => update("asset_account_id", value ? Number(value) : null)}
               />}
-              {form.inventory_treatment === "STOCK" && <SearchableSelect
-                label="COGS / Issue COA"
+              {form.inventory_treatment === "STOCK" && <details className="md:col-span-2">
+                <summary className="cursor-pointer text-sm text-slate-600">Stock issue (OUT)</summary>
+                <div className="mt-2"><SearchableSelect
+                label="Expense account for stock usage"
+
                 value={form.cogs_account_id ?? undefined}
                 placeholder="Type COGS or issue expense COA..."
                 options={coaOptions(expenseAccounts)}
                 onChange={(value) => update("cogs_account_id", value ? Number(value) : null)}
-              />}
+              /></div></details>}
             </div>
           </div>
 
