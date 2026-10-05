@@ -67,13 +67,16 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
     values = {
         "inventory_account_id": payload.get("inventory_account_id", product.inventory_account_id if product else None),
         "purchase_account_id": payload.get("purchase_account_id", product.purchase_account_id if product else None),
-        "cogs_account_id": payload.get("cogs_account_id", product.cogs_account_id if product else None),
+        # OUT mapping is independent of the receiving inventory mapping.
+        "cogs_account_id": payload.get("cogs_account_id"),
         "asset_account_id": payload.get("asset_account_id", getattr(product, "asset_account_id", None) if product else None),
     }
     if values["inventory_account_id"]:
         probe = type("ProductProbe", (), {"code": payload.get("code") or (product.code if product else "new"), **values})()
         resolver.inventory_account(probe)
     for field, label in (("purchase_account_id", "consumption/expense"), ("cogs_account_id", "COGS")):
+        if field == "cogs_account_id" and product and values[field] == product.cogs_account_id:
+            continue
         if values[field]:
             account = resolver.account(values[field], f"Item {label}")
             if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
