@@ -25,6 +25,69 @@ def normalize(value):
     return str(value or '').strip().upper()
 
 
+def resolve_group(groups, snapshots, label):
+    """Use catalog names, disambiguated by existing active BUY item codes."""
+    label = normalize(label)
+    codes = {str(p['group_code']) for p in snapshots
+             if normalize(p['group_name']) == label and p['group_code']}
+    if len(codes) > 1:
+        raise ValueError(f'Conflicting legacy group codes for {label}: {sorted(codes)}')
+    named = [g for g in groups if normalize(g['name']) == label and g['item_type'] == 'BUY']
+    if codes:
+        code = next(iter(codes))
+        matching = [g for g in groups if g['code'] == code]
+        if matching:
+            if len(matching) != 1 or normalize(matching[0]['name']) != label or matching[0]['item_type'] != 'BUY':
+                raise ValueError(f'Group code {code} conflicts with {label}')
+            group = matching[0]
+        else:
+            group = {'id': f'planned:{code}', 'code': code, 'name': label,
+                     'item_type': 'BUY', 'is_active': True, '_new': True}
+    elif len(named) == 1:
+        group = named[0]
+    else:
+        raise ValueError(f'Active BUY group {label} not uniquely configured; no verified legacy code')
+    if not group['is_active']:
+        raise ValueError(f'Group {label} ({group["code"]}) is inactive')
+    return group
+
+
+def resolve_subgroup(subgroups, snapshots, group, labels):
+    for label in labels:
+        codes = {str(p['subgroup_code']) for p in snapshots
+                 if str(p['group_code']) == group['code']
+                 and normalize(p['subgroup_name']) == label and p['subgroup_code']}
+        if len(codes) > 1:
+            raise ValueError(f'Conflicting legacy subgroup codes for {label}: {sorted(codes)}')
+        named = [s for s in subgroups if s['group_id'] == group['id'] and normalize(s['name']) == label]
+        if codes:
+            code = next(iter(codes))
+            matching = [s for s in subgroups if s['code'] == code]
+            if matching:
+                if len(matching) != 1 or matching[0]['group_id'] != group['id'] or normalize(matching[0]['name']) != label:
+                    raise ValueError(f'Subgroup code {code} conflicts with {label}')
+                subgroup = matching[0]
+            else:
+                subgroup = {'id': None, 'code': code, 'name': label, 'group_id': group['id'], 'is_active': True}
+        elif len(named) == 1:
+            subgroup = named[0]
+        elif named:
+            raise ValueError(f'Subgroup {label} is ambiguous')
+        else:
+            continue
+        if not subgroup['is_active']:
+            raise ValueError(f'Target subgroup {label} is inactive')
+        return subgroup
+    used = {s['code'] for s in subgroups} | {str(p['subgroup_code']) for p in snapshots if p['subgroup_code']}
+    n = 1
+    while f"{group['code']}-{n}" in used:
+        n += 1
+    code = f"{group['code']}-{n}"
+    if len(code) > 10:
+        raise ValueError('Subgroup code exceeds schema length')
+    return {'id': None, 'code': code, 'name': labels[0], 'group_id': group['id'], 'is_active': True}
+
+
 def validate_account(account, code, treatment):
     if not account or account['account_number'] != code:
         raise ValueError(f'COA {code} missing')
@@ -92,13 +155,14 @@ def main():
             conn.execute(text("SET LOCAL statement_timeout = '60s'"))
             if args.apply:
                 conn.execute(text('SELECT pg_advisory_xact_lock(484005, 237)'))
-                conn.execute(text('LOCK TABLE item_groups, item_subgroups IN SHARE ROW EXCLUSIVE MODE'))
+                conn.execute(text('LOCK TABLE products, item_groups, item_subgroups IN SHARE ROW EXCLUSIVE MODE'))
                 conn.execute(text('LOCK TABLE inventory, stock_movements, goods_receipts, goods_receipt_items IN SHARE MODE'))
             products = catalog(conn, text('SELECT * FROM products WHERE id = ANY(:ids) ORDER BY id' + (' FOR UPDATE' if args.apply else '')), {'ids': list(source)})
             by_id = {p['id']: p for p in products}
             if len(by_id) != 237 or any(by_id[i]['code'] != r['Code'] or by_id[i]['name'] != r['Item'] for i, r in source.items()):
                 raise ValueError('Source IDs, codes or names differ from DB; no changes allowed')
-            groups = catalog(conn, text("SELECT id, code, name, is_active FROM item_groups WHERE item_type='BUY'"), {})
+            groups = catalog(conn, text("SELECT id, code, name, item_type, is_active FROM item_groups"), {})
+            snapshots = catalog(conn, text("SELECT DISTINCT group_code, group_name, subgroup_code, subgroup_name FROM products WHERE item_type='BUY' AND is_active=true"), {})
             subgroups = catalog(conn, text('SELECT id, code, name, group_id, is_active FROM item_subgroups'), {})
             accounts = {r['account_number']: r for r in catalog(conn, text('SELECT id, account_number, account_type, normal_balance, is_active, is_posting FROM chart_of_accounts'), {})}
             if args.apply:
@@ -117,26 +181,9 @@ def main():
                 try:
                     if not product or source[rule['id']]['Code'] != rule['code']:
                         raise ValueError('Vetted rule not present in source')
-                    target_groups = [g for g in groups if normalize(g['name']) == rule['group']]
-                    if len(target_groups) != 1 or not target_groups[0]['is_active']:
-                        raise ValueError(f"Active BUY group {rule['group']} not uniquely configured")
-                    group = target_groups[0]
-                    candidates = [s for s in subgroups if s['group_id'] == group['id'] and normalize(s['name']) in rule['subgroups']]
-                    active = [s for s in candidates if s['is_active']]
-                    # Preferred names are explicit in the vetted rule, not fuzzy matches.
-                    subgroup = next((s for label in rule['subgroups'] for s in active if normalize(s['name']) == label), None)
-                    new_subgroup = False
-                    if subgroup is None:
-                        if candidates:
-                            raise ValueError('Target subgroup exists but is inactive')
-                        used = {s['code'] for s in subgroups}
-                        n = 1
-                        while f"{group['code']}-{n}" in used:
-                            n += 1
-                        subgroup = {'id': None, 'code': f"{group['code']}-{n}", 'name': rule['subgroups'][0], 'group_id': group['id'], 'is_active': True}
-                        if len(subgroup['code']) > 10:
-                            raise ValueError('Subgroup code exceeds schema length')
-                        new_subgroup = True
+                    group = resolve_group(groups, snapshots, rule['group'])
+                    subgroup = resolve_subgroup(subgroups, snapshots, group, rule['subgroups'])
+                    new_subgroup = subgroup['id'] is None
                     history = dict(conn.execute(text('''
                         SELECT
                           EXISTS(SELECT 1 FROM inventory WHERE product_id=:id AND quantity <> 0) AS has_stock,
@@ -161,9 +208,19 @@ def main():
                         entry['status'] = 'UNCHANGED'
                     else:
                         entry.update(status='APPLIED' if args.apply else 'PLANNED', changes=changes)
+                        if group.get('_new'):
+                            entry['create_group'] = {k: group[k] for k in ('code','name','item_type')}
                         if new_subgroup:
                             entry['create_subgroup'] = {k: subgroup[k] for k in ('code','name','group_id')}
                         if args.apply:
+                            if group.get('_new'):
+                                old_id = group['id']
+                                group['id'] = conn.execute(text('INSERT INTO item_groups (code,name,item_type,is_active) VALUES (:code,:name,:item_type,true) RETURNING id'), group).scalar_one()
+                                group.pop('_new')
+                                subgroup['group_id'] = group['id']
+                                for cached in subgroups:
+                                    if cached['group_id'] == old_id:
+                                        cached['group_id'] = group['id']
                             if new_subgroup:
                                 subgroup['id'] = conn.execute(text('INSERT INTO item_subgroups (code,name,group_id,is_active) VALUES (:code,:name,:group_id,true) RETURNING id'), subgroup).scalar_one()
                             assignment = ', '.join(f'{k}=:{k}' for k in changes)
@@ -175,8 +232,10 @@ def main():
                                   (user_id,actor_name,entity_type,entity_id,action,summary,source,before_data,after_data,details)
                                 VALUES (:user_id,:actor_name,'PRODUCT',:id,'ITEM_CLASSIFICATION_CORRECTED',:summary,'EC2_SCRIPT',
                                         CAST(:before AS json),CAST(:after AS json),CAST(:details AS json))
-                            '''), {'user_id': args.actor_id, 'actor_name': (actor or {}).get('full_name') or (actor or {}).get('username') or 'EC2 operator', 'id': rule['id'], 'summary': f"Correct classification for {rule['code']}", 'before': json.dumps(before, default=str), 'after': json.dumps(after, default=str), 'details': json.dumps({'module':'Item Master', 'source_sha256':review['sha256'], 'rules_sha256':rule_hash, 'reason':rule['reason'], 'created_subgroup':entry.get('create_subgroup')})})
-                        if new_subgroup:
+                            '''), {'user_id': args.actor_id, 'actor_name': (actor or {}).get('full_name') or (actor or {}).get('username') or 'EC2 operator', 'id': rule['id'], 'summary': f"Correct classification for {rule['code']}", 'before': json.dumps(before, default=str), 'after': json.dumps(after, default=str), 'details': json.dumps({'module':'Item Master', 'source_sha256':review['sha256'], 'rules_sha256':rule_hash, 'reason':rule['reason'], 'created_group':entry.get('create_group'), 'created_subgroup':entry.get('create_subgroup')})})
+                        if group not in groups:
+                            groups.append(group)
+                        if new_subgroup and subgroup not in subgroups:
                             subgroups.append(subgroup)
                 except ValueError as exc:
                     entry.update(status='REVIEW_REQUIRED', reason=str(exc))
@@ -185,7 +244,9 @@ def main():
             print(json.dumps({'mode':'APPLY' if args.apply else 'DRY_RUN', 'source_sha256':review['sha256'], 'rules_sha256':rule_hash, 'source_items':237, 'vetted_rules':len(rules), 'other_items':237-len(rules), 'summary':summary, 'results':results}, indent=2, default=str, ensure_ascii=False))
             if args.apply:
                 transaction.commit()
-                print('COMMITTED eligible Item Master corrections and audit records. Tax, stock and journals unchanged.')
+                print(f"COMMITTED {summary.get('APPLIED', 0)} Item Master corrections with audit records; "
+                      f"{summary.get('DEFERRED_POSTED_STOCK', 0)} deferred for stock/GL correction; "
+                      f"{summary.get('REVIEW_REQUIRED', 0)} require review. Tax, stock and journals unchanged.")
             else:
                 transaction.rollback()
                 print('DRY RUN: no writes. Use --apply for eligible rows; deferred rows require stock/GL correction.')
