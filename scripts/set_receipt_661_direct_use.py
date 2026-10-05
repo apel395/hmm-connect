@@ -195,7 +195,7 @@ def main():
                                    {'id':record['id'],'debit':debit,'credit':credit})
             db.execute(text('DELETE FROM stock_movements WHERE id=ANY(:ids)'), {'ids':[m['id'] for m in movements]})
             db.execute(text('DELETE FROM inventory WHERE id=ANY(:ids)'), {'ids':[s['id'] for s in stock]})
-            db.execute(text("UPDATE goods_receipts SET destination_type='DIRECT_USE',warehouse_id=NULL,updated_at=now() WHERE id=661"))
+            db.execute(text("UPDATE goods_receipts SET destination_type='DIRECT_USE',warehouse_id=NULL WHERE id=661"))
             db.execute(text('UPDATE journal_entries SET updated_at=now() WHERE id=1332'))
             after_lines=rows('SELECT * FROM journal_lines WHERE journal_entry_id=1332')
             after_gl=rows("SELECT * FROM general_ledger WHERE reference_type='GOODS_RECEIPT' AND reference_id=661")
