@@ -94,7 +94,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
     (selected?.subgroups ?? []).forEach((sub) => {
       if (sub.code && sub.name) set.set(sub.code, { code: sub.code, name: sub.name === "GRESORIS" ? "GROCERIES" : sub.name });
     });
-    if (product && product.group_code === form.group_code && product.subgroup_code && product.subgroup_name) {
+    if (product && (product.item_type ?? "BUY") === form.item_type && product.group_code === form.group_code && product.subgroup_code && product.subgroup_name) {
       set.set(product.subgroup_code, { code: product.subgroup_code, name: product.subgroup_name === "GRESORIS" ? "GROCERIES" : product.subgroup_name });
     }
     return [...set.values()]
