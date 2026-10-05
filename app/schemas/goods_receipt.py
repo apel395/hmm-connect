@@ -27,7 +27,7 @@ class GoodsReceiptCreate(BaseModel):
     purchase_order_id: int | None = None
     supplier_id: int | None = None
     received_at: datetime | None = None
-    source_type: Literal["LIVE", "HISTORICAL_IMPORT"] = "LIVE"
+    source_type: Literal["LIVE", "HISTORICAL_IMPORT", "HISTORICAL_ENTRY"] = "LIVE"
     external_reference: str | None = Field(default=None, max_length=100)
     receipt_type: Literal["GOODS", "SERVICE"] = "GOODS"
     warehouse_id: int | None = None
