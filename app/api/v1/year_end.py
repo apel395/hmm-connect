@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.dependencies.authorization import require_permission
 
 from app.services.year_end_service import YearEndService
+from app.services.location_access import assigned_location_id
 
 router = APIRouter(
     prefix="/year-end",
@@ -25,6 +26,8 @@ def close_year(
     ),
 ):
 
+    if assigned_location_id(current_user) is not None:
+        raise HTTPException(403, "Year closing requires access to all locations")
     journal = YearEndService.close_year(
         db=db,
         fiscal_year=year,

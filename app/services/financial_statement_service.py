@@ -34,6 +34,15 @@ class FinancialStatementService:
             paginate=False, page_size=200, **filters,
         )["items"]
 
+    def _period_rows(self, date_from: date, date_to: date, **filters) -> list[dict]:
+        rows = self._trial(date(date_to.year, 1, 1), date_to, **filters)
+        activity = self.trial._activity(date_from=date_from, date_to=date_to, exclude_closing=True,
+            location_id=filters.get("location_id"), department_id=filters.get("department_id"),
+            business_unit_id=filters.get("business_unit_id"))
+        for row in rows:
+            row["period_debit"], row["period_credit"] = activity.get(row["account_id"], (ZERO, ZERO))
+        return rows
+
     @staticmethod
     def _variance(current: Decimal, comparative: Decimal | None) -> tuple[Decimal | None, Decimal | None]:
         if comparative is None:
@@ -49,7 +58,7 @@ class FinancialStatementService:
 
     @staticmethod
     def _period_amount(row: dict) -> Decimal:
-        return row["period_credit"] - row["period_debit"] if row["account_type"] == "REVENUE" else row["period_debit"] - row["period_credit"]
+        return row["period_credit"] - row["period_debit"] if row["account_type"] in {"REVENUE", "INCOME"} else row["period_debit"] - row["period_credit"]
 
     def _filters(self, account_id, parent_account_id, include_inactive, location_id, department_id, business_unit_id=None):
         return {
@@ -61,7 +70,7 @@ class FinancialStatementService:
 
     def earnings(self, as_of_date: date, **filters) -> Decimal:
         rows = self._trial(date(as_of_date.year, 1, 1), as_of_date, **filters)
-        revenue = sum((self._period_amount(row) for row in rows if row["account_type"] == "REVENUE"), ZERO)
+        revenue = sum((self._period_amount(row) for row in rows if row["account_type"] in {"REVENUE", "INCOME"}), ZERO)
         expense = sum((self._period_amount(row) for row in rows if row["account_type"] == "EXPENSE"), ZERO)
         return revenue - expense
 
@@ -96,8 +105,10 @@ class FinancialStatementService:
             account_type = row["account_type"]
             if account_type not in BALANCE_GROUPS:
                 continue
-            opening = Decimal(row.get("opening_balance") or ZERO)
-            closing = Decimal(row.get("closing_balance") or ZERO)
+            expected = "DEBIT" if account_type == "ASSET" else "CREDIT"
+            sign = Decimal(1) if row["normal_balance"] == expected else Decimal(-1)
+            opening = Decimal(row.get("opening_balance") or ZERO) * sign
+            closing = Decimal(row.get("closing_balance") or ZERO) * sign
             if not include_zero_balance and opening == ZERO and closing == ZERO:
                 continue
             configured = row.get("financial_statement_group")
@@ -126,7 +137,7 @@ class FinancialStatementService:
             })
 
         current_earnings = self.earnings(as_of_date, **filters)
-        opening_earnings = self.earnings(year_start, **filters)
+        opening_earnings = ZERO
         groups["EQUITY"].append({
             "account_id": None, "account_code": "", "account_name": "Laba Ditahan Tahun Berjalan (Current Year Retained Earnings)",
             "account_type": "EQUITY", "parent_account_id": None,
@@ -170,7 +181,7 @@ class FinancialStatementService:
                 "current_period_earnings": current_earnings, "total_liabilities_and_equity": liabilities_equity,
                 "difference": difference, "is_balanced": difference == ZERO, "unclassified_account_count": unclassified,
             },
-            "metadata": {"canonical_source": "OPENING_BALANCES_AND_POSTED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "NOT_AVAILABLE", "earnings_reconciled": True, "is_yearly": True, "year_start": year_start, "year_end": year_end},
+            "metadata": {"canonical_source": "OPENING_BALANCES_AND_POSTED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "PERIOD_CLOSE_AND_YEAR_END", "earnings_reconciled": True, "is_yearly": True, "year_start": year_start, "year_end": year_end},
         }
 
     def profit_and_loss(
@@ -186,13 +197,13 @@ class FinancialStatementService:
         if comparative_date_from and comparative_date_from > comparative_date_to:
             raise ValueError("comparative_date_from must be on or before comparative_date_to")
         filters = self._filters(account_id, parent_account_id, include_inactive, location_id, department_id, business_unit_id)
-        rows = self._trial(date_from, date_to, **filters)
-        comp_rows = self._trial(comparative_date_from, comparative_date_to, **filters) if comparative_date_from else []
+        rows = self._period_rows(date_from, date_to, **filters)
+        comp_rows = self._period_rows(comparative_date_from, comparative_date_to, **filters) if comparative_date_from else []
         comparisons = {row["account_id"]: row for row in comp_rows}
         group_codes = ("OPERATING_REVENUE", "OTHER_REVENUE", "UNCLASSIFIED_REVENUE", "COST_OF_REVENUE", "OPERATING_EXPENSE", "OTHER_EXPENSE", "UNCLASSIFIED_EXPENSE")
         groups = {code: [] for code in group_codes};unclassified = 0
         for row in rows:
-            if row["account_type"] not in {"REVENUE", "EXPENSE"}:
+            if row["account_type"] not in {"REVENUE", "INCOME", "EXPENSE"}:
                 continue
             amount = self._period_amount(row)
             comp = self._period_amount(comparisons[row["account_id"]]) if row["account_id"] in comparisons else ZERO
@@ -200,8 +211,8 @@ class FinancialStatementService:
             if not include_zero_balance and amount == ZERO and (comparative is None or comparative == ZERO):
                 continue
             configured = row.get("financial_statement_group")
-            allowed = {"OPERATING_REVENUE", "OTHER_REVENUE"} if row["account_type"] == "REVENUE" else {"COST_OF_REVENUE", "OPERATING_EXPENSE", "OTHER_EXPENSE"}
-            group = configured if configured in allowed else f"UNCLASSIFIED_{row['account_type']}"
+            allowed = {"OPERATING_REVENUE", "OTHER_REVENUE"} if row["account_type"] in {"REVENUE", "INCOME"} else {"COST_OF_REVENUE", "OPERATING_EXPENSE", "OTHER_EXPENSE"}
+            group = configured if configured in allowed else ("UNCLASSIFIED_REVENUE" if row["account_type"] in {"REVENUE", "INCOME"} else "UNCLASSIFIED_EXPENSE")
             if group.startswith("UNCLASSIFIED"):
                 unclassified += 1
             variance, percentage = self._variance(amount, comparative)
@@ -217,4 +228,4 @@ class FinancialStatementService:
         totals={code:sum((row["current_amount"] for row in groups[code]),ZERO) for code in group_codes}
         operating_revenue=totals["OPERATING_REVENUE"]
         cost=totals["COST_OF_REVENUE"];gross=operating_revenue-cost;operating_expenses=totals["OPERATING_EXPENSE"];operating_profit=gross-operating_expenses;other_revenue=totals["OTHER_REVENUE"];other_expenses=totals["OTHER_EXPENSE"];unclassified_net=totals["UNCLASSIFIED_REVENUE"]-totals["UNCLASSIFIED_EXPENSE"];net=operating_profit+other_revenue-other_expenses+unclassified_net
-        return {"date_from":date_from,"date_to":date_to,"comparative_date_from":comparative_date_from,"comparative_date_to":comparative_date_to,"detail_level":detail_level,"sections":sections,"summary":{"total_revenue":operating_revenue+other_revenue+totals["UNCLASSIFIED_REVENUE"],"cost_of_revenue":cost,"gross_profit":gross,"operating_expenses":operating_expenses,"operating_profit":operating_profit,"other_revenue":other_revenue,"other_expenses":other_expenses,"unclassified_net":unclassified_net,"net_profit_before_tax":net,"tax_expense":ZERO,"net_profit_after_tax":net,"unclassified_account_count":unclassified},"metadata":{"canonical_source":"POSTED_JOURNAL_LINES","reconciles_to_period_trial_balance":True}}
+        return {"date_from":date_from,"date_to":date_to,"comparative_date_from":comparative_date_from,"comparative_date_to":comparative_date_to,"detail_level":detail_level,"sections":sections,"summary":{"total_revenue":operating_revenue+other_revenue+totals["UNCLASSIFIED_REVENUE"],"cost_of_revenue":cost,"gross_profit":gross,"operating_expenses":operating_expenses,"operating_profit":operating_profit,"other_revenue":other_revenue,"other_expenses":other_expenses,"unclassified_net":unclassified_net,"net_profit_before_tax":net,"tax_expense":ZERO,"net_profit_after_tax":net,"unclassified_account_count":unclassified},"metadata":{"canonical_source":"POSTED_JOURNAL_LINES","operating_movement_before_closing":True}}

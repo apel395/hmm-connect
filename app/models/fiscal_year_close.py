@@ -22,8 +22,8 @@ class FiscalYearClose(Base, TimestampMixin):
         Date,
     )
 
-    journal_entry_id: Mapped[int] = mapped_column(
-        ForeignKey("journal_entries.id"),
+    journal_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("journal_entries.id"), nullable=True,
     )
 
     is_closed: Mapped[bool] = mapped_column(

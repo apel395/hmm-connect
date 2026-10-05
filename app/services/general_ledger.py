@@ -2,6 +2,8 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from app.models.chart_of_account import ChartOfAccount
 
 from app.models.general_ledger import GeneralLedger
 from app.services.document_number import next_document_number
@@ -34,7 +36,12 @@ class GeneralLedgerService:
         journal_source: str | None = None,
         document_type: str | None = None,
         document_number: str | None = None,
+        system_closing: bool = False,
     ) -> GeneralLedger:
+
+        account = db.get(ChartOfAccount, account_id)
+        if account and account.account_type in {"REVENUE", "INCOME"} and account.account_number != "400" and reference_type not in {"PERIOD_CLOSE", "YEAR_END"}:
+            raise HTTPException(422, "Revenue postings must use account 400")
 
         if posting_date is None:
             posting_date = date.today()
@@ -42,6 +49,7 @@ class GeneralLedgerService:
         FiscalPeriodService.validate_posting_date(
             db=db,
             posting_date=posting_date,
+            system_closing=system_closing,
         )
 
         # Replace this with FiscalPeriodService.get_period(...) if available.

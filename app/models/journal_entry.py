@@ -113,6 +113,8 @@ class JournalEntry(Base, TimestampMixin):
 
 JOURNAL_ORIGIN_CODES = {
     "MANUAL": "MAN",
+    "PERIOD_CLOSE": "CLOSE",
+    "YEAR_END": "CLOSE",
     "SUPPLIER_INVOICE": "SI",
     "SUPPLIER_PAYMENT": "PAY",
     "SUPPLIER_ADJUSTMENT": "ADJ",
