@@ -1,3 +1,4 @@
+import ReportSetupPage from "./ReportSetupPage";
 import ModuleWorkspaceHeader from "@/components/workspace/ModuleWorkspaceHeader";
 import ChartOfAccountPage from "@/modules/master/chart-of-accounts/pages/ChartOfAccountPage";
 import PostingRulesPage from "@/modules/finance/posting-rules/PostingRulesPage";
@@ -5,9 +6,10 @@ import BankAccountsSetupPage from "./BankAccountsSetupPage";
 import OpeningBalancesPage from "@/modules/finance/opening-balances/OpeningBalancesPage";
 import FiscalPeriodsPage from "@/modules/finance/fiscal/pages/FiscalPeriodsPage";
 
-type Section = "coa" | "posting-rules" | "bank-accounts" | "opening-balances" | "accounting-periods";
+type Section = "coa" | "posting-rules" | "bank-accounts" | "opening-balances" | "accounting-periods" | "reports";
 
 const tabs = [
+  { label: "Reports", to: "/finance-setup/reports" },
   { label: "Chart of Accounts", to: "/finance-setup", exact: true },
   { label: "Direct COA", to: "/finance-setup/posting-rules" },
   { label: "Bank Accounts", to: "/finance-setup/bank-accounts" },
@@ -23,6 +25,7 @@ export default function FinanceSetupWorkspacePage({ section }: { section: Sectio
         description="Configure chart of accounts, direct master mappings, bank accounts, opening balances, and accounting periods."
         tabs={tabs}
       />
+      {section === "reports" && <ReportSetupPage />}
       {section === "coa" && <ChartOfAccountPage />}
       {section === "posting-rules" && <PostingRulesPage />}
       {section === "bank-accounts" && <BankAccountsSetupPage />}
