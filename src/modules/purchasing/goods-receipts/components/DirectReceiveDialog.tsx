@@ -22,6 +22,7 @@ import {
 } from "@/modules/admin/organization/api";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
+import useAuthorization from "@/hooks/useAuthorization";
 import { nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
 
@@ -46,6 +47,7 @@ export default function DirectReceiveDialog({
   const { data: suppliers = [] } = useSuppliers();
   const { data: warehouses = [] } = useWarehouses();
   const receive = useReceiveGoods();
+  const { hasPermission } = useAuthorization();
   const [supplierId, setSupplierId] = useState<number>();
   const [businessUnitId, setBusinessUnitId] = useState<number>();
   const [departmentId, setDepartmentId] = useState<number>();
@@ -55,6 +57,7 @@ export default function DirectReceiveDialog({
   >("WAREHOUSE");
   const [warehouseId, setWarehouseId] = useState<number>();
   const [receivedAt, setReceivedAt] = useState(nowLocal());
+  const [historical, setHistorical] = useState(false);
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([
@@ -145,6 +148,7 @@ export default function DirectReceiveDialog({
     try {
       await receive.mutateAsync({
         payload: {
+          source_type: historical ? "HISTORICAL_ENTRY" : "LIVE",
           supplier_id: supplierId,
           business_unit_id: businessUnitId,
           department_id: departmentId,
@@ -176,12 +180,13 @@ export default function DirectReceiveDialog({
           <DialogTitle>Create Direct Receiving Draft</DialogTitle>
         </DialogHeader>
         <DialogBody className="space-y-4">
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
+          {hasPermission("receiving.post") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={historical} onChange={event => setHistorical(event.target.checked)}/> Historical entry (Draft → Post)</label>}
+          {!historical && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
             Use this only when goods/services are received without a Purchase
             Order. Saving creates a <strong>Draft RR</strong>; it must follow
             Store → Chef → PM/Camp Boss → HO Purchasing → Finance → General
             Manager approval before it can be posted to inventory.
-          </div>
+          </div>}
           <div className="grid gap-3 md:grid-cols-2">
             <SearchableSelect
               label="Supplier"
