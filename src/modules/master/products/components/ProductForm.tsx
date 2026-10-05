@@ -100,7 +100,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
     return [...set.values()]
       .sort((a, b) => a.code.localeCompare(b.code))
       .map((item) => ({ id: item.code, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }));
-  }, [groups, form.group_code, product]);
+  }, [groups, form.group_code, form.item_type, product]);
 
   const allAccounts = accounts.data ?? [];
   const inventoryAccounts = allAccounts.filter((account) =>
