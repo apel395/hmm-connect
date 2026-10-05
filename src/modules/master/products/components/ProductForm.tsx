@@ -251,8 +251,10 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
   );
 
   const submit = () => {
+    const { cogs_account_id, ...itemFields } = form;
     const payload = {
-      ...form,
+      ...itemFields,
+      ...(cogs_account_id !== (product?.cogs_account_id ?? null) ? { cogs_account_id } : {}),
       code: form.code.trim(),
       name: form.name.trim(),
       subgroup_name: form.subgroup_name === "GRESORIS" ? "GROCERIES" : form.subgroup_name,
