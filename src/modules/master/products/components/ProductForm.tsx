@@ -71,8 +71,8 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
 
   const groupOptions = useMemo(() => {
     const set = new Map<string, { code: string; name: string; item_type?: ItemType }>();
-    groups.filter((item) => item.item_type === form.item_type).forEach((item) => set.set(item.code, { code: item.code, name: item.name, item_type: item.item_type }));
-    if (product?.group_code && product.group_name) {
+    groups.filter((item) => (item.item_type ?? "BUY") === form.item_type).forEach((item) => set.set(item.code, { code: item.code, name: item.name, item_type: item.item_type }));
+    if (product?.group_code && product.group_name && (product.item_type ?? "BUY") === form.item_type) {
       set.set(product.group_code, {
         code: product.group_code,
         name: product.group_name,
@@ -89,18 +89,18 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
   }, [groups, product, form.item_type]);
 
   const subGroupOptions = useMemo(() => {
-    const selected = groups.find((group) => group.code === form.group_code);
+    const selected = groups.find((group) => group.code === form.group_code && (group.item_type ?? "BUY") === form.item_type);
     const set = new Map<string, { code: string; name: string }>();
     (selected?.subgroups ?? []).forEach((sub) => {
       if (sub.code && sub.name) set.set(sub.code, { code: sub.code, name: sub.name === "GRESORIS" ? "GROCERIES" : sub.name });
     });
-    if (product && product.group_code === form.group_code && product.subgroup_code && product.subgroup_name) {
+    if (product && (product.item_type ?? "BUY") === form.item_type && product.group_code === form.group_code && product.subgroup_code && product.subgroup_name) {
       set.set(product.subgroup_code, { code: product.subgroup_code, name: product.subgroup_name === "GRESORIS" ? "GROCERIES" : product.subgroup_name });
     }
     return [...set.values()]
       .sort((a, b) => a.code.localeCompare(b.code))
       .map((item) => ({ id: item.code, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }));
-  }, [groups, form.group_code, product]);
+  }, [groups, form.group_code, form.item_type, product]);
 
   const allAccounts = accounts.data ?? [];
   const inventoryAccounts = allAccounts.filter((account) =>
@@ -205,7 +205,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
 
   const updateGroup = (value: string | undefined) => {
     const code = value ?? "";
-    const group = groups.find((item) => item.code === code);
+    const group = groups.find((item) => item.code === code && (item.item_type ?? "BUY") === form.item_type);
     setForm((current) => ({
       ...current,
       group_code: code,
@@ -217,7 +217,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
 
   const updateSubgroup = (value: string | undefined) => {
     const code = value ?? "";
-    const group = groups.find((item) => item.code === form.group_code);
+    const group = groups.find((item) => item.code === form.group_code && (item.item_type ?? "BUY") === form.item_type);
     const sub = (group?.subgroups ?? []).find((item) => item.code === code);
     const name = sub?.name === "GRESORIS" ? "GROCERIES" : sub?.name;
     setForm((current) => ({ ...current, subgroup_code: code, subgroup_name: name ?? "" }));
