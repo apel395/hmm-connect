@@ -205,6 +205,7 @@ export default function ProductPage() {
         </>}
       </Card>
     </div>
+    {formOpen && classification.isError && <div role="alert" className="fixed bottom-4 right-4 z-[100] rounded border border-red-200 bg-white p-3 text-sm text-red-700">Item classifications could not be loaded. <Button size="sm" variant="outline" onClick={() => classification.refetch()}>Retry</Button></div>}
     <ProductForm open={formOpen} product={selected} groups={classification.data ?? []} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
     <ProductDetailDialog productId={detailId} accounts={accountLookup.data ?? []} onClose={() => setDetailId(null)} onEdit={(product) => { setDetailId(null); handleEdit(product); }}/>
   </>;
