@@ -38,18 +38,32 @@ def validate_remaining_stock(items, movements, inventory):
             raise ValueError(f'Item {pid} warehouse evidence is not unique')
         movement, stock = matches[0], stocks[0]
         inventory_account = 177 if pid == 6332 else 167
-        if (movement['movement_type'] != 'IN' or movement['reference_type'] != 'GOODS_RECEIPT'
-                or movement['reference_id'] != 661 or movement['goods_receipt_id'] != 661
-                or movement['goods_receipt_item_id'] != item['receipt_item_id']
-                or movement['journal_entry_id'] != 1332 or movement['warehouse_id'] != 11
-                or movement['inventory_account_id'] != inventory_account
-                or movement['created_at'].date() != DAY
-                or amount(movement['quantity']) != amount(item['quantity'])
-                or amount(movement['unit_cost']) != amount(item['unit_cost'])
-                or stock['warehouse_id'] != 11
-                or amount(stock['quantity']) != amount(item['quantity'])
-                or amount(stock['average_cost']) != amount(item['unit_cost'])):
-            raise ValueError(f'Item {pid} stock has changed; inspection required')
+        # created_at records when a historical receipt was entered, not its
+        # effective date. The receipt date and original posted journal/GL are
+        # checked separately in main(). Legacy receipt INs may have no journal
+        # FK; their receipt/item references still identify the source exactly.
+        checks = {
+            'movement_type': (movement['movement_type'], 'IN'),
+            'reference_type': (movement['reference_type'], 'GOODS_RECEIPT'),
+            'reference_id': (movement['reference_id'], 661),
+            'goods_receipt_id': (movement['goods_receipt_id'], 661),
+            'goods_receipt_item_id': (movement['goods_receipt_item_id'], item['receipt_item_id']),
+            'movement.warehouse_id': (movement['warehouse_id'], 11),
+            'inventory_account_id': (movement['inventory_account_id'], inventory_account),
+            'movement.quantity': (amount(movement['quantity']), amount(item['quantity'])),
+            'movement.unit_cost': (amount(movement['unit_cost']), amount(item['unit_cost'])),
+            'inventory.warehouse_id': (stock['warehouse_id'], 11),
+            'inventory.quantity': (amount(stock['quantity']), amount(item['quantity'])),
+            'inventory.average_cost': (amount(stock['average_cost']), amount(item['unit_cost'])),
+        }
+        differences = {field: {'actual': str(actual), 'expected': str(expected)}
+                       for field, (actual, expected) in checks.items() if actual != expected}
+        if movement['journal_entry_id'] not in (None, 1332):
+            differences['journal_entry_id'] = {
+                'actual': str(movement['journal_entry_id']), 'expected': 'NULL or 1332'}
+        if differences:
+            raise ValueError(f'Item {pid} stock has changed; inspection required: '
+                             + json.dumps(differences, sort_keys=True))
 
 
 def target_signature(previous, items, products, accounts):
