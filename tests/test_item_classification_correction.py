@@ -96,6 +96,39 @@ class ClassificationCorrectionTests(unittest.TestCase):
                 {'id':2,'code':'99','name':'FOOD','item_type':'BUY','is_active':True}]
         self.assertEqual(module.resolve_group(groups,[{'group_code':'1','group_name':'FOOD'}],'FOOD')['id'],1)
 
+    def test_production_item_catalog_is_normalized_to_buy_before_resolution(self):
+        snapshots=[{'group_code':'1','group_name':'FOOD','subgroup_code':'1-5','subgroup_name':'VEGETABLES'}]
+        groups=[{'id':16,'code':'1','name':'FOOD','item_type':'ITEM','is_active':True},
+                {'id':17,'code':'2','name':'BEVERAGE','item_type':'ITEM','is_active':True},
+                {'id':18,'code':'3','name':'MATERIAL','item_type':'ITEM','is_active':True}]
+        original=[dict(g) for g in groups]
+        roles=[{'group_code':g['code'],'item_type':'BUY'} for g in groups]
+        repairs=module.plan_buy_group_repairs(groups,roles)
+        self.assertEqual(len(repairs),3)
+        self.assertEqual(groups,original)
+        for repair in repairs:
+            next(g for g in groups if g['id']==repair['id'])['item_type']='BUY'
+        for label in ('FOOD','BEVERAGE','MATERIAL'):
+            group=module.resolve_group(groups,snapshots,label)
+            self.assertFalse(group.get('_new',False))
+        group=module.resolve_group(groups,snapshots,'FOOD')
+        subgroup={'id':57,'code':'1-5','name':'VEGETABLES','group_id':16,'is_active':True}
+        self.assertIs(module.resolve_subgroup([subgroup],snapshots,group,['VEGETABLES']),subgroup)
+        self.assertEqual([g['id'] for g in groups],[16,17,18])
+
+    def test_sell_and_mixed_groups_are_never_retyped(self):
+        groups=[{'id':16,'code':'1','name':'FOOD','item_type':'ITEM','is_active':True}]
+        for roles in ([], ['SELL'], ['BUY','SELL'], ['BUY','ITEM'], ['BUY',None]):
+            self.assertEqual(module.plan_buy_group_repairs(groups,
+                             [{'group_code':'1','item_type':r} for r in roles]),[])
+        groups[0]['item_type']='SELL'
+        self.assertEqual(module.plan_buy_group_repairs(groups,[{'group_code':'1','item_type':'BUY'}]),[])
+
+    def test_sell_product_is_rejected_even_with_buy_group(self):
+        args=self.fixture()
+        args[0]['item_type']='SELL'
+        with self.assertRaises(ValueError):module.build_changes(*args)
+
     def test_group_conflicts_and_inactive_entries_are_rejected(self):
         snapshots=[{'group_code':'1','group_name':'FOOD'}]
         for field,value in [('is_active',False),('name','ASSET'),('item_type','SELL')]:
