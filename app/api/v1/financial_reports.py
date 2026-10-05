@@ -4,8 +4,7 @@ from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
+from app.services.xlsx_export import build_xlsx
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -96,37 +95,24 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
     report = FinancialReportingService(db).build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
         budget_id=budget_id, kap=kap, include_zero=include_zero)
-    workbook = Workbook()
-    workbook.remove(workbook.active)
+    sheets = []
     for period in ("MTD", "YTD"):
-        sheet = workbook.create_sheet(period)
-        sheet.append([report_type, as_of_date.isoformat(), "Location", scope or "Consolidated", "Unit", business_unit_id or "All"])
+        rows = []
+        rows.append([report_type, as_of_date.isoformat(), "Location", scope or "Consolidated", "Unit", business_unit_id or "All"])
         metrics = ("current", "budget", "last_month", "last_year", "variance") + (("movement",) if report_type == "BALANCE_SHEET" else ())
-        sheet.append(["Account", "Name", "Current", "Budget", "Last month", "Same period last year", "Variance"] + (["Period movement"] if report_type == "BALANCE_SHEET" else []))
+        rows.append(["Account", "Name", "Current", "Budget", "Last month", "Same period last year", "Variance"] + (["Period movement"] if report_type == "BALANCE_SHEET" else []))
         for section, totals in report["section_totals"].items():
             values = totals[period]
-            sheet.append([section, "Total", *[float(values[m]) if values[m] is not None else None for m in metrics]])
+            rows.append([section, "Total", *[values[m] if values[m] is not None else None for m in metrics]])
             for row in report["rows"]:
                 if row["section"] != section:
                     continue
                 values = row["periods"][period]
-                sheet.append([row["account_code"], row["account_name"], *[float(values[m]) if values[m] is not None else None for m in metrics]])
+                rows.append([row["account_code"], row["account_name"], *[values[m] if values[m] is not None else None for m in metrics]])
         if report_type == "PROFIT_LOSS":
             v = report["section_totals"]
-            sheet.append(["NET", "Net profit", *[None if any(v[s][period][m] is None for s in v) else float(v["REVENUE"][period][m] - v["COST_OF_REVENUE"][period][m] - v["EXPENSES"][period][m]) for m in metrics]])
-        for cell in sheet[2]:
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill("solid", fgColor="1E293B")
-        sheet.freeze_panes = "C3"
-        sheet.auto_filter.ref = f"A2:{'H' if report_type == 'BALANCE_SHEET' else 'G'}{sheet.max_row}"
-        sheet.column_dimensions["A"].width = 22
-        sheet.column_dimensions["B"].width = 48
-        for column in "CDEFGH":
-            sheet.column_dimensions[column].width = 24
-            for cell in sheet[column][2:]:
-                cell.number_format = '#,##0.00;[Red](#,##0.00)'
-    output = BytesIO()
-    workbook.save(output)
-    output.seek(0)
+            rows.append(["NET", "Net profit", *[None if any(v[s][period][m] is None for s in v) else v["REVENUE"][period][m] - v["COST_OF_REVENUE"][period][m] - v["EXPENSES"][period][m] for m in metrics]])
+        sheets.append((period, rows))
+    output = BytesIO(build_xlsx(sheets))
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{report_type.lower()}-{as_of_date}.xlsx"'})

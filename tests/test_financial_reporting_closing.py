@@ -244,3 +244,16 @@ def test_shared_budget_detail_exposes_only_assigned_location(db):
     assert result["allowed_actions"]=={}
     with pytest.raises(HTTPException):
         budgets.get_budget(session,b.id,scoped)
+
+
+def test_lightweight_excel_retains_numeric_values_and_treats_names_as_text():
+    from app.services.xlsx_export import build_xlsx
+    from openpyxl import load_workbook
+    from io import BytesIO
+    payload=build_xlsx([("MTD", [["Report"], ["Account", "Name", "Amount"], ["400", "=SUM(A1:A2)", Decimal("7316281.25")]])])
+    sheet=load_workbook(BytesIO(payload))["MTD"]
+    assert sheet["C3"].value==7316281.25
+    assert sheet["C3"].data_type=="n"
+    assert sheet["B3"].data_type=="s"
+    assert sheet.freeze_panes=="C3"
+    assert sheet.auto_filter.ref=="A2:C3"
