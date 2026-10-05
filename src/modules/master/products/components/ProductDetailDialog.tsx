@@ -44,7 +44,7 @@ export default function ProductDetailDialog({ productId, accounts, onClose, onEd
             <div><div className="text-slate-500">Treatment</div><strong>{item.inventory_treatment.replace(/_/g, " ")}</strong></div>
             <div><div className="text-slate-500">Purchase → Usage UOM</div><strong>{item.uom} → {quantity(item.conversion)} {item.usage_uom}</strong></div>
             {item.item_type === "BUY" && <div><div className="text-slate-500">Posting account</div><strong>{account(primaryAccount)}</strong></div>}
-            {item.inventory_treatment === "STOCK" && <div><div className="text-slate-500">Issue / COGS account</div><strong>{account(item.cogs_account_id)}</strong></div>}
+            {item.inventory_treatment === "STOCK" && <div><div className="text-slate-500">Stock usage expense (OUT)</div><strong>{account(item.cogs_account_id)}</strong></div>}
             <div><div className="text-slate-500">Tax profile</div><strong>{item.tax_category}{item.is_taxable ? ` · ${quantity(item.tax_rate)}%` : ""}</strong></div>
             <div><div className="text-slate-500">Status</div><strong>{item.is_active ? "Active" : "Inactive"}</strong></div>
             {item.description && <p className="md:col-span-3">{item.description}</p>}
