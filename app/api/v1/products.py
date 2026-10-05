@@ -40,6 +40,28 @@ def _apply_filters(query, *, active_only: bool, search: str | None, market_only:
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
     return query
 
+def _normalize_item_coa(payload: dict, product: Product | None = None) -> None:
+    """Keep only mappings used by the explicitly selected item treatment.
+
+    This changes master configuration only; it never adjusts balances or journals.
+    Stock issue expense is optional here and is used only when stock goes OUT.
+    """
+    fields = {"inventory_account_id", "purchase_account_id", "asset_account_id", "cogs_account_id"}
+    if not (fields.intersection(payload) or "inventory_treatment" in payload):
+        return
+    treatment = payload.get("inventory_treatment", getattr(product, "inventory_treatment", "REVIEW_REQUIRED"))
+    allowed = {
+        "STOCK": {"inventory_account_id", "cogs_account_id"},
+        "DIRECT_USE": {"purchase_account_id"},
+        "NON_STOCK": {"purchase_account_id"},
+        "FIXED_ASSET": {"asset_account_id"},
+    }.get(treatment)
+    if allowed is None:
+        return
+    for field in fields - allowed:
+        payload[field] = None
+
+
 def _validate_coa_mappings(db: Session, payload: dict, product: Product | None = None) -> None:
     resolver = DirectCoaService(db)
     values = {
@@ -232,6 +254,7 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     if str(payload.get("subgroup_name") or "").strip().upper() == "GRESORIS":
         payload["subgroup_name"] = "GROCERIES"
     payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
+    _normalize_item_coa(payload)
     _validate_treatment(payload)
     _validate_coa_mappings(db, payload)
     _validate_sales_profile(db, payload)
@@ -263,6 +286,7 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     payload = data.model_dump(exclude_unset=True)
     if str(payload.get("subgroup_name") or "").strip().upper() == "GRESORIS":
         payload["subgroup_name"] = "GROCERIES"
+    _normalize_item_coa(payload, product)
     _validate_treatment(payload, product)
     _validate_coa_mappings(db, payload, product)
     _validate_sales_profile(db, payload, product)
