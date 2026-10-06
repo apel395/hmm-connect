@@ -5,6 +5,14 @@ traceability, payables/receivables, and accounting.
 
 ## Local setup
 
+Login allows one active session per user. If a connection drops after login,
+the login page offers **Sign in and end previous session**. The API accepts
+`replace_session=true` on `/api/v1/auth/login` only after verifying the password
+and active account, then replaces the session under a user row lock. Previous
+tokens cannot access the app or log out the replacement session. Normal login
+still reports a conflict for an active session; idle sessions expire after 30
+minutes. Recovery does not require an administrator or a database reset.
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -87,4 +95,3 @@ the database and heavy processing. The UI is deployed from `main`.
   Company period/year management requires unscoped location access.
 - Supplier invoice entry can already load received quantity, price, PPN and
   dimensions directly from an eligible receiving document.
-
