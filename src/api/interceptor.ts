@@ -46,7 +46,10 @@ api.interceptors.response.use(
     if (status === 401) {
       console.warn("Unauthorized request.");
       const isLoginRequest = requestUrl.includes("/auth/login");
-      if (!isLoginRequest && localStorage.getItem("access_token")) {
+      const currentToken = localStorage.getItem("access_token");
+      const requestToken = error.config?.headers?.Authorization;
+      // An in-flight request from the replaced session must not erase a new login.
+      if (!isLoginRequest && currentToken && requestToken === `Bearer ${currentToken}`) {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
         localStorage.removeItem("user");

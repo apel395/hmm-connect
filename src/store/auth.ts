@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import axios from "axios";
 import api from "@/api/interceptor";
 import { hasPermission as userHasPermission } from "@/lib/access";
 import useWorkspaceTabs from "@/store/workspaceTabs";
@@ -7,6 +8,7 @@ import queryClient from "@/lib/query";
 export interface LoginRequest {
   username: string;
   password: string;
+  replaceSession?: boolean;
 }
 
 export interface Permission {
@@ -109,8 +111,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.setItem("user", JSON.stringify(user));
       if (!localStorage.getItem(LAST_ACTIVITY_KEY)) localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
       set({ accessToken, refreshToken, user, authenticated: true, loading: false });
-    } catch {
-      clearLocalSession();
+    } catch (error) {
+      // A network interruption does not mean the server session expired.
+      if (axios.isAxiosError(error) && error.response?.status === 401) clearLocalSession();
       set({ accessToken: null, refreshToken: null, user: null, authenticated: false, loading: false });
     }
   },
@@ -122,11 +125,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   login: async (payload) => {
+    if (get().loading) throw new Error("Sign in is already in progress.");
     set({ loading: true });
     try {
       const { data } = await api.post<LoginResponse>(
         "/auth/login",
-        new URLSearchParams({ username: payload.username, password: payload.password }),
+        new URLSearchParams({ username: payload.username, password: payload.password,
+          replace_session: String(payload.replaceSession ?? false) }),
         { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
       );
 
