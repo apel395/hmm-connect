@@ -76,6 +76,14 @@ the database and heavy processing. The UI is deployed from `main`.
   values plus posted year activity, with credit-balance contra assets deducted.
 - P&L supports unit/location/department. Balance Sheet defaults to consolidated.
   Assigned-location users are restricted on report reads and exports.
+- Location/unit/department report activity uses explicit line dimensions, then
+  the journal header when a line has no override. Unit-filtered opening balances
+  use only locations explicitly assigned to that unit; unassigned openings are
+  not allocated to a unit or department. No opening record is changed.
+- Prior-year comparisons without accounting evidence in that year and scope
+  return unavailable values (screen dash, blank Excel cells), not a claimed
+  zero. Current-period zero activity remains zero. Report headings and exports
+  identify unit/location/department names.
 - `/budgets`: monthly account budgets by business unit/location/department,
   draft editing, submit/approve/reject/lock/cancel. Approved/locked budgets feed
   comparisons. Missing budgets show unavailable; overlapping plans require an

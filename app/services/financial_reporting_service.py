@@ -5,11 +5,17 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import inspect
+from sqlalchemy import inspect, func
 from sqlalchemy.orm import joinedload
 from app.models.budget import Budget, BudgetLine
 from app.models.chart_of_account import ChartOfAccount
 from app.models.financial_report_setting import FinancialReportSetting
+from app.models.journal_entry import JournalEntry
+from app.models.journal_line import JournalLine
+from app.models.opening_balance import OpeningBalance
+from app.models.location import Location
+from app.models.business_unit import BusinessUnit
+from app.models.department import Department
 from app.services.financial_statement_service import FinancialStatementService
 
 ZERO = Decimal("0")
@@ -41,6 +47,7 @@ class FinancialReportingService:
         self.db = db
         self.statements = FinancialStatementService(db)
         self._actual_cache = {}
+        self._year_evidence = {}
         self._schema = inspect(db.connection())
         self.report_setup_available = self._schema.has_table("financial_report_settings")
         self.budget_setup_available = all(self._schema.has_table(name) for name in ("budgets", "budget_lines"))
@@ -96,15 +103,39 @@ class FinancialReportingService:
         self._actual_cache[cache_key] = (accounts, report["summary"])
         return self._actual_cache[cache_key]
 
+    def _has_year_evidence(self, kind, year, scope):
+        key = (kind, year, tuple(scope.items()))
+        if key in self._year_evidence:
+            return self._year_evidence[key]
+        query = self.db.query(JournalLine.id).join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id).filter(
+            JournalEntry.status == "POSTED", JournalEntry.posting_date.between(date(year, 1, 1), date(year, 12, 31)),
+            JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT", "PERIOD_CLOSE", "YEAR_END")))
+        for name, value in scope.items():
+            if value is not None:
+                query = query.filter(func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name)) == value)
+        available = query.first() is not None
+        if not available and kind == "BALANCE_SHEET" and scope["department_id"] is None:
+            opening = self.db.query(OpeningBalance.id).filter(OpeningBalance.fiscal_year == year)
+            if scope["location_id"] is not None:
+                opening = opening.filter(OpeningBalance.location_id == scope["location_id"])
+            if scope["business_unit_id"] is not None:
+                opening = opening.join(Location, Location.id == OpeningBalance.location_id).filter(Location.business_unit_id == scope["business_unit_id"])
+            available = opening.first() is not None
+        self._year_evidence[key] = available
+        return available
+
     def build(self, *, report_type, as_of_date, location_id=None, business_unit_id=None,
               department_id=None, budget_id=None, kap=False, include_zero=False):
         scope = dict(location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
         calendar = periods(as_of_date)
-        values, originals, summaries, budget_available = {}, {}, {}, {}
+        values, originals, summaries, budget_available, comparison_available = {}, {}, {}, {}, {}
         for period_name, dates in calendar.items():
             values[period_name], summaries[period_name] = {}, {}
+            comparison_available[period_name] = {}
             for metric, (start, end) in dates.items():
-                rows, summary = self._actual(report_type, start, end, scope)
+                available = metric == "current" or end.year == as_of_date.year or self._has_year_evidence(report_type, end.year, scope)
+                comparison_available[period_name][metric] = available
+                rows, summary = self._actual(report_type, start, end, scope) if available else ({}, None)
                 originals.update(rows)
                 values[period_name][metric] = {key: row["amount"] for key, row in rows.items()}
                 summaries[period_name][metric] = summary
@@ -177,6 +208,9 @@ class FinancialReportingService:
                 totals = row["periods"][period_name]
                 if not budget_available[period_name]:
                     totals["budget"] = None
+                for metric in ("last_month", "last_year"):
+                    if not comparison_available[period_name][metric]:
+                        totals[metric] = None
                 totals["variance"] = totals["current"] - totals["budget"] if totals["budget"] is not None else None
         if not include_zero:
             rows = [row for row in rows if any(amount not in (None, ZERO) for totals in row["periods"].values() for amount in totals.values())]
@@ -188,16 +222,20 @@ class FinancialReportingService:
             totals[section] = {p: {} for p in calendar}
             for p in calendar:
                 for metric in metrics:
-                    if metric == "budget" and not budget_available[p]:
+                    if (metric == "budget" and not budget_available[p]) or comparison_available[p].get(metric) is False:
                         total = None
                     else:
                         total = sum((values[p][metric].get(key, ZERO) for key, row in originals.items() if row["section"] == section), ZERO)
                     totals[section][p][metric] = total
                 v = totals[section][p]
                 v["variance"] = v["current"] - v["budget"] if v["budget"] is not None else None
-        return {"report_type": report_type, "as_of_date": as_of_date, "scope": scope,
+        scope_labels = {}
+        for dimension, model, default in (("location_id", Location, "Consolidated"), ("business_unit_id", BusinessUnit, "All units"), ("department_id", Department, "All departments")):
+            record = self.db.get(model, scope[dimension]) if scope[dimension] is not None else None
+            scope_labels[dimension] = record.name if record else default
+        return {"report_type": report_type, "as_of_date": as_of_date, "scope": scope, "scope_labels": scope_labels,
                 "periods": calendar, "rows": rows, "section_totals": totals, "summary": summaries,
-                "header_only": header_only, "budget_available": budget_available,
+                "header_only": header_only, "budget_available": budget_available, "comparison_available": comparison_available,
                 "metadata": {"opening_source": "MANUAL_OPENING_BALANCES", "actual_source": "POSTED_JOURNAL_LINES",
                     "report_setup_available": self.report_setup_available, "budget_setup_available": self.budget_setup_available,
                     "display_selection_only": selected is not None, "totals_scope": "COMPLETE_REPORT",

@@ -277,6 +277,85 @@ def test_actuals_do_not_require_optional_budget_tables(db):
     assert exc.value.status_code == 503
 
 
+@pytest.mark.parametrize("kind", ["BALANCE_SHEET", "PROFIT_LOSS"])
+def test_missing_prior_year_is_unavailable_but_current_zero_is_real(db, kind):
+    session, accounts = db
+    activity(session, accounts, date(2026, 1, 10), "100", "30")
+    result = FinancialReportingService(session).build(report_type=kind, as_of_date=date(2026, 10, 6))
+    for period in ("MTD", "YTD"):
+        assert result["comparison_available"][period]["last_year"] is False
+        assert result["summary"][period]["last_year"] is None
+        assert all(row["periods"][period]["last_year"] is None for row in result["rows"])
+        assert all(section[period]["last_year"] is None for section in result["section_totals"].values())
+    if kind == "PROFIT_LOSS":
+        assert result["section_totals"]["REVENUE"]["MTD"]["current"] == Decimal("0")
+    january = FinancialReportingService(session).build(report_type=kind, as_of_date=date(2026, 1, 31))
+    assert january["comparison_available"]["MTD"]["last_month"] is False
+    assert all(section["MTD"]["last_month"] is None for section in january["section_totals"].values())
+
+
+def test_prior_year_evidence_is_scoped_and_can_have_genuine_zero(db):
+    session, accounts = db
+    activity(session, accounts, date(2026, 2, 1), "100", "30")
+    activity(session, accounts, date(2025, 1, 1), "200", "60", location=2, unit=2)
+    report = FinancialReportingService(session).build(report_type="PROFIT_LOSS", as_of_date=date(2026, 2, 28), location_id=1)
+    assert report["section_totals"]["REVENUE"]["MTD"]["last_year"] is None
+    report = FinancialReportingService(session).build(report_type="PROFIT_LOSS", as_of_date=date(2026, 2, 28), location_id=2)
+    assert report["comparison_available"]["MTD"]["last_year"] is True
+    assert report["section_totals"]["REVENUE"]["MTD"]["last_year"] == Decimal("0")
+    assert report["section_totals"]["REVENUE"]["YTD"]["last_year"] == Decimal("200")
+
+
+def test_header_dimensions_are_used_only_when_line_has_no_override(db):
+    session, accounts = db
+    header_only = activity(session, accounts, date(2026, 2, 1), "100", "30")
+    for line in header_only.lines:
+        line.location_id = line.business_unit_id = None
+    overridden = activity(session, accounts, date(2026, 2, 2), "200", "60")
+    for line in overridden.lines:
+        line.location_id = line.business_unit_id = 2
+    session.commit()
+    for unit, expected in ((1, "100"), (2, "200")):
+        report = FinancialReportingService(session).build(report_type="PROFIT_LOSS", as_of_date=date(2026, 2, 28), location_id=unit, business_unit_id=unit)
+        assert report["section_totals"]["REVENUE"]["MTD"]["current"] == Decimal(expected)
+    assert session.query(JournalEntry).count() == 2
+
+
+def test_unit_opening_uses_only_explicitly_mapped_locations_and_named_exports(db):
+    from app.models.location import Location
+    from app.models.business_unit import BusinessUnit
+    from app.models.department import Department
+    from app.api.v1 import financial_reports
+    from openpyxl import load_workbook
+    from io import BytesIO
+    session, accounts = db
+    session.add_all([BusinessUnit(id=1, code="HOTEL", name="Hotel"), BusinessUnit(id=2, code="CATERING", name="Catering"),
+                     Location(id=1, code="PKU", name="Pekanbaru", business_unit_id=1), Location(id=2, code="SITE", name="Site", business_unit_id=2),
+                     Department(id=1, code="FIN", name="Finance", business_unit_id=1)])
+    session.add_all([OpeningBalance(fiscal_year=2026, account_id=accounts[2].id, location_id=loc, amount=Decimal(amount), balance_type="DEBIT") for loc, amount in ((1, "100"), (2, "200"), (None, "300"))])
+    session.commit()
+    report = FinancialReportingService(session).build(report_type="BALANCE_SHEET", as_of_date=date(2026, 10, 6), business_unit_id=1, location_id=1)
+    assert report["section_totals"]["ASSETS"]["YTD"]["current"] == Decimal("100")
+    assert report["scope_labels"]["business_unit_id"] == "Hotel"
+    assert report["scope_labels"]["location_id"] == "Pekanbaru"
+    report = FinancialReportingService(session).build(report_type="BALANCE_SHEET", as_of_date=date(2026, 10, 6), business_unit_id=2)
+    assert report["section_totals"]["ASSETS"]["YTD"]["current"] == Decimal("200")
+    report = FinancialReportingService(session).build(report_type="BALANCE_SHEET", as_of_date=date(2026, 10, 6), business_unit_id=1, department_id=1)
+    assert report["section_totals"]["ASSETS"]["YTD"]["current"] == Decimal("0")
+    response = financial_reports.export_comparison(report_type="BALANCE_SHEET", as_of_date=date(2026, 10, 6),
+        location_id=1, business_unit_id=1, department_id=None, budget_id=None, kap=False, include_zero=False, db=session, user=USER)
+    async def body():
+        return b"".join([chunk async for chunk in response.body_iterator])
+    import asyncio
+    workbook = load_workbook(BytesIO(asyncio.run(body())))
+    rows = list(workbook["MTD"].values)
+    assert rows[0][3] == "Pekanbaru"
+    assert rows[0][5] == "Hotel"
+    assets = next(row for row in rows if row[0] == "ASSETS")
+    assert assets[5] is None  # unavailable prior-year data stays blank in Excel
+    assert session.query(OpeningBalance).count() == 3
+
+
 def test_year_close_uses_selected_year_not_execution_date(db):
     from calendar import monthrange
     from app.services.year_end_service import YearEndService
