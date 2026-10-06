@@ -9,13 +9,89 @@ from collections import Counter
 from datetime import date, datetime
 from difflib import get_close_matches
 from hashlib import sha256
+from html.parser import HTMLParser
+from http.cookiejar import CookieJar
+from io import BytesIO
 import json
 from pathlib import Path
 import re
 import sys
+import tempfile
+from urllib.parse import urlencode, urlparse
+from urllib.request import HTTPCookieProcessor, Request, build_opener
+from zipfile import is_zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+MAX_SOURCE_BYTES = 30 * 1024 * 1024
+
+
+class DownloadConfirmation(HTMLParser):
+    """Read Google's download form without executing HTML or JavaScript."""
+    def __init__(self):
+        super().__init__()
+        self.action = None
+        self.fields = {}
+        self.in_form = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'form':
+            target = urlparse(attrs.get('action',''))
+            self.in_form = (target.scheme == 'https' and target.netloc == 'drive.usercontent.google.com'
+                            and target.path == '/download' and attrs.get('method','get').lower() == 'get')
+            if self.in_form:
+                self.action = attrs['action']
+        elif tag == 'input' and self.in_form and attrs.get('type') == 'hidden':
+            if attrs.get('name') in ('id','export','confirm','uuid'):
+                self.fields[attrs['name']] = attrs.get('value','')
+
+    def handle_endtag(self, tag):
+        if tag == 'form':
+            self.in_form = False
+
+
+def download_public_drive(drive_id, opener=None):
+    if not re.fullmatch(r'[A-Za-z0-9_-]{10,200}',drive_id):
+        raise ValueError('Use the exact Drive file ID, not a URL')
+    opener = opener or build_opener(HTTPCookieProcessor(CookieJar()))
+    url = 'https://drive.google.com/uc?' + urlencode({'export':'download','id':drive_id})
+    for attempt in range(2):
+        try:
+            with opener.open(Request(url,headers={'User-Agent':'HMM-Connect-item-source/1.0'}),timeout=60) as response:
+                content = response.read(MAX_SOURCE_BYTES + 1)
+        except OSError as exc:
+            raise ValueError('Public Drive download failed. Check sharing and EC2 network access.') from exc
+        if len(content) > MAX_SOURCE_BYTES:
+            raise ValueError('Drive workbook exceeds 30 MiB limit')
+        if is_zipfile(BytesIO(content)):
+            return content
+        confirmation = DownloadConfirmation()
+        confirmation.feed(content.decode('utf-8',errors='replace'))
+        if attempt == 0 and confirmation.action and confirmation.fields.get('id') == drive_id:
+            url = confirmation.action + '?' + urlencode(confirmation.fields)
+        else:
+            raise ValueError('Drive returned a sign-in/error page instead of an Excel workbook. Check anyone-with-link access and download permission.')
+    raise ValueError('Drive workbook download did not complete')
+
+
+def load_source(file=None, drive_id=None):
+    if drive_id:
+        content = download_public_drive(drive_id)
+        with tempfile.TemporaryDirectory(prefix='hmm-item-source-') as directory:
+            path = Path(directory) / 'drive-source.xlsm'
+            path.write_bytes(content)
+            report = extract(path)
+        report['source_file'] = 'Google Drive Excel file'
+        report['source_drive_id'] = drive_id
+        return report
+    if file is None:
+        raise ValueError('Provide --file or --drive-id')
+    if file.stat().st_size > MAX_SOURCE_BYTES:
+        raise ValueError('Workbook exceeds 30 MiB limit')
+    return extract(file)
 
 
 def normalized(value):
@@ -153,13 +229,13 @@ def match_existing(items, products):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--file',type=Path,required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument('--file',type=Path)
+    source.add_argument('--drive-id',help='Public Google Drive Excel file ID')
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--db-check',action='store_true')
     args = parser.parse_args()
-    if args.file.stat().st_size > 30 * 1024 * 1024:
-        raise ValueError('Workbook exceeds 30 MiB limit')
-    report = extract(args.file)
+    report = load_source(args.file,args.drive_id)
     if args.db_check:
         from sqlalchemy import text
         from app.core.database import engine

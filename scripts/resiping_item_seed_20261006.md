@@ -11,11 +11,12 @@ each new invoice. The read-only preparation of the supplied workbook found:
   held for review.
 - 6 distinct items with multiple units requiring conversion review.
 
-Run from `/opt/hmm-connect` with `.venv`. Copy the workbook to
-`scripts/resiping-source.xlsm` before running.
+Run from `/opt/hmm-connect` with `.venv`. Use `--drive-id` to download the public Excel file directly, or use
+`--file scripts/resiping-source.xlsm` for a local copy. Downloads are temporary;
+source Drive ID and SHA-256 are recorded. Sign-in/error pages are rejected.
 
 ```bash
-.venv/bin/python scripts/seed_resiping_items.py --file scripts/resiping-source.xlsm --output /tmp/resiping-item-seed-plan.json
+.venv/bin/python scripts/seed_resiping_items.py --drive-id 1gmy6cY8Vccuj78Rj5tNv2EuNtwdCqzqy --output /tmp/resiping-item-seed-plan.json
 ```
 
 This default dry run matches existing BUY items by normalized exact name.

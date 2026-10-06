@@ -124,3 +124,50 @@ def test_pending_master_insert_repeat_and_rollback(monkeypatch):
         assert db.query(Inventory).count()==0 and db.query(JournalEntry).count()==0
         db.rollback()
         assert db.query(Product).count()==0 and db.query(ItemGroup).count()==0
+
+class PublicDriveSourceTests(unittest.TestCase):
+    def zip_content(self):
+        from io import BytesIO
+        from zipfile import ZipFile
+        buffer=BytesIO()
+        with ZipFile(buffer,'w') as archive: archive.writestr('example','workbook')
+        return buffer.getvalue()
+
+    def opener(self, payloads):
+        from io import BytesIO
+        class Opener:
+            def __init__(self): self.urls=[]
+            def open(self, request, timeout):
+                self.urls.append(request.full_url)
+                return BytesIO(payloads[len(self.urls)-1])
+        return Opener()
+
+    def test_direct_download_and_same_file_confirmation(self):
+        from prepare_resiping_item_seed import download_public_drive
+        file_id='1gmy6cY8Vccuj78Rj5tNv2EuNtwdCqzqy';content=self.zip_content()
+        opener=self.opener([content])
+        self.assertEqual(download_public_drive(file_id,opener),content)
+        html=(f'<form action="https://drive.usercontent.google.com/download" method="get">'
+              f'<input type="hidden" name="id" value="{file_id}">'
+              '<input type="hidden" name="confirm" value="t"></form>').encode()
+        opener=self.opener([html,content])
+        self.assertEqual(download_public_drive(file_id,opener),content)
+        self.assertEqual(len(opener.urls),2)
+        self.assertIn('confirm=t',opener.urls[1])
+
+    def test_login_wrong_id_and_untrusted_confirmation_are_rejected(self):
+        from prepare_resiping_item_seed import download_public_drive
+        for html in [b'<html>Sign in</html>',
+                     b'<form action="https://drive.usercontent.google.com/download"><input type="hidden" name="id" value="another-id"></form>',
+                     b'<form action="https://example.com/download"><input type="hidden" name="id" value="1gmy6cY8Vccuj78Rj5tNv2EuNtwdCqzqy"></form>']:
+            with self.assertRaises(ValueError): download_public_drive('1gmy6cY8Vccuj78Rj5tNv2EuNtwdCqzqy',self.opener([html]))
+        with self.assertRaises(ValueError): download_public_drive('https://drive.google.com/file/test',self.opener([]))
+
+    def test_source_limit_and_network_failure_are_reported(self):
+        from unittest.mock import patch
+        from prepare_resiping_item_seed import download_public_drive
+        with patch('prepare_resiping_item_seed.MAX_SOURCE_BYTES',4):
+            with self.assertRaises(ValueError): download_public_drive('public-file-id-123',self.opener([b'12345']))
+        class FailedOpener:
+            def open(self,*args,**kwargs): raise OSError('network failure')
+        with self.assertRaises(ValueError): download_public_drive('public-file-id-123',FailedOpener())
