@@ -1,3 +1,4 @@
+import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -122,21 +123,17 @@ export default function InventoryPage() {
   const movementCounts: Record<"FAST" | "SLOW" | "DEAD", { stock_lines: number; stock_value: number }> = summary.movement_classes ?? {};
   const movementDays = summary.movement_days ?? { fast: 30, dead: 90 };
 
-  return <div className="space-y-6">
-    <div className="hidden print:block">
-      <h1 className="text-2xl font-bold">MMH-Connect</h1>
-      <h2 className="text-xl font-semibold">Inventory</h2>
-      <p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p>
-    </div>
+  return <div className="inventory-print-report space-y-6">
+    <InventoryReportHeading title={"Inventory"} context={`Period: ${dateFrom || "2026-01-01"} – ${dateTo || "Current"}${search ? ` · Search: ${search}` : ""}${accountId ? ` · Account ID: ${accountId}` : ""} · Health: ${health} · Age: ${movementClass}`} rows={rows.length} total={total}/>
     <div className="print:hidden">
       <PageHeader title="Inventory"
         description="Check opening and closing warehouse stock by date and inventory account."
         actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>}
       />
     </div>
-    <div className="hidden print:block"><PageHeader title="Inventory" description="Warehouse stock by date and account." /></div>
 
-    <Card className="p-3">
+
+    <Card className="p-3 print:hidden">
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-[220px] flex-1">        <label className="block min-w-0 text-xs font-medium text-slate-600">
           Search item or warehouse
@@ -256,7 +253,7 @@ export default function InventoryPage() {
       <Card className="p-0">
         {loading ? <Loading/> : <>
           <InventoryTable rows={rows}/>
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 print:hidden">
             <label className="text-sm text-slate-600">Rows per page
               <select className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => setPageSize(Number(e.target.value))}>
                 {[50, 100].map(size => <option key={size} value={size}>{size}</option>)}

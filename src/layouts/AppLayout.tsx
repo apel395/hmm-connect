@@ -15,11 +15,11 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8F6F1] text-[#202723]">
+    <div data-app-print-shell className="flex h-screen overflow-hidden bg-[#F8F6F1] text-[#202723]">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} />
-      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+      <div data-app-print-content className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(true)} sidebarCollapsed={sidebarCollapsed} onSidebarToggle={() => setSidebarCollapsed(value => !value)} />
-        <WorkspaceTabs />
+        <div className="print:hidden"><WorkspaceTabs /></div>
         <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div data-workspace-content className="w-full p-2 sm:p-3">
             <Outlet />
