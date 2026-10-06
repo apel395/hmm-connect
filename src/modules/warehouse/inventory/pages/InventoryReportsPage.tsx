@@ -67,7 +67,7 @@ export default function InventoryReportsPage() {
 
   return (
     <div className="inventory-print-report space-y-6">
-    <InventoryReportHeading title={"Inventory Reports"} context={`Report: ${section} · As of: ${asOf || "Current"}`}/>
+    <InventoryReportHeading title={"Inventory Reports"} context={`Report: ${section} · As of: ${asOf || "Current"}`} rows={section === "low-stock" ? lowStockItems.length : undefined} total={section === "low-stock" ? lowStockData.total_items : undefined}/>
       <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Inventory Reports" description="Stock valuation and movement insights computed from warehouse inventory on the selected date." />
       <Card className="p-4 print:hidden">
         <div className="flex flex-wrap items-end gap-3">
