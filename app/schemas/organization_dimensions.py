@@ -53,6 +53,7 @@ class DepartmentResponse(BaseModel):
 
 
 class LocationCreate(BaseModel):
+    department_ids: list[int] = Field(default_factory=list, max_length=200)
     code: str = Field(min_length=1, max_length=30)
     name: str = Field(min_length=1, max_length=120)
     business_unit_id: int
@@ -65,6 +66,7 @@ class LocationCreate(BaseModel):
 
 
 class LocationUpdate(BaseModel):
+    department_ids: list[int] | None = Field(default=None, max_length=200)
     code: str | None = Field(default=None, min_length=1, max_length=30)
     name: str | None = Field(default=None, min_length=1, max_length=120)
     business_unit_id: int | None = None

@@ -97,7 +97,26 @@ def department_row(value: Department) -> dict:
 
 
 def location_row(value: Location) -> dict:
-    return {"id": value.id, "code": value.code, "name": value.name, "business_unit_id": value.business_unit_id, "business_unit_name": value.business_unit.name if value.business_unit else None, "location_type": value.location_type, "address": value.address, "city": value.city, "province": value.province, "postal_code": value.postal_code, "is_active": value.is_active, "created_at": value.created_at, "updated_at": value.updated_at}
+    return {"id": value.id, "code": value.code, "name": value.name, "business_unit_id": value.business_unit_id, "business_unit_name": value.business_unit.name if value.business_unit else None, "department_ids": sorted(link.department_id for link in value.department_links), "location_type": value.location_type, "address": value.address, "city": value.city, "province": value.province, "postal_code": value.postal_code, "is_active": value.is_active, "created_at": value.created_at, "updated_at": value.updated_at}
+
+
+def validate_location_departments(db, business_unit_id, department_ids, existing_ids=()):
+    ids = sorted(set(department_ids))
+    departments = db.query(Department).filter(Department.id.in_(ids)).all() if ids else []
+    if len(departments) != len(ids):
+        raise HTTPException(422, "A selected Department does not exist")
+    for department in departments:
+        if department.business_unit_id not in (None, business_unit_id):
+            raise HTTPException(422, "Department does not belong to selected Business Unit")
+        if not department.is_active and department.id not in existing_ids:
+            raise HTTPException(422, "A selected Department is inactive")
+    return ids
+
+
+def replace_location_departments(db, location, department_ids):
+    existing_ids = {link.department_id for link in location.department_links}
+    ids = validate_location_departments(db, location.business_unit_id, department_ids, existing_ids)
+    location.department_links = [LocationDepartment(department_id=did) for did in ids]
 
 
 @router.get("/business-units")
@@ -218,7 +237,7 @@ def list_locations(
 
 @router.post("/locations",status_code=201)
 def create_location(data:LocationCreate,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    require_access(user,manage=True); validate_business_unit(db,data.business_unit_id,required=True); values=data.model_dump(); values["code"]=normalize_code(data.code); values["name"]=normalize_name(data.name); values["location_type"]=normalize_location_type(data.location_type); reject_duplicate(db,Location,values["code"],values["name"]); value=Location(**values); db.add(value); db.flush(); record_audit(db,user,"LOCATION_CREATED","LOCATION",f"Created {value.code}",entity_id=value.id); commit_or_conflict(db); return get_location(value.id,db,user)
+    require_access(user,manage=True); validate_business_unit(db,data.business_unit_id,required=True); values=data.model_dump(); department_ids=validate_location_departments(db,data.business_unit_id,values.pop("department_ids")); values["code"]=normalize_code(data.code); values["name"]=normalize_name(data.name); values["location_type"]=normalize_location_type(data.location_type); reject_duplicate(db,Location,values["code"],values["name"]); value=Location(**values); db.add(value); db.flush(); replace_location_departments(db,value,department_ids); record_audit(db,user,"LOCATION_CREATED","LOCATION",f"Created {value.code}",entity_id=value.id); commit_or_conflict(db); return get_location(value.id,db,user)
 
 
 @router.get("/locations/{location_id}")
@@ -233,12 +252,17 @@ def update_location(location_id:int,data:LocationUpdate,db:Session=Depends(get_d
     require_access(user,manage=True); value=db.get(Location,location_id)
     if not value: raise HTTPException(404,"Location not found")
     changes=data.model_dump(exclude_unset=True)
-    if "business_unit_id" in changes: validate_business_unit(db,changes["business_unit_id"],required=True)
+    department_ids = changes.pop("department_ids", None)
+    existing_ids = [link.department_id for link in value.department_links]
+    target_unit = changes.get("business_unit_id", value.business_unit_id)
+    validate_business_unit(db, target_unit, required=True)
+    validate_location_departments(db, target_unit, department_ids if department_ids is not None else existing_ids, existing_ids)
     if "code" in changes: changes["code"]=normalize_code(changes["code"])
     if "name" in changes: changes["name"]=normalize_name(changes["name"])
     if "location_type" in changes: changes["location_type"]=normalize_location_type(changes["location_type"])
     reject_duplicate(db,Location,changes.get("code"),changes.get("name"),value.id); deactivated=changes.get("is_active") is False and value.is_active
     for key,item in changes.items(): setattr(value,key,item)
+    if department_ids is not None: replace_location_departments(db,value,department_ids)
     action="LOCATION_DEACTIVATED" if deactivated else "LOCATION_UPDATED"; record_audit(db,user,action,"LOCATION",f"{'Deactivated' if deactivated else 'Updated'} {value.code}",entity_id=value.id); commit_or_conflict(db); return get_location(value.id,db,user)
 
 
