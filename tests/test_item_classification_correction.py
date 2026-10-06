@@ -145,9 +145,10 @@ class ClassificationCorrectionTests(unittest.TestCase):
             with self.assertRaises(ValueError):module.resolve_subgroup([subgroup],snapshots,group,['VEGETABLES'])
 
     def test_new_subgroups_do_not_reuse_legacy_codes(self):
-        subgroup=module.resolve_subgroup([], [{'group_code':'1','subgroup_code':'1-1','subgroup_name':'MEAT'}],
-                                        {'id':1,'code':'1'}, ['PREPARED FOOD'])
-        self.assertEqual(subgroup['code'],'1-2')
+        subgroup=module.resolve_subgroup([], [{'group_code':'2','subgroup_code':'2-1','subgroup_name':'MINERAL WATER'}],
+                                        {'id':2,'code':'2'}, ['SYRUP'])
+        self.assertEqual(subgroup['code'],'2-2')
 
 
 if __name__=='__main__':unittest.main()
+

@@ -24,15 +24,17 @@ Existing SELL names never substitute for BUY records. Similar or slash-alias
 names, inactive/ambiguous matches and incompatible units are deferred. No
 existing master rows are overwritten.
 
-After reviewing the DB plan, the same command with `--apply` creates eligible
-new BUY identities under BUY — PENDING CLASSIFICATION. New records have
-REVIEW_REQUIRED treatment and tax category, no COA assignment, no stock and no
-transactions. Stable name-based codes and table locks protect repeat execution.
-Each inserted product records source hash/rows and optional `--actor-id` in audit.
+After reviewing the DB plan, `--apply` creates eligible new BUY items already
+classified with the explicit reviewed name/unit manifest. Only FOOD, BEVERAGE,
+MATERIAL and ASSET families are allowed. It uses existing subgroups; SYRUP in
+BEVERAGE is the only permitted new subgroup. It never creates BUYPEND. Unknown
+names remain in the JSON review report and are not inserted until classified.
 
-Classify these new items before receiving/invoice seeding. Confirm groups,
-stock/direct-use/asset treatment, posting account, units/conversions and
-invoice-backed tax. Tax REVIEW_REQUIRED must not be interpreted as Non PPN.
+Treatment and COA are assigned before insertion. Tax remains REVIEW_REQUIRED;
+this is not a Non PPN determination. Stock and transactions are not created.
+Stable name-based codes and table locks protect repeat execution. Each inserted
+product records source hash/rows and optional `--actor-id` in audit.
+
 The workbook report does not authorize any transaction import or any 2025
 activity. Dates stored as Excel dates remain exactly as supplied; ambiguous
 text/ranges require separate review before document posting.

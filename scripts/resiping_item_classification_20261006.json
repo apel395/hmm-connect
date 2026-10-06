@@ -1,0 +1,3510 @@
+{
+  "source_sha256": "1a2055a09ef413e0e958fdc16537a3bae1792af12b786d388eacc304e2edf821",
+  "drive_id": "1gmy6cY8Vccuj78Rj5tNv2EuNtwdCqzqy",
+  "expected_batch_count": 291,
+  "scope": "Only PRODUCT creation audits for this seed hash; existing BUY/SELL items are excluded",
+  "tax_policy": "Preserve existing tax flags and REVIEW_REQUIRED; verify supplier invoice separately",
+  "items": [
+    {
+      "name": "JERUK BERASTAGI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CHICKEN WHOLE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "POULTRY",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PISANG BUAI",
+      "units": [
+        "KG",
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JERUK",
+      "units": [
+        "KG",
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SIOMAY",
+      "units": [
+        "PACK",
+        "PCS",
+        "PORSI"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "BATAGOR",
+      "units": [
+        "PACK",
+        "PORSI"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "PEMPEK KAPAL SELAM",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "TEKWAN",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "RISOLES",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "PUTRI MANDI",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "LEMPER",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "PASTEL",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "LAPIS",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "MARTABAK MINI",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "SAMOSA",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "SOSIS SOLO",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "ONDE WIJEN",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "LAPEK BUGIS",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "TAHU ISI",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "SEMAR MENDEM",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "KROKET KENTANG",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "KLEPON",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "PAREM",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "KOMOJO",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "PIE BUAH",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "RISOL MAYO",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "TAHU MIE",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "DADAR GULUNG",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "BAKWAN UDANG",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "BAKWAN DKK",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "NONA MANIS",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "NAGASARI",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "RISOL MINI",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "BAWANG BOMBAY/ONION",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BAWANG MERAH BESAR",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BAWANG PUTIH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BROKOLI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BUMBU GILING KUNING",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BUMBU GILING PUTIH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BUMBU GILING RENDANG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BUNCIS/FRENCH BEAN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BUNGA KOL/CAULLFLOWER",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CABE HIJAU/GREEN CHILI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CABE MERAH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CABE RAWIT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CABE SETAN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DAUN BAWANG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DAUN JERUK/LEMON LEAF",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DAUN KETUMBAR",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DAUN KUNYIT/LEAF OF TURMERIC",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DAUN SOAP",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ICEBERG LETUS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JAGUNG BABY",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JAGUNG MANIS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JAHE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JERUK NIPIS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KACANG PANCANG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KELAPA PARUT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KENTANG MEDAN YANG BAGUS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KOL",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KOL UNGU",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "LABU SIAM",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "LENGKUAS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PAPRIKA HIJAU",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PEPAYA",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SAWI HIJAU/GREEN MUSTARD",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SAWI PUTIH/CHINESSE CABBAGE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SELADA AIR",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SERAI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TAHU",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TAHU PONG UNTUK TAHU ISI",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEMPE",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TERONG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TIMUN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TOGE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TOMAT HIJAU",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TOMAT MERAH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TOMATO CHERRY",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "UBI JALAR KUNING",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "WORTEL/CARROT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ADONAN BAKSO SAPI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BABAT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "HATI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JANTUNG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KIKIL",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PARU",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SOTONG TUBE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "SEAFOOD",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "UDANG NO.5",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "SEAFOOD",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "USUS[TAMBUSU]",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CHILI KETCHUP 5,5KG",
+      "units": [
+        "JAR"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CORN KERNEL/JAGUNG PIPIL",
+      "units": [
+        "CAN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "FISH SAUCE",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "HOISIN SAUCE",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KECAP MANIS ABC 6KG",
+      "units": [
+        "JRG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MINYAK GORENG 6X2LTR",
+      "units": [
+        "CTN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MUSTARD FRANCH 226GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SALAD OIL 3LTR",
+      "units": [
+        "TIN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SESAME OIL",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SOS TIRAM 4.2LTR",
+      "units": [
+        "JRG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TOMATO KETCHUP 5,7KG",
+      "units": [
+        "JRG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "AJINOMOTO 1KG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ASPARAGUS 430GR",
+      "units": [
+        "CAN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BACKING POWDER 450GR",
+      "units": [
+        "CAN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BASMATI RICE 25KG",
+      "units": [
+        "KRG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BAWANG GORENG 400GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BERAS HARUMMAS 25KG",
+      "units": [
+        "KRG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CANDLLE NUT/KEMIRI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CHILI POWDER 500GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CINNAMON WHOLE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CLOVE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CUMMIN POWDER 200GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DEMIGLACE KNOR 1KG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "EGG/TELUR",
+      "units": [
+        "IKAT"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "FETTUCINE BIONDI",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "GARLIC POWDER 1KG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "GULA PASIR/PUTIH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JAYS ROSEMARRY DRY",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KACANG HIJAU",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KACANG HIJAU KUPAS/DALL",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KARI DAGING MALABAR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KECAP MANIS 275ML",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KECAO INGGRIS 195ML",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KOPI KAPAL TANKER",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KUNYIT BUBUK 250GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "LASAGNA SHEET",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MAX CREAMER 500GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MI SU UN",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MIE TELUR",
+      "units": [
+        "BKS",
+        "CTN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MIHUN 250GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MUSHROOM CHAMPIGNON 425GR",
+      "units": [
+        "CAN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "NESCAFE 200GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PALM SUGAR 250GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PEPPER POWDER 500GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ROYCO AYAM 1KG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SANTAN KARA 1LTR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SAOS SAMBAL ABC 335ML",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SELAI COKLAT 300GR",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SPAGHETY LAFONTE",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SUSU KENTAL MANIS PUTIH 370GR",
+      "units": [
+        "CAN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TAPIOKA",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPUNG BERAS",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPUNG JAGUNG 1KG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPUNG MAIZENA 500GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPUNG PANIR PER 1KG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPING TERIGU ISI 12PACK 1KG",
+      "units": [
+        "CTN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TOMYUM KNOR",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "APEL MERAH ISI 125PCS",
+      "units": [
+        "CTN"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JERUK MEDAN BESAR BAGUS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "JERUK SUNKIST ISI 88PCS",
+      "units": [
+        "CTN"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "NENAS MADU",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PEPAYA MASAK",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PISANG BERANGAN MASAK",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PISANG KEPOK",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "RAMBUTAN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SEMANGKA",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CHICKEN SAUSAGE",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "POULTRY",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK ASOY THANK YOU",
+      "units": [
+        "BALL"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK JUMBO HIJAU PEKAT",
+      "units": [
+        "BALL"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK SAMPAH",
+      "units": [
+        "BALL"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK SEDANG PUTIH",
+      "units": [
+        "BALL"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DETERGEN DAIA 4KG",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PEWANGI STELLA",
+      "units": [
+        "PCS"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SABUN CUCI PIRING 4LTR",
+      "units": [
+        "JRG"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SOS LANTAI 3.5LTR",
+      "units": [
+        "JRG"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TOILET BALL ISI 5PCS",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BAKERY KARSVET FLAKE 500GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SUKADE ISI 4PCS",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "VANILI CAIR 60ML",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "AQUA 330ML",
+      "units": [
+        "CTN",
+        "DUS"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "MINERAL WATER",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "AQUA 600ML",
+      "units": [
+        "DUS"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "MINERAL WATER",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "COCA COLA ZERO",
+      "units": [
+        "CASE"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "COCACOLA 250ML",
+      "units": [
+        "CASE"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "FANTA 250ML",
+      "units": [
+        "CASE"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "FRESH MILK UHT 1000ML",
+      "units": [
+        "DUS"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "FRUIT TEA 350ML",
+      "units": [
+        "DUS"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "GOLDA 200ML",
+      "units": [
+        "DUS"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "POCARI SWEET 350ML",
+      "units": [
+        "DUS"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PUPLY ORANGE 300ML",
+      "units": [
+        "DUS"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SANFOARD MINERAL 600ML",
+      "units": [
+        "DUS"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "MINERAL WATER",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SIRUP ABC JERUK FLORIDA",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "SIRUP MARJAN COCOPANDAN 460ML",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "SIRUP MARJAN LECY",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "SIRUP MARJAN LEMON",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "SIRUP MARJAN MELON",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "SPRITE 250ML",
+      "units": [
+        "CASE"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEH PUCUK 350ML",
+      "units": [
+        "CTN",
+        "DUS"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BOX MAKANAN 300PCS",
+      "units": [
+        "CTN"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TISU WASTAFEL ISI 3ROLL",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BAWANG MERAH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PEPAYA SERUT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KUNYIT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "UBI PARUT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "YELLOW PUMKIN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "VEGETABLES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ASAM JAWA 200GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "HONEY",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PARSLEY DRIED 10GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLEASURE GOLD KRIM TOPING 1LTR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PRAWN CRACKERS/KERUPUK UDANG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SAOS TOMAT 335ML",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPUNG KETAN",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SALAK",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MANTAU MINI",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK WRAP",
+      "units": [
+        "ROLL"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "HAIR NET",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PEWANGI PAKAIAN WARNA PINK",
+      "units": [
+        "CTN"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SABUN BATANG",
+      "units": [
+        "PCS"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MESES CHERES COKELAT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PASTA MOCCA 60ML",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PASTA COKLAT 60ML",
+      "units": [
+        "BTL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SENDOK GARPU PLASTIK",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SENDOK PLASTIK",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TISSU NAPKIN ISI 48 PACK",
+      "units": [
+        "DUS"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DAGING KAMBING",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DRIP HONEY SYRUP",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "GULA PASIR ROSE BRAND 1KG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SKM CARNATION 488GR",
+      "units": [
+        "CAN"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SCHGWEPES TONIC WATER",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SOFT DRINK",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CHOCOCHIP",
+      "units": [
+        "PKT"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BLUEBERRY FROZEN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BLUEBERRY SYRUP",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "STRAWBERRY SYRUP",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "CHIA SEED",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BIOKUL YOGHURT",
+      "units": [
+        "PKT"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DRIP BUTTERSCHOT",
+      "units": [
+        "BTL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "FRESHMILK GRENFIELD",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ROSMERRY FRESH",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SABUN CUCI PIRING",
+      "units": [
+        "JAR",
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SABUN PEL LANTAI",
+      "units": [
+        "JAR"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CHATRAMUE THAI TEA",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TROPICANA",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "AIR MINERAL WATER",
+      "units": [
+        "CTN"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "MINERAL WATER",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ROSELLA TEA",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK PEX 20CM",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "AYAM BEKU UK 1,5KG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "POULTRY",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IGA IMPOR",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "MEAT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KURMA 3KG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BAKSO IKAN",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN FILLET KAKAP",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN SARDEN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CHICKEN DRUM STICK",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "POULTRY",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CUMI CUMI",
+      "units": [
+        "BKS",
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "SEAFOOD",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CUMI CUMI TUBE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "SEAFOOD",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DADA AYAM SUPER",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "POULTRY",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN TERI MEDAN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "UDANG FRESH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "SEAFOOD",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KURMA SUKARI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FRUIT",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN DORI FILLET",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN NILA",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN PATIN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN TUNA SISIK",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN MAS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN TENGGIRI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN SENANGIN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BELUT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN GABUS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "LEMANG TAPE",
+      "units": [
+        "PORSI"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "AMRIS",
+      "units": [
+        "PCS"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "REMPEYEK",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "ROTI JALAH",
+      "units": [
+        "PORSI"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "SIOMAY MINAS",
+      "units": [
+        "PORSI"
+      ],
+      "group": "FOOD",
+      "subgroup": "SNACK",
+      "treatment": "DIRECT_USE",
+      "reason": "Prepared purchase for immediate consumption"
+    },
+    {
+      "name": "THE SPESIAL BLEND",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DENALI SYRUP CARAMEL",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "DENALI SYRUP STRAWBERRY",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "DENALI SYRUP LYCHEE",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "DENALI SYRUP VANILLA",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "DENALI POWDER MATCHA GREENTEA",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DENALI POWDER COCOA SIGNATURE",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DENALI POWDER BUBBLEGUM",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DENALI POWDER SUNNY TARO",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BERAS KETAN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CABE BUBUK",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PULUT HITAM",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPUNG PANIR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPUNG TAPIOKA",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "WIJEN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK ASOY KECIL",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PAPER CUP",
+      "units": [
+        "ROLL"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BROSS KAWAT",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SPOON BUSA",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KULIT LUMPIA BESER",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN ASIN BELAH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN ASIN LAYUR",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN ASIN SEPAT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN BANDENG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN BAUNG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN CINCARU",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN GURAME",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN KAKAP",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN KEMBUNG",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN LELE",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN SALAI PATIN",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN SERAI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN TERI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "IKAN TUNA",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "FISH",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "AGAR-AGAR POWDER",
+      "units": [
+        "BKS"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "AJINOMOTO",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ASAM JAWA",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "BERAS",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CABE MERAH KERING",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CUKA BESAR 600ML",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "GULA JAGUNG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "GULA MERAH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "GULA PASIR",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "INDOMIE REBUS KARI AYAM",
+      "units": [
+        "DUS"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KACANG TANAH",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KECAP ASIN",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KECAP MANIS",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KECAP MANIS REFILL",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KEMIRI BULAT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "HERB",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KERUPUK KAKAP",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KERUPUK NASI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KERUPUK UBI BULAT",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KOPI HITAM 380GR",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MIE JAGUNG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MIE LIDI",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MILO",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "MINYAK MAKAN",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "POPMIE GORENG",
+      "units": [
+        "DUS"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "POPMIE KUAH",
+      "units": [
+        "DUS"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "ROYCO AYAM",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SANTAN KELAPA 1L",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SAUS SAMBAL REFILL",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SELAI COKLAT",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SELAI KACANG",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SELAI SRIKAYA",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SIRUP COCOPANDAN",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "SIRUP ORANGE",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "BEVERAGE",
+      "subgroup": "SYRUP",
+      "treatment": "STOCK",
+      "reason": "Beverage syrup or flavor concentrate; stock item in BEVERAGE / SYRUP"
+    },
+    {
+      "name": "SUSU KENTAL MANIS",
+      "units": [
+        "KALENG"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SUSU UHT COKLAT",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "SUSU UHT FULL CREAM",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TAUCO BOTOL",
+      "units": [
+        "BOTOL"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEH CELUP",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TEPUNG TERIGU",
+      "units": [
+        "SAK"
+      ],
+      "group": "FOOD",
+      "subgroup": "GROCERIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TERASI UDANG",
+      "units": [
+        "PACK"
+      ],
+      "group": "FOOD",
+      "subgroup": "SEAFOOD",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "UDANG EBI",
+      "units": [
+        "KG"
+      ],
+      "group": "FOOD",
+      "subgroup": "SEAFOOD",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KARET GELANG SUPER",
+      "units": [
+        "KG"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KERTAS NASI",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KOTAK NASI",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PE 13X21",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "GELAS POP ICE + TUTUP",
+      "units": [
+        "ROLL"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK ASOY BESAR",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK ASOY SEDANG",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "PLASTIK SAMPAH TEBAL",
+      "units": [
+        "ROLL"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TISU NAPKIN",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TISU SERBET",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "TUSU GIGI",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "GUEST SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "CAIRAN PEMBERSIH LANTAI",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "DETERGENT BUBUK",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "CLEANING SUPPLIES",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    },
+    {
+      "name": "KERTAS HVS A4",
+      "units": [
+        "PACK"
+      ],
+      "group": "MATERIAL",
+      "subgroup": "STATIONARY",
+      "treatment": "STOCK",
+      "reason": "Purchased ingredient or consumable; receiving destination may override default"
+    }
+  ],
+  "catalog_policy": "BUY groups FOOD, BEVERAGE, MATERIAL, ASSET only. Existing subgroups only, except new BEVERAGE / SYRUP. DIRECT_USE is treatment, not subgroup."
+}

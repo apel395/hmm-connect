@@ -89,41 +89,52 @@ class ItemSeedTests(unittest.TestCase):
 if __name__=='__main__':unittest.main()
 
 # Exercise real ORM inserts and repeat runs without touching finance tables.
-def test_pending_master_insert_repeat_and_rollback(monkeypatch):
+def test_classified_master_insert_repeat_and_rollback(monkeypatch):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from app.models import Base
     from app.models.product import Product
     from app.models.item_group import ItemGroup
     from app.models.item_subgroup import ItemSubgroup
+    from app.models.chart_of_account import ChartOfAccount
     from app.models.inventory import Inventory
     from app.models.journal_entry import JournalEntry
     import app.services.audit as audit
-    from seed_resiping_items import insert_items
+    from seed_resiping_items import insert_items, classified_seed_plan
     captured=[]
     monkeypatch.setattr(audit,'record_audit',lambda *args,**kwargs: captured.append(kwargs))
     engine=create_engine('sqlite://');Base.metadata.create_all(engine)
     with sessionmaker(bind=engine)() as db:
-        item={'name':'BRAND NEW BUY ITEM','units':['KG'],'unit_review_required':False,
+        group=ItemGroup(code='1',name='FOOD',item_type='BUY',is_active=True)
+        db.add(group);db.flush()
+        db.add(ItemSubgroup(code='1-9',name='SNACK',group_id=group.id,is_active=True))
+        for code,kind in [('100-300-100','ASSET'),('500-100-100','EXPENSE')]:
+            db.add(ChartOfAccount(account_number=code,account_name=code,account_type=kind,normal_balance='DEBIT',is_active=True,is_posting=True))
+        db.commit()
+        item={'name':'RISOLES','units':['PCS'],'unit_review_required':False,
               'source_rows':[{'row':5,'raw_receiving_date':date(2026,1,1)}]}
         report={'items':[item],'source_sha256':'source-hash'}
-        seed_plan(report,[])
-        inserted=insert_items(db,report)
-        db.flush()
+        classified_seed_plan(db,report,[])
+        inserted=insert_items(db,report);db.flush()
         assert len(inserted)==1
         p=db.query(Product).one()
-        assert p.item_type=='BUY' and p.inventory_treatment=='REVIEW_REQUIRED'
-        assert p.inventory_account_id is None and p.tax_category=='REVIEW_REQUIRED'
-        assert db.query(ItemGroup).one().item_type=='BUY'
-        assert db.query(ItemSubgroup).one().group_id==db.query(ItemGroup).one().id
+        assert p.item_type=='BUY' and p.inventory_treatment=='DIRECT_USE'
+        assert p.group_name=='FOOD' and p.subgroup_name=='SNACK'
+        assert p.inventory_account_id is None and p.purchase_account_id is not None
+        assert p.tax_category=='REVIEW_REQUIRED'
+        assert db.query(ItemGroup).filter_by(code='BUYPEND').count()==0
         assert captured[0]['details']['source_rows'][0]['raw_receiving_date']=='2026-01-01'
         again={'items':[dict(item)],'source_sha256':'source-hash'}
         again['items'][0].pop('new_product',None)
-        seed_plan(again,[{'id':p.id,'code':p.code,'name':p.name,'item_type':'BUY','is_active':True,'uom':'KG'}])
+        classified_seed_plan(db,again,[{'id':p.id,'code':p.code,'name':p.name,'item_type':'BUY','is_active':True,'uom':'PCS'}])
         assert insert_items(db,again)==[]
+        unknown={'items':[{'name':'UNKNOWN NEW ITEM','units':['PCS'],'unit_review_required':False}],'source_sha256':'new'}
+        classified_seed_plan(db,unknown,[])
+        assert unknown['new_master_items']==0 and unknown['items'][0]['match_status']=='CLASSIFICATION_REVIEW'
         assert db.query(Inventory).count()==0 and db.query(JournalEntry).count()==0
         db.rollback()
-        assert db.query(Product).count()==0 and db.query(ItemGroup).count()==0
+        assert db.query(Product).count()==0 and db.query(ItemGroup).count()==1
+
 
 class PublicDriveSourceTests(unittest.TestCase):
     def zip_content(self):
