@@ -67,7 +67,7 @@ function supplierPayload(supplier: Supplier, isActive = supplier.is_active): Sup
 
 export default function SupplierPage() {
   const user = useAuthStore((state) => state.user);
-  const _canCreateSupplier = hasPermission(user, "finance.manage");
+  const canCreateSupplier = hasPermission(user, "finance.manage");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -144,7 +144,7 @@ export default function SupplierPage() {
   return <>
     <div className="space-y-6">
       <PageHeader title="Suppliers" description="Manage supplier profiles, contacts, banking details, and availability." actions={<>
-_canCreateSupplier ? <Button onClick={openCreate}>Add Supplier</Button> : undefined
+{canCreateSupplier && <Button onClick={openCreate}>Add Supplier</Button>}
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}/>
       <Card>
