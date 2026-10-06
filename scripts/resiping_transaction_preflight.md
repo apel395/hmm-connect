@@ -77,3 +77,12 @@ location. Head Office is excluded from this default. STOCK uses the unique
 active warehouse linked to that location; multiple/missing warehouses remain
 review items. DIRECT_USE and FIXED_ASSET carry no warehouse. Selected IDs and
 mapping rules are included in JSON/XLSX, without changing master records.
+
+## Confirmed supplier mapping
+
+AGRO BOGA UTAMA (including the source typo ARGO and PT/punctuation variants)
+uses the user-selected supplier ID 225, PT. AGRO BOGA UTAMA. The target must
+still be active and retain its expected supplier identity. Missing/inactive/
+changed ID 225 remains unresolved; duplicate 242 is never selected as fallback.
+The original source supplier label and mapped supplier name/rule are reported.
+This changes import matching only; no supplier or existing transaction is edited.

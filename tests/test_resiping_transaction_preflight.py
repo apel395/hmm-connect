@@ -172,6 +172,27 @@ class TransactionPreflightTests(unittest.TestCase):
         self.assertIsNone(report['invoices'][0].get('department_id'))
         self.assertIn('DEPARTMENT_SELECTION_REQUIRED',report['invoices'][0]['errors'])
 
+    def test_agro_boga_uses_confirmed_225_without_fallback_to_duplicate(self):
+        for label in ('ARGO BOGA UTAMA','AGRO BOGA UTAMA','PT. AGRO BOGA UTAMA','PT.AGRO BOGA UTAMA'):
+            report=self.report();report['invoices'][0]['supplier']=label
+            catalog=self.catalog();catalog['suppliers']=[
+                {'id':225,'name':'PT. AGRO BOGA UTAMA','code':'HIST-SUP-00015','is_active':True,'is_pkp':False},
+                {'id':242,'name':'PT.AGRO BOGA UTAMA','code':'HIST-SUP-00020','is_active':True,'is_pkp':False}]
+            validate_database(report,catalog)
+            inv=report['invoices'][0]
+            self.assertEqual(inv['supplier_id'],225)
+            self.assertEqual(inv['supplier'],label)
+            self.assertEqual(inv['supplier_mapping_rule'],'USER_CONFIRMED_SUPPLIER_225')
+            self.assertNotIn('SUPPLIER_NOT_UNIQUELY_MATCHED',inv['errors'])
+        for replacement in (None,{'id':225,'name':'Other supplier','is_active':True},
+                            {'id':225,'name':'PT. AGRO BOGA UTAMA','is_active':False}):
+            report=self.report();report['invoices'][0]['supplier']='ARGO BOGA UTAMA'
+            catalog=self.catalog();catalog['suppliers']=[{'id':242,'name':'PT.AGRO BOGA UTAMA','is_active':True}]
+            if replacement:catalog['suppliers'].append(replacement)
+            validate_database(report,catalog)
+            self.assertIsNone(report['invoices'][0]['supplier_id'])
+            self.assertIn('SUPPLIER_NOT_UNIQUELY_MATCHED',report['invoices'][0]['errors'])
+
     def test_xlsx_source_text_is_not_executable_and_summary_is_compact(self):
         r=self.report();r['invoices'][0]['supplier']='=HYPERLINK("bad")'
         with tempfile.TemporaryDirectory() as tmp:
