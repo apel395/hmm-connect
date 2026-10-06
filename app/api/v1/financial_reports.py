@@ -106,7 +106,8 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
     sheets = []
     for period in ("MTD", "YTD"):
         rows = []
-        rows.append([report_type, as_of_date.isoformat(), "Location", scope or "Consolidated", "Unit", business_unit_id or "All"])
+        labels = report["scope_labels"]
+        rows.append([report_type, as_of_date.isoformat(), "Location", labels["location_id"], "Unit", labels["business_unit_id"], "Department", labels["department_id"]])
         metrics = ("current", "budget", "last_month", "last_year", "variance") + (("movement",) if report_type == "BALANCE_SHEET" else ())
         rows.append(["Account", "Name", "Current", "Budget", "Last month", "Same period last year", "Variance"] + (["Period movement"] if report_type == "BALANCE_SHEET" else []))
         for section, totals in report["section_totals"].items():

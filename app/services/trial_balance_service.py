@@ -58,12 +58,9 @@ class TrialBalanceService:
             query = query.filter(JournalEntry.posting_date >= date_from)
         if date_to:
             query = query.filter(JournalEntry.posting_date <= date_to)
-        if location_id:
-            query = query.filter(JournalLine.location_id == location_id)
-        if department_id:
-            query = query.filter(JournalLine.department_id == department_id)
-        if business_unit_id:
-            query = query.filter(JournalLine.business_unit_id == business_unit_id)
+        for name, value in (("location_id", location_id), ("department_id", department_id), ("business_unit_id", business_unit_id)):
+            if value is not None:
+                query = query.filter(func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name)) == value)
         return {
             account_id: (Decimal(debit), Decimal(credit))
             for account_id, debit, credit in query.group_by(JournalLine.account_id).all()

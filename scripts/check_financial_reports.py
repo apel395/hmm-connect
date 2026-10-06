@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--date", type=date.fromisoformat, default=datetime.now(ZoneInfo("Asia/Jakarta")).date())
     parser.add_argument("--location-id", type=int)
+    parser.add_argument("--business-unit-id", type=int)
     args = parser.parse_args()
     failed = False
     with SessionLocal() as db:
@@ -44,10 +45,12 @@ def main():
             try:
                 with db.begin_nested():
                     report = FinancialReportingService(db).build(report_type=kind,
-                        as_of_date=args.date, location_id=args.location_id)
+                        as_of_date=args.date, location_id=args.location_id, business_unit_id=args.business_unit_id)
                     payload = jsonable_encoder(serialize(report))
                     json.dumps(payload, allow_nan=False)
                     print(kind, "OK", "rows:", len(payload["rows"]), "location:", args.location_id)
+                    print("Report scope:", json.dumps(payload["scope_labels"], ensure_ascii=False))
+                    print("Comparisons:", json.dumps(payload["comparison_available"]))
                     print("Totals:", json.dumps(payload["section_totals"], ensure_ascii=False))
             except Exception as exc:
                 failed = True
