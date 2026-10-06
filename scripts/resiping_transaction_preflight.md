@@ -6,7 +6,11 @@ any master/document/stock/journal/opening record. It has no `--apply` option.
 It reads the INVOICES and ITEM_ENTRY sheets, including the added Discount and
 Tax columns. Template IDs/date continuation are interpreted explicitly; macros,
 general formulas and cached formula totals are never executed or trusted.
-Amounts are recomputed with Decimal. Blank tax is unknown; it is not Non PPN.
+Amounts are recomputed with Decimal. Per the user-confirmed historical policy,
+omitted tax is not imported: blank line Tax becomes zero when header Tax is
+also blank or explicitly zero. Original blank cells remain visible in the report.
+If header Tax is blank, its effective amount is the sum of entered line taxes.
+This policy does not classify items as Non PPN or change master tax settings.
 An explicit zero invoice-header Tax confirms zero tax on that invoice's rows;
 a positive invoice-header tax is not silently distributed to lines.
 
@@ -40,7 +44,9 @@ new workbook is ready.
 
 The DB check uses a read-only transaction. It matches active BUY names exactly,
 never silently substitutes SELL records or aliases, checks purchase units,
-classification/COA/tax-review flags and accounting period/backdate settings.
+classification/COA flags and accounting period/backdate settings. Item-master
+tax review does not block zero-tax historical rows; entered positive tax remains
+subject to the existing checks.
 It lists supplier and location IDs, department/warehouse candidates, and possible
 existing invoices/receipts. Candidates are evidence for review, not proof that
 all documents on a supplier/date are duplicates. Confirmed operational department and unique warehouse mappings are applied
@@ -86,3 +92,33 @@ still be active and retain its expected supplier identity. Missing/inactive/
 changed ID 225 remains unresolved; duplicate 242 is never selected as fallback.
 The original source supplier label and mapped supplier name/rule are reported.
 This changes import matching only; no supplier or existing transaction is edited.
+
+## Selective receiving draft seed
+
+`seed_resiping_receiving_drafts.py` reads the source and checks the live database
+again. It creates only receiving DRAFTS for individual 2026 rows with resolved
+supplier, item, unit, date, department, warehouse and posting-account mappings.
+Unresolved rows are listed in the JSON skip report. Eligible rows are grouped
+by source invoice ID, exact receiving date and STOCK/DIRECT_USE treatment.
+These are selected source-row drafts, not a declaration that the supplier
+invoice is complete or correct. Invoice header numbers and amounts are not
+used to create invoices; their review remains separate. Original row numbers,
+work locations, dates and entered tax are retained in draft notes and audit.
+
+This script never posts, changes stock, creates AP/journals/GL, or changes
+opening balances. It never creates suppliers/items or imports pre-2026 rows.
+Only explicitly entered tax is imported. Positive header tax without line
+allocation still requires review. Repeat runs verify source-row fingerprints
+and existing receipt values, skipping identical drafts and refusing changed
+receipts. An advisory transaction lock serializes apply runs.
+
+```bash
+.venv/bin/python scripts/seed_resiping_receiving_drafts.py \
+  --file /tmp/resiping-seed-20261006.xlsm \
+  --output /tmp/resiping-receiving-seed.json
+
+# Commit eligible drafts after inspecting the compact dry-run counts.
+.venv/bin/python scripts/seed_resiping_receiving_drafts.py \
+  --file /tmp/resiping-seed-20261006.xlsm \
+  --output /tmp/resiping-receiving-seed-applied.json --apply
+```

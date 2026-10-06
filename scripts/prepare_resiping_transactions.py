@@ -112,7 +112,8 @@ def extract_transactions(path):
             invoices[key]={'key':key,'row':row,'supplier':str(c[2] or '').strip(),'location':str(c[3] or '').strip(),
                 'invoice_number':text_number(c[4]),'raw_invoice_date':c[1],'invoice_date':exact_date(c[1]),
                 'date_policy':'LATEST_DATE_IN_RANGE_OR_LIST',
-                'declared_total':value,'declared_tax':tax,'errors':errors,'lines':[], 'excluded':[]}
+                'declared_total':value,'declared_tax':tax,'raw_invoice_tax':c[6],
+                'tax_policy':'IMPORT_ENTERED_TAX_ONLY','errors':errors,'lines':[], 'excluded':[]}
         sequence=bool(invoices) and all(x['invoice_number']==str(x['row']-4) for x in invoices.values())
         orphan=[];current=None;carried=None
         for row,c in enumerate(w['ITEM_ENTRY'].iter_rows(min_row=5,max_col=14,values_only=True),5):
@@ -145,7 +146,9 @@ def extract_transactions(path):
                 if discount>0:line['errors'].append('DISCOUNT_POSTING_REVIEW')
                 literal_total=number(c[8]) if c[8] is not None and not str(c[8]).startswith('=') else None
                 line['literal_line_total']=literal_total
-                if tax is None and header['declared_tax']==0:line['tax']=Decimal(0);line['tax_evidence']='Explicit zero invoice-header tax'
+                if tax is None and header['raw_invoice_tax'] in (None,''):
+                    line['tax']=Decimal(0);line['tax_evidence']='User-confirmed historical policy: omitted tax not imported'
+                elif tax is None and header['declared_tax']==0:line['tax']=Decimal(0);line['tax_evidence']='Explicit zero invoice-header tax'
                 elif tax is not None:line['tax_evidence']='Explicit ITEM_ENTRY tax amount'
                 else:line['errors'].append('TAX_EVIDENCE_MISSING')
                 line['gross']=money(line['net']+line['tax']) if line['tax'] is not None else None
@@ -163,9 +166,11 @@ def extract_transactions(path):
             if not header['invoice_number']:header['errors'].append('MISSING_SUPPLIER_INVOICE_NUMBER')
             elif sequence:header['errors'].append('INVOICE_NUMBER_IS_TEMPLATE_SEQUENCE_REVIEW')
             if header['declared_total'] is None or header['declared_total']<=0:header['errors'].append('INVALID_INVOICE_TOTAL')
-            if header['declared_tax'] is None:header['errors'].append('INVOICE_TAX_UNCONFIRMED')
             header['net_total']=sum((x.get('net',Decimal(0)) for x in header['lines']),Decimal(0))
             all_tax=all(x.get('gross') is not None for x in header['lines'])
+            if header['raw_invoice_tax'] in (None,'') and all_tax:
+                header['declared_tax']=sum((x['tax'] for x in header['lines']),Decimal(0))
+            elif header['declared_tax'] is None:header['errors'].append('INVOICE_TAX_UNCONFIRMED')
             header['computed_gross']=sum((x['gross'] for x in header['lines']),Decimal(0)) if all_tax else None
             header['gap_against_net']=header['declared_total']-header['net_total'] if header['declared_total'] is not None else None
             header['gross_difference']=header['computed_gross']-header['declared_total'] if all_tax and header['declared_total'] is not None else None
@@ -234,7 +239,7 @@ def validate_database(report,catalog,today=None):
             account=next((a for a in catalog['accounts'] if a['id']==p.get(field)),None) if field else None
             kind='EXPENSE' if p['inventory_treatment']=='DIRECT_USE' else 'ASSET'
             if not account or not account['is_active'] or not account['is_posting'] or account['account_type']!=kind or account['normal_balance']!='DEBIT':line['errors'].append('ITEM_POSTING_ACCOUNT_INVALID')
-            if p.get('tax_category')=='REVIEW_REQUIRED':line['errors'].append('ITEM_TAX_REVIEW_REQUIRED')
+            if p.get('tax_category')=='REVIEW_REQUIRED' and line.get('tax')!=Decimal(0):line['errors'].append('ITEM_TAX_REVIEW_REQUIRED')
             line['department_id']=inv.get('department_id')
             line['warehouse_id']=None
             if p['inventory_treatment']=='STOCK':
@@ -303,8 +308,8 @@ def write_xlsx(report,path):
                 if isinstance(value,str):cell.data_type='s'
                 values.append(cell)
             ws.append(values)
-    sheet('Invoices',['key','row','supplier','location','invoice_number','raw_invoice_date','invoice_date','declared_total','declared_tax','net_total','computed_gross','gap_against_net','gross_difference','status','errors','supplier_id','mapped_supplier_name','supplier_mapping_rule','location_id','location_mapping_label','mapped_location_name','location_mapping_rule','department_id','department_mapping_rule','existing_invoice_candidates','department_candidates','warehouse_candidates'],report['invoices'])
-    sheet('Receiving',['invoice_key','row','item','unit','raw_received_date','received_date','quantity','unit_price','discount','net','tax','gross','product_id','product_code','treatment','department_id','warehouse_id','warehouse_mapping_rule','errors','existing_receipt_candidates'],[r for x in report['invoices'] for r in x['lines']])
+    sheet('Invoices',['key','row','supplier','location','invoice_number','raw_invoice_date','invoice_date','declared_total','declared_tax','raw_invoice_tax','tax_policy','net_total','computed_gross','gap_against_net','gross_difference','status','errors','supplier_id','mapped_supplier_name','supplier_mapping_rule','location_id','location_mapping_label','mapped_location_name','location_mapping_rule','department_id','department_mapping_rule','existing_invoice_candidates','department_candidates','warehouse_candidates'],report['invoices'])
+    sheet('Receiving',['invoice_key','row','item','unit','raw_received_date','received_date','quantity','unit_price','discount','net','raw_tax','tax','tax_evidence','gross','product_id','product_code','treatment','department_id','warehouse_id','warehouse_mapping_rule','errors','existing_receipt_candidates'],[r for x in report['invoices'] for r in x['lines']])
     sheet('Excluded 2025',['invoice_key','row','item','unit','raw_received_date','exclusion'],[r for x in report['invoices'] for r in x['excluded']])
     sheet('Unlinked',['row','item','errors'],report['unlinked_rows'])
     w.save(path)
