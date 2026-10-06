@@ -1,0 +1,4141 @@
+[
+  {
+    "id": 4693,
+    "code": "1-100001",
+    "name": "BEEF SAUSAGE",
+    "group": "FOOD",
+    "subgroups": [
+      "MEAT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT"
+    }
+  },
+  {
+    "id": 4702,
+    "code": "1-100002",
+    "name": "BEEF BALL",
+    "group": "FOOD",
+    "subgroups": [
+      "MEAT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT"
+    }
+  },
+  {
+    "id": 4709,
+    "code": "1-100003",
+    "name": "MINCED BEEF",
+    "group": "FOOD",
+    "subgroups": [
+      "MEAT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT"
+    }
+  },
+  {
+    "id": 6018,
+    "code": "1-100004",
+    "name": "BEEF KNUCKLE LOKAL",
+    "group": "FOOD",
+    "subgroups": [
+      "MEAT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT"
+    }
+  },
+  {
+    "id": 6317,
+    "code": "1-100005",
+    "name": "TENDERLOIN STEAK",
+    "group": "FOOD",
+    "subgroups": [
+      "MEAT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6318,
+    "code": "1-100006",
+    "name": "TONGSENG KAMBING",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6321,
+    "code": "1-100007",
+    "name": "BEEF CHEESE BURGER KING",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6341,
+    "code": "1-100008",
+    "name": "TONGSENG SAPI",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6073,
+    "code": "2-500002",
+    "name": "DAGING FROZEN",
+    "group": "FOOD",
+    "subgroups": [
+      "MEAT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "MEAT"
+    }
+  },
+  {
+    "id": 4695,
+    "code": "1-200001",
+    "name": "CHICKEN SAUSAGE",
+    "group": "FOOD",
+    "subgroups": [
+      "POULTRY"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "POULTRY"
+    }
+  },
+  {
+    "id": 6071,
+    "code": "1-200002",
+    "name": "AYAM BEKU",
+    "group": "FOOD",
+    "subgroups": [
+      "POULTRY"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "POULTRY"
+    }
+  },
+  {
+    "id": 6096,
+    "code": "1-200003",
+    "name": "BAYAM",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "POULTRY",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6127,
+    "code": "1-200004",
+    "name": "TELUR AYAM",
+    "group": "FOOD",
+    "subgroups": [
+      "POULTRY"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "POULTRY"
+    }
+  },
+  {
+    "id": 6340,
+    "code": "1-200005",
+    "name": "NASI AYAM GEPREK",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "POULTRY",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6367,
+    "code": "1-200006",
+    "name": "AYAM TALIWANG",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "POULTRY",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6368,
+    "code": "1-200007",
+    "name": "TONGSENG AYAM",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "POULTRY",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6382,
+    "code": "1-200008",
+    "name": "CHICKEN POPCORN",
+    "group": "FOOD",
+    "subgroups": [
+      "POULTRY"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "POULTRY"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 4692,
+    "code": "1-300001",
+    "name": "FISH BALL",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6036,
+    "code": "1-300002",
+    "name": "TEPUNG TERIGU 1KG",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Flour or condiment classified as fish, vegetable or seafood",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6074,
+    "code": "1-300003",
+    "name": "IKAN ASIN BAUNG",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6075,
+    "code": "1-300004",
+    "name": "IKAN BANDENG",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6076,
+    "code": "1-300005",
+    "name": "IKAN EMAS",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6077,
+    "code": "1-300006",
+    "name": "IKAN GEMBONG",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6078,
+    "code": "1-300007",
+    "name": "IKAN KAKAP",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6079,
+    "code": "1-300008",
+    "name": "IKAN LAYANG",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6081,
+    "code": "1-300009",
+    "name": "IKAN NILA",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6082,
+    "code": "1-300010",
+    "name": "IKAN PATIN",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6083,
+    "code": "1-300011",
+    "name": "IKAN TRAKULU",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6084,
+    "code": "1-300012",
+    "name": "IKAN TUNA",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6136,
+    "code": "1-300013",
+    "name": "IKAN LELE",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FISH"
+    }
+  },
+  {
+    "id": 6072,
+    "code": "1-400001",
+    "name": "CUMI-CUMI",
+    "group": "FOOD",
+    "subgroups": [
+      "SEAFOOD"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SEAFOOD"
+    }
+  },
+  {
+    "id": 6085,
+    "code": "1-400002",
+    "name": "UDANG WHITE",
+    "group": "FOOD",
+    "subgroups": [
+      "SEAFOOD"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SEAFOOD"
+    }
+  },
+  {
+    "id": 6088,
+    "code": "1-400003",
+    "name": "KERUPUK UDANG SENNA",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Crackers classified as seafood or herb",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SEAFOOD",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6140,
+    "code": "1-400004",
+    "name": "TERASI UDANG",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Flour or condiment classified as fish, vegetable or seafood",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SEAFOOD",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6035,
+    "code": "1-500001",
+    "name": "SAUS TOMAT 335GR",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Flour or condiment classified as fish, vegetable or seafood",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6097,
+    "code": "1-500002",
+    "name": "BUNCIS",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6107,
+    "code": "1-500003",
+    "name": "KACANG PANJANG",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6110,
+    "code": "1-500004",
+    "name": "KANGKUNG",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6111,
+    "code": "1-500005",
+    "name": "KEMBANG KOL",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6114,
+    "code": "1-500006",
+    "name": "KOL",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6116,
+    "code": "1-500007",
+    "name": "LABU SIAM",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6121,
+    "code": "1-500008",
+    "name": "PARE",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6122,
+    "code": "1-500009",
+    "name": "SAWI HIJAU",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6123,
+    "code": "1-500010",
+    "name": "SAWI PUTIH",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6129,
+    "code": "1-500011",
+    "name": "TERONG UNGU",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6130,
+    "code": "1-500012",
+    "name": "TIMUN",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6131,
+    "code": "1-500013",
+    "name": "TOMAT MERAH",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6132,
+    "code": "1-500014",
+    "name": "WORTEL",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 6151,
+    "code": "1-500015",
+    "name": "LABU KUNING",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "VEGETABLES"
+    }
+  },
+  {
+    "id": 5993,
+    "code": "1-600001",
+    "name": "APEL FUJI 1 : 8",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 5994,
+    "code": "1-600002",
+    "name": "JERUK MEDAN",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 5997,
+    "code": "1-600003",
+    "name": "PEPAYA",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 5999,
+    "code": "1-600004",
+    "name": "SEMANGKA",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 6052,
+    "code": "1-600005",
+    "name": "MINUMAN PULPY ORANGE 350ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6106,
+    "code": "1-600006",
+    "name": "JERUK NIPIS",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 6133,
+    "code": "1-600007",
+    "name": "MELON ORANGE",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 6134,
+    "code": "1-600008",
+    "name": "NANAS",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 6135,
+    "code": "1-600009",
+    "name": "PISANG AMBON",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 6147,
+    "code": "1-600010",
+    "name": "MINUMAN SIRUP MANGGA 510ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "SYRUP"
+    ],
+    "treatment": "STOCK",
+    "account": "100-300-500",
+    "reason": "Mango syrup is beverage concentrate, not fresh fruit",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6152,
+    "code": "1-600011",
+    "name": "JERUK",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT"
+    }
+  },
+  {
+    "id": 6322,
+    "code": "1-600012",
+    "name": "PISANG KIPAS",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "FRUIT",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6087,
+    "code": "1-700001",
+    "name": "KERUPUK BAWANG",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Crackers classified as seafood or herb",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6094,
+    "code": "1-700002",
+    "name": "BAWANG BOMBAY",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB"
+    }
+  },
+  {
+    "id": 6095,
+    "code": "1-700003",
+    "name": "BAWANG MERAH",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB"
+    }
+  },
+  {
+    "id": 6100,
+    "code": "1-700004",
+    "name": "DAUN BAWANG",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB"
+    }
+  },
+  {
+    "id": 6101,
+    "code": "1-700005",
+    "name": "DAUN KEMANGI",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB"
+    }
+  },
+  {
+    "id": 6105,
+    "code": "1-700006",
+    "name": "JAHE",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB"
+    }
+  },
+  {
+    "id": 6115,
+    "code": "1-700007",
+    "name": "KUNYIT",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB"
+    }
+  },
+  {
+    "id": 6150,
+    "code": "1-700008",
+    "name": "BAWANG PUTIH",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB"
+    }
+  },
+  {
+    "id": 6333,
+    "code": "1-700009",
+    "name": "ICE AMERICACO",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6369,
+    "code": "1-700010",
+    "name": "HOT AMERICANO",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "HERB",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 4690,
+    "code": "1-800001",
+    "name": "NASI GUDEG SP",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4691,
+    "code": "1-800002",
+    "name": "TAHU TEMPE",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4694,
+    "code": "1-800003",
+    "name": "MOZZARELLA CHEESE",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4696,
+    "code": "1-800004",
+    "name": "CORN KERNEL",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4698,
+    "code": "1-800005",
+    "name": "VANILLA ICE CREAM",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4699,
+    "code": "1-800006",
+    "name": "VANILLA ICE CREAM CUP",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4703,
+    "code": "1-800007",
+    "name": "UNSALTED BUTTER",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4704,
+    "code": "1-800008",
+    "name": "GREEN PEAS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4705,
+    "code": "1-800009",
+    "name": "MAYONNAISE",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4706,
+    "code": "1-800010",
+    "name": "FULL CREAM MILK",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4707,
+    "code": "1-800011",
+    "name": "FRENCH FRIES SHOESTRING",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 4708,
+    "code": "1-800012",
+    "name": "ICE CREAM 3 FLAVORS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GROCERIES"
+    }
+  },
+  {
+    "id": 5995,
+    "code": "1-800014",
+    "name": "KELAPA TUA",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "treatment": "STOCK",
+    "account": "100-300-100",
+    "reason": "Whole mature coconut belongs to fruit; retain warehouse treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 5996,
+    "code": "1-800015",
+    "name": "NENAS",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Fruit classified as groceries",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 5998,
+    "code": "1-800016",
+    "name": "PIASANG BARANGAN",
+    "group": "FOOD",
+    "subgroups": [
+      "FRUIT"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Fruit classified as groceries",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6002,
+    "code": "1-800017",
+    "name": "DIMSUM MIX",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6003,
+    "code": "1-800018",
+    "name": "DIMSUM MIX MINAS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6004,
+    "code": "1-800019",
+    "name": "SATE PADANG",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6005,
+    "code": "1-800020",
+    "name": "SIOMAY MINAS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6006,
+    "code": "1-800021",
+    "name": "SIOMAY",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6007,
+    "code": "1-800022",
+    "name": "BATAGOR SIOMAY",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6008,
+    "code": "1-800023",
+    "name": "BATAGOR",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6010,
+    "code": "1-800024",
+    "name": "SATE PADANG MINAS",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6011,
+    "code": "1-800025",
+    "name": "LENJER KECIL",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6012,
+    "code": "1-800026",
+    "name": "TELOR KECIL",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6013,
+    "code": "1-800027",
+    "name": "ADAAN",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6014,
+    "code": "1-800028",
+    "name": "LEJER K",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6015,
+    "code": "1-800029",
+    "name": "LENJER KECIL MINAS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6016,
+    "code": "1-800030",
+    "name": "TELOR KECIL MINAS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6017,
+    "code": "1-800031",
+    "name": "ADAAN MINAS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6019,
+    "code": "1-800032",
+    "name": "PASTEL",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6020,
+    "code": "1-800033",
+    "name": "RISOLES",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6021,
+    "code": "1-800034",
+    "name": "AMRIS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6023,
+    "code": "1-800035",
+    "name": "BERAS PANDAN WANGI 25KG",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6024,
+    "code": "1-800036",
+    "name": "GARAM 250GR",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6025,
+    "code": "1-800037",
+    "name": "GULA PASIR 1KG",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6026,
+    "code": "1-800038",
+    "name": "KECAP MANIS 600ML",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6027,
+    "code": "1-800039",
+    "name": "KOPI KAPAL API 60GR RENTENG",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6028,
+    "code": "1-800040",
+    "name": "LE MINERAL 330ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "MINERAL WATER"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Bottled mineral water classified as food",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6029,
+    "code": "1-800041",
+    "name": "MIE ATOM 1 DUS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6030,
+    "code": "1-800042",
+    "name": "MIE KWETIAW",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6031,
+    "code": "1-800043",
+    "name": "MINYAK GORENG 2L",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6032,
+    "code": "1-800044",
+    "name": "SANTAN 200ML",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6033,
+    "code": "1-800045",
+    "name": "SAUS SAMBAL 335GR",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6034,
+    "code": "1-800046",
+    "name": "SAUS TIRAM 270ML",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6037,
+    "code": "1-800047",
+    "name": "TERASI",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6041,
+    "code": "1-800048",
+    "name": "MADU TJ MURNI 250GR",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6044,
+    "code": "1-800049",
+    "name": "SABUN SUMLIGHT 800 ML",
+    "group": "MATERIAL",
+    "subgroups": [
+      "CLEANING SUPPLIES"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Cleaning product classified as food",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6045,
+    "code": "1-800050",
+    "name": "SPIDOL SNOWMAN BOARDMAKER",
+    "group": "MATERIAL",
+    "subgroups": [
+      "STATIONARY"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Board marker classified as food",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6047,
+    "code": "1-800051",
+    "name": "KACANG TELUR 2 KELINCI",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6048,
+    "code": "1-800052",
+    "name": "MINUMSN ABC SARI KACANG HIJAU",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6049,
+    "code": "1-800053",
+    "name": "MINUMAN BOTOL KOPI ABC",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6050,
+    "code": "1-800054",
+    "name": "MINUMAN FLORIDINA COCO 350ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6051,
+    "code": "1-800055",
+    "name": "MINUMAN GOLDA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6053,
+    "code": "1-800056",
+    "name": "MINUMAN SUSU BEAR BRAND",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6054,
+    "code": "1-800057",
+    "name": "MINUMAN TEH KOTAK",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6062,
+    "code": "1-800058",
+    "name": "SUSU KENTAL MANIS",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6063,
+    "code": "1-800059",
+    "name": "SIRUP ABC 510ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "SYRUP"
+    ],
+    "treatment": "STOCK",
+    "account": "100-300-500",
+    "reason": "ABC syrup is beverage concentrate",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6064,
+    "code": "1-800060",
+    "name": "SOUN",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6065,
+    "code": "1-800061",
+    "name": "BLENDER",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "review_required": "BLENDER requires equipment capitalization policy and exact asset/expense mapping; do not retain food classification as approved"
+  },
+  {
+    "id": 6066,
+    "code": "1-800062",
+    "name": "PLASTIK WRAP [CLING MIRAD]",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6067,
+    "code": "1-800063",
+    "name": "MINUMAN ABC SARI KACANG HIJAU",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6068,
+    "code": "1-800064",
+    "name": "MINUMAN CINCAU 330ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6070,
+    "code": "1-800065",
+    "name": "MINUMAN SOYA 330ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6086,
+    "code": "1-800066",
+    "name": "KECAP MANIS REFILL",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6089,
+    "code": "1-800067",
+    "name": "MIE EKO",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6090,
+    "code": "1-800068",
+    "name": "SANTAN SUN KARA 200ML",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6091,
+    "code": "1-800069",
+    "name": "PLASTIK PE 0,5KG",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6092,
+    "code": "1-800070",
+    "name": "PLASTIK PE 1KG",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6098,
+    "code": "1-800071",
+    "name": "CAMBAH PANJANG",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6102,
+    "code": "1-800072",
+    "name": "DAUN SOP",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Herb ingredient classified as groceries",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6103,
+    "code": "1-800073",
+    "name": "GULA MERAH",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6104,
+    "code": "1-800074",
+    "name": "JAGUNG MANIS",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6108,
+    "code": "1-800075",
+    "name": "KACANG PUTIH",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6109,
+    "code": "1-800076",
+    "name": "KACANG TANAH",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6112,
+    "code": "1-800077",
+    "name": "KEMIRI",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6113,
+    "code": "1-800078",
+    "name": "KENTANG",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6117,
+    "code": "1-800079",
+    "name": "LOMBOK IJO",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6118,
+    "code": "1-800080",
+    "name": "LOMBOK KECIL",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6119,
+    "code": "1-800081",
+    "name": "LOMBOK KERITING",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6120,
+    "code": "1-800082",
+    "name": "NANGKA MUDA KUPAS",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6124,
+    "code": "1-800083",
+    "name": "SEREY",
+    "group": "FOOD",
+    "subgroups": [
+      "HERB"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Herb ingredient classified as groceries",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6125,
+    "code": "1-800084",
+    "name": "TAHU ISI 8",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6126,
+    "code": "1-800085",
+    "name": "TELUR ASIN",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6128,
+    "code": "1-800086",
+    "name": "TEMPE",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6137,
+    "code": "1-800087",
+    "name": "AJINOMOTO 100GR",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6138,
+    "code": "1-800088",
+    "name": "BIHUN JAGUNG",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6139,
+    "code": "1-800089",
+    "name": "SABUN COLEK",
+    "group": "MATERIAL",
+    "subgroups": [
+      "CLEANING SUPPLIES"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Cleaning product classified as food",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6141,
+    "code": "1-800090",
+    "name": "MIKA PLASTIK",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6142,
+    "code": "1-800091",
+    "name": "PLASTIK ASOY MERAH",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6143,
+    "code": "1-800092",
+    "name": "PLASTIK ASOY PUTIH",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6144,
+    "code": "1-800093",
+    "name": "SENDOK PLASTIK",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6145,
+    "code": "1-800094",
+    "name": "MINUMAN SARI KACANG HIJAU 250ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6146,
+    "code": "1-800095",
+    "name": "MINUMAN SUSU UHT 250ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6148,
+    "code": "1-800096",
+    "name": "R.OREO ROLL",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    }
+  },
+  {
+    "id": 6311,
+    "code": "1-800097",
+    "name": "MARTABAK MESIR",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6312,
+    "code": "1-800098",
+    "name": "ICE MILK COFFEE 250ML",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6313,
+    "code": "1-800099",
+    "name": "LONTONG SAYUR",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6314,
+    "code": "1-800100",
+    "name": "NASI GORENG HULU CAFE",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6316,
+    "code": "1-800101",
+    "name": "SOP BUNTUT",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6319,
+    "code": "1-800102",
+    "name": "IGA BAKAR",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6320,
+    "code": "1-800103",
+    "name": "RIICE BOWL DENDENG BALADO",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6323,
+    "code": "1-800104",
+    "name": "TEMPE MENDOAN",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6324,
+    "code": "1-800105",
+    "name": "UBI GORENG",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6325,
+    "code": "1-800106",
+    "name": "IRISAN BUAH",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6326,
+    "code": "1-800107",
+    "name": "BLACKMOON",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6327,
+    "code": "1-800108",
+    "name": "ICE LYCHEE TEA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6328,
+    "code": "1-800109",
+    "name": "ICE LEMON TEA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6329,
+    "code": "1-800110",
+    "name": "ICE MILK COFFEE",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6330,
+    "code": "1-800111",
+    "name": "ICE BLACK TEA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6331,
+    "code": "1-800112",
+    "name": "PICCOLO",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6334,
+    "code": "1-800113",
+    "name": "HOT BLACK TEA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6336,
+    "code": "1-800114",
+    "name": "HOT CAPPUCINO",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6337,
+    "code": "1-800115",
+    "name": "CLOUDY BUTTER LATTE",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6338,
+    "code": "1-800116",
+    "name": "ESCORT",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6339,
+    "code": "1-800117",
+    "name": "BLACMOON",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6342,
+    "code": "1-800118",
+    "name": "IRISAN BUAH SEGAR",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6343,
+    "code": "1-800119",
+    "name": "CHOCO FORREST",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6344,
+    "code": "1-800120",
+    "name": "CHOCO CREAM CHEESE",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6345,
+    "code": "1-800121",
+    "name": "HULU MOCHA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6366,
+    "code": "1-800122",
+    "name": "RAWON IGA",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6370,
+    "code": "1-800123",
+    "name": "HOT LICHEE TEA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6371,
+    "code": "1-800124",
+    "name": "HOT CHOCO CREAM CHEESE",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6372,
+    "code": "1-800125",
+    "name": "MATCHA CREAM CHESEE",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6373,
+    "code": "1-800126",
+    "name": "TARO CREAM CHEESE",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6374,
+    "code": "1-800127",
+    "name": "ICE HULU MOCHA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6375,
+    "code": "1-800128",
+    "name": "HOT HULU MOCHA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6376,
+    "code": "1-800129",
+    "name": "THAI TEA",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6377,
+    "code": "1-800130",
+    "name": "HOT LATTE",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6378,
+    "code": "1-800131",
+    "name": "MAGIC",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6379,
+    "code": "1-800132",
+    "name": "COUGH REMEDY",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6380,
+    "code": "1-800133",
+    "name": "CHOCO CHEESE TOAST",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6381,
+    "code": "1-800134",
+    "name": "FRENCH FRIES",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6383,
+    "code": "1-800135",
+    "name": "SPRING ROLL",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6384,
+    "code": "1-800136",
+    "name": "PASTEL MINI",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6385,
+    "code": "1-800137",
+    "name": "ICE MILK COFFE 250ML",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "GRESORIS"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 4701,
+    "code": "1-900001",
+    "name": "PUFF PASTRY SHEET",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6000,
+    "code": "1-900002",
+    "name": "REMPEYEK",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6001,
+    "code": "1-900003",
+    "name": "ROTI JALAH",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6055,
+    "code": "1-900004",
+    "name": "ROTI GERRY MALKIST MIX",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6056,
+    "code": "1-900005",
+    "name": "ROTI HATARI",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6057,
+    "code": "1-900006",
+    "name": "ROTI MALKIST ABON",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6058,
+    "code": "1-900007",
+    "name": "ROTI MALKIST CRICKER",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6059,
+    "code": "1-900008",
+    "name": "ROTI SARI GANDUM",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6060,
+    "code": "1-900009",
+    "name": "ROTI TANGO",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6061,
+    "code": "1-900010",
+    "name": "ROTI WAFER NABATI",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6093,
+    "code": "1-900011",
+    "name": "ROTI NABATI MIX RASA",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6149,
+    "code": "1-900012",
+    "name": "ROTI HATARI MIX RASA",
+    "group": "FOOD",
+    "subgroups": [
+      "SNACK"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK"
+    }
+  },
+  {
+    "id": 6315,
+    "code": "1-900013",
+    "name": "ROTI BAKAR SRIKAYA",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "FOOD",
+      "subgroup_name": "SNACK",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 167,
+      "purchase_account_id": 37,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 4711,
+    "code": "1-800013",
+    "name": "DC AIR GALON",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "MINERAL WATER"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "BEVERAGE",
+      "subgroup_name": "MINERAL WATER"
+    }
+  },
+  {
+    "id": 4712,
+    "code": "2-100001",
+    "name": "DC AIR MINERAL",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "MINERAL WATER"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "BEVERAGE",
+      "subgroup_name": "MINERAL WATER"
+    }
+  },
+  {
+    "id": 6022,
+    "code": "2-100002",
+    "name": "AIR MINERAL DC 600 ML",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "MINERAL WATER"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "BEVERAGE",
+      "subgroup_name": "MINERAL WATER"
+    }
+  },
+  {
+    "id": 6332,
+    "code": "2-100003",
+    "name": "MINERAL WATER",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "MINERAL WATER"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "BEVERAGE",
+      "subgroup_name": "MINERAL WATER"
+    },
+    "usage_review": "Retain current item default; receiving destination and item default are separate. Confirm frozen ingredient versus prepared purchase before changing default."
+  },
+  {
+    "id": 6009,
+    "code": "2-500001",
+    "name": "SATE PADANG RUMBAI",
+    "group": "FOOD",
+    "subgroups": [
+      "PREPARED FOOD"
+    ],
+    "account": "500-100-100",
+    "treatment": "DIRECT_USE",
+    "reason": "Ready-to-eat dish purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "BEVERAGE",
+      "subgroup_name": "LIQUER",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 177,
+      "purchase_account_id": 39,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6080,
+    "code": "2-500003",
+    "name": "IKAN MENANGIN",
+    "group": "FOOD",
+    "subgroups": [
+      "FISH"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Fish classified as liquor",
+    "expected": {
+      "group_name": "BEVERAGE",
+      "subgroup_name": "LIQUER",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 177,
+      "purchase_account_id": 39,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6046,
+    "code": "3-100001",
+    "name": "TISU PASEO",
+    "group": "MATERIAL",
+    "subgroups": [
+      "GUEST SUPPLIES"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "MATERIAL",
+      "subgroup_name": "GUEST SUPPLIES"
+    }
+  },
+  {
+    "id": 4697,
+    "code": "3-300001",
+    "name": "FRENCH FRIES CRINKLE CUT",
+    "group": "FOOD",
+    "subgroups": [
+      "GROCERIES",
+      "GRESORIS"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Frozen fries classified as printing supplies; remain stock",
+    "expected": {
+      "group_name": "MATERIAL",
+      "subgroup_name": "PRINTING",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 187,
+      "purchase_account_id": 40,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6038,
+    "code": "3-300002",
+    "name": "GAS PINK 12KG",
+    "group": "MATERIAL",
+    "subgroups": [
+      "FUEL"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "LPG classified as printing; retain stock pending refill/cylinder usage review",
+    "expected": {
+      "group_name": "MATERIAL",
+      "subgroup_name": "PRINTING",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 187,
+      "purchase_account_id": 40,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6039,
+    "code": "3-400001",
+    "name": "GELAS KERTAS",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "MATERIAL",
+      "subgroup_name": "STATIONARY",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 187,
+      "purchase_account_id": 40,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6040,
+    "code": "3-400002",
+    "name": "KERTAS NASI [ISI 30 PCS]",
+    "group": "MATERIAL",
+    "subgroups": [
+      "PACKAGING"
+    ],
+    "account": "100-300-700",
+    "treatment": "STOCK",
+    "reason": "Packaging or disposable utensils belong to material supplies",
+    "expected": {
+      "group_name": "MATERIAL",
+      "subgroup_name": "STATIONARY",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 187,
+      "purchase_account_id": 40,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6042,
+    "code": "3-400003",
+    "name": "PULPEN SNOWMAN BLUE",
+    "group": "MATERIAL",
+    "subgroups": [
+      "STATIONARY"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "MATERIAL",
+      "subgroup_name": "STATIONARY"
+    }
+  },
+  {
+    "id": 6043,
+    "code": "3-400004",
+    "name": "PULPEN STANDAR AE 7",
+    "group": "MATERIAL",
+    "subgroups": [
+      "STATIONARY"
+    ],
+    "classification_only": true,
+    "reason": "Retain reviewed family; normalize legacy groceries label without changing usage or accounting",
+    "expected": {
+      "group_name": "MATERIAL",
+      "subgroup_name": "STATIONARY"
+    }
+  },
+  {
+    "id": 6099,
+    "code": "3-400005",
+    "name": "CAMBAH PENDEK",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "MATERIAL",
+      "subgroup_name": "STATIONARY",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 187,
+      "purchase_account_id": 40,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 4700,
+    "code": "4-200001",
+    "name": "MIXED VEGETABLES FROZEN",
+    "group": "FOOD",
+    "subgroups": [
+      "VEGETABLES"
+    ],
+    "account": "100-300-100",
+    "treatment": "STOCK",
+    "reason": "Vegetable classified in the wrong family",
+    "expected": {
+      "group_name": "ASSET",
+      "subgroup_name": "FURNITURE",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 198,
+      "purchase_account_id": 40,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6069,
+    "code": "4-500001",
+    "name": "MINUMAN POCARI 350ML (ISI24)",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PACKAGED BEVERAGE"
+    ],
+    "account": "100-300-500",
+    "treatment": "STOCK",
+    "reason": "Packaged beverage classified as food or vehicle; retain stock treatment",
+    "expected": {
+      "group_name": "ASSET",
+      "subgroup_name": "VEHICLE",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 198,
+      "purchase_account_id": 40,
+      "asset_account_id": null
+    }
+  },
+  {
+    "id": 6335,
+    "code": "4-500002",
+    "name": "SALTED CARAMELLATE",
+    "group": "BEVERAGE",
+    "subgroups": [
+      "PREPARED DRINK"
+    ],
+    "account": "500-100-102",
+    "treatment": "DIRECT_USE",
+    "reason": "Prepared beverage purchased for immediate use; do not receive into warehouse",
+    "expected": {
+      "group_name": "ASSET",
+      "subgroup_name": "VEHICLE",
+      "inventory_treatment": "STOCK",
+      "inventory_account_id": 198,
+      "purchase_account_id": 40,
+      "asset_account_id": null
+    }
+  }
+]
