@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import { listLocations, listBusinessUnits, listDepartments } from "@/modules/admin/organization/api";
 import Loading from "@/components/ui/Loading";
 import FinancialReportPrintTemplate from "@/components/print/FinancialReportPrintTemplate";
 import { getTrialBalance, type TrialBalanceFilters, type TrialBalanceRow } from "./api";
@@ -47,6 +48,9 @@ export default function TrialBalancePrintPage() {
     queryFn: () => loadAll(params),
   });
 
+  const locations = useQuery({ queryKey: ["trial-print-locations"], queryFn: () => listLocations({ is_active: true }), enabled: !!params.location_id });
+  const units = useQuery({ queryKey: ["trial-print-units"], queryFn: listBusinessUnits, enabled: !!params.business_unit_id });
+  const departments = useQuery({ queryKey: ["trial-print-departments"], queryFn: () => listDepartments({ business_unit_id: params.business_unit_id }), enabled: !!params.department_id });
   if (query.isLoading) return <Loading />;
   if (!query.data) return <p>Trial balance could not be loaded.</p>;
 
@@ -57,10 +61,12 @@ export default function TrialBalancePrintPage() {
   return (
     <FinancialReportPrintTemplate
       title="Trial Balance"
-      subtitle={`Opening ${params.date_from.slice(0, 4)}-01-01 · Movement through ${params.date_to}`}
+      subtitle={`Opening ${params.date_from.slice(0, 4)}-01-01 · Movement through ${params.date_to} · Rupiah (IDR)`}
       filters={[
         { label: "Search", value: params.search || "All accounts" },
-        { label: "Location ID", value: params.location_id || "All" },
+        { label: "Location", value: params.location_id ? locations.data?.find(row => row.id === params.location_id)?.name || "Selected location" : "Consolidated" },
+        ...(params.business_unit_id ? [{ label: "Unit", value: units.data?.find(row => row.id === params.business_unit_id)?.name || "Selected unit" }] : []),
+        ...(params.department_id ? [{ label: "Department", value: departments.data?.find(row => row.id === params.department_id)?.name || "Selected department" }] : []),
         { label: "Include Zero Balance", value: params.include_zero_balance ? "Yes" : "No" },
         { label: "Account Count", value: rows.length },
       ]}

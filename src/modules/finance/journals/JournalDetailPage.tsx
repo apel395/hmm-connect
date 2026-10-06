@@ -15,6 +15,8 @@ import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listLocations } from "@/modules/admin/organization/api";
 import SearchableSelect from "@/components/form/SearchableSelect";
+import useFormRecovery from "@/hooks/useFormRecovery";
+import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 import { getJournal, journalAction, updateJournal } from "./api";
 import { paymentAction } from "@/modules/finance/payments/api";
 import { sourceDocumentPath } from "./sourceDocument";
@@ -30,6 +32,8 @@ type EditLine = {
 
 const blankLine = (): EditLine => ({ account_id: 0, debit: 0, credit: 0, description: "" });
 
+type JournalEditInput = { postingDate: string; locationId?: number; description: string; lines: EditLine[] };
+const validEditInput = (v: unknown): v is JournalEditInput => { const x = v as JournalEditInput; return !!x && typeof x.postingDate === "string" && typeof x.description === "string" && Array.isArray(x.lines) && x.lines.every(l => typeof l.account_id === "number" && typeof l.debit === "number" && typeof l.credit === "number" && typeof l.description === "string"); };
 export default function JournalDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -39,6 +43,8 @@ export default function JournalDetailPage() {
   const [locationId, setLocationId] = useState<number>();
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<EditLine[]>([]);
+
+  const recovery = useFormRecovery(`journal:edit:${id}`, { postingDate, locationId, description, lines }, editOpen, validEditInput);
 
   const q = useQuery({ queryKey: ["journal-entry", id], queryFn: () => getJournal(Number(id)), enabled: !!id });
   const accounts = useQuery({
@@ -109,6 +115,7 @@ export default function JournalDetailPage() {
     }),
     onSuccess: () => {
       toast.success("Draft journal updated.");
+      recovery.clear();
       setEditOpen(false);
       refresh();
     },
@@ -122,6 +129,8 @@ export default function JournalDetailPage() {
   const sourcePath = sourceDocumentPath(x.reference_type, x.reference_id);
 
   const openEditor = () => {
+    const saved = recovery.load();
+    if (saved) { setPostingDate(saved.postingDate); setLocationId(saved.locationId); setDescription(saved.description); setLines(saved.lines); setEditOpen(true); recovery.notifyRestored(); return; }
     setPostingDate(x.journal_date);
     setLocationId(x.location_id ?? undefined);
     setDescription(x.description || "");
@@ -164,7 +173,7 @@ export default function JournalDetailPage() {
     <Card><div className="grid grid-cols-3 gap-4 text-right"><div><small>Total Debit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_debit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Total Credit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_credit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Difference</small><div className="text-lg font-bold tabular-nums">{Number(x.difference).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div></div></Card>
     {x.status === "POSTED" && !a.can_unpost && <p className="text-xs text-slate-500">This journal cannot be safely unposted from Journal. Reverse it from the originating module or reopen the required fiscal period first.</p>}
 
-    <Dialog open={editOpen} onOpenChange={setEditOpen}>
+    <Dialog open={editOpen} onOpenChange={next => { if (!save.isPending) setEditOpen(next); }}>
       <DialogContent className="max-w-5xl">
         <DialogHeader><DialogTitle>Edit Draft Journal {x.journal_number}</DialogTitle></DialogHeader>
         <DialogBody className="space-y-5">
@@ -194,7 +203,7 @@ export default function JournalDetailPage() {
             </div>
           </div>
         </DialogBody>
-        <DialogFooter><Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button><Button loading={save.isPending} disabled={!postingDate || !locationId || validLines.length < 2 || !balanced} onClick={() => save.mutate()}>Save Changes</Button></DialogFooter>
+        <DialogFooter><FormRecoveryActions failed={recovery.failed} disabled={save.isPending} onDiscard={() => { recovery.clear(); setEditOpen(false); }} /><Button variant="outline" disabled={save.isPending} onClick={() => setEditOpen(false)}>Close</Button><Button loading={save.isPending} disabled={!postingDate || !locationId || validLines.length < 2 || !balanced} onClick={() => save.mutate()}>Save Changes</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;

@@ -21,6 +21,8 @@ import goodsReceiptApi from "@/modules/purchasing/goods-receipts/api/goodsReceip
 import { createInvoice, getInvoice, InvoiceLine, listEligibleReceiptSources, listInvoices, updateInvoice } from "./api";
 import { createVoucher, listEligibleInvoices } from "@/modules/finance/payment-vouchers/api";
 import useAuthorization from "@/hooks/useAuthorization";
+import useFormRecovery from "@/hooks/useFormRecovery";
+import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 import api from "@/api/client";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -33,6 +35,7 @@ const blankLine = (): InvoiceLine => ({ description: "", quantity: 0, uom: "", u
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const emptyForm = (): any => ({ supplier_id: 0, supplier_invoice_number: "", invoice_date: today(), received_date: today(), due_date: addDays(today(), 30), purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, withholding_tax_amount: 0, tax_invoice_number: "", tax_invoice_date: "", notes: "", source_type: "LIVE", lines: [blankLine()] });
+const validInvoiceInput = (v: unknown): v is ReturnType<typeof emptyForm> => { const x = v as any; return !!x && typeof x.invoice_date === "string" && typeof x.supplier_id === "number" && Array.isArray(x.lines); };
 const invoiceErrorMessage = (error: unknown) => {
   if (!axios.isAxiosError(error)) return "Invoice could not be saved";
   const detail = error.response?.data?.detail;
@@ -177,6 +180,7 @@ export default function SupplierInvoiceListPage() {
   const [submitError, setSubmitError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<any>(emptyForm());
+  const recovery = useFormRecovery(`supplier-invoice:${editingId ? `edit:${editingId}` : "create"}`, form, open, validInvoiceInput);
   const [showAccounts, setShowAccounts] = useState(false);
   const [selectedInvoices, setSelectedInvoices] = useState<Record<number, boolean>>({});
   const sourceLocked = Boolean(form.goods_receipt_id || form.purchase_order_id);
@@ -246,12 +250,14 @@ export default function SupplierInvoiceListPage() {
     const editId = Number(searchParams.get("edit_id"));
     if (!editId || !hasPermission("supplier_invoice.edit")) return;
     setSubmitError("");
-    setOpen(true);
     getInvoice(editId)
       .then((invoice) => {
         if (invoice.status !== "DRAFT") throw new Error("Only draft invoices can be edited");
         setEditingId(editId);
-        setForm({ ...emptyForm(), ...invoice, lines: invoice.lines.map((line) => ({ ...line })) });
+        const saved = recovery.load(`supplier-invoice:edit:${editId}`);
+        setForm(saved ?? { ...emptyForm(), ...invoice, lines: invoice.lines.map((line) => ({ ...line })) });
+        if (saved) recovery.notifyRestored();
+        setOpen(true);
       })
       .catch((error) => {
         toast.error(error instanceof Error ? error.message : "Draft invoice could not be loaded");
@@ -294,6 +300,7 @@ export default function SupplierInvoiceListPage() {
     onSuccess: (invoice) => {
       setSubmitError("");
       toast.success(editingId ? "Draft invoice updated" : "Invoice saved as draft");
+      recovery.clear();
       setOpen(false);
       setEditingId(null);
       setForm(emptyForm());
@@ -386,7 +393,7 @@ export default function SupplierInvoiceListPage() {
 
   return <>
     <PageHeader title="Supplier Invoices" description="Create invoices from posted receiving documents or enter a direct supplier invoice." actions={<>
-{hasPermission("supplier_invoice.create") ? <Button onClick={() => { const next = emptyForm(); if (businessUnits.data?.length === 1) next.business_unit_id = businessUnits.data[0].id; setEditingId(null); setForm(next); setOpen(true); }}>Create Invoice</Button> : null}
+{hasPermission("supplier_invoice.create") ? <Button onClick={() => { const next = emptyForm(); if (businessUnits.data?.length === 1) next.business_unit_id = businessUnits.data[0].id; setEditingId(null); const saved = recovery.load("supplier-invoice:create"); setForm(saved ?? next); if (saved) recovery.notifyRestored(); setOpen(true); }}>Create Invoice</Button> : null}
 {hasPermission("payment.manage") && <Button variant="outline" disabled={!Object.values(selectedInvoices).some(Boolean) || makeVoucher.isPending} loading={makeVoucher.isPending} onClick={() => makeVoucher.mutate()}>Payment Voucher</Button>}
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>} />
@@ -420,7 +427,7 @@ export default function SupplierInvoiceListPage() {
     </div>
     <Card className="mt-3 p-3"><div className="mb-2 flex flex-wrap items-end gap-2"><input aria-label="Search invoices" className={`${input} min-w-[260px] flex-1`} placeholder="Search invoices" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><label className="text-xs font-medium text-slate-600">Status<select className={input} value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option>{["DRAFT", "VERIFIED", "REJECTED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}</select></label><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value=>!value)}><SlidersHorizontal size={15}/> Filters{[filterSupplierId,filterLocationId].filter(Boolean).length ? ` (${[filterSupplierId,filterLocationId].filter(Boolean).length})` : ""}</Button></div>{showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-2"><SearchableSelect label="Supplier" value={filterSupplierId} placeholder="Type supplier name..." options={suppliers.map((supplier: any) => ({ id: supplier.id, label: supplier.name, keywords: [supplier.name ?? "", supplier.code ?? ""] }))} onChange={(id) => { setFilterSupplierId(id); setPage(1); }} /><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(filterLocations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => { setFilterLocationId(id); setPage(1); }} /></div>}<Table className="min-w-[900px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH className="w-12"><input type="checkbox" checked={(invoices.data?.items?.length ?? 0) > 0 && (invoices.data?.items ?? []).every((row: any) => !!selectedInvoices[row.id])} onChange={(event) => { const next: Record<number, boolean> = {}; (invoices.data?.items ?? []).forEach((row: any) => { if (row.status === "POSTED") next[row.id] = event.target.checked; }); setSelectedInvoices(next); }} /></TH><TH>Invoice</TH><TH>Supplier</TH><TH>Dates</TH><TH>Source Document</TH><TH numeric>PPN</TH><TH numeric>Total</TH><TH>Payment</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{invoices.data?.items.map((row: any) => <TR key={row.id} className="whitespace-nowrap"><TD className="w-12"><input type="checkbox" checked={!!selectedInvoices[row.id]} disabled={row.status !== "POSTED"} onChange={(event) => setSelectedInvoices((current) => ({ ...current, [row.id]: event.target.checked }))} /></TD><TD><TableCellStack primary={row.internal_invoice_number} secondary={row.supplier_invoice_number}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD><TableCellStack primary={row.invoice_date} secondary={row.due_date ? `Due ${row.due_date}` : undefined}/></TD><TD>{row.receipt_number || "—"}</TD><TD numeric>{money(row.tax_amount)}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD>{(() => { const paymentStatus = String(row.payment_status || (Number(row.balance_amount ?? row.total_amount) <= 0 ? "PAID" : Number(row.paid_amount || 0) > 0 ? "PARTIALLY_PAID" : "UNPAID")).toUpperCase(); const paid = Number(row.paid_amount || 0); const outstanding = Number(row.balance_amount ?? row.total_amount ?? 0); return <TableCellStack primary={<Badge variant={paymentStatus === "PAID" ? "success" : paymentStatus === "PARTIALLY_PAID" ? "warning" : "danger"}>{paymentStatus === "PARTIALLY_PAID" ? "Partially Paid" : paymentStatus === "PAID" ? "Paid" : "Unpaid"}</Badge>} secondary={paymentStatus === "PAID" ? `Paid ${money(paid || row.total_amount)}` : paid > 0 ? `Paid ${money(paid)} · Due ${money(outstanding)}` : `Due ${money(outstanding)}`} />; })()}</TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => navigate(`/supplier-invoices/${row.id}`)}>View</Button></div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 px-2 py-1" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1)}}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{invoices.data?.total_items ?? 0} invoices · Page {page} of {Math.max(invoices.data?.total_pages ?? 0,1)}</span><Button size="sm" variant="outline" disabled={!invoices.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!invoices.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div></Card>
 
-    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditingId(null); }}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId ? "Edit Draft Supplier Invoice" : "Create Supplier Invoice"}</DialogTitle></DialogHeader><DialogBody className="space-y-5">
+    <Dialog open={open} onOpenChange={next => { if (!save.isPending) setOpen(next); }}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId ? "Edit Draft Supplier Invoice" : "Create Supplier Invoice"}</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
         <label className="text-sm">Posted Receipt<select className={input} value={form.goods_receipt_id ?? ""} onChange={(event) => loadReceipt(Number(event.target.value))}><option value="">Direct / no receipt</option>{receiptOptions.map((row: any) => <option key={row.id} value={row.id}>{row.receipt_number} — {row.supplier_name}</option>)}</select></label>
         <label className="text-sm">Purchase Order<select disabled={Boolean(form.goods_receipt_id)} className={input} value={form.purchase_order_id ?? ""} onChange={(event) => loadPo(Number(event.target.value))}><option value="">Direct / no PO</option>{purchaseOrders.data?.map((row: any) => <option key={row.id} value={row.id}>{row.po_number}</option>)}</select></label>
@@ -443,6 +450,6 @@ export default function SupplierInvoiceListPage() {
       <div className="ml-auto max-w-sm space-y-2 rounded-lg border bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(calculation.subtotal)}</span></div><div className="flex justify-between"><span>PPN</span><span>{money(calculation.tax)}</span></div>{Number(form.discount_amount)>0&&<div className="flex justify-between"><span>Discount</span><span>({money(form.discount_amount)})</span></div>}{Number(form.withholding_tax_amount)>0&&<div className="flex justify-between"><span>Withholding</span><span>({money(form.withholding_tax_amount)})</span></div>}<div className="flex justify-between border-t pt-2 text-lg font-bold"><span>Invoice Total</span><span>{money(calculation.total)}</span></div></div>
       <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
       {submitError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{submitError}</div>}
-    </DialogBody><DialogFooter><Button variant="outline" onClick={() => { setOpen(false); setEditingId(null); }}>Cancel</Button><Button type="button" loading={save.isPending} onClick={submit}>{editingId ? "Save Changes" : "Save Draft"}</Button></DialogFooter></DialogContent></Dialog>
+    </DialogBody><DialogFooter><FormRecoveryActions failed={recovery.failed} disabled={save.isPending} onDiscard={() => { recovery.clear(); setOpen(false); setEditingId(null); setForm(emptyForm()); }} /><Button variant="outline" disabled={save.isPending} onClick={() => setOpen(false)}>Close</Button><Button type="button" loading={save.isPending} onClick={submit}>{editingId ? "Save Changes" : "Save Draft"}</Button></DialogFooter></DialogContent></Dialog>
   </>;
 }

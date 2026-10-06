@@ -15,6 +15,8 @@ import { listBankAccounts } from "@/modules/finance/cash-flow/bankAccountApi";
 import { listLocations } from "@/modules/admin/organization/api";
 import { todayLocal } from "@/utils/dateConstraints";
 import useAuthorization from "@/hooks/useAuthorization";
+import useFormRecovery from "@/hooks/useFormRecovery";
+import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 import { createPayment, eligibleInvoices, eligibleSuppliers, eligibleVouchers, getPayment, listPayments, paymentAction, updatePayment, type Payment } from "./api";
 
 const methods = ["BANK_TRANSFER", "CASH", "CHEQUE", "CREDIT_CARD", "PETTY_CASH", "OTHER"];
@@ -24,6 +26,8 @@ const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { m
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const emptyForm = () => ({ supplier_id:0,payment_date:today(),payment_method:"BANK_TRANSFER",currency:"IDR",total_amount:0,voucher_id:null as number|null,reference_number:"",cheque_number:"",notes:"",source_type:"LIVE",allocations:[] as any[],funding_lines:[{bank_account_id:0,amount:0}] as any[] });
 const availableBalance = (row:any) => Number(row.available_balance ?? row.outstanding_balance ?? 0);
+type PaymentInput = ReturnType<typeof emptyForm>;
+const validPaymentInput = (v: unknown): v is PaymentInput => { const x = v as PaymentInput; return !!x && typeof x.payment_date === "string" && typeof x.supplier_id === "number" && typeof x.currency === "string" && Array.isArray(x.allocations) && Array.isArray(x.funding_lines); };
 type ListAction = "approve" | "generate-journal" | "void" | "reopen" | "unpost" | "cancel-posted";
 
 export default function PaymentListPage() {
@@ -35,6 +39,7 @@ export default function PaymentListPage() {
   const [showFilters,setShowFilters]=useState(false);
   useEffect(() => window.localStorage.setItem("payments-page-size", String(pageSize)), [pageSize]);
   const [page,setPage]=useState(1),[search,setSearch]=useState(""),[status,setStatus]=useState(""),[filterLocationId,setFilterLocationId]=useState<number>(),[open,setOpen]=useState(false),[form,setForm]=useState<any>(emptyForm()),[editingId,setEditingId]=useState<number>();
+  const recovery=useFormRecovery<PaymentInput>(`payment:${editingId ? `edit:${editingId}` : "create"}`,form,open,validPaymentInput);
   const [editingInvoices,setEditingInvoices]=useState<any[]>([]);
   const returnTo=location.pathname.startsWith("/accounts-payable")?`${location.pathname}${location.search}`:"/payments";
   const editId=Number(new URLSearchParams(location.search).get("edit"))||0;
@@ -65,7 +70,7 @@ export default function PaymentListPage() {
 
   useEffect(()=>{
     const payment=editPayment.data;
-    if(!editId||!payment||editingId===editId)return;
+    if(!editId||!payment||(editingId===editId&&open))return;
     setEditingId(editId);
     setEditingInvoices((payment.allocations??[]).map((row:any)=>({
       ...row,
@@ -77,7 +82,9 @@ export default function PaymentListPage() {
       available_balance:row.current_available_balance??0,
       reserved_amount:row.current_reserved_amount??0,
     })));
-    setForm({
+    const saved=recovery.load(`payment:edit:${editId}`);
+    if(saved)recovery.notifyRestored();
+    setForm(saved ?? {
       supplier_id:payment.supplier_id,
       payment_date:payment.payment_date,
       payment_method:payment.payment_method,
@@ -91,11 +98,9 @@ export default function PaymentListPage() {
       funding_lines:(payment.funding_lines??[]).map((row:any)=>({bank_account_id:row.bank_account_id,amount:Number(row.amount||0)})),
     });
     setOpen(true);
-  },[editId,editPayment.data,editingId]);
+  },[editId,editPayment.data,editingId,open,recovery]);
   const closeEditor=()=>{
     setOpen(false);
-    setEditingId(undefined);
-    setEditingInvoices([]);
     if(editId)navigate("/payments",{replace:true,state:null});
   };
   const invoiceRows=useMemo(()=>{
@@ -146,7 +151,7 @@ export default function PaymentListPage() {
   });
   const useAllocatedAsFunding=()=>setForm((current:any)=>({...current,funding_lines:current.funding_lines.length===1?[{...current.funding_lines[0],amount:allocated}]:current.funding_lines}));
 
-  const save=useMutation({mutationFn:async()=>{const latest=await invoices.refetch();if (latest.isError || !latest.data) throw new Error("Could not verify current invoice availability. Try again.");for(const allocation of form.allocations){const current=latest.data.find((row:any)=>row.id===allocation.supplier_invoice_id);if(!current || Number(allocation.allocated_amount)>availableBalance(current))throw new Error(`Invoice ${current?.invoice_number||allocation.supplier_invoice_id} is no longer available for this amount. Refresh the invoice selection or clear this allocation.`);}if(editId && editingId!==editId) throw new Error("Payment edit is still loading. Try again.");return editId?updatePayment(editId,{...form,voucher_id:undefined,total_amount:allocated}):editingId?updatePayment(editingId,{...form,voucher_id:undefined,total_amount:allocated}):createPayment({...form,total_amount:allocated});},onSuccess:(payment)=>{toast.success(editId||editingId?"Draft payment updated":"Payment saved as draft");setOpen(false);setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["payment",String(payment.id)]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["eligible-payment-suppliers"]});navigate(`/payments/${payment.id}`,{state:{returnTo}})},onError:(error:any)=>toast.error(error.response?.data?.detail||error.message||"Payment could not be saved")});
+  const save=useMutation({mutationFn:async()=>{const latest=await invoices.refetch();if (latest.isError || !latest.data) throw new Error("Could not verify current invoice availability. Try again.");for(const allocation of form.allocations){const current=latest.data.find((row:any)=>row.id===allocation.supplier_invoice_id);if(!current || Number(allocation.allocated_amount)>availableBalance(current))throw new Error(`Invoice ${current?.invoice_number||allocation.supplier_invoice_id} is no longer available for this amount. Refresh the invoice selection or clear this allocation.`);}if(editId && editingId!==editId) throw new Error("Payment edit is still loading. Try again.");return editId?updatePayment(editId,{...form,voucher_id:undefined,total_amount:allocated}):editingId?updatePayment(editingId,{...form,voucher_id:undefined,total_amount:allocated}):createPayment({...form,total_amount:allocated});},onSuccess:(payment)=>{toast.success(editId||editingId?"Draft payment updated":"Payment saved as draft");recovery.clear();setOpen(false);setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["payment",String(payment.id)]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["eligible-payment-suppliers"]});navigate(`/payments/${payment.id}`,{state:{returnTo}})},onError:(error:any)=>toast.error(error.response?.data?.detail||error.message||"Payment could not be saved")});
   const refreshAfterAction = (id: number) => {
     [
       ["payments"], ["payment", String(id)], ["payment-edit", id],
@@ -224,7 +229,7 @@ export default function PaymentListPage() {
 
   return <>
     <PageHeader title="Payments" description="Choose a supplier, select one or more available invoices, then fund and post the payment." actions={<>
-<Button onClick={()=>{if(editId)navigate("/payments",{replace:true,state:null});setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());setOpen(true)}}>Create Payment</Button>
+<Button onClick={()=>{if(editId)navigate("/payments",{replace:true,state:null});setEditingId(undefined);setEditingInvoices([]);const saved=recovery.load("payment:create");setForm(saved??emptyForm());if(saved)recovery.notifyRestored();setOpen(true)}}>Create Payment</Button>
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}/>
     <div className="grid gap-3 sm:grid-cols-3"><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Payments</div><div className="mt-1 text-xl font-semibold">{payments.data?.total_items??0}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Payment Total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(paymentFilteredTotal)}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Visible Page Total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(paymentPageTotal)}</div></Card></div>
@@ -243,7 +248,7 @@ export default function PaymentListPage() {
   </select>}
 </div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1)}}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{payments.data?.total_items??0} payments · Page {page} of {Math.max(payments.data?.total_pages??0,1)}</span><Button size="sm" variant="outline" disabled={!payments.data?.has_previous} onClick={()=>setPage(page-1)}>Previous</Button><Button size="sm" variant="outline" disabled={!payments.data?.has_next} onClick={()=>setPage(page+1)}>Next</Button></div></div></Card>
 
-    <Dialog open={open} onOpenChange={next=>{if(!next)closeEditor();else setOpen(true)}}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId?"Edit Draft Supplier Payment":"Create Supplier Payment"}</DialogTitle></DialogHeader><DialogBody className="space-y-6">
+    <Dialog open={open} onOpenChange={next=>{if(save.isPending)return;if(!next)closeEditor();else setOpen(true)}}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId?"Edit Draft Supplier Payment":"Create Supplier Payment"}</DialogTitle></DialogHeader><DialogBody className="space-y-6">
       <div className="grid gap-3 md:grid-cols-4"><SearchableSelect label="Supplier" required value={form.supplier_id||undefined} disabled={suppliers.isLoading} placeholder={suppliers.isLoading?"Loading suppliers...":"Type supplier code or name..."} options={supplierOptions} onChange={value=>setForm({...form,supplier_id:value??0,allocations:[]})}/><label className="text-sm">Payment Date<input type="date" data-allow-past-date="true" className={input} value={form.payment_date} onChange={e=>setForm({...form,payment_date:e.target.value})}/></label><label className="text-sm">Payment Method<select className={input} value={form.payment_method} onChange={e=>setForm({...form,payment_method:e.target.value})}>{methods.map(value=><option key={value}>{value}</option>)}</select></label><label className="text-sm">Currency<select className={input} value={form.currency} onChange={e=>setForm({...form,currency:e.target.value,supplier_id:editingId?form.supplier_id:0,allocations:[]})}>{currencies.map(value=><option key={value}>{value}</option>)}</select></label><label className="text-sm md:col-span-2">Reference Number<input className={input} value={form.reference_number} onChange={e=>setForm({...form,reference_number:e.target.value})}/></label>{form.payment_method==="CHEQUE"&&<label className="text-sm">Cheque Number<input className={input} value={form.cheque_number} onChange={e=>setForm({...form,cheque_number:e.target.value})}/></label>}</div>
 
       {form.supplier_id && (
@@ -270,6 +275,6 @@ export default function PaymentListPage() {
       <section className="space-y-3"><div className="flex flex-wrap items-end justify-between gap-2"><div><h3 className="font-semibold">Funding Accounts</h3><p className="text-sm text-slate-500">Select a registered account only. Its linked COA is applied automatically; accountants do not enter or memorize COA numbers.</p></div>{form.funding_lines.length===1&&<Button size="sm" variant="outline" disabled={allocated<=0||!eligibleBankAccounts.length} onClick={useAllocatedAsFunding}>Use Selected Total</Button>}</div>{!bankAccounts.isLoading&&!eligibleBankAccounts.length&&<div className="flex flex-wrap items-center justify-between gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><span>No active funding account with a linked COA is available for {form.currency}. Register a location or a global corporate account in Cash &amp; Bank.</span><Button size="sm" variant="outline" onClick={()=>navigate("/cash-bank/accounts")}>Open Cash &amp; Bank</Button></div>}{form.funding_lines.map((row:any,index:number)=><div key={index} className="grid gap-3 rounded border p-3 md:grid-cols-[minmax(0,1fr)_220px_auto]"><SearchableSelect label="Payment Account" required value={row.bank_account_id||undefined} disabled={!eligibleBankAccounts.length} placeholder="Type bank, account number, or COA..." options={fundingOptions} onChange={value=>setFunding(index,{bank_account_id:value??0})}/><CurrencyInput value={Number(row.amount||0)} onValueChange={value=>setFunding(index,{amount:value})}/><Button variant="outline" disabled={form.funding_lines.length===1} onClick={()=>setForm({...form,funding_lines:form.funding_lines.filter((_:any,i:number)=>i!==index)})}>Remove</Button></div>)}<Button variant="outline" disabled={!eligibleBankAccounts.length} onClick={()=>setForm({...form,funding_lines:[...form.funding_lines,{bank_account_id:0,amount:0}]})}>Add Funding Account</Button></section>
       <div className="grid gap-3 rounded border border-slate-200 bg-slate-50 p-4 text-right md:grid-cols-4"><div className="text-left"><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Payment Total</div><div className="mt-1 text-2xl font-bold tabular-nums">{money(allocated)}</div></div><div>Selected to Pay<br/><strong>{money(allocated)}</strong></div><div>Funding Total<br/><strong>{money(funded)}</strong></div><div>Difference<br/><strong className={funded===allocated?"text-emerald-700":"text-amber-700"}>{money(funded-allocated)}</strong></div></div>
       <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></label>
-    </DialogBody><DialogFooter><Button variant="outline" onClick={closeEditor}>Cancel</Button><Button loading={save.isPending} onClick={submit}>{editingId?"Save Changes":"Save Draft"}</Button></DialogFooter></DialogContent></Dialog>
+    </DialogBody><DialogFooter><FormRecoveryActions failed={recovery.failed} disabled={save.isPending} onDiscard={()=>{recovery.clear();closeEditor();setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm())}} /><Button variant="outline" disabled={save.isPending} onClick={closeEditor}>Close</Button><Button loading={save.isPending} onClick={submit}>{editingId?"Save Changes":"Save Draft"}</Button></DialogFooter></DialogContent></Dialog>
   </>;
 }

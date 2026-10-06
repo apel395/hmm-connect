@@ -737,3 +737,11 @@ When fixing or extending HMM Connect:
 4. Never silently bypass closed-document or posted-journal controls.
 5. Prefer batching frontend fixes on a working branch and merging once to `main` to reduce unnecessary Vercel deployments.
 6. Update this README when a module, role, accounting rule, or workflow changes.
+
+
+## Financial report printing and input recovery (2026-10-06)
+
+- Profit & Loss and Balance Sheet use dedicated `/profit-loss/print` and `/balance-sheet/print` previews, with applied date, budget, organization scope, zero-value and KAP settings sent to the same reporting API. The application shell and interactive controls are excluded.
+- P&L printing groups MTD and YTD comparisons. Balance Sheet printing begins with a T-format closing position, followed by separate MTD/YTD comparison pages. Tables repeat column headings and retain complete account names, signed amounts and unavailable comparison dashes. KAP uses the API's header-only rows.
+- Journal creation/editing, supplier payment creation/editing and supplier invoice creation/editing recover unsaved browser input by authenticated user and document ID. Closing, navigation or refresh preserves it; successful saves and explicit Discard input clear it. Restored input still uses normal API validation and never submits, approves or posts automatically.
+- Recovery uses versioned browser local storage, so it is specific to that browser/device and excludes credentials/files. Session expiry clears session credentials without erasing input recovery. When storage is unavailable, the form shows an alert instead of promising recovery.
