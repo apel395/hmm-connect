@@ -12,9 +12,9 @@ import useAuthStore from "@/store/auth";
 
 type Kind = "PROFIT_LOSS" | "BALANCE_SHEET";
 type Period = "MTD" | "YTD";
-type Amounts = { current: string; budget: string | null; last_month: string; last_year: string; variance: string | null; movement?: string };
+type Amounts = { current: string; budget: string | null; last_month: string | null; last_year: string | null; variance: string | null; movement?: string };
 type Row = { account_code: string; account_name: string; account_ids: number[]; section: string; periods: Record<Period, Amounts> };
-type Report = { rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
+type Report = { rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
 const money = (value: string | number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { maximumFractionDigits: 2 });
 const input = "h-8 rounded border border-slate-300 bg-white px-2 text-xs";
 const labels: Record<string, string> = { REVENUE: "Pendapatan", COST_OF_REVENUE: "Beban pokok", EXPENSES: "Beban", ASSETS: "Aset", LIABILITIES: "Liabilitas", EQUITY: "Ekuitas" };
@@ -42,6 +42,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const budgets = useQuery({ queryKey: ["report-budgets", draft.as_of_date.slice(0, 4)], queryFn: async () => (await api.get("/budgets", { params: { fiscal_year: draft.as_of_date.slice(0, 4), page_size: 500 } })).data, enabled: showFilters });
   const title = kind === "PROFIT_LOSS" ? "Profit & Loss" : "Balance Sheet";
   const data = report.data;
+  const scopeNames = data ? Object.entries(data.scope).filter(([, value]) => value != null).map(([key]) => data.scope_labels?.[key]).filter(Boolean) : [];
   const error = report.error as { response?: { data?: { detail?: string } } } | null;
   const exportReport = async () => {
     try {
@@ -69,7 +70,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   }) : [];
   const columns = kind === "BALANCE_SHEET" ? [...metrics, "movement" as const] : [...metrics];
   const headings = kind === "BALANCE_SHEET" ? [...metricNames, "Movement"] : metricNames;
-  const table = (sections: string[]) => <div className="overflow-x-auto rounded border bg-white"><table className="w-full text-xs whitespace-nowrap"><thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">Account</th>{headings.map((name, index) => <th title={data?.periods[period][columns[index]]?.join(" to ")} key={name} className="px-2 py-1.5 text-right">{name}</th>)}</tr></thead><tbody>
+  const table = (sections: string[]) => <div className="overflow-x-auto rounded border bg-white"><table className="w-full text-xs whitespace-nowrap"><thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">Account</th>{headings.map((name, index) => <th title={data?.comparison_available?.[period][columns[index]] === false ? "Comparison data unavailable for this year and scope" : data?.periods[period][columns[index]]?.join(" to ")} key={name} className="px-2 py-1.5 text-right">{name}</th>)}</tr></thead><tbody>
     {sections.map(section => <ReportSection key={section} section={section} rows={data?.rows.filter(row => row.section === section) ?? []} totals={totals(section)} period={period} ledgerLink={ledgerLink} columns={columns} />)}
     {kind === "BALANCE_SHEET" && sections.includes("LIABILITIES") && <tr className="border-t-2 bg-slate-100 font-bold"><td className="px-2 py-2">Liabilitas + Ekuitas</td>{columns.map(metric => {
       const l = totals("LIABILITIES")?.[metric], e = totals("EQUITY")?.[metric];
@@ -78,7 +79,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     {kind === "PROFIT_LOSS" && <tr className="border-t-2 bg-slate-100 font-bold"><td className="px-2 py-2">Laba / Rugi</td>{profit.map((value, index) => <td key={metrics[index]} className={`px-2 py-2 text-right tabular-nums ${value != null && value < 0 ? "text-red-600" : ""}`}>{money(value)}</td>)}</tr>}
   </tbody></table></div>;
   return <div className="print-document space-y-2">
-    <PageHeader title={title} description={`${filters.as_of_date} · ${period}${filters.kap ? " · KAP" : ""}`} actions={<div className="flex gap-1 print:hidden">
+    <PageHeader title={title} description={`${filters.as_of_date} · ${period} · ${scopeNames.join(" · ") || "Consolidated"}${filters.kap ? " · KAP" : ""}`} actions={<div className="flex gap-1 print:hidden">
       <Button variant="outline" size="sm" title="Filters" aria-label="Report filters" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}><ListFilter size={15} /></Button>
       {canManage && <Link to="/finance-setup/reports" className="inline-flex h-8 items-center rounded border px-2" title="Report setup" aria-label="Report setup"><Settings2 size={15} /></Link>}
       <Button variant="outline" size="sm" title="Export Excel" aria-label="Export Excel" disabled={!data} onClick={exportReport}><Download size={15} /></Button>
