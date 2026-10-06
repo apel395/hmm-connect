@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import inspect
 from sqlalchemy.orm import joinedload
 from app.models.budget import Budget, BudgetLine
 from app.models.chart_of_account import ChartOfAccount
@@ -41,8 +41,15 @@ class FinancialReportingService:
         self.db = db
         self.statements = FinancialStatementService(db)
         self._actual_cache = {}
+        self._schema = inspect(db.connection())
+        self.report_setup_available = self._schema.has_table("financial_report_settings")
+        self.budget_setup_available = all(self._schema.has_table(name) for name in ("budgets", "budget_lines"))
 
     def budget(self, start, end, scope, budget_id, report_type):
+        if not self.budget_setup_available:
+            if budget_id is not None:
+                raise HTTPException(503, "Budget reporting is awaiting a database update")
+            return {}, False
         query = self.db.query(BudgetLine).options(joinedload(BudgetLine.account)).join(Budget, Budget.id == BudgetLine.budget_id).join(ChartOfAccount, ChartOfAccount.id == BudgetLine.account_id)\
             .filter(Budget.status.in_(("APPROVED", "LOCKED")), Budget.fiscal_year == end.year,
                     BudgetLine.month.between(start.month, end.month))
@@ -124,7 +131,10 @@ class FinancialReportingService:
                     account_name=account.account_name, parent_account_id=account.parent_account_id,
                     account_type=account.account_type, section=section)
         metrics = METRICS + (("movement",) if report_type == "BALANCE_SHEET" else ())
-        settings = self.db.query(FinancialReportSetting).filter_by(report_type=report_type).first()
+        # Layout setup is optional for reading actual balances. During a staged
+        # deployment, keep the full ledger readable without creating tables or
+        # changing any accounting values. Setup writes still require migration.
+        settings = self.db.query(FinancialReportSetting).filter_by(report_type=report_type).first() if self.report_setup_available else None
         selected = set(settings.selected_account_ids) if settings and settings.selected_account_ids is not None else None
         all_accounts = {a.id: a for a in self.db.query(ChartOfAccount).all()}
         header_only = kap or bool(settings and settings.header_only)
@@ -189,6 +199,7 @@ class FinancialReportingService:
                 "periods": calendar, "rows": rows, "section_totals": totals, "summary": summaries,
                 "header_only": header_only, "budget_available": budget_available,
                 "metadata": {"opening_source": "MANUAL_OPENING_BALANCES", "actual_source": "POSTED_JOURNAL_LINES",
+                    "report_setup_available": self.report_setup_available, "budget_setup_available": self.budget_setup_available,
                     "display_selection_only": selected is not None, "totals_scope": "COMPLETE_REPORT",
                     "budget_basis": "FULL_MONTH_PLAN" if report_type == "PROFIT_LOSS" else "MONTH_END_BALANCE_TARGET",
                     "closing_entries_excluded_from_profit_loss": True}}

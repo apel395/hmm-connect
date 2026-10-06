@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from app.models import Base
 from app.models.accounting_setting import AccountingSetting
 from app.models.chart_of_account import ChartOfAccount
@@ -25,7 +26,7 @@ USER = SimpleNamespace(id=1, default_location_id=None, location_id=None, roles=[
 
 @pytest.fixture
 def db():
-    engine = create_engine("sqlite://")
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     accounts = [ChartOfAccount(account_number=code, account_name=name, account_type=kind,
@@ -212,6 +213,68 @@ def test_balance_sheet_mtd_and_ytd_movement_and_point_in_time_budget(db):
     assert cash["periods"]["MTD"]["movement"]==Decimal("120")
     assert cash["periods"]["YTD"]["movement"]==Decimal("190")
     assert cash["periods"]["YTD"]["budget"]==Decimal("1500")
+
+
+@pytest.mark.parametrize("kind", ["BALANCE_SHEET", "PROFIT_LOSS"])
+def test_report_actuals_load_before_optional_setup_migration(db, kind):
+    session, accounts = db
+    activity(session, accounts, date(2026, 1, 10), "100", "30")
+    opening = OpeningBalance(fiscal_year=2026, account_id=accounts[2].id, location_id=1,
+                             amount=Decimal("1000"), balance_type="DEBIT")
+    session.add(opening); session.commit()
+    before = FinancialReportingService(session).build(report_type=kind, as_of_date=date(2026, 10, 6))
+    FinancialReportSetting.__table__.drop(session.connection())
+    session.commit()
+    after = FinancialReportingService(session).build(report_type=kind, as_of_date=date(2026, 10, 6))
+    assert after["metadata"]["report_setup_available"] is False
+    assert after["section_totals"] == before["section_totals"]
+    assert after["rows"] == before["rows"]
+    assert session.get(OpeningBalance, opening.id).amount == Decimal("1000")
+
+
+@pytest.mark.parametrize("kind", ["BALANCE_SHEET", "PROFIT_LOSS"])
+def test_comparison_and_export_http_contract_without_setup_table(db, kind):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.v1 import financial_reports
+    from app.core.database import get_db
+    session, accounts = db
+    activity(session, accounts, date(2026, 10, 1), "100", "30")
+    FinancialReportSetting.__table__.drop(session.connection()); session.commit()
+    app = FastAPI()
+    app.include_router(financial_reports.router)
+    app.dependency_overrides[get_db] = lambda: session
+    app.dependency_overrides[financial_reports.view] = lambda: USER
+    app.dependency_overrides[financial_reports.manage] = lambda: USER
+    with TestClient(app) as client:
+        params = {"report_type": kind, "as_of_date": "2026-10-06", "kap": "false", "include_zero": "false"}
+        response = client.get("/financial-reports/comparison", params=params)
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["periods"]["MTD"]["current"] == ["2026-10-01", "2026-10-06"]
+        assert payload["rows"]
+        export = client.get("/financial-reports/comparison/export", params=params)
+        assert export.status_code == 200, export.text
+        assert export.content[:2] == b"PK"
+        setup = client.get("/financial-reports/setup")
+        assert setup.status_code == 503
+        save = client.put("/financial-reports/setup/" + kind, json={"header_only": True})
+        assert save.status_code == 503
+
+
+def test_actuals_do_not_require_optional_budget_tables(db):
+    session, accounts = db
+    activity(session, accounts, date(2026, 10, 1), "100", "30")
+    BudgetLine.__table__.drop(session.connection())
+    Budget.__table__.drop(session.connection()); session.commit()
+    result = FinancialReportingService(session).build(report_type="BALANCE_SHEET", as_of_date=date(2026, 10, 6))
+    assert result["metadata"]["budget_setup_available"] is False
+    assert result["budget_available"] == {"MTD": False, "YTD": False}
+    assert result["section_totals"]["ASSETS"]["MTD"]["current"] == Decimal("70")
+    assert result["section_totals"]["ASSETS"]["MTD"]["budget"] is None
+    with pytest.raises(HTTPException) as exc:
+        FinancialReportingService(session).build(report_type="BALANCE_SHEET", as_of_date=date(2026, 10, 6), budget_id=1)
+    assert exc.value.status_code == 503
 
 
 def test_year_close_uses_selected_year_not_execution_date(db):

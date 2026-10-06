@@ -95,3 +95,15 @@ the database and heavy processing. The UI is deployed from `main`.
   Company period/year management requires unscoped location access.
 - Supplier invoice entry can already load received quantity, price, PPN and
   dimensions directly from an eligible receiving document.
+
+If report setup has not been migrated, actual statements remain readable with
+the full default account layout; absent budget tables show unavailable budget
+values, never an invented zero. Setup reads/writes require the migration and
+return a database-update message until it completes. To inspect the production
+schema, serialize both reports, and verify the closing earnings account without
+writing data, run:
+
+```bash
+.venv/bin/python scripts/check_financial_reports.py --date 2026-10-06
+.venv/bin/python scripts/check_financial_reports.py --date 2026-10-06 --location-id 1
+```
