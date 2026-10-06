@@ -22,6 +22,7 @@ export interface Department {
 }
 
 export interface Location extends Department {
+  department_ids?: number[];
   business_unit_id: number;
   location_type: string;
   address?: string | null;
@@ -32,6 +33,7 @@ export interface Location extends Department {
 
 export type OrganizationRecord = BusinessUnit | Department | Location;
 export interface OrganizationPayload {
+  department_ids?: number[];
   code: string; name: string; description?: string | null; business_unit_id?: number | null;
   location_type?: string; address?: string | null; city?: string | null; province?: string | null;
   postal_code?: string | null; is_active?: boolean;
