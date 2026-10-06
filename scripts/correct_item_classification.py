@@ -2,7 +2,9 @@
 """Correct vetted Item Master classifications; dry-run by default.
 
 Use the authoritative XLSX next to this script. Tax and posted documents are
-never rewritten. Accounting mapping/treatment changes with stock history are
+never rewritten. The default 20261006 manifest covers all 237 source items.
+Classification-only rules preserve current treatment and account mappings.
+Accounting mapping/treatment changes with stock history are
 deferred for a separate stock and GL correction. --apply commits eligible rows.
 """
 import argparse
@@ -116,6 +118,17 @@ def build_changes(product, rule, group, subgroup, account, history):
         raise ValueError('Product identity differs from vetted source')
     if not product['is_active'] or product['item_type'] != 'BUY':
         raise ValueError('Item must be active BUY')
+    if rule.get('review_required'):
+        raise ValueError(rule['review_required'])
+    if rule.get('classification_only'):
+        # A direct-use receipt does not make an otherwise stocked product
+        # globally DIRECT_USE. Preserve all current accounting/default fields.
+        target = dict(zip(FIELDS[:4], (group['code'], group['name'], subgroup['code'], subgroup['name'])))
+        for field, original in rule['expected'].items():
+            if product[field] not in (original, target.get(field, original)):
+                raise ValueError(f'{field} changed since source review; current classification preserved')
+        changes = {key: value for key, value in target.items() if product[key] != value}
+        return changes, None, changes
     if product['inventory_treatment'] not in ('STOCK', rule['treatment']):
         raise ValueError('Treatment changed since review; re-inspect item')
     validate_account(account, rule['account'], rule['treatment'])
@@ -139,6 +152,21 @@ def build_changes(product, rule, group, subgroup, account, history):
     return changes, None, changes
 
 
+def validate_rules(rules, source):
+    ids, codes = set(), set()
+    for rule in rules:
+        if rule['id'] in ids or rule['code'] in codes:
+            raise ValueError('Duplicate classification rule identity')
+        ids.add(rule['id']); codes.add(rule['code'])
+        row = source.get(rule['id'])
+        if not row or row['Code'] != rule['code'] or row['Item'] != rule['name']:
+            raise ValueError('Classification rule identity differs from authoritative XLSX')
+        if not rule.get('group') or not rule.get('subgroups'):
+            raise ValueError('Classification rule has no target family')
+        if not rule.get('classification_only') and rule.get('treatment') not in ('STOCK', 'DIRECT_USE'):
+            raise ValueError('Unsupported classification treatment')
+
+
 def catalog(conn, sql, params):
     return [dict(r) for r in conn.execute(sql, params).mappings()]
 
@@ -146,18 +174,27 @@ def catalog(conn, sql, params):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--file', type=Path, default=Path(__file__).with_name('item-classification-review-237.xlsx'))
+    parser.add_argument('--rules-file', type=Path, default=Path(__file__).with_name('item_classification_rules_20261006.json'))
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--output', type=Path, help='Write complete JSON plan to this file and print only its summary')
+    parser.add_argument('--check-source-only', action='store_true', help='Validate XLSX/manifest without importing app or connecting to DB')
     parser.add_argument('--actor-id', type=int, help='Optional real app user ID for audit attribution')
     args = parser.parse_args()
-    from sqlalchemy import text
-    from app.core.database import engine
     content = args.file.read_bytes()
     review = inspect(content, 'Classification review', 237)
     if review['sha256'] != REVIEW_SHA256:
         raise ValueError('Source workbook changed. Re-vet the correction rules before applying them.')
     source = {r['ID']: r for r in review['records']}
-    rules = json.loads(Path(__file__).with_name('item_classification_rules_20261005.json').read_text())
+    rules = json.loads(args.rules_file.read_text())
+    validate_rules(rules, source)
     rule_hash = hashlib.sha256(json.dumps(rules, sort_keys=True).encode()).hexdigest()
+    if args.check_source_only:
+        if args.apply: raise ValueError('--check-source-only cannot be combined with --apply')
+        print(json.dumps({'source_sha256':review['sha256'], 'rules_file':args.rules_file.name, 'source_items':len(source), 'covered_items':len(rules), 'accounting_rules':sum(not r.get('classification_only') for r in rules), 'classification_only_rules':sum(bool(r.get('classification_only')) for r in rules), 'usage_review_count':sum('usage_review' in r for r in rules), 'policy_review_count':sum('review_required' in r for r in rules), 'database_checked':False, 'seed_ready':False}, indent=2))
+        print('SOURCE VALIDATED: no database access or writes. Run default dry-run to validate current DB state.')
+        return
+    from sqlalchemy import text
+    from app.core.database import engine
     results = []
     with engine.connect() as conn:
         transaction = conn.begin()
@@ -212,6 +249,7 @@ def main():
             for rule in rules:
                 product = by_id.get(rule['id'])
                 entry = {'id': rule['id'], 'code': rule['code'], 'name': rule['name']}
+                if rule.get('usage_review'): entry['usage_review'] = rule['usage_review']
                 try:
                     if not product or source[rule['id']]['Code'] != rule['code']:
                         raise ValueError('Vetted rule not present in source')
@@ -225,7 +263,7 @@ def main():
                           EXISTS(SELECT 1 FROM goods_receipt_items i JOIN goods_receipts r ON r.id=i.goods_receipt_id
                                  WHERE i.product_id=:id AND r.status='POSTED') AS has_posted_receipt
                     '''), {'id': rule['id']}).mappings().one())
-                    changes, blocked, proposed = build_changes(product, rule, group, subgroup, accounts.get(rule['account']), history)
+                    changes, blocked, proposed = build_changes(product, rule, group, subgroup, accounts.get(rule.get('account')), history)
                     entry.update(proposed=proposed, history=history)
                     if blocked:
                         entry.update(status='DEFERRED_POSTED_STOCK', reason=blocked)
@@ -275,7 +313,13 @@ def main():
                     entry.update(status='REVIEW_REQUIRED', reason=str(exc))
                 results.append(entry)
             summary = {s: sum(r['status']==s for r in results) for s in sorted({r['status'] for r in results})}
-            print(json.dumps({'mode':'APPLY' if args.apply else 'DRY_RUN', 'source_sha256':review['sha256'], 'rules_sha256':rule_hash, 'source_items':237, 'vetted_rules':len(rules), 'other_items':237-len(rules), 'catalog_corrections':group_repairs, 'summary':summary, 'results':results}, indent=2, default=str, ensure_ascii=False))
+            report = {'mode':'APPLY' if args.apply else 'DRY_RUN', 'source_sha256':review['sha256'], 'rules_sha256':rule_hash, 'source_items':237, 'vetted_rules':len(rules), 'other_items':237-len(rules), 'rules_file':args.rules_file.name, 'usage_review_count':sum('usage_review' in r for r in results), 'seed_ready':not any(r['status'] in ('REVIEW_REQUIRED','DEFERRED_POSTED_STOCK') or 'usage_review' in r for r in results), 'catalog_corrections':group_repairs, 'summary':summary, 'results':results}
+            if args.output:
+                args.output.write_text(json.dumps(report, indent=2, default=str, ensure_ascii=False) + '\n')
+                print(json.dumps({key:value for key,value in report.items() if key != 'results'}, indent=2, default=str, ensure_ascii=False))
+                print(f'Full item plan: {args.output}')
+            else:
+                print(json.dumps(report, indent=2, default=str, ensure_ascii=False))
             if args.apply:
                 transaction.commit()
                 print(f"COMMITTED {len(group_repairs)} BUY group repairs and {summary.get('APPLIED', 0)} Item Master corrections with audit records; "
@@ -291,3 +335,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
