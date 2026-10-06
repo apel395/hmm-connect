@@ -14,7 +14,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from prepare_resiping_item_seed import extract, match_existing
+from prepare_resiping_item_seed import load_source, match_existing
 
 GROUP_CODE = 'BUYPEND'
 SUBGROUP_CODE = 'BUYPEND-1'
@@ -81,12 +81,14 @@ def insert_items(db, report, user=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--file',type=Path,required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument('--file',type=Path)
+    source.add_argument('--drive-id',help='Public Google Drive Excel file ID')
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--apply',action='store_true')
     parser.add_argument('--actor-id',type=int)
     args = parser.parse_args()
-    report = extract(args.file)
+    report = load_source(args.file,args.drive_id)
     from sqlalchemy import text
     from app.core.database import SessionLocal
     from app.models.product import Product
