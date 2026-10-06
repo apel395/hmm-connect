@@ -121,6 +121,31 @@ class TransactionPreflightTests(unittest.TestCase):
         self.assertIn('ITEM_TAX_REVIEW_REQUIRED',x['lines'][0]['errors'])
         self.assertTrue(any(e.startswith('BACKDATE_NOT_ALLOWED') for e in x['errors']))
 
+    def test_confirmed_location_aliases_preserve_source_and_target_scope(self):
+        cases={'Rumbai':6,'Minas':6,'Hulu Cafe':6,'Hulu Café':6,
+               'Libo':10,'Petapahan':10,'Zamrud':4,'Pedada':4}
+        for source,target in cases.items():
+            report=self.report();report['invoices'][0]['location']=source
+            catalog=self.catalog()
+            catalog['locations']=[{'id':6,'name':'Rumin','is_active':True},
+                                  {'id':10,'name':'Lipet','is_active':True},
+                                  {'id':4,'name':'Zamped','is_active':True},
+                                  {'id':7,'name':'Pedada','is_active':False}]
+            catalog['departments'][0]['location_id']=target
+            catalog['warehouses'][0]['location_id']=target
+            validate_database(report,catalog)
+            inv=report['invoices'][0]
+            self.assertEqual(inv['location'],source)
+            self.assertEqual(inv['location_id'],target)
+            self.assertEqual(inv['location_mapping_rule'],'USER_CONFIRMED_ALIAS')
+            self.assertNotIn('LOCATION_NOT_UNIQUELY_MATCHED',inv['errors'])
+            self.assertEqual(inv['warehouse_candidates'][0]['location_id'],target)
+        report=self.report();report['invoices'][0]['location']='Minas'
+        catalog=self.catalog();catalog['locations']=[{'id':6,'name':'Rumin','is_active':False}]
+        validate_database(report,catalog)
+        self.assertIsNone(report['invoices'][0]['location_id'])
+        self.assertIn('LOCATION_NOT_UNIQUELY_MATCHED',report['invoices'][0]['errors'])
+
     def test_xlsx_source_text_is_not_executable_and_summary_is_compact(self):
         r=self.report();r['invoices'][0]['supplier']='=HYPERLINK("bad")'
         with tempfile.TemporaryDirectory() as tmp:
