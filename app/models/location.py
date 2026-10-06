@@ -23,4 +23,6 @@ class Location(Base, TimestampMixin):
     business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id", ondelete="RESTRICT"), nullable=True, index=True)
     business_unit = relationship("BusinessUnit", back_populates="locations")
 
+    department_links = relationship("LocationDepartment", cascade="all, delete-orphan", lazy="selectin")
+
     users = relationship("User", back_populates="location", foreign_keys="User.location_id")
