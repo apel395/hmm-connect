@@ -48,9 +48,12 @@ async error=>{
 
 if(error.response?.status===401){
 
-localStorage.clear();
-
-window.location.href="/login";
+const currentToken = localStorage.getItem("access_token");
+const requestToken = error.config?.headers?.Authorization;
+if (currentToken && requestToken === `Bearer ${currentToken}` && !String(error.config?.url || "").includes("/auth/login")) {
+  ["access_token", "refresh_token", "user", "hmm-last-activity-at"].forEach(key => localStorage.removeItem(key));
+  window.location.replace("/login?reason=session");
+}
 
 }
 
