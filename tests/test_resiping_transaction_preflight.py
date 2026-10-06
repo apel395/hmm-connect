@@ -108,7 +108,8 @@ class TransactionPreflightTests(unittest.TestCase):
         self.assertEqual(x['lines'][0]['product_id'],1)
         self.assertIn('EXISTING_INVOICE_REVIEW',x['errors'])
         self.assertIn('EXISTING_RECEIPT_REVIEW',x['lines'][0]['errors'])
-        self.assertIn('WAREHOUSE_SELECTION_REQUIRED',x['lines'][0]['errors'])
+        self.assertEqual(x['lines'][0]['warehouse_id'],1)
+        self.assertNotIn('WAREHOUSE_SELECTION_REQUIRED',x['lines'][0]['errors'])
         self.assertIn('DEPARTMENT_SELECTION_REQUIRED',x['errors'])
         self.assertFalse(report['seed_ready'])
         # The validation never changes catalog/master values.
@@ -145,6 +146,31 @@ class TransactionPreflightTests(unittest.TestCase):
         validate_database(report,catalog)
         self.assertIsNone(report['invoices'][0]['location_id'])
         self.assertIn('LOCATION_NOT_UNIQUELY_MATCHED',report['invoices'][0]['errors'])
+
+    def test_operational_department_and_unique_stock_warehouse(self):
+        report=self.report();catalog=self.catalog()
+        catalog['departments'][0]['name']='Operasional'
+        validate_database(report,catalog)
+        inv=report['invoices'][0]
+        self.assertEqual(inv['department_id'],1)
+        self.assertNotIn('DEPARTMENT_SELECTION_REQUIRED',inv['errors'])
+        self.assertEqual(inv['lines'][0]['warehouse_id'],1)
+        self.assertEqual(inv['lines'][0]['department_id'],1)
+        # Direct-use items have no warehouse, regardless of available warehouses.
+        report=self.report();catalog['products'][0].update(inventory_treatment='DIRECT_USE',purchase_account_id=167)
+        validate_database(report,catalog)
+        self.assertIsNone(report['invoices'][0]['lines'][0]['warehouse_id'])
+        self.assertNotIn('WAREHOUSE_SELECTION_REQUIRED',report['invoices'][0]['lines'][0]['errors'])
+        # Ambiguous or missing warehouse/departments are never guessed.
+        report=self.report();catalog=self.catalog();catalog['warehouses'].append({**catalog['warehouses'][0],'id':2})
+        validate_database(report,catalog)
+        self.assertIn('WAREHOUSE_SELECTION_REQUIRED',report['invoices'][0]['lines'][0]['errors'])
+        self.assertIn('DEPARTMENT_SELECTION_REQUIRED',report['invoices'][0]['errors'])
+        report=self.report();report['invoices'][0]['location']='Head Office'
+        catalog=self.catalog();catalog['locations'][0]['name']='Head Office';catalog['departments'][0]['name']='Operasional'
+        validate_database(report,catalog)
+        self.assertIsNone(report['invoices'][0].get('department_id'))
+        self.assertIn('DEPARTMENT_SELECTION_REQUIRED',report['invoices'][0]['errors'])
 
     def test_xlsx_source_text_is_not_executable_and_summary_is_compact(self):
         r=self.report();r['invoices'][0]['supplier']='=HYPERLINK("bad")'

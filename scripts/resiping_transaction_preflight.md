@@ -43,8 +43,8 @@ never silently substitutes SELL records or aliases, checks purchase units,
 classification/COA/tax-review flags and accounting period/backdate settings.
 It lists supplier and location IDs, department/warehouse candidates, and possible
 existing invoices/receipts. Candidates are evidence for review, not proof that
-all documents on a supplier/date are duplicates. Organization and destination
-choices must be confirmed before a transaction import is built.
+all documents on a supplier/date are duplicates. Confirmed operational department and unique warehouse mappings are applied
+as described below; unresolved choices remain review items.
 
 Outputs:
 
@@ -70,3 +70,10 @@ These are user-confirmed import mappings, not master renames or new locations.
 The canonical target must still be unique and active. Pedada resolves to Zamped
 even if an inactive Pedada master exists. JSON and XLSX show both the source
 label and resolved master name/ID. DIRECT_USE retains no warehouse destination.
+
+For historical operational sites, the user confirmed Operasional as the
+department. Select it only when uniquely active and linked to the resolved
+location. Head Office is excluded from this default. STOCK uses the unique
+active warehouse linked to that location; multiple/missing warehouses remain
+review items. DIRECT_USE and FIXED_ASSET carry no warehouse. Selected IDs and
+mapping rules are included in JSON/XLSX, without changing master records.

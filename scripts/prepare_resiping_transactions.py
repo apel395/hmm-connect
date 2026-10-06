@@ -202,7 +202,12 @@ def validate_database(report,catalog,today=None):
         if location:
             inv['department_candidates']=[x for x in catalog['departments'] if x['location_id']==location['id'] and x['is_active']]
             inv['warehouse_candidates']=[x for x in catalog['warehouses'] if x['location_id']==location['id'] and x['is_active']]
-            inv['errors'].append('DEPARTMENT_SELECTION_REQUIRED')
+            operational=[x for x in inv['department_candidates'] if normalized(x['name'])=='OPERASIONAL']
+            is_head_office=normalized(location['name']) in ('HEAD OFFICE','HEAD OFFICE LOCATION','KANTOR PUSAT')
+            if len(operational)==1 and not is_head_office:
+                inv['department_id']=operational[0]['id']
+                inv['department_mapping_rule']='USER_CONFIRMED_OPERATIONAL'
+            else:inv['errors'].append('DEPARTMENT_SELECTION_REQUIRED')
         dates=[inv['invoice_date']]
         for line in inv['lines']:
             products=[p for p in catalog['products'] if p['item_type']=='BUY' and normalized(p['name'])==line['item']]
@@ -216,7 +221,14 @@ def validate_database(report,catalog,today=None):
             kind='EXPENSE' if p['inventory_treatment']=='DIRECT_USE' else 'ASSET'
             if not account or not account['is_active'] or not account['is_posting'] or account['account_type']!=kind or account['normal_balance']!='DEBIT':line['errors'].append('ITEM_POSTING_ACCOUNT_INVALID')
             if p.get('tax_category')=='REVIEW_REQUIRED':line['errors'].append('ITEM_TAX_REVIEW_REQUIRED')
-            if p['inventory_treatment']=='STOCK':line['errors'].append('WAREHOUSE_SELECTION_REQUIRED')
+            line['department_id']=inv.get('department_id')
+            line['warehouse_id']=None
+            if p['inventory_treatment']=='STOCK':
+                warehouses=inv.get('warehouse_candidates',[])
+                if len(warehouses)==1:
+                    line['warehouse_id']=warehouses[0]['id']
+                    line['warehouse_mapping_rule']='UNIQUE_ACTIVE_LOCATION_WAREHOUSE'
+                else:line['errors'].append('WAREHOUSE_SELECTION_REQUIRED')
             dates.append(line['received_date'])
             if supplier and line['received_date']:
                 possible=[x for x in catalog['receipts'] if x['supplier_id']==supplier['id'] and x['received_at'].date()==line['received_date'] and (not location or x['location_id']==location['id'])]
@@ -277,8 +289,8 @@ def write_xlsx(report,path):
                 if isinstance(value,str):cell.data_type='s'
                 values.append(cell)
             ws.append(values)
-    sheet('Invoices',['key','row','supplier','location','invoice_number','raw_invoice_date','invoice_date','declared_total','declared_tax','net_total','computed_gross','gap_against_net','gross_difference','status','errors','supplier_id','location_id','location_mapping_label','mapped_location_name','location_mapping_rule','existing_invoice_candidates','department_candidates','warehouse_candidates'],report['invoices'])
-    sheet('Receiving',['invoice_key','row','item','unit','raw_received_date','received_date','quantity','unit_price','discount','net','tax','gross','product_id','product_code','treatment','errors','existing_receipt_candidates'],[r for x in report['invoices'] for r in x['lines']])
+    sheet('Invoices',['key','row','supplier','location','invoice_number','raw_invoice_date','invoice_date','declared_total','declared_tax','net_total','computed_gross','gap_against_net','gross_difference','status','errors','supplier_id','location_id','location_mapping_label','mapped_location_name','location_mapping_rule','department_id','department_mapping_rule','existing_invoice_candidates','department_candidates','warehouse_candidates'],report['invoices'])
+    sheet('Receiving',['invoice_key','row','item','unit','raw_received_date','received_date','quantity','unit_price','discount','net','tax','gross','product_id','product_code','treatment','department_id','warehouse_id','warehouse_mapping_rule','errors','existing_receipt_candidates'],[r for x in report['invoices'] for r in x['lines']])
     sheet('Excluded 2025',['invoice_key','row','item','unit','raw_received_date','exclusion'],[r for x in report['invoices'] for r in x['excluded']])
     sheet('Unlinked',['row','item','errors'],report['unlinked_rows'])
     w.save(path)
