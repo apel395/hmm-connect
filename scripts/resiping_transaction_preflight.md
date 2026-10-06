@@ -56,3 +56,17 @@ Outputs:
 `seed_ready` remains false: this is preparation, and no apply/post path exists.
 Resolve source date/number/tax findings and mapping choices before document
 seeding. This report deliberately does not create balancing/rounding entries.
+
+## Confirmed location mapping
+
+The source location label remains unchanged in reports. Operational aliases
+resolve to existing canonical locations before department/warehouse selection:
+
+- Rumbai, Minas, Hulu Cafe → Rumin.
+- Libo, Petapahan → Lipet.
+- Zamrud, Pedada → Zamped.
+
+These are user-confirmed import mappings, not master renames or new locations.
+The canonical target must still be unique and active. Pedada resolves to Zamped
+even if an inactive Pedada master exists. JSON and XLSX show both the source
+label and resolved master name/ID. DIRECT_USE retains no warehouse destination.

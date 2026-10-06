@@ -19,6 +19,13 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from prepare_resiping_item_seed import download_public_drive, invoice_id, normalized, source_year, MAX_SOURCE_BYTES
 CENT=Decimal('0.01')
+# User-confirmed operational location aliases for this historical import.
+# Keep the source label on every invoice; resolve to an existing canonical site.
+LOCATION_ALIASES={
+    'RUMBAI':'RUMIN','MINAS':'RUMIN','HULU CAFE':'RUMIN','HULU CAFÉ':'RUMIN',
+    'LIBO':'LIPET','PETAPAHAN':'LIPET',
+    'ZAMRUD':'ZAMPED','PEDADA':'ZAMPED',
+}
 
 
 def number(value, blank=None):
@@ -177,7 +184,12 @@ def validate_database(report,catalog,today=None):
     today=today or date.today()
     for inv in report['invoices']:
         if inv['status']=='EXCLUDED_PRE_2026':continue
-        supplier=exact_match(catalog['suppliers'],inv['supplier']);location=exact_match(catalog['locations'],inv['location'])
+        supplier=exact_match(catalog['suppliers'],inv['supplier'])
+        location_label=LOCATION_ALIASES.get(normalized(inv['location']),inv['location'])
+        location=exact_match(catalog['locations'],location_label)
+        inv['location_mapping_label']=location_label
+        inv['location_mapping_rule']='USER_CONFIRMED_ALIAS' if normalized(inv['location']) in LOCATION_ALIASES else 'EXACT_SOURCE_LABEL'
+        inv['mapped_location_name']=location['name'] if location else None
         inv['supplier_id']=supplier['id'] if supplier else None;inv['location_id']=location['id'] if location else None
         if not supplier:inv['errors'].append('SUPPLIER_NOT_UNIQUELY_MATCHED')
         if not location:inv['errors'].append('LOCATION_NOT_UNIQUELY_MATCHED')
@@ -265,7 +277,7 @@ def write_xlsx(report,path):
                 if isinstance(value,str):cell.data_type='s'
                 values.append(cell)
             ws.append(values)
-    sheet('Invoices',['key','row','supplier','location','invoice_number','raw_invoice_date','invoice_date','declared_total','declared_tax','net_total','computed_gross','gap_against_net','gross_difference','status','errors','supplier_id','location_id','existing_invoice_candidates','department_candidates','warehouse_candidates'],report['invoices'])
+    sheet('Invoices',['key','row','supplier','location','invoice_number','raw_invoice_date','invoice_date','declared_total','declared_tax','net_total','computed_gross','gap_against_net','gross_difference','status','errors','supplier_id','location_id','location_mapping_label','mapped_location_name','location_mapping_rule','existing_invoice_candidates','department_candidates','warehouse_candidates'],report['invoices'])
     sheet('Receiving',['invoice_key','row','item','unit','raw_received_date','received_date','quantity','unit_price','discount','net','tax','gross','product_id','product_code','treatment','errors','existing_receipt_candidates'],[r for x in report['invoices'] for r in x['lines']])
     sheet('Excluded 2025',['invoice_key','row','item','unit','raw_received_date','exclusion'],[r for x in report['invoices'] for r in x['excluded']])
     sheet('Unlinked',['row','item','errors'],report['unlinked_rows'])
