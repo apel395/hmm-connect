@@ -124,8 +124,6 @@ def extract_transactions(path):
             if line['received_date'] is None:line['errors'].append('RECEIVING_DATE_NOT_SINGLE_DATE')
             if not line['item'] or line['item'].startswith('='):line['errors'].append('INVALID_ITEM_NAME')
             if not line['unit'] or line['unit'].startswith('='):line['errors'].append('INVALID_UNIT')
-            if header['invoice_date'] and line['received_date'] and line['received_date']>header['invoice_date']:
-                line['errors'].append('RECEIPT_AFTER_INVOICE_DATE')
             try:
                 qty=number(c[4]);price=number(c[5]);discount=number(c[6],Decimal(0));tax=number(c[7])
                 if qty is None or price is None or qty<=0 or price<0 or discount<0 or (tax is not None and tax<0):raise ValueError('Invalid amount')

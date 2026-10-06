@@ -18,8 +18,10 @@ The original date text remains in the report. An explicit year is still required
 missing years and invalid dates remain unresolved. This applies to invoice and
 receiving dates only in this import preparation script.
 Actual Excel date values remain exactly as stored, even if their display may
-have resulted from day/month input confusion. Dates after the invoice date are
-flagged. Sequential template invoice numbers need real-document confirmation.
+have resulted from day/month input confusion. Historical invoices may precede
+or follow receiving: their relative dates do not block import and are never
+swapped or aligned automatically. Sequential template invoice numbers need
+real-document confirmation.
 
 ```bash
 cd /opt/hmm-connect

@@ -67,6 +67,18 @@ class TransactionPreflightTests(unittest.TestCase):
         self.assertIsNone(x['gross_difference'])
         self.assertNotIn('INVOICE_GROSS_TOTAL_MISMATCH',x['errors'])
 
+    def test_historical_invoice_can_precede_or_follow_receiving(self):
+        for received in (date(2026,1,2),date(2026,9,1)):
+            with tempfile.TemporaryDirectory() as tmp:
+                p=Path(tmp)/'source.xlsx';self.workbook(p)
+                w=load_workbook(p);w['ITEM_ENTRY']['B5']=received;w.save(p);w.close()
+                inv=extract_transactions(p)['invoices'][0]
+            self.assertEqual(inv['invoice_date'],date(2026,1,31))
+            self.assertEqual(inv['lines'][0]['received_date'],received)
+            self.assertEqual(inv['lines'][1]['received_date'],received)
+            self.assertNotIn('RECEIPT_AFTER_INVOICE_DATE',inv['lines'][0]['errors'])
+            self.assertEqual(inv['status'],'SOURCE_VALIDATED')
+
     def test_discount_is_recomputed_without_executing_formula(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/'source.xlsx';self.workbook(p)
