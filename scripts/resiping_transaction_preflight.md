@@ -12,7 +12,11 @@ a positive invoice-header tax is not silently distributed to lines.
 
 Pre-2026 receiving is excluded before validation. A mixed-year invoice requires
 an explicit split; the invoice amount is never automatically reduced by excluded
-history. Period/range dates remain unresolved rather than picking an end date.
+history. Per the historical-import rule, ranges and lists use the latest date
+(e.g. `2-14 JAN 26` → `2026-01-14`, `14FEB&1MARET 26` → `2026-03-01`).
+The original date text remains in the report. An explicit year is still required;
+missing years and invalid dates remain unresolved. This applies to invoice and
+receiving dates only in this import preparation script.
 Actual Excel date values remain exactly as stored, even if their display may
 have resulted from day/month input confusion. Dates after the invoice date are
 flagged. Sequential template invoice numbers need real-document confirmation.

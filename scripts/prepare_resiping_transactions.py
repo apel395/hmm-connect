@@ -41,18 +41,30 @@ def exact_date(value):
     for fmt in formats:
         try:return datetime.strptime(text,fmt).date()
         except ValueError:pass
-    # A single day and an explicit year only. Ranges/lists remain unresolved.
+    # An explicit year is required. For ranges/lists use their latest date,
+    # as authorized for this historical import; never change Excel date values.
     months={'JAN':1,'JANUARI':1,'JANUARY':1,'FEB':2,'FEBRUARI':2,'FEBRUARY':2,
-            'MAR':3,'MARET':3,'MARCH':3,'APR':4,'APRIL':4,'MEI':5,'MAY':5,
+            'MAR':3,'MARET':3,'MARCH':3,'APR':4,'APRI':4,'APRIL':4,'MEI':5,'MAY':5,
             'JUN':6,'JUNI':6,'JUNE':6,'JUL':7,'JULI':7,'JULY':7,
             'AGU':8,'AGUSTUS':8,'AUG':8,'AUGUST':8,'SEP':9,'SEPTEMBER':9,
             'OKT':10,'OKTOBER':10,'OCT':10,'OCTOBER':10,'NOV':11,'NOVEMBER':11,
             'DES':12,'DESEMBER':12,'DEC':12,'DECEMBER':12}
-    match=re.fullmatch(r'(\d{1,2})\s+([A-Z]+)\s+(20\d{2}|25|26)',text.upper())
-    if match and match[2] in months:
-        year=int(match[3]);year=year+2000 if year<100 else year
-        try:return date(year,months[match[2]],int(match[1]))
-        except ValueError:pass
+    named=re.fullmatch(r'(.+?)\s+(20\d{2}|25|26)',text.upper())
+    if named:
+        year=int(named[2]);year=year+2000 if year<100 else year
+        parts=re.split(r'\s*(?:[-–—,&]|\bDAN\b|\bTO\b)\s*',named[1])
+        parsed=[];month=None
+        # Shared month/year apply to earlier days: "2,4 APRIL 26".
+        for part in reversed(parts):
+            match=re.fullmatch(r'(\d{1,2})\s*([A-Z]+)?',part.strip())
+            if not match:return None
+            if match[2]:
+                month=months.get(match[2])
+                if month is None:return None
+            if month is None:return None
+            try:parsed.append(date(year,month,int(match[1])))
+            except ValueError:return None
+        if parsed:return max(parsed)
     return None
 
 
@@ -88,6 +100,7 @@ def extract_transactions(path):
             except ValueError:value=tax=None;errors.append('INVALID_INVOICE_AMOUNT_OR_TAX')
             invoices[key]={'key':key,'row':row,'supplier':str(c[2] or '').strip(),'location':str(c[3] or '').strip(),
                 'invoice_number':text_number(c[4]),'raw_invoice_date':c[1],'invoice_date':exact_date(c[1]),
+                'date_policy':'LATEST_DATE_IN_RANGE_OR_LIST',
                 'declared_total':value,'declared_tax':tax,'errors':errors,'lines':[], 'excluded':[]}
         sequence=bool(invoices) and all(x['invoice_number']==str(x['row']-4) for x in invoices.values())
         orphan=[];current=None;carried=None
@@ -102,6 +115,7 @@ def extract_transactions(path):
             year=source_year(raw)
             line={'row':row,'invoice_key':current,'item':normalized(c[2]),'unit':normalized(c[3]),
                   'raw_received_date':raw,'received_date':exact_date(raw),
+                  'date_policy':'LATEST_DATE_IN_RANGE_OR_LIST',
                   'date_source':'item/carried' if carried is not None else 'invoice header',
                   'raw_quantity':c[4],'raw_unit_price':c[5],'raw_discount':c[6],'raw_tax':c[7],'errors':[]}
             if year is not None and year<2026:
