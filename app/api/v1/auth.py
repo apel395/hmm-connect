@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -132,6 +133,7 @@ def register(
 def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
+    replace_session: Annotated[bool, Form()] = False,
 ):
     user = (
         db.query(User)
@@ -154,20 +156,22 @@ def login(
         and last_activity is not None
         and now - last_activity < SESSION_IDLE_TIMEOUT
     )
-    if session_is_active:
+    if session_is_active and not replace_session:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This user already has an active session. Log out from the current session or wait until it has been idle for 30 minutes.",
+            detail="This account has an active session. You can sign in and end the previous session if you were disconnected.",
         )
 
     session_id = str(uuid4())
-    user.active_session_id = session_id
-    user.session_last_activity_at = now
-    db.commit()
-    return TokenResponse(
+    # Prepare the response before persisting a session the client cannot use.
+    response = TokenResponse(
         access_token=create_access_token(user.username, session_id=session_id),
         user=_user_summary(db, user),
     )
+    user.active_session_id = session_id
+    user.session_last_activity_at = now
+    db.commit()
+    return response
 
 
 @router.post("/activity", status_code=204)

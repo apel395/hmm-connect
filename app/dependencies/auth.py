@@ -39,6 +39,9 @@ def get_current_user(
     user = (
         db.query(User)
         .filter(User.username == username, User.is_active.is_(True))
+        # Serialize expiry/activity writes with login and logout so an old
+        # request cannot clear a replacement session after a reconnect.
+        .with_for_update()
         .first()
     )
     if not user:
