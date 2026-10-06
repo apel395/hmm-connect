@@ -55,17 +55,35 @@ class TransactionPreflightTests(unittest.TestCase):
         self.assertIn('INVOICE_GROSS_TOTAL_MISMATCH',inv['INV-000004']['errors'])
         self.assertEqual(summary(r)['excluded_pre_2026_rows'],2)
 
-    def test_blank_tax_is_unknown_not_non_taxable(self):
+    def test_omitted_tax_is_zero_for_authorized_historical_import(self):
         x=self.report()['invoices'][1]
         self.assertEqual(x['invoice_date'],date(2026,1,14))
         self.assertEqual(x['lines'][0]['received_date'],date(2026,1,14))
         self.assertEqual(x['raw_invoice_date'],'2-14 JAN 26')
         self.assertNotIn('INVOICE_DATE_NOT_SINGLE_DATE',x['errors'])
-        self.assertIn('INVOICE_TAX_UNCONFIRMED',x['errors'])
-        self.assertIn('TAX_EVIDENCE_MISSING',x['lines'][0]['errors'])
-        self.assertIsNone(x['computed_gross'])
-        self.assertIsNone(x['gross_difference'])
+        self.assertNotIn('INVOICE_TAX_UNCONFIRMED',x['errors'])
+        self.assertNotIn('TAX_EVIDENCE_MISSING',x['lines'][0]['errors'])
+        self.assertEqual(x['computed_gross'],Decimal(100))
+        self.assertEqual(x['gross_difference'],Decimal(0))
+        self.assertIsNone(x['raw_invoice_tax'])
+        self.assertIsNone(x['lines'][0]['raw_tax'])
+        self.assertEqual(x['declared_tax'],Decimal(0))
         self.assertNotIn('INVOICE_GROSS_TOTAL_MISMATCH',x['errors'])
+
+    def test_entered_tax_is_retained_and_positive_header_is_not_distributed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/'source.xlsx';self.workbook(p)
+            w=load_workbook(p);w['INVOICES']['G5']=None;w['INVOICES']['F5']=311;w['ITEM_ENTRY']['H5']=11;w.save(p);w.close()
+            inv=extract_transactions(p)['invoices'][0]
+            self.assertEqual(inv['declared_tax'],Decimal(11))
+            self.assertEqual(inv['computed_gross'],Decimal(311))
+            self.assertEqual(inv['lines'][0]['tax'],Decimal(11))
+            self.assertEqual(inv['lines'][1]['tax'],Decimal(0))
+            self.assertNotIn('INVOICE_TAX_TOTAL_MISMATCH',inv['errors'])
+            w=load_workbook(p);w['INVOICES']['G5']=11;w['ITEM_ENTRY']['H5']=None;w.save(p);w.close()
+            inv=extract_transactions(p)['invoices'][0]
+            self.assertIn('TAX_EVIDENCE_MISSING',inv['lines'][0]['errors'])
+            self.assertIsNone(inv['computed_gross'])
 
     def test_historical_invoice_can_precede_or_follow_receiving(self):
         for received in (date(2026,1,2),date(2026,9,1)):
@@ -119,7 +137,7 @@ class TransactionPreflightTests(unittest.TestCase):
         catalog['periods'][0]['allow_backdated_entries']=False
         validate_database(r,catalog,date(2026,10,7));x=r['invoices'][0]
         self.assertIn('UNIT_OR_CONVERSION_REVIEW',x['lines'][0]['errors'])
-        self.assertIn('ITEM_TAX_REVIEW_REQUIRED',x['lines'][0]['errors'])
+        self.assertNotIn('ITEM_TAX_REVIEW_REQUIRED',x['lines'][0]['errors'])
         self.assertTrue(any(e.startswith('BACKDATE_NOT_ALLOWED') for e in x['errors']))
 
     def test_confirmed_location_aliases_preserve_source_and_target_scope(self):
