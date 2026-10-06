@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from app.services.xlsx_export import build_xlsx
 from pydantic import BaseModel, Field
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -24,6 +25,11 @@ manage = require_permission("finance.manage")
 TYPES = "^(PROFIT_LOSS|BALANCE_SHEET)$"
 
 
+def require_report_setup(db: Session):
+    if not inspect(db.connection()).has_table("financial_report_settings"):
+        raise HTTPException(503, "Report setup is awaiting a database update. Accounting reports remain available.")
+
+
 class ReportSetupInput(BaseModel):
     selected_account_ids: list[int] | None = None
     header_only: bool = False
@@ -32,6 +38,7 @@ class ReportSetupInput(BaseModel):
 
 @router.get("/setup")
 def setup(db: Session = Depends(get_db), user=Depends(view)):
+    require_report_setup(db)
     rows = db.query(ChartOfAccount).filter(ChartOfAccount.is_active.is_(True)).order_by(ChartOfAccount.account_number).all()
     settings = db.query(FinancialReportSetting).all()
     earnings = db.query(AccountingSetting).filter_by(setting_key="CURRENT_YEAR_EARNINGS_ACCOUNT").first()
@@ -43,6 +50,7 @@ def setup(db: Session = Depends(get_db), user=Depends(view)):
 
 @router.put("/setup/{report_type}")
 def save_setup(data: ReportSetupInput, report_type: str, db: Session = Depends(get_db), user=Depends(manage)):
+    require_report_setup(db)
     if report_type not in ("PROFIT_LOSS", "BALANCE_SHEET"):
         raise HTTPException(422, "Unsupported report type")
     if data.selected_account_ids is not None:
