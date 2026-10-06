@@ -42,13 +42,17 @@ export default function FinancialReportPrintTemplate<Row>({
   orientation = "landscape",
 }: Props<Row>) {
   return (
-    <article className="finance-report mx-auto bg-white p-6 text-[10px] leading-tight text-slate-950 print:p-0">
+    <article className="finance-report print-document mx-auto bg-white p-6 text-[10px] leading-tight text-slate-950 print:p-0">
       <style>{`
         @page { size: A4 ${orientation}; margin: 10mm 10mm 12mm 10mm; }
         @media print {
           body { background: #fff !important; }
           .finance-report thead { display: table-header-group; }
-          .finance-report tfoot { display: table-footer-group; }
+          .finance-report tfoot { display: table-row-group; }
+          .finance-report th { color: #111; }
+          .finance-report td { font-variant-numeric: tabular-nums; }
+          .finance-report { font-family: Arial, sans-serif; }
+          .finance-report-header + table { table-layout: auto; }
           .finance-report tr { break-inside: avoid; page-break-inside: avoid; }
           .finance-report-header { break-inside: avoid; page-break-inside: avoid; }
         }

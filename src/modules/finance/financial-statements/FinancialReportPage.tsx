@@ -1,20 +1,21 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ListFilter, Printer, RefreshCw, Settings2 } from "lucide-react";
+import { Download, ListFilter, RefreshCw, Settings2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import api from "@/api/client";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { listBusinessUnits, listLocations, listDepartments } from "@/modules/admin/organization/api";
 import useAuthStore from "@/store/auth";
 
-type Kind = "PROFIT_LOSS" | "BALANCE_SHEET";
-type Period = "MTD" | "YTD";
-type Amounts = { current: string; budget: string | null; last_month: string | null; last_year: string | null; variance: string | null; movement?: string };
-type Row = { account_code: string; account_name: string; account_ids: number[]; section: string; periods: Record<Period, Amounts> };
-type Report = { rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
+export type Kind = "PROFIT_LOSS" | "BALANCE_SHEET";
+export type Period = "MTD" | "YTD";
+export type Amounts = { current: string; budget: string | null; last_month: string | null; last_year: string | null; variance: string | null; movement?: string };
+export type Row = { account_code: string; account_name: string; account_ids: number[]; section: string; periods: Record<Period, Amounts> };
+export type Report = { rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
 const money = (value: string | number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { maximumFractionDigits: 2 });
 const input = "h-8 rounded border border-slate-300 bg-white px-2 text-xs";
 const labels: Record<string, string> = { REVENUE: "Pendapatan", COST_OF_REVENUE: "Beban pokok", EXPENSES: "Beban", ASSETS: "Aset", LIABILITIES: "Liabilitas", EQUITY: "Ekuitas" };
@@ -83,7 +84,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
       <Button variant="outline" size="sm" title="Filters" aria-label="Report filters" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}><ListFilter size={15} /></Button>
       {canManage && <Link to="/finance-setup/reports" className="inline-flex h-8 items-center rounded border px-2" title="Report setup" aria-label="Report setup"><Settings2 size={15} /></Link>}
       <Button variant="outline" size="sm" title="Export Excel" aria-label="Export Excel" disabled={!data} onClick={exportReport}><Download size={15} /></Button>
-      <Button variant="outline" size="sm" title="Print" aria-label="Print report" onClick={() => window.print()}><Printer size={15} /></Button>
+      <PrintPreviewButton src={`/${kind === "PROFIT_LOSS" ? "profit-loss" : "balance-sheet"}/print?${new URLSearchParams(Object.fromEntries(Object.entries(params).map(([key, value]) => [key, String(value)])))}`} title={title} ariaLabel="Print report" />
       <Button variant="outline" size="sm" title="Refresh" aria-label="Refresh report" disabled={report.isFetching} onClick={() => report.refetch()}><RefreshCw size={15} /></Button>
     </div>} />
     {showFilters && <Card className="p-2 print:hidden"><form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); setFilters({ ...draft }); setShowFilters(false); }}>

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { Printer } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
@@ -12,16 +13,18 @@ interface PrintPreviewButtonProps {
 
 export default function PrintPreviewButton({ src, title, ariaLabel = "Print preview", label }: PrintPreviewButtonProps) {
   const [open, setOpen] = useState(false);
+  const [frameLoaded, setFrameLoaded] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
 
   const print = () => {
+    if (!frameLoaded || frameRef.current?.contentDocument?.querySelector('[data-print-ready="false"]')) { toast.error("Wait for the report to load before printing"); return; }
     frameRef.current?.contentWindow?.focus();
     frameRef.current?.contentWindow?.print();
   };
 
   return (
     <>
-      <Button variant="outline" title="Print preview" aria-label={ariaLabel} onClick={() => setOpen(true)}>
+      <Button variant="outline" title="Print preview" aria-label={ariaLabel} onClick={() => { setFrameLoaded(false); setOpen(true); }}>
         <Printer size={18} />{label ? <span>{label}</span> : null}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -32,6 +35,7 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
           <DialogBody className="bg-slate-100 p-3">
             <iframe
               ref={frameRef}
+              onLoad={() => setFrameLoaded(true)}
               src={src}
               title={title}
               className="h-[72vh] w-full rounded-lg border border-slate-200 bg-white"
@@ -39,7 +43,7 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
-            <Button onClick={print}><Printer size={16} /> Print</Button>
+            <Button disabled={!frameLoaded} onClick={print}><Printer size={16} /> Print</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
