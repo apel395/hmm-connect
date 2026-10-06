@@ -29,7 +29,8 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(rules['DENALI SYRUP STRAWBERRY']['group'],'BEVERAGE')
         self.assertEqual(rules['DENALI SYRUP STRAWBERRY']['subgroup'],'SYRUP')
         self.assertEqual(rules['SIRUP MARJAN MELON']['subgroup'],'SYRUP')
-        self.assertEqual(rules['DENALI POWDER COCOA SIGNATURE']['subgroup'],'BEVERAGE INGREDIENTS')
+        self.assertEqual(rules['DENALI POWDER COCOA SIGNATURE']['subgroup'],'GROCERIES')
+        self.assertFalse(any(r['subgroup'] in ('PREPARED FOOD','PREPARED DRINK','BEVERAGE INGREDIENTS') for r in rules.values()))
         self.assertEqual(rules['BLUEBERRY FROZEN']['subgroup'],'FRUIT')
         self.assertEqual(rules['PLASTIK SAMPAH']['group'],'MATERIAL')
         self.assertEqual(rules['CHICKEN SAUSAGE']['treatment'],'STOCK')
@@ -63,14 +64,24 @@ def fixture(db, monkeypatch):
     from app.models.audit_log import AuditLog
     from app.models.item_group import ItemGroup
     from app.models.chart_of_account import ChartOfAccount
+    from app.models.item_subgroup import ItemSubgroup
     import app.services.audit as audit
     manifest=json.loads(MANIFEST.read_text())
     names=['RISOLES','WORTEL/CARROT','DENALI SYRUP STRAWBERRY','PLASTIK SAMPAH']
     manifest['items']=[r for r in manifest['items'] if r['name'] in names]
     manifest['expected_batch_count']=len(names)
     source={'source_sha256':manifest['source_sha256'],'items':[{'name':r['name'],'units':r['units']} for r in manifest['items']]}
-    for code,name in [('1','FOOD'),('2','BEVERAGE'),('3','MATERIAL')]:
+    for code,name in [('1','FOOD'),('2','BEVERAGE'),('3','MATERIAL'),('4','ASSET')]:
         db.add(ItemGroup(code=code,name=name,item_type='ITEM',is_active=True))
+    db.flush()
+    food=db.query(ItemGroup).filter_by(name='FOOD').one()
+    bev=db.query(ItemGroup).filter_by(name='BEVERAGE').one()
+    material=db.query(ItemGroup).filter_by(name='MATERIAL').one()
+    for code,name,gid in [('1-5','VEGETABLES',food.id),('1-6','FRUIT',food.id),('1-8','GROCERIES',food.id),('1-9','SNACK',food.id),('2-2','SOFT DRINK',bev.id),('3-1','GUEST SUPPLIES',material.id),('3-2','CLEANING SUPPLIES',material.id)]:
+        db.add(ItemSubgroup(code=code,name=name,group_id=gid,is_active=True))
+    pending=ItemGroup(code='BUYPEND',name='BUY — PENDING CLASSIFICATION',item_type='BUY',is_active=True)
+    db.add(pending);db.flush()
+    db.add(ItemSubgroup(code='BUYPEND-1',name='PENDING CLASSIFICATION',group_id=pending.id,is_active=True))
     for code,kind in [('100-300-100','ASSET'),('100-300-500','ASSET'),('100-300-700','ASSET'),('500-100-100','EXPENSE'),('500-100-102','EXPENSE')]:
         db.add(ChartOfAccount(account_number=code,account_name=code,account_type=kind,normal_balance='DEBIT',is_active=True,is_posting=True))
     ids=[]
@@ -104,15 +115,19 @@ def test_master_only_dry_run_commit_repeat_and_rollback(monkeypatch):
         source,manifest,ids=fixture(db,monkeypatch)
         dry=classify_batch(db,source,manifest)
         assert dry['counts']=={'CLASSIFY':4}
-        assert db.query(ItemSubgroup).count()==0
+        assert db.query(ItemSubgroup).count()==8
         assert all(db.get(Product,i).group_code=='BUYPEND' for i in ids)
         classify_batch(db,source,manifest,apply=True)
         db.rollback()
-        assert db.query(ItemSubgroup).count()==0
+        assert db.query(ItemSubgroup).count()==8
         assert all(db.get(Product,i).group_code=='BUYPEND' for i in ids)
         classify_batch(db,source,manifest,apply=True);db.commit()
         assert db.query(AuditLog).filter_by(action='RESIPING_BUY_ITEM_CLASSIFIED').count()==4
         assert db.query(Product).filter_by(item_type='SELL').one().group_code=='SELL'
+        from app.models.item_group import ItemGroup
+        assert db.query(ItemGroup).count()==4
+        assert db.query(ItemGroup).filter_by(code='BUYPEND').count()==0
+        assert db.query(ItemSubgroup).filter_by(name='SYRUP').count()==1
         assert all(db.get(Product,i).tax_category=='REVIEW_REQUIRED' and not db.get(Product,i).is_taxable for i in ids)
         repeated=classify_batch(db,source,manifest,apply=True);db.commit()
         assert repeated['counts']=={'ALREADY_CLASSIFIED':4}
@@ -139,4 +154,52 @@ def test_batch_count_identity_and_existing_document_guard(monkeypatch):
         db.rollback()
         db.execute(text('INSERT INTO inventory(product_id,warehouse_id,quantity,average_cost) VALUES(:pid,1,1,1)'),{'pid':ids[0]})
         with pytest.raises(ValueError,match='already used in inventory'): classify_batch(db,source,manifest,apply=True)
+        assert all(db.get(Product,i).group_code=='BUYPEND' for i in ids)
+
+
+def test_remove_added_subgroups_preserves_treatment_accounts_and_tax(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.models import Base
+    from app.models.product import Product
+    from app.models.item_group import ItemGroup
+    from app.models.item_subgroup import ItemSubgroup
+    from resiping_buy_catalog import plan_catalog_cleanup, apply_catalog_cleanup
+    engine=create_engine('sqlite://');Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        source,manifest,ids=fixture(db,monkeypatch)
+        food=db.query(ItemGroup).filter_by(name='FOOD').one();bev=db.query(ItemGroup).filter_by(name='BEVERAGE').one()
+        for code,label,gid in [('1-20','PREPARED FOOD',food.id),('2-20','PREPARED DRINK',bev.id)]:
+            db.add(ItemSubgroup(code=code,name=label,group_id=gid,is_active=True))
+        meal=Product(code='OLDMEAL',name='NASI GORENG HULU CAFE',item_type='BUY',uom='PCS',usage_uom='PCS',conversion=1,group_code='1',group_name='FOOD',subgroup_code='1-20',subgroup_name='PREPARED FOOD',inventory_treatment='DIRECT_USE',purchase_account_id=4,tax_category='PPN',is_taxable=True,tax_rate=11)
+        drink=Product(code='OLDDRINK',name='ICE MILK COFFEE',item_type='BUY',uom='PCS',usage_uom='PCS',conversion=1,group_code='2',group_name='BEVERAGE',subgroup_code='2-20',subgroup_name='PREPARED DRINK',inventory_treatment='DIRECT_USE',purchase_account_id=5,tax_category='NON_TAXABLE',is_taxable=False,tax_rate=0)
+        db.add_all([meal,drink]);db.commit()
+        fields=('inventory_treatment','purchase_account_id','inventory_account_id','cogs_account_id','asset_account_id','tax_category','is_taxable','tax_rate')
+        before=[tuple(getattr(p,k) for k in fields) for p in (meal,drink)]
+        classify_batch(db,source,manifest,apply=True);db.commit()
+        assert meal.subgroup_name=='GROCERIES' and drink.subgroup_name=='SOFT DRINK'
+        assert [tuple(getattr(p,k) for k in fields) for p in (meal,drink)]==before
+        assert db.query(ItemSubgroup).filter(ItemSubgroup.name.in_(['PREPARED FOOD','PREPARED DRINK'])).count()==0
+        assert db.query(ItemGroup).count()==4
+        # The legacy classifier cannot recreate retired subgroups.
+        import correct_item_classification as old
+        import pytest
+        with pytest.raises(ValueError,match='retired'):old.resolve_subgroup([],[],{'code':'1','id':food.id},['PREPARED FOOD'])
+
+
+def test_extra_pending_item_blocks_catalog_deletion_atomically(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.models import Base
+    from app.models.product import Product
+    from app.models.item_group import ItemGroup
+    import pytest
+    engine=create_engine('sqlite://');Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        source,manifest,ids=fixture(db,monkeypatch)
+        db.add(Product(code='UNREVIEWED',name='Unreviewed item',item_type='BUY',uom='PCS',usage_uom='PCS',conversion=1,group_code='BUYPEND',group_name='BUY — PENDING CLASSIFICATION',subgroup_code='BUYPEND-1',subgroup_name='PENDING CLASSIFICATION',inventory_treatment='REVIEW_REQUIRED',tax_category='REVIEW_REQUIRED'))
+        db.commit()
+        with pytest.raises(ValueError,match='still has items'):classify_batch(db,source,manifest,apply=True)
+        db.rollback()
+        assert db.query(ItemGroup).filter_by(code='BUYPEND').count()==1
         assert all(db.get(Product,i).group_code=='BUYPEND' for i in ids)

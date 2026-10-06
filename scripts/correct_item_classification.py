@@ -68,6 +68,8 @@ def resolve_group(groups, snapshots, label):
 
 
 def resolve_subgroup(subgroups, snapshots, group, labels):
+    if any(normalize(label) in ('PREPARED FOOD','PREPARED DRINK','BEVERAGE INGREDIENTS') for label in labels):
+        raise ValueError('Prepared/ingredient subgroups retired. Use original subgroups; DIRECT_USE is a treatment, not a subgroup.')
     for label in labels:
         codes = {str(p['subgroup_code']) for p in snapshots
                  if str(p['group_code']) == group['code']

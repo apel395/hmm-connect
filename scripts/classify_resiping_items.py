@@ -109,12 +109,19 @@ def classify_batch(db, source, manifest, apply=False, user=None):
     groups = db.query(ItemGroup).all()
     subgroups = db.query(ItemSubgroup).all()
     accounts = db.query(ChartOfAccount).all()
+    from resiping_buy_catalog import plan_catalog_cleanup, apply_catalog_cleanup
+    cleanup = plan_catalog_cleanup(db,groups,subgroups)
+    pending_codes = [s.code for s in subgroups if s.group_id in cleanup['remove_pending_group_ids']]
+    remaining = db.query(Product).filter(~Product.id.in_(ids), (Product.group_code=='BUYPEND') | Product.subgroup_code.in_(pending_codes)).first()
+    if remaining:
+        raise ValueError(f'BUYPEND still has items outside the audited batch: {remaining.id} {remaining.name}')
     from types import SimpleNamespace
     group_cache = {}
     subgroup_cache = {}
     catalog_changes = []
     occupied_codes = {s.code for s in subgroups}
-    for name in sorted({rules[products[i].name]['group'] for i in ids if products[i].name in rules}):
+    from resiping_buy_catalog import BUY_GROUPS
+    for name in sorted(BUY_GROUPS):
         candidates = [g for g in groups if normalized(g.name)==name and g.is_active and g.item_type in ('BUY','ITEM')]
         if len(candidates)!=1:
             raise ValueError(f'Active BUY group {name} not uniquely configured')
@@ -125,19 +132,23 @@ def classify_batch(db, source, manifest, apply=False, user=None):
             catalog_changes.append({'group':name,'action':'normalize legacy ITEM group to BUY'})
         group_cache[name] = group
     # Plan catalog without writes; all item validations run before applying.
-    for rule in [rules[products[i].name] for i in ids if products[i].name in rules]:
+    catalog_rules = [rules[products[i].name] for i in ids if products[i].name in rules]
+    catalog_rules.append({'group':'BEVERAGE','subgroup':'SYRUP'})
+    for rule in catalog_rules:
         if rule['group'] not in group_cache:
             continue
         key=(rule['group'],rule['subgroup'])
         if key in subgroup_cache:
             continue
         group=group_cache[rule['group']]
-        matches=[s for s in subgroups if s.group_id==group.id and normalized(s.name)==rule['subgroup'] and s.is_active]
+        matches=[s for s in subgroups if s.group_id==group.id and normalized(s.name) in ({rule['subgroup'],'GRESORIS'} if rule['subgroup']=='GROCERIES' else {rule['subgroup']}) and s.is_active]
         if len(matches)>1:
             raise ValueError(f'Duplicate active subgroup: {key}')
         if matches:
             subgroup_cache[key]=matches[0]
         else:
+            if key != ('BEVERAGE','SYRUP'):
+                raise ValueError(f'Existing subgroup {key} missing; no automatic subgroup creation')
             # Codes fit String(10), scoped to BUY parent; no dependence on product prefix.
             code='RC'+sha256(('|'.join(key)).encode()).hexdigest()[:8].upper()
             if code in occupied_codes:
@@ -173,8 +184,8 @@ def classify_batch(db, source, manifest, apply=False, user=None):
     report={'mode':'APPLY' if apply else 'DRY_RUN','source_sha256':source['source_sha256'],
             'batch_items':len(plan),'counts':dict(Counter(x['status'] for x in plan)),
             'classification_counts':dict(Counter(f'{x["after"]["group_name"]} / {x["after"]["inventory_treatment"]}' for x in plan)),
-            'catalog_changes':catalog_changes,'tax_policy':manifest['tax_policy'],'items':plan}
-    if apply and any(x['status']=='CLASSIFY' for x in plan):
+            'catalog_changes':catalog_changes,'catalog_cleanup':cleanup,'tax_policy':manifest['tax_policy'],'items':plan}
+    if apply:
         for group in group_cache.values():
             if group.item_type=='ITEM':
                 before={'id':group.id,'code':group.code,'item_type':group.item_type}
@@ -193,6 +204,8 @@ def classify_batch(db, source, manifest, apply=False, user=None):
                 setattr(p,field,row['after'][field])
             record_audit(db,user,'RESIPING_BUY_ITEM_CLASSIFIED','PRODUCT',f'Classify seeded BUY item {p.code}',entity_id=p.id,before_data=row['before'],after_data=row['after'],details={'source_sha256':source['source_sha256'],'source':'RESIPING ITEM_ENTRY 2026 rows','reason':row['reason'],'tax_changed':False})
         db.flush()
+    if apply:
+        apply_catalog_cleanup(db,cleanup,user)
     return report
 
 
@@ -229,7 +242,8 @@ def main():
                 db.commit()
             else:
                 db.rollback()
-            print(json.dumps({k:v for k,v in report.items() if k not in ('items','catalog_changes')},indent=2))
+            print(json.dumps({k:v for k,v in report.items() if k not in ('items','catalog_changes','catalog_cleanup')},indent=2))
+            print(f'Catalog cleanup: {len(report["catalog_cleanup"]["reclassifications"])} subgroup corrections; remove BUYPEND after all items moved.')
             print(f'Full classification report: {args.output}')
             print('COMMITTED item master classification and audit records only.' if args.apply else 'DRY RUN: no writes. Use --apply to classify this batch.')
         except Exception:

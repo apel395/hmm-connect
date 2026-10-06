@@ -11,7 +11,8 @@ STOCK is the default for ingredients, drink ingredients and consumables;
 ready-to-eat prepared purchases are DIRECT_USE. A receiving destination can
 still reflect immediate use of an otherwise stockable item. Family/subgroup
 are independent of item code. Syrups use the dedicated BEVERAGE / SYRUP subgroup; drink powders, coffee
-and tea use BEVERAGE INGREDIENTS.
+and tea use FOOD / GROCERIES. Prepared snacks use SNACK; complete meals use
+GROCERIES. DIRECT_USE remains separate from family/subgroup classification.
 
 | Family | Stock asset | Consumption expense |
 | --- | --- | --- |
@@ -43,7 +44,10 @@ manual accounting edits, or usage in inventory/receipts/invoices. Those records
 need a follow-up review rather than silent historical changes.
 
 Dry-run is read-only. Apply validates every item before writing and commits
-atomically. Before/after audits are recorded. Only necessary BUY subgroups are
-created; legacy ITEM groups are normalized only if all their products are BUY.
+atomically. Before/after audits are recorded. The only new subgroup permitted is BEVERAGE / SYRUP. BUYPEND is removed
+after all 291 items move. PREPARED FOOD, PREPARED DRINK and any unmerged
+BEVERAGE INGREDIENTS proposal are removed; existing items are reassigned
+without changing accounting or tax. Future seeds do not create BUYPEND.
+Legacy ITEM groups are normalized only if all their products are BUY.
 Repeat runs report ALREADY_CLASSIFIED without new audits. Terminal output is a
 summary; full details are saved to the JSON report. No migration is required.

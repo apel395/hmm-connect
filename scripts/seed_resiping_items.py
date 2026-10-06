@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Seed new BUY item identities before classification; dry-run by default.
+"""Seed classified BUY item identities from the reviewed source; dry-run by default.
 
-New items are explicitly REVIEW_REQUIRED with no accounting or tax decision.
+Known names use explicit reviewed catalog/COA mappings; tax remains REVIEW_REQUIRED.
 Existing BUY/SELL products and all transactions stay unchanged. Similar names,
 inactive/ambiguous matches and multiple-unit rows are deferred for review.
 """
@@ -55,28 +55,72 @@ def insert_items(db, report, user=None):
     candidates = [item for item in report['items'] if 'new_product' in item]
     if not candidates:
         return []
-    group = db.query(ItemGroup).filter(ItemGroup.code==GROUP_CODE).first()
-    if group and (group.item_type != 'BUY' or not group.is_active or group.name != 'BUY — PENDING CLASSIFICATION'):
-        raise ValueError('Pending BUY group conflicts with existing catalog')
-    if not group:
-        group = ItemGroup(code=GROUP_CODE,name='BUY — PENDING CLASSIFICATION',item_type='BUY',is_active=True)
-        db.add(group);db.flush()
-    subgroup = db.query(ItemSubgroup).filter(ItemSubgroup.code==SUBGROUP_CODE).first()
-    if subgroup and (subgroup.group_id != group.id or not subgroup.is_active or subgroup.name != 'PENDING CLASSIFICATION'):
-        raise ValueError('Pending BUY subgroup conflicts with existing catalog')
-    if not subgroup:
-        subgroup = ItemSubgroup(code=SUBGROUP_CODE,name='PENDING CLASSIFICATION',group_id=group.id,is_active=True)
-        db.add(subgroup);db.flush()
+    from resiping_buy_catalog import BUY_GROUPS
+    for item in candidates:
+        profile=item['new_product']
+        if profile['group_name'] not in BUY_GROUPS or profile['group_code']==GROUP_CODE:
+            raise ValueError('Pending catalog creation disabled. Classify the source item before seeding.')
+        group=db.query(ItemGroup).filter(ItemGroup.code==profile['group_code']).one_or_none()
+        if not group or not group.is_active or group.item_type not in ('BUY','ITEM') or group.name!=profile['group_name']:
+            raise ValueError('Approved BUY group changed')
+        if group.item_type=='ITEM':
+            if db.query(Product).filter(Product.group_code==group.code,Product.item_type!='BUY').first():
+                raise ValueError('Legacy group shared with non-BUY products')
+            group.item_type='BUY'
+        subgroup=db.query(ItemSubgroup).filter(ItemSubgroup.code==profile['subgroup_code']).one_or_none()
+        if not subgroup and group.name=='BEVERAGE' and profile['subgroup_name']=='SYRUP':
+            subgroup=ItemSubgroup(code=profile['subgroup_code'],name='SYRUP',group_id=group.id,is_active=True)
+            db.add(subgroup);db.flush()
+        if not subgroup or not subgroup.is_active or subgroup.group_id!=group.id or subgroup.name!=profile['subgroup_name']:
+            raise ValueError('Existing BUY subgroup changed')
     inserted = []
     for item in candidates:
         product = Product(**item['new_product'])
         db.add(product);db.flush()
-        record_audit(db,user,'RESIPING_BUY_ITEM_CREATED','PRODUCT',f'Create pending BUY item {product.code}',
+        record_audit(db,user,'RESIPING_BUY_ITEM_CREATED','PRODUCT',f'Create classified BUY item {product.code}',
             entity_id=product.id,after_data={**item['new_product'],'id':product.id},
             details={'module':'Item Master','source_sha256':report['source_sha256'],
-                     'source_rows':json.loads(json.dumps(item['source_rows'],default=str)),'classification_required':True})
+                     'source_rows':json.loads(json.dumps(item['source_rows'],default=str)),'classification_required':False,'tax_review_required':True})
         inserted.append({'id':product.id,'code':product.code,'name':product.name})
     return inserted
+
+
+
+def classified_seed_plan(db, report, products):
+    """Known source names receive approved catalog/COA before insertion; unknowns defer."""
+    from app.models.item_group import ItemGroup
+    from app.models.item_subgroup import ItemSubgroup
+    from app.models.chart_of_account import ChartOfAccount
+    from classify_resiping_items import MANIFEST, desired_profile
+    from resiping_buy_catalog import existing_subgroup
+    from types import SimpleNamespace
+    manifest=json.loads(MANIFEST.read_text())
+    rules={r['name']:r for r in manifest['items']}
+    report=seed_plan(report,products)
+    groups=db.query(ItemGroup).all();subgroups=db.query(ItemSubgroup).all()
+    accounts=db.query(ChartOfAccount).all()
+    for item in report['items']:
+        if 'new_product' not in item:continue
+        rule=rules.get(item['name'])
+        if not rule or item['units']!=rule['units']:
+            item.pop('new_product');item['match_status']='CLASSIFICATION_REVIEW';continue
+        matches=[g for g in groups if g.name==rule['group'] and g.is_active and g.item_type in ('BUY','ITEM')]
+        if len(matches)!=1:raise ValueError(f'Approved BUY family {rule["group"]} not uniquely configured')
+        group=matches[0]
+        if rule['subgroup']=='SYRUP':
+            matched=[s for s in subgroups if s.group_id==group.id and s.name=='SYRUP' and s.is_active]
+            if len(matched)>1:raise ValueError('Duplicate SYRUP subgroup')
+            if matched:subgroup=matched[0]
+            else:
+                code='RC'+sha256('BEVERAGE|SYRUP'.encode()).hexdigest()[:8].upper()
+                if any(s.code==code for s in subgroups):raise ValueError('SYRUP code collision')
+                subgroup=SimpleNamespace(code=code,name='SYRUP',group_id=group.id)
+        else:subgroup=existing_subgroup(subgroups,group,rule['subgroup'])
+        item['new_product'].update(desired_profile(rule,group,subgroup,accounts))
+        item['match_status']='NEW_CLASSIFIED_BUY_ITEM'
+    report['db_matches']=dict(Counter(i['match_status'] for i in report['items']))
+    report['new_master_items']=sum('new_product' in i for i in report['items'])
+    return report
 
 
 def main():
@@ -107,7 +151,7 @@ def main():
                 raise ValueError('Audit actor does not exist')
             products = [{'id':p.id,'code':p.code,'name':p.name,'item_type':p.item_type,
                          'is_active':p.is_active,'uom':p.uom} for p in db.query(Product).all()]
-            report = seed_plan(report,products)
+            report = classified_seed_plan(db,report,products)
             report['mode'] = 'APPLY' if args.apply else 'DRY_RUN'
             if args.apply:
                 report['inserted_items'] = insert_items(db,report,user)
@@ -119,7 +163,7 @@ def main():
                 db.rollback()
             print(json.dumps({key:value for key,value in report.items() if key not in ('items','excluded_rows','review_rows','inserted_items')},indent=2,default=str,ensure_ascii=False))
             print(f'Full item plan: {args.output}')
-            print('COMMITTED pending BUY items and audit records only.' if args.apply else 'DRY RUN: no writes. --apply creates eligible new BUY items pending classification.')
+            print('COMMITTED classified BUY items and audit records only.' if args.apply else 'DRY RUN: no writes. --apply creates eligible classified BUY items; no BUYPEND group.')
         except Exception:
             db.rollback();raise
 
