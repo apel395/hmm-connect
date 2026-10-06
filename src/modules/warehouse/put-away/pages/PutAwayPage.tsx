@@ -1,3 +1,4 @@
+import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import PageHeader from "@/components/common/PageHeader";
 import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
@@ -27,7 +28,8 @@ if(isLoading)return<Loading/>;
 
 return(
 
-<div className="space-y-6">
+<div className="inventory-print-report space-y-6">
+<InventoryReportHeading title="Put Away" context={"Received stock awaiting warehouse placement"} rows={data.length} total={data.length}/>
 
 <PageHeader
 
@@ -53,7 +55,7 @@ description="Move received stock into warehouse locations"
 
 <th>Status</th>
 
-<th></th>
+<th className="print:hidden"></th>
 
 </tr>
 
@@ -75,7 +77,7 @@ data.map((row:any)=>(
 
 <td>{row.status}</td>
 
-<td>
+<td className="print:hidden">
 
 <Button
 

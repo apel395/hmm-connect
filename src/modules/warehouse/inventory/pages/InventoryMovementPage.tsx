@@ -1,3 +1,4 @@
+import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -7,7 +8,7 @@ import Pagination from "@/components/datatable/Pagination";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
-import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { TABLE_UI } from "@/config/tableUi";
 import { listLocations } from "@/modules/admin/organization/api";
 import { inventoryApi } from "../api";
@@ -129,7 +130,8 @@ export default function InventoryMovementPage() {
     setParams(next, { replace: true });
   };
 
-  return <div className="space-y-3">
+  return <div className="inventory-print-report space-y-3">
+    <InventoryReportHeading title={focused ? "Item Stock History" : "Stock Movement"} context={`Period: ${dateFrom || "2026-01-01"} – ${dateTo || "Current"}${search ? ` · Search: ${search}` : ""}${productId ? ` · Item ID: ${productId}` : ""}${warehouseId ? ` · Warehouse ID: ${warehouseId}` : ""}${accountId ? ` · Account ID: ${accountId}` : ""}${locationId ? ` · Location ID: ${locationId}` : ""}${departmentId ? ` · Department ID: ${departmentId}` : ""}${poId ? ` · PO ID: ${poId}` : ""}${receiptId ? ` · Receipt ID: ${receiptId}` : ""} · Source: ${sourceKind}`} rows={rows.length} total={total}/>
     <PageHeader title={focused ? "Item Stock History" : "Stock Movement"}
       description={focused
         ? "Opening stock, purchases, usage, and adjustments in date order. The running quantity follows the item in each warehouse."
@@ -139,7 +141,7 @@ export default function InventoryMovementPage() {
         <Button variant="outline" onClick={() => window.print()}><Printer size={16} className="mr-1"/> Print</Button>
       </div>}/>
 
-    <Card className="p-3">
+    <Card className="p-3 print:hidden">
       <div className="flex flex-wrap items-end gap-2">
         <label className="min-w-[220px] flex-1 text-xs font-medium text-slate-600">Search item or warehouse
           <input className={input} placeholder="Item code, name or warehouse" value={search} onChange={e => setSearch(e.target.value)}/>
@@ -248,18 +250,17 @@ export default function InventoryMovementPage() {
       <Card className="overflow-hidden p-0">
         <div className="border-b px-3 py-2 font-semibold">{focused ? "Item timeline · oldest first" : "Recent item events · select an item for its timeline"}</div>
         <Table className="min-w-[1320px]" containerClassName="rounded-none border-0 shadow-none">
-          <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Event</TH><TH>Item</TH><TH>Warehouse</TH>
+          <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Event</TH><TH>Item code</TH><TH>Item name</TH><TH>Warehouse</TH>
             <TH numeric>In</TH><TH numeric>Out</TH>{focused && <TH numeric>On hand</TH>}
             <TH numeric>Unit cost</TH><TH numeric>Event value</TH><TH>Source document</TH><TH>Notes</TH>
           </TR></THead>
-          <TBody>{!rows.length ? <TR><TD colSpan={focused ? 11 : 10} className="p-10 text-center text-slate-500">No stock events match these filters.</TD></TR>
+          <TBody>{!rows.length ? <TR><TD colSpan={focused ? 12 : 11} className="p-10 text-center text-slate-500">No stock events match these filters.</TD></TR>
             : rows.map(row => <TR key={row.id} className="whitespace-nowrap">
               <TD>{row.movement_date}</TD>
               <TD>{eventName(row)}</TD>
-              <TD className="max-w-[230px]"><button type="button" className="text-left text-blue-700 hover:underline" onClick={() => focusItem(row)}>
-                <TableCellStack primary={row.product_name} secondary={row.product_code}/>
-              </button></TD>
-              <TD><TableCellStack primary={row.warehouse_name} secondary={row.inventory_account_code ?? "Unmapped"}/></TD>
+              <TD><button type="button" className="inventory-item-code rounded bg-emerald-50 px-2 py-1 font-semibold text-emerald-800 hover:bg-emerald-100" aria-label={`View history for ${row.product_code}`} onClick={() => focusItem(row)}>{row.product_code}</button></TD>
+              <TD className="max-w-[230px]"><button type="button" className="block max-w-full truncate text-left text-blue-700 hover:underline" title={row.product_name} onClick={() => focusItem(row)}>{row.product_name}</button></TD>
+              <TD>{row.warehouse_name}</TD>
               <TD numeric className="font-semibold text-emerald-700">{Number(row.in_quantity) ? quantity(row.in_quantity) : "—"}</TD>
               <TD numeric className="font-semibold text-rose-700">{Number(row.out_quantity) ? quantity(row.out_quantity) : "—"}</TD>
               {focused && <TD numeric className="font-bold">{row.running_quantity == null ? "—" : quantity(row.running_quantity)}</TD>}

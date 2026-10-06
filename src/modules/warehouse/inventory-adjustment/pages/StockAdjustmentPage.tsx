@@ -1,3 +1,4 @@
+import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {Plus, Trash2, Eye, Pencil, PlayCircle, Ban, Boxes, Printer} from "lucide-react";
@@ -260,7 +261,8 @@ export default function StockAdjustmentPage() {
   const totalDeltaLines = lines.filter((line) => Math.abs(line.adjusted_quantity - line.system_quantity) > 0.0001).length;
 
   return (
-    <div className="space-y-6">
+    <div className="inventory-print-report space-y-6">
+<InventoryReportHeading title="Stock Adjustment" context={`Search: ${search || "All"} · Status: ${status}${warehouseFilter ? ` · Warehouse ID: ${warehouseFilter}` : ""}`} rows={rows.length} total={data.total_items ?? 0}/>
       <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Stock Adjustment" description="Correct warehouse stock for damage, expiry, found surplus or bookkeeping errors. Adjustments are posted to inventory and recorded as stock movements." />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -270,7 +272,7 @@ export default function StockAdjustmentPage() {
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Voided</div><div className="mt-2 text-2xl font-bold text-slate-500">{num(statusCounts.VOID ?? 0)}</div></Card>
       </div>
 
-      <Card className="p-4">
+      <Card className="p-4 print:hidden">
         <div className="grid gap-3 md:grid-cols-[1fr_200px_220px_auto]">
           <input className={input} placeholder="Search number, reason or warehouse" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className={input} value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -295,7 +297,7 @@ export default function StockAdjustmentPage() {
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead><tr className="whitespace-nowrap border-b text-xs uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3">Number</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Warehouse</th><th className="px-4 py-3">Reason</th>
-                  <th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Value</th><th className="px-4 py-3">Created By</th><th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Value</th><th className="px-4 py-3">Created By</th><th className="px-4 py-3 text-right print:hidden">Actions</th>
                 </tr></thead>
                 <tbody>
                   {rows.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">No stock adjustments match the current filters.</td></tr>}
@@ -308,7 +310,7 @@ export default function StockAdjustmentPage() {
                       <td className="px-4 py-3"><Badge variant={statusVariant[row.status] ?? "default"}>{row.status}</Badge></td>
                       <td className="px-4 py-3 text-right font-semibold">{money(row.total_adjustment_value)}</td>
                       <td className="px-4 py-3">{row.created_by_name || "-"}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 print:hidden">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="xs" onClick={() => setDetailId(row.id)}><Eye className="h-4 w-4" /></Button>
                           {canAdjust && row.status === "DRAFT" && (
@@ -325,7 +327,7 @@ export default function StockAdjustmentPage() {
                 </tbody>
               </table>
             </div>
-            <div className="p-4"><Pagination page={page} pages={pages} total={data.total_items ?? 0} pageSize={PAGE_SIZE} noun="adjustments" onChange={setPage} /></div>
+            <div className="p-4 print:hidden"><Pagination page={page} pages={pages} total={data.total_items ?? 0} pageSize={PAGE_SIZE} noun="adjustments" onChange={setPage} /></div>
           </>
         )}
       </Card>
