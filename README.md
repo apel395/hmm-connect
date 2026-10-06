@@ -6,6 +6,12 @@ This README is the **current module snapshot**. Keep it updated when a module, w
 
 ## Repository / deployment
 
+The login page offers **Sign in and end previous session** when an active
+session blocks login after a disconnect. This checks the password again and
+replaces the previous session; only one session remains active. Network errors
+during session initialization retain the saved token for a retry, and responses
+from an old session cannot erase a newer login.
+
 - Frontend source and Vercel deployment branch: `main`
 - Backend / Lambda source branch: `backend`
 - Production frontend: `https://connect.mutiaramerdekahotel.com`
