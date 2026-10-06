@@ -34,9 +34,12 @@ class TransactionPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/'source.xlsx';self.workbook(p);return extract_transactions(p)
 
-    def test_exact_dates_do_not_guess_ranges_or_locale(self):
-        for raw,expected in [('2-14 JAN 26',None),('14FEB&1MARET 26',None),('31MAR-14APRIL 26',None),
-                             ('1 JAN 26',date(2026,1,1)),('03/01/2026',date(2026,1,3)),
+    def test_dates_use_latest_range_date_with_explicit_year(self):
+        for raw,expected in [('2-14 JAN 26',date(2026,1,14)),('14FEB&1MARET 26',date(2026,3,1)),('31MAR-14APRIL 26',date(2026,4,14)),
+                             ('1 JAN 26',date(2026,1,1)),('2,4 APRIL 26',date(2026,4,4)),
+                             ('6,11 & 31 MARET 26',date(2026,3,31)),('1-12 APRI 26',date(2026,4,12)),
+                             ('31MAR-14APRIL',None),('1-12 APRIL',None),('31FEB-1MARET 26',None),
+                             ('31MAR-14BOGUS 26',None),('14APRIL-31MAR 26',date(2026,4,14)),('03/01/2026',date(2026,1,3)),
                              (datetime(2026,3,1),date(2026,3,1)),('2026-01-09',date(2026,1,9))]:
             self.assertEqual(exact_date(raw),expected)
 
@@ -54,6 +57,10 @@ class TransactionPreflightTests(unittest.TestCase):
 
     def test_blank_tax_is_unknown_not_non_taxable(self):
         x=self.report()['invoices'][1]
+        self.assertEqual(x['invoice_date'],date(2026,1,14))
+        self.assertEqual(x['lines'][0]['received_date'],date(2026,1,14))
+        self.assertEqual(x['raw_invoice_date'],'2-14 JAN 26')
+        self.assertNotIn('INVOICE_DATE_NOT_SINGLE_DATE',x['errors'])
         self.assertIn('INVOICE_TAX_UNCONFIRMED',x['errors'])
         self.assertIn('TAX_EVIDENCE_MISSING',x['lines'][0]['errors'])
         self.assertIsNone(x['computed_gross'])
