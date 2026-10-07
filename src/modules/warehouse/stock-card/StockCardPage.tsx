@@ -1,14 +1,14 @@
+import InventoryPrintButton from "@/components/print/InventoryPrintButton";
+import { stockCardReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
-import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
 import Pagination from "@/components/datatable/Pagination";
 import Loading from "@/components/ui/Loading";
 import { useInventoryMovements } from "@/modules/warehouse/inventory/useInventoryMovement";
-import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { inventoryApi } from "@/modules/warehouse/inventory/api";
 
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const num = (v: unknown) => Number(v ?? 0).toLocaleString("id-ID");
@@ -21,7 +21,7 @@ export default function StockCardPage() {
   const [productId, setProductId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [page, setPage] = useState(1);
-  const accounts = useQuery({queryKey:["stock-card-coa"],queryFn:()=>getAllAccountLookup({is_active:true,is_posting:true})});
+  const accounts = useQuery({queryKey:["stock-card-coa"],queryFn:inventoryApi.accounts});
   const query = useInventoryMovements({
     date_from:dateFrom||undefined, date_to:dateTo||undefined,
     account_id:accountId?Number(accountId):undefined,
@@ -32,7 +32,7 @@ export default function StockCardPage() {
   const data = query.data;
   return <div className="inventory-print-report space-y-6">
     <InventoryReportHeading title={"Stock Card"} context={`Period: ${dateFrom || "2026-01-01"} – ${dateTo || "Current"}${productId ? ` · Item ID: ${productId}` : ""}${warehouseId ? ` · Warehouse ID: ${warehouseId}` : ""}${accountId ? ` · Account ID: ${accountId}` : ""}`} rows={data?.items?.length ?? 0} total={data?.total_items ?? 0}/>
-    <PageHeader actions={<Button variant="outline" onClick={()=>window.print()}><Printer size={16}/> Print</Button>} title="Stock Card" description="Inventory movements and totals for the selected date range and account."/>
+    <PageHeader actions={<InventoryPrintButton disabled={Boolean(dateFrom && dateTo && dateFrom > dateTo)} loadReport={() => stockCardReport({date_from:dateFrom || undefined,date_to:dateTo || undefined,account_id:accountId ? Number(accountId) : undefined,product_id:productId ? Number(productId) : undefined,warehouse_id:warehouseId ? Number(warehouseId) : undefined}, `Account: ${accounts.data?.find((a:any) => a.id === Number(accountId))?.account_name || "All"}${productId ? ` · Item ID: ${productId}` : ""}${warehouseId ? ` · Warehouse ID: ${warehouseId}` : ""}`)}/>} title="Stock Card" description="Inventory movements and totals for the selected date range and account."/>
     <Card className="p-4 print:hidden"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <label className="text-xs font-medium text-slate-600">From date<input type="date" className={input} value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPage(1)}}/></label>
       <label className="text-xs font-medium text-slate-600">To date<input type="date" min={dateFrom||undefined} className={input} value={dateTo} onChange={e=>{setDateTo(e.target.value);setPage(1)}}/></label>

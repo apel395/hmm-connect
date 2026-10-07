@@ -1,6 +1,7 @@
+import InventoryPrintButton from "@/components/print/InventoryPrintButton";
+import { inventoryDocumentReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import PageHeader from "@/components/common/PageHeader";
-import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
@@ -33,7 +34,7 @@ return(
 
 <PageHeader
 
- actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Put Away"
+ actions={<InventoryPrintButton loadReport={() => inventoryDocumentReport("putaway",{}, "Received stock awaiting placement")}/>} title="Put Away"
 
 description="Move received stock into warehouse locations"
 

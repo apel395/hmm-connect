@@ -1,8 +1,10 @@
+import InventoryPrintButton from "@/components/print/InventoryPrintButton";
+import { stockListReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Printer, SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Button from "@/components/ui/Button";
@@ -128,7 +130,7 @@ export default function InventoryPage() {
     <div className="print:hidden">
       <PageHeader title="Inventory"
         description="Check opening and closing warehouse stock by date and inventory account."
-        actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>}
+        actions={<InventoryPrintButton loadReport={() => stockListReport({...filters,as_of:dateTo || undefined}, `As of: ${dateTo || "Current"}${dateFrom ? ` · From: ${dateFrom}` : ""} · Search: ${search || "All"} · Health: ${health} · Age: ${movementClass}${accountId ? ` · Account: ${accounts.data?.find(a => a.id === accountId)?.account_name || accountId}` : ""}`)}/>}
       />
     </div>
 

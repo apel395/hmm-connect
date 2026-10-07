@@ -1,8 +1,10 @@
+import InventoryPrintButton from "@/components/print/InventoryPrintButton";
+import { movementReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { Printer, SlidersHorizontal, X } from "lucide-react";
+import { SlidersHorizontal, X } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Card from "@/components/ui/Card";
@@ -138,7 +140,7 @@ export default function InventoryMovementPage() {
         : "Search or select an item to see its complete stock history and running quantity."}
       actions={<div className="flex gap-2">
         {focused && <Button variant="secondary" onClick={clearItem}><X size={16} className="mr-1"/> All items</Button>}
-        <Button variant="outline" onClick={() => window.print()}><Printer size={16} className="mr-1"/> Print</Button>
+        <InventoryPrintButton disabled={invalidRange} loadReport={() => movementReport({...filters}, `Period: ${dateFrom || "All"} – ${dateTo || "Current"} · Search: ${search || "All"} · Source: ${sourceKind}${productId ? ` · Item ID: ${productId}` : ""}${warehouseId ? ` · Warehouse ID: ${warehouseId}` : ""}${locationId ? ` · Location: ${locations.data?.find(l => l.id === Number(locationId))?.name || locationId}` : ""}${departmentId ? ` · Department ID: ${departmentId}` : ""}${accountId ? ` · Account: ${accounts.data?.find(a => a.id === Number(accountId))?.account_name || accountId}` : ""}${poId ? ` · PO ID: ${poId}` : ""}${receiptId ? ` · Receipt ID: ${receiptId}` : ""}`)}/>
       </div>}/>
 
     <Card className="p-3 print:hidden">

@@ -1,5 +1,6 @@
+import InventoryPrintButton from "@/components/print/InventoryPrintButton";
+import { inventoryDocumentReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
-import { Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -63,7 +64,7 @@ export default function StockOpnamePage() {
 <InventoryReportHeading title="Stock Opname" context={`Search: ${search || "All"} · Status: ${status}`} rows={rows.length} total={data?.total_items ?? 0}/>
       <PageHeader title="Stock Opname" description="Physical inventory count, variance approval, and controlled stock adjustment." actions={<>
 <Button onClick={() => setShow(true)}>Create Stock Opname</Button>
-<Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
+<InventoryPrintButton loadReport={() => inventoryDocumentReport("opnames",{status:status === "ALL" ? undefined : status,search:search || undefined}, `Search: ${search || "All"} · Status: ${status}`)}/>
 </>} />
       <Card className="p-4 print:hidden"><div className="grid gap-3 md:grid-cols-[1fr_220px]"><input className={input} placeholder="Search opname number" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} /><select className={input} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>{["ALL","DRAFT","PENDING_APPROVAL","APPROVED","POSTED","REJECTED"].map((v) => <option key={v}>{v}</option>)}</select></div></Card>
       <Card className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead><tr><th className="px-4 py-3 text-left">Number</th><th className="px-4 py-3 text-left">Count Date</th><th className="px-4 py-3 text-left">Warehouse</th><th className="px-4 py-3 text-left">Location</th><th className="px-4 py-3 text-right">Items</th><th className="px-4 py-3 text-right">Variance</th><th className="px-4 py-3 text-left">Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className="border-t whitespace-nowrap"><td className="px-4 py-3 font-medium"><Link className="text-emerald-700 hover:underline" to={`/stock-opnames/${row.id}`}>{row.opname_number}</Link></td><td className="px-4 py-3">{row.count_date}</td><td className="px-4 py-3">{row.warehouse_name ?? "—"}</td><td className="px-4 py-3">{row.location_name ?? "—"}</td><td className="px-4 py-3 text-right">{row.total_items}</td><td className="px-4 py-3 text-right">{Number(row.total_variance_quantity || 0).toLocaleString("id-ID")}</td><td className="px-4 py-3">{row.status.replaceAll("_", " ")}</td></tr>)}</tbody></table></div><div className="p-4 print:hidden"><Pagination page={page} pages={Math.max(data?.total_pages ?? 0, 1)} total={data?.total_items ?? 0} pageSize={PAGE_SIZE} noun="stock opnames" onChange={setPage} /></div></Card>
