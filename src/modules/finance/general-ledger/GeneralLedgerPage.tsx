@@ -127,7 +127,7 @@ export default function GeneralLedgerPage() {
     if (filters.date_from || filters.date_to) parts.push(`${filters.date_from || "…"} to ${filters.date_to || "…"}`);
     if (filters.account_id) {
       const account = accounts.data?.find((a: any) => String(a.id) === String(filters.account_id));
-      if (account) parts.push(`${account.account_code} — ${account.account_name}`);
+      if (account) parts.push(account.account_name);
     }
     return parts.join(" · ");
   })();
@@ -178,7 +178,7 @@ export default function GeneralLedgerPage() {
           return <TR key={row.id}>
             <TD className="whitespace-nowrap">{row.posting_date}</TD>
             <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
-            <TD className="max-w-[200px]"><TableCellStack primary={row.account_name} secondary={row.account_code}/></TD>
+            <TD className="max-w-[200px]"><TableCellStack primary={row.account_name}/></TD>
             <TD className="max-w-[220px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
             <TD className="max-w-[160px]"><span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span></TD>
             <TD numeric className="whitespace-nowrap">{amount(row.debit)}</TD>

@@ -1,3 +1,4 @@
+import { ledgerPrintParams } from "./printFilters";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import Loading from "@/components/ui/Loading";
@@ -24,19 +25,7 @@ const COLUMNS = ["Date", "Journal No.", "Document", "Reference", "Description", 
 
 export default function GeneralLedgerPrintPage() {
   const [searchParams] = useSearchParams();
-  const params = Object.fromEntries(
-    Object.entries({
-      search: searchParams.get("search") || "",
-      account_id: searchParams.get("account_id") || "",
-      date_from: searchParams.get("date_from") || "",
-      date_to: searchParams.get("date_to") || "",
-      reference_type: searchParams.get("reference_type") || "",
-      supplier_id: searchParams.get("supplier_id") || "",
-      department_id: searchParams.get("department_id") || "",
-      location_id: searchParams.get("location_id") || "",
-      business_unit_id: searchParams.get("business_unit_id") || "",
-    }).filter(([, value]) => value !== ""),
-  );
+  const params = ledgerPrintParams(searchParams);
   const query = useQuery({
     queryKey: ["general-ledger", "print", params],
     queryFn: () => getLedgerPrint(params),
