@@ -1,4 +1,5 @@
 import console from "node:console";
+import { URLSearchParams } from "node:url";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
@@ -72,3 +73,18 @@ browser.setItem("access_token", "new-session");
 await api.interceptors.response.handlers[0].rejected({ config: staleConfig, response: { status: 401 } }).catch(() => {});
 assert.equal(browser.getItem("access_token"), "new-session");
 console.log("Session expiry PASS: saved input retained, credentials cleared, stale 401 cannot erase a replacement login.");
+
+const { ledgerPrintParams } = await compile("src/modules/finance/general-ledger/printFilters.ts");
+const ledgerFilters = ledgerPrintParams(new URLSearchParams("account_ids=211,215&account_from_id=211&account_to_id=215&search_type=DOCUMENT&search=INV-1&location_id=1&business_unit_id=2&department_id=3&date_from=2026-01-01&date_to=2026-10-07"));
+assert.equal(ledgerFilters.account_ids, "211,215");
+assert.equal(ledgerFilters.account_from_id, "211");
+assert.equal(ledgerFilters.account_to_id, "215");
+assert.equal(ledgerFilters.search_type, "DOCUMENT");
+assert.equal(ledgerFilters.search, "INV-1");
+assert.equal(ledgerFilters.location_id, "1");
+assert.equal(ledgerFilters.business_unit_id, "2");
+assert.equal(ledgerFilters.department_id, "3");
+assert.equal(ledgerFilters.date_from, "2026-01-01");
+assert.equal(ledgerFilters.date_to, "2026-10-07");
+assert.equal(ledgerFilters.account_id, undefined);
+console.log("GL print scope PASS: exact account IDs, ranges, search type, dates and dimensions retained.");

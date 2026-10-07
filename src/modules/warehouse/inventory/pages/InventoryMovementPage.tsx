@@ -231,7 +231,7 @@ export default function InventoryMovementPage() {
 
       <div className="grid gap-3 md:grid-cols-3">
         {!focused && <Card className="p-3"><div className="text-xs uppercase text-slate-500">Matching events</div><div className="mt-1 text-2xl font-bold">{total}</div></Card>}
-        <Card className="p-3"><div className="text-xs uppercase text-slate-500">Filtered stock in</div><div className="mt-1 text-xl font-bold">{quantity(summary?.in_qty)} · Rp {money(summary?.in_value)}</div></Card>
+        <Card className="p-3"><div className="text-xs uppercase text-slate-500">Filtered stock in</div><div className="mt-1 text-xl font-bold">Rp {money(summary?.in_value)}</div></Card>
         <Card className="p-3"><div className="text-xs uppercase text-slate-500">Filtered stock out</div><div className="mt-1 text-xl font-bold">{quantity(summary?.out_qty)} · Rp {money(summary?.out_value)}</div></Card>
       </div>
 

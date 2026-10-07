@@ -1,3 +1,4 @@
+import { ledgerPrintParams } from "./printFilters";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import Loading from "@/components/ui/Loading";
@@ -24,19 +25,7 @@ const COLUMNS = ["Date", "Journal No.", "Document", "Reference", "Description", 
 
 export default function GeneralLedgerPrintPage() {
   const [searchParams] = useSearchParams();
-  const params = Object.fromEntries(
-    Object.entries({
-      search: searchParams.get("search") || "",
-      account_id: searchParams.get("account_id") || "",
-      date_from: searchParams.get("date_from") || "",
-      date_to: searchParams.get("date_to") || "",
-      reference_type: searchParams.get("reference_type") || "",
-      supplier_id: searchParams.get("supplier_id") || "",
-      department_id: searchParams.get("department_id") || "",
-      location_id: searchParams.get("location_id") || "",
-      business_unit_id: searchParams.get("business_unit_id") || "",
-    }).filter(([, value]) => value !== ""),
-  );
+  const params = ledgerPrintParams(searchParams);
   const query = useQuery({
     queryKey: ["general-ledger", "print", params],
     queryFn: () => getLedgerPrint(params),
@@ -49,12 +38,12 @@ export default function GeneralLedgerPrintPage() {
   const filters = data.filters ?? {};
   const accounts: any[] = data.accounts ?? [];
   const control = data.control ?? {};
-  const brand = data.brand_name || "HMM-Connect";
+  const brand = data.brand_name || "MMH-Connect";
   const period = data.period?.date_from || data.period?.date_to
     ? `${longDate(data.period?.date_from) || "…"} - ${longDate(data.period?.date_to) || "…"}`
     : "All time";
   const accountLine = filters.account_code
-    ? `${filters.account_code}${filters.account_name ? ` ${filters.account_name}` : ""}`
+    ? filters.account_name || "Selected account"
     : "ALL";
 
   return (
@@ -93,7 +82,7 @@ export default function GeneralLedgerPrintPage() {
       {accounts.map((account) => (
         <section key={account.account_id} className="gl-account mb-6">
           <div className="mb-1 border-b border-slate-500 pb-1">
-            <div className="font-bold">ACCOUNT: {account.account_code}</div>
+            <div className="font-bold">{account.account_name}</div>
             <div>{account.account_name}</div>
             <div className="text-[9px] text-slate-600">{account.account_type} | Normal Balance: {account.normal_balance}</div>
           </div>

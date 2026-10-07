@@ -18,9 +18,11 @@ import {
 export default function InventoryPrintButton({
   loadReport,
   disabled,
+  reportLabel = "Inventory",
 }: {
   loadReport: () => Promise<InventoryPrintReport>;
   disabled?: boolean;
+  reportLabel?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [html, setHtml] = useState("");
@@ -59,7 +61,7 @@ export default function InventoryPrintButton({
       <Button
         variant="outline"
         title="Print complete report"
-        aria-label="Print complete inventory report"
+        aria-label={`Print complete ${reportLabel.toLowerCase()} report`}
         disabled={disabled}
         loading={busy}
         onClick={prepare}
@@ -77,14 +79,14 @@ export default function InventoryPrintButton({
       >
         <DialogContent className="max-w-6xl">
           <DialogHeader>
-            <DialogTitle>Inventory print preview</DialogTitle>
+            <DialogTitle>{reportLabel} print preview</DialogTitle>
           </DialogHeader>
           <DialogBody className="bg-slate-100 p-3">
             <iframe
               ref={frame}
               srcDoc={html}
               sandbox="allow-same-origin allow-modals"
-              title="Complete filtered inventory report"
+              title={`Complete filtered ${reportLabel.toLowerCase()} report`}
               onLoad={() => setReady(true)}
               className="h-[72vh] w-full border bg-white"
             />

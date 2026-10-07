@@ -41,10 +41,12 @@ const groups: Group[] = [
     { title: "Sales", url: "/pos/sales", permission: "pos.view", roles: POS_ROLES },
   ] },
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"], children: [
-    { title: "Budgets", url: "/budgets", permission: "finance.view" },
+    { title: "Budget Input", url: "/budgets", permission: "finance.view" },
     { title: "Finance Dashboard", url: "/finance-dashboard", permission: "finance.view" },
     { title: "Accounts Payable", url: "/accounts-payable", permission: "ap.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Accounts Receivable", url: "/accounts-receivable", permission: "finance.view" },
+    { title: "General Cashier", url: "/cash-bank/cashier", permission: "finance.view" },
+    { title: "Petty Cash", url: "/cash-bank/petty-cash", permission: "finance.view" },
     { title: "Cash & Bank", url: "/cash-bank", permission: "finance.view" },
     { title: "Journal", url: "/journal", permission: "journal.view" },
     { title: "Accounting Periods", url: "/finance-setup/accounting-periods", permission: "finance.manage" },

@@ -52,8 +52,8 @@ export async function stockListReport(
   title = "Stock List",
 ): Promise<InventoryPrintReport> {
   const data = await allInventoryRows("/inventory", params);
-  const groups = grouped(data.items, accountName).map(([name, items]) => ({
-    title: name,
+  const groups = grouped(data.items, accountName).map(([, items]) => ({
+    title: items[0].inventory_account_name || "Unmapped inventory account",
     rows: items
       .sort(
         (a, b) =>
@@ -154,8 +154,8 @@ export async function lowStockReport(
       { label: "Minimum", numeric: true },
       { label: "Shortage", numeric: true },
     ],
-    groups: grouped(data.items, accountName).map(([name, items]) => ({
-      title: name,
+    groups: grouped(data.items, accountName).map(([, items]) => ({
+      title: items[0].inventory_account_name || "Unmapped inventory account",
       rows: items.map((r) => [
         r.product_code,
         r.product_name,
@@ -203,8 +203,8 @@ export async function movementReport(
     context,
     columns,
     rowCount: data.items.length,
-    groups: grouped(data.items, accountName).map(([name, items]) => ({
-      title: name,
+    groups: grouped(data.items, accountName).map(([, items]) => ({
+      title: items[0].inventory_account_name || "Unmapped inventory account",
       rows: items
         .sort(chronological)
         .map((r) => [

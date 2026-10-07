@@ -23,7 +23,7 @@ export default function GeneralLedgerPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("ledger-page-size")) === 100 ? 100 : 50);
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState<any>({ search: searchParams.get("search") || "", search_type: searchParams.get("search_type") || "ALL", account_id: searchParams.get("account_id") || "", account_from_id: searchParams.get("account_from_id") || "", account_to_id: searchParams.get("account_to_id") || "", date_from: searchParams.get("date_from") || "", date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
+  const [filters, setFilters] = useState<any>({ account_ids: searchParams.get("account_ids") || "", search: searchParams.get("search") || "", search_type: searchParams.get("search_type") || "ALL", account_id: searchParams.get("account_id") || "", account_from_id: searchParams.get("account_from_id") || "", account_to_id: searchParams.get("account_to_id") || "", date_from: searchParams.get("date_from") || "", date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
@@ -127,7 +127,7 @@ export default function GeneralLedgerPage() {
     if (filters.date_from || filters.date_to) parts.push(`${filters.date_from || "…"} to ${filters.date_to || "…"}`);
     if (filters.account_id) {
       const account = accounts.data?.find((a: any) => String(a.id) === String(filters.account_id));
-      if (account) parts.push(`${account.account_code} — ${account.account_name}`);
+      if (account) parts.push(account.account_name);
     }
     return parts.join(" · ");
   })();
@@ -178,7 +178,7 @@ export default function GeneralLedgerPage() {
           return <TR key={row.id}>
             <TD className="whitespace-nowrap">{row.posting_date}</TD>
             <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
-            <TD className="max-w-[200px]"><TableCellStack primary={row.account_name} secondary={row.account_code}/></TD>
+            <TD className="max-w-[200px]"><TableCellStack primary={row.account_name}/></TD>
             <TD className="max-w-[220px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
             <TD className="max-w-[160px]"><span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span></TD>
             <TD numeric className="whitespace-nowrap">{amount(row.debit)}</TD>

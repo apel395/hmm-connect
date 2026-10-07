@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import DepartmentPerformanceTable from "./DepartmentPerformanceTable";
 import api from "@/api/client";
 import useAuthStore from "@/store/auth";
 import type { Kind, Period, Amounts, Row, Report } from "./FinancialReportPage";
@@ -19,7 +20,7 @@ const profit = (data: Report, period: Period, metric: keyof Amounts) => {
 };
 
 const css = `
-@page { size: A4 landscape; margin: 10mm 10mm 14mm; @bottom-left { content: "HMM-Connect · IDR"; font: 8pt Arial; } @bottom-right { content: "Page " counter(page); font: 8pt Arial; } }
+@page { size: A4 landscape; margin: 10mm 10mm 14mm; @bottom-left { content: "MMH-Connect · IDR"; font: 8pt Arial; } @bottom-right { content: "Page " counter(page); font: 8pt Arial; } }
 .statement-print { color:#111; font: 9pt Arial, sans-serif; background:white; margin:auto; padding:10mm; }
 .statement-header { text-align:center; border-bottom:2px solid #222; margin-bottom:4mm; padding-bottom:3mm; break-inside:avoid; }
 .statement-header h1 { font-size:14pt; margin:2mm 0; }.statement-header p { margin:1mm 0; }.statement-company { font-weight:bold; font-size:11pt; }
@@ -41,14 +42,14 @@ function ReportHeader({ kind, data, asOf, caption }: { kind: Kind; data: Report;
 function SectionRows({ data, sections, periods, columns }: { data: Report; sections: string[]; periods: Period[]; columns: (keyof Amounts)[] }) {
   return <>{sections.map(section => <Fragment key={section}>
     <tr className="group"><td colSpan={1 + periods.length * columns.length}>{labels[section]}</td></tr>
-    {data.rows.filter(row => row.section === section).map((row: Row) => <tr key={`${row.account_code}-${row.account_name}`}><td className="account">{row.account_code} {row.account_name}</td>{periods.flatMap(period => columns.map(metric => <td className="amount" key={`${period}-${metric}`}>{money(row.periods[period][metric])}</td>))}</tr>)}
+    {data.rows.filter(row => row.section === section).map((row: Row) => <tr key={`${row.account_code}-${row.account_name}`}><td className="account">{row.account_name}</td>{periods.flatMap(period => columns.map(metric => <td className="amount" key={`${period}-${metric}`}>{money(row.periods[period][metric])}</td>))}</tr>)}
     <tr className="total"><td className="account">Total {labels[section]}</td>{periods.flatMap(period => columns.map(metric => <td className="amount" key={`${period}-${metric}`}>{money(data.section_totals[section]?.[period]?.[metric])}</td>))}</tr>
   </Fragment>)}</>;
 }
 
 export function FinancialStatementPrint({ kind, data, asOf, printedBy }: { kind: Kind; data: Report; asOf: string; printedBy?: string }) {
   const comparisons = [...metrics, "movement" as const];
-  const metadata = <div className="print-meta">{printedBy ? `Dicetak oleh ${printedBy} · ` : ""}{new Date().toLocaleString("id-ID")} · HMM-Connect</div>;
+  const metadata = <div className="print-meta">{printedBy ? `Dicetak oleh ${printedBy} · ` : ""}{new Date().toLocaleString("id-ID")} · MMH-Connect</div>;
   return <article className="statement-print print-document" data-print-ready="true"><style>{css}</style><ReportHeader kind={kind} data={data} asOf={asOf} />
     {kind === "PROFIT_LOSS" ? <table><thead><tr><th className="account" rowSpan={2}>Akun</th>{(["MTD", "YTD"] as const).map(period => <th key={period} colSpan={metrics.length}>{period}<span className="period-range">{data.periods[period].current?.join(" — ")}</span></th>)}</tr><tr>{["MTD", "YTD"].flatMap(period => metricNames.map(name => <th className="amount" key={`${period}-${name}`}>{name}</th>))}</tr></thead><tbody>
       <SectionRows data={data} sections={["REVENUE", "COST_OF_REVENUE", "EXPENSES"]} periods={["MTD", "YTD"]} columns={metrics} />
@@ -58,6 +59,7 @@ export function FinancialStatementPrint({ kind, data, asOf, printedBy }: { kind:
       {metadata}
       {(["MTD", "YTD"] as const).map(period => <section className="comparison-page" key={period}><ReportHeader kind={kind} data={data} asOf={asOf} caption={`Perbandingan ${period}`} /><table><thead><tr><th className="account">Akun</th>{[...metricNames, "Movement"].map((name, i) => <th className="amount" key={name}>{name}{data.periods[period][comparisons[i]] ? <span className="period-range">{data.periods[period][comparisons[i]].join(" — ")}</span> : null}</th>)}</tr></thead><tbody><SectionRows data={data} sections={["ASSETS", "LIABILITIES", "EQUITY"]} periods={[period]} columns={comparisons} /><tr className="grand-total"><td>Total Liabilitas + Ekuitas</td>{comparisons.map(metric => <td key={metric} className="amount">{money(sum(data, ["LIABILITIES", "EQUITY"], period, metric))}</td>)}</tr></tbody></table>{metadata}</section>)}
     </>}{kind === "PROFIT_LOSS" ? metadata : null}
+    {kind === "PROFIT_LOSS" && data.departments && <>{(["MTD", "YTD"] as const).map(period => <DepartmentPerformanceTable key={period} departments={data.departments ?? []} period={period} asOf={asOf} locationId={data.scope.location_id} businessUnitId={data.scope.business_unit_id} />)}</>}
   </article>;
 }
 

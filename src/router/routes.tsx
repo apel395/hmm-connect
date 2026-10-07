@@ -1,3 +1,5 @@
+import ARInvoicePage from "@/modules/finance/accounts-receivable/ARInvoicePage";
+import CashierPage from "@/modules/finance/cash-flow/CashierPage";
 import BudgetListPage from "@/modules/finance/budgets/BudgetListPage";
 import BudgetFormPage from "@/modules/finance/budgets/BudgetFormPage";
 import BudgetDetailPage from "@/modules/finance/budgets/BudgetDetailPage";
@@ -201,6 +203,10 @@ const router = createBrowserRouter([
       { path: "cash-flow-statement", element: <CashFlowStatementPage /> },
       { path: "bank-transfers", element: <BankTransferListPage /> },
       { path: "bank-transfers/:id", element: <BankTransferDetailPage /> },
+      { path: "accounts-receivable/invoices/:id", element: <PermissionGuard permission="finance.view"><ARInvoicePage /></PermissionGuard> },
+      { path: "accounts-receivable/invoices/:id/print", element: <PermissionGuard permission="finance.view"><ARInvoicePage /></PermissionGuard> },
+      { path: "cash-bank/cashier", element: <PermissionGuard permission="finance.view"><CashierPage /></PermissionGuard> },
+      { path: "cash-bank/petty-cash", element: <PermissionGuard permission="finance.view"><CashierPage petty /></PermissionGuard> },
       { path: "bank-transfers/:id/print", element: <BankTransferPrintPage /> },
       { path: "bank-reconciliations", element: <BankReconciliationListPage /> },
       { path: "bank-reconciliations/:id", element: <BankReconciliationDetailPage /> },

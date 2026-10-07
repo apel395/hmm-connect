@@ -12,15 +12,15 @@ export default function BankTransferPrintPage() {
   if (query.isLoading) return <Loading />;
   if (!query.data) return <p>Transfer could not be loaded.</p>;
   const transfer: any = query.data;
-  const rows = [{ id: transfer.id, description: `${transfer.source_account_code} — ${transfer.source_account_name} → ${transfer.destination_account_code} — ${transfer.destination_account_name}`, amount: transfer.amount }];
+  const rows = [{ id: transfer.id, description: `${transfer.source_account_name} → ${transfer.destination_account_name}`, amount: transfer.amount }];
   return <DocumentPrintTemplate
     title="Bank Transfer"
     documentNumber={transfer.transfer_number}
     documentDate={transfer.transfer_date ? new Date(transfer.transfer_date).toLocaleDateString() : "—"}
     status={transfer.status}
     fields={[
-      { label: "SOURCE", value: `${transfer.source_account_code} — ${transfer.source_account_name}` },
-      { label: "DESTINATION", value: `${transfer.destination_account_code} — ${transfer.destination_account_name}` },
+      { label: "SOURCE", value: `${transfer.source_account_name}` },
+      { label: "DESTINATION", value: `${transfer.destination_account_name}` },
       { label: "CURRENCY", value: transfer.currency },
       { label: "REFERENCE", value: transfer.reference_number },
       { label: "JOURNAL", value: transfer.journal_number },

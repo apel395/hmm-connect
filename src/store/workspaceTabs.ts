@@ -76,7 +76,7 @@ export const useWorkspaceTabs = create<WorkspaceTabsState>()(
         if (target.pinned) return { nextPath: null };
 
         const remaining = state.tabs.filter((tab) => tab.id !== id);
-        const next = remaining[Math.min(index, remaining.length - 1)] ?? dashboardTab;
+        const next = [...remaining].sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))[0] ?? dashboardTab;
         set({
           tabs: remaining.length ? remaining : [dashboardTab],
           closedTabs: rememberClosed([target], state.closedTabs),

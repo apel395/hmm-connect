@@ -45,7 +45,7 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
   ];
 
   const columns = isJournal ? [
-    { label: "ACCOUNT", align: "left" as const, render: (line: any) => `${line.account_code ?? ""} — ${line.account_name ?? ""}` },
+    { label: "ACCOUNT", align: "left" as const, render: (line: any) => line.account_name || "—" },
     { label: "DESCRIPTION", align: "left" as const, render: (line: any) => line.description || "—" },
     { label: "DEBIT", align: "right" as const, render: (line: any) => money(line.debit) },
     { label: "CREDIT", align: "right" as const, render: (line: any) => money(line.credit) },
@@ -79,7 +79,7 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     ...(rows.some((line: any) => Number(line.tax_amount || 0) !== 0 || Number(line.tax_rate || 0) !== 0)
       ? [{ label: "PPN", align: "right" as const, render: (line: any) => money(line.tax_amount) }]
       : []),
-    { label: "ACCOUNT", align: "left" as const, render: (line: any) => [line.account_code, line.account_name].filter(Boolean).join(" — ") || "—" },
+    { label: "ACCOUNT", align: "left" as const, render: (line: any) => line.account_name || "—" },
     { label: "LINE TOTAL", align: "right" as const, render: (line: any) => money(line.line_amount) },
   ];
 
@@ -87,7 +87,10 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     { label: "TOTAL DEBIT", value: money(data.total_debit), emphasis: true },
     { label: "TOTAL CREDIT", value: money(data.total_credit), emphasis: true },
   ] : isPayment ? [
-    { label: "TOTAL", value: money(data.total_amount), emphasis: true },
+    { label: "INVOICE SETTLEMENT", value: money(data.total_amount) },
+    ...(Number(data.bank_charge_amount || 0) ? [{ label: "BANK CHARGE", value: money(data.bank_charge_amount) }] : []),
+    ...(Number(data.short_over_amount || 0) ? [{ label: "SHORT / OVER", value: money(data.short_over_amount) }] : []),
+    { label: "TOTAL FUNDED", value: money(data.funded_amount), emphasis: true },
   ] : [
     { label: "SUBTOTAL", value: money(data.subtotal) },
     ...(Number(data.discount_amount || 0) ? [{ label: "DISCOUNT", value: money(-Number(data.discount_amount)) }] : []),

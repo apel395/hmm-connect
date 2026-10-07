@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
@@ -169,7 +170,7 @@ export default function ARReportingPage() {
                 {detail.data.items.map((row) => (
                   <TR key={row.invoice_id}>
                     <TD>{row.invoice_date}</TD>
-                    <TD className="font-medium">{row.invoice_number}</TD>
+                    <TD className="font-medium"><Link className="text-blue-700 hover:underline" to={`/accounts-receivable/invoices/${row.invoice_id}`}>{row.invoice_number}</Link></TD>
                     <TD>{row.customer_name || `Customer #${row.customer_id}`}</TD>
                     <TD>{row.due_date || "—"}</TD>
                     <TD className="text-right">{money(row.gross_amount)}</TD>

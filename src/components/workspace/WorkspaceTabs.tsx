@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, LayoutDashboard, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, LayoutDashboard, RotateCcw, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import useWorkspaceTabs from "@/store/workspaceTabs";
@@ -148,6 +148,9 @@ export default function WorkspaceTabs() {
 
   return (
     <div className="flex h-10 shrink-0 items-stretch border-b border-[#DCD6CB] bg-[#F3F0EA] print:hidden">
+      <button type="button" title="Back / close current tab" aria-label="Back and close current tab" disabled={location.pathname === "/dashboard"}
+        onClick={() => { const next = closeTab(currentPath).nextPath; navigate(next || "/dashboard"); }}
+        className="grid w-9 shrink-0 place-items-center border-r text-slate-600 hover:bg-black/5 disabled:opacity-30"><ArrowLeft size={15} /></button>
       <div ref={stripRef} className="min-w-0 flex-1 overflow-hidden">
         <div className="flex h-full min-w-0 items-stretch">
           {visibleTabs.map(tabElement)}

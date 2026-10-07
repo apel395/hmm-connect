@@ -19,6 +19,7 @@ export interface Product {
   sales_service_name?: string | null;
   sales_business_unit_id?: number | null;
   sales_location_id?: number | null;
+  service_charge_rate?: number | string;
   pbjt_rate?: string | number;
   sales_ppn_rate?: string | number;
   pph23_rate?: string | number;
@@ -70,6 +71,7 @@ export interface ProductCreateRequest {
   sales_service_name?: string | null;
   sales_business_unit_id?: number | null;
   sales_location_id?: number | null;
+  service_charge_rate?: number | string;
   pbjt_rate?: number;
   sales_ppn_rate?: number;
   pph23_rate?: number;

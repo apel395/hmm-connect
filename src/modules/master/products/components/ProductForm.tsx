@@ -37,7 +37,7 @@ interface Props {
 const blank = () => ({
   code: "", name: "", item_type: "BUY" as ItemType,
   sales_service_name: "", sales_business_unit_id: null as number | null, sales_location_id: null as number | null,
-  pbjt_rate: 0, sales_ppn_rate: 0, pph23_rate: 0,
+  service_charge_rate: 0, pbjt_rate: 0, sales_ppn_rate: 0, pph23_rate: 0,
   group_code: "", group_name: "", subgroup_code: "", subgroup_name: "",
   uom: "", usage_uom: "", conversion: 1, minimum_stock: 0, cost_price: 0, selling_price: 0,
   inventory_treatment: "REVIEW_REQUIRED" as InventoryTreatment,
@@ -142,6 +142,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
       sales_service_name: product.sales_service_name ?? "",
       sales_business_unit_id: product.sales_business_unit_id ?? null,
       sales_location_id: product.sales_location_id ?? null,
+      service_charge_rate: Number(product.service_charge_rate ?? 0),
       pbjt_rate: Number(product.pbjt_rate ?? 0),
       sales_ppn_rate: Number(product.sales_ppn_rate ?? 0),
       pph23_rate: Number(product.pph23_rate ?? 0),
@@ -176,6 +177,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
       sales_service_name: value === "SELL" ? current.sales_service_name : "",
       sales_business_unit_id: value === "SELL" ? current.sales_business_unit_id : null,
       sales_location_id: value === "SELL" ? current.sales_location_id : null,
+      service_charge_rate: value === "SELL" ? current.service_charge_rate : 0,
       pbjt_rate: value === "SELL" ? current.pbjt_rate : 0,
       sales_ppn_rate: value === "SELL" ? current.sales_ppn_rate : 0,
       pph23_rate: value === "SELL" ? current.pph23_rate : 0,
@@ -334,6 +336,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
             <label className="text-sm font-medium">Sales tax rate (%)
               <Input className="mt-1" type="number" min="0" max="100" step="0.01" disabled={!form.pbjt_rate && !form.sales_ppn_rate} value={form.pbjt_rate || form.sales_ppn_rate} onChange={(event) => update(form.pbjt_rate > 0 ? "pbjt_rate" : "sales_ppn_rate", Number(event.target.value))} />
             </label>
+            <label className="text-sm">Service charge (%)<Input className="mt-1" type="number" min="0" max="100" step="0.01" value={form.service_charge_rate} onChange={event => update("service_charge_rate", Number(event.target.value))} /></label>
             <label className="text-sm font-medium">PPh 23 withholding (%), if applicable
               <Input className="mt-1" type="number" min="0" max="100" step="0.01" value={form.pph23_rate} onChange={(event) => update("pph23_rate", Number(event.target.value))} />
             </label>

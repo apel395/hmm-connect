@@ -51,7 +51,7 @@ export default function StockOpnamePrintPage() {
     ]}
     rows={data.items ?? []}
     rowKey={(row: any) => row.id}
-    notes={data.notes || "Physical quantity is written by the counting officer on this sheet, then entered into HMM-Connect."}
+    notes={data.notes || "Physical quantity is written by the counting officer on this sheet, then entered into MMH-Connect."}
     signatures={[
       { label: "Counted By", name: "" },
       { label: "Entered By", name: "" },

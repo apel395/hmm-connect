@@ -203,7 +203,7 @@ export default function JournalDetailPage() {
             </div>
           </div>
         </DialogBody>
-        <DialogFooter><FormRecoveryActions failed={recovery.failed} disabled={save.isPending} onDiscard={() => { recovery.clear(); setEditOpen(false); }} /><Button variant="outline" disabled={save.isPending} onClick={() => setEditOpen(false)}>Close</Button><Button loading={save.isPending} disabled={!postingDate || !locationId || validLines.length < 2 || !balanced} onClick={() => save.mutate()}>Save Changes</Button></DialogFooter>
+        <DialogFooter><FormRecoveryActions failed={recovery.failed} disabled={save.isPending} onDiscard={() => { recovery.clear(); setEditOpen(false); }} /><Button variant="outline" disabled={save.isPending} onClick={() => setEditOpen(false)}>Close</Button><Button loading={save.isPending} disabled={!postingDate || !locationId || validLines.length < 1 } onClick={() => save.mutate()}>Save Changes</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;
