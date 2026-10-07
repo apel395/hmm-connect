@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import create_access_token, decode_access_token_claims, hash_password, verify_password
 from app.dependencies.auth import get_current_user, oauth2_scheme
+from app.dependencies.authorization import is_superuser
 from app.models.user import User
 from app.models.location_department import LocationDepartment
 from app.schemas.auth import (
@@ -156,7 +157,8 @@ def login(
         and last_activity is not None
         and now - last_activity < SESSION_IDLE_TIMEOUT
     )
-    if session_is_active and not replace_session:
+    # Administrator sign-in always takes over after credentials are verified.
+    if session_is_active and not (replace_session or is_superuser(user)):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This account has an active session. You can sign in and end the previous session if you were disconnected.",
