@@ -21,6 +21,7 @@ from app.services.general_ledger import GeneralLedgerService
 ZERO = Decimal("0")
 SUPPORTED_SOURCE_TYPES = {
     "MANUAL",
+    "GENERAL_CASHIER",
     "SUPPLIER_INVOICE",
     "SUPPLIER_PAYMENT",
     "SUPPLIER_ADJUSTMENT",
@@ -111,7 +112,7 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
     source = (journal.reference_type or "MANUAL").upper()
     now = datetime.now(timezone.utc)
 
-    if source == "MANUAL":
+    if source in {"MANUAL", "GENERAL_CASHIER"}:
         return
 
     if source == "OPENING_BALANCE":
@@ -200,7 +201,7 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
 def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
     source = (journal.reference_type or "MANUAL").upper()
 
-    if source == "MANUAL":
+    if source in {"MANUAL", "GENERAL_CASHIER"}:
         return
 
     if source == "SUPPLIER_INVOICE":

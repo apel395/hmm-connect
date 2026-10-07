@@ -24,6 +24,7 @@ class ProductCreate(BaseModel):
     sales_service_name: str | None = Field(default=None, max_length=120)
     sales_business_unit_id: int | None = None
     sales_location_id: int | None = None
+    service_charge_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     pbjt_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     sales_ppn_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     pph23_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
@@ -67,6 +68,7 @@ class ProductUpdate(BaseModel):
     sales_service_name: str | None = Field(default=None, max_length=120)
     sales_business_unit_id: int | None = None
     sales_location_id: int | None = None
+    service_charge_rate: Decimal | None = Field(default=None, ge=0, le=100)
     pbjt_rate: Decimal | None = Field(default=None, ge=0, le=100)
     sales_ppn_rate: Decimal | None = Field(default=None, ge=0, le=100)
     pph23_rate: Decimal | None = Field(default=None, ge=0, le=100)

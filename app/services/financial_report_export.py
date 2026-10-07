@@ -56,7 +56,7 @@ def flatten_sections(report):
             rows.append((f"  {group['label']}", _group_values(group, schema), "group"))
             for account in group["accounts"]:
                 code = account.get("account_code") or ""
-                label = f"    {code}{' — ' if code else ''}{account['account_name']}"
+                label = f"    {account['account_name']}"
                 rows.append((label, _account_values(account, schema), "account"))
     return rows, schema
 
