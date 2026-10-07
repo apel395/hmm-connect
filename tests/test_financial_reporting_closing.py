@@ -178,7 +178,7 @@ def test_report_api_scopes_reads_and_excel_and_rejects_other_location(db):
     workbook=load_workbook(BytesIO(asyncio.run(collect())))
     assert workbook.sheetnames == ["MTD","YTD"]
     values=list(workbook["MTD"].values)
-    assert any(row[0]=="400" and row[2]==100 for row in values)
+    assert any(row[0]=="Pendapatan" and row[1]==100 for row in values)
     assert not any(row[2]==900 for row in values)
 
 

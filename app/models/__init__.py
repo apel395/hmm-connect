@@ -70,3 +70,4 @@ from app.models import purchasing_item_policy as _purchasing_item_policy  # noqa
 __all__ = ["Base"]
 
 from app.models.financial_report_setting import FinancialReportSetting
+from app.models.ar_invoice_layout import ARInvoiceLayout

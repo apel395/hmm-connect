@@ -135,6 +135,8 @@ class SalesTransactionService:
                     line_number=index,
                     quantity=quantity,
                     unit_price=unit_price,
+                    service_charge_rate=Decimal(product.service_charge_rate or 0),
+                    service_charge_amount=(gross * Decimal(product.service_charge_rate or 0) / 100).quantize(MONEY),
                     tax_rate=tax_rate,
                     tax_amount=tax_amount,
                     line_amount=gross,
@@ -149,10 +151,12 @@ class SalesTransactionService:
         subtotal = sum((Decimal(line.line_amount or 0) for line in lines), ZERO)
         discount = min(discount, subtotal)
         tax_amount = sum((Decimal(line.tax_amount or 0) for line in lines), ZERO)
-        total = (subtotal - discount + tax_amount).quantize(MONEY)
+        service_charge = sum((Decimal(getattr(line, "service_charge_amount", 0) or 0) for line in lines), ZERO)
+        total = (subtotal - discount + tax_amount + service_charge).quantize(MONEY)
         return {
             "subtotal": subtotal,
             "discount": discount,
+            "service_charge_amount": service_charge,
             "tax_amount": tax_amount,
             "total": total,
         }
@@ -178,6 +182,7 @@ class SalesTransactionService:
             transaction.lines = cls._materialize_items(db, transaction, incoming=data.items)
             totals = cls._totals(transaction.lines, ZERO)
             transaction.subtotal = totals["subtotal"]
+            transaction.service_charge_amount = totals["service_charge_amount"]
             transaction.tax_amount = totals["tax_amount"]
             transaction.total_amount = totals["total"]
         db.add(transaction)
@@ -220,6 +225,7 @@ class SalesTransactionService:
         transaction.lines = cls._materialize_items(db, transaction, incoming=data.items)
         totals = cls._totals(transaction.lines, ZERO)
         transaction.subtotal = totals["subtotal"]
+        transaction.service_charge_amount = totals["service_charge_amount"]
         transaction.tax_amount = totals["tax_amount"]
         transaction.total_amount = totals["total"]
         ActivityService.log(
@@ -301,7 +307,8 @@ class SalesTransactionService:
         subtotal = Decimal(transaction.subtotal or 0)
         discount = cls._discount(subtotal, data.discount_amount or ZERO)
         tax_amount = sum((Decimal(line.tax_amount or 0) for line in transaction.lines), ZERO)
-        total = (subtotal - discount + tax_amount).quantize(MONEY)
+        service_charge = sum((Decimal(getattr(line, "service_charge_amount", 0) or 0) for line in transaction.lines), ZERO)
+        total = (subtotal - discount + tax_amount + service_charge).quantize(MONEY)
 
         payment_received = Decimal(data.payment_received or ZERO)
         if data.payment_method == "CASH":
@@ -389,7 +396,7 @@ class SalesTransactionService:
         lines.append((cash_account.id, total, ZERO, f"Payment received {transaction.transaction_number}"))
         if tax_payable:
             lines.append((tax_payable, ZERO, tax_amount, f"Output VAT {transaction.transaction_number}"))
-        lines.append((revenue_account.id, ZERO, subtotal - discount, f"Sales revenue {transaction.transaction_number}"))
+        lines.append((revenue_account.id, ZERO, subtotal - discount + service_charge, f"Sales revenue {transaction.transaction_number}"))
         for account_id, amount in sorted(cost_by_account.items()):
             lines.append((account_id, amount, ZERO, f"Cost of goods sold {transaction.transaction_number}"))
         for account_id, amount in sorted(inventory_by_account.items()):
@@ -458,6 +465,7 @@ class SalesTransactionService:
         transaction.subtotal = subtotal
         transaction.discount_amount = discount
         transaction.tax_amount = tax_amount
+        transaction.service_charge_amount = service_charge
         transaction.total_amount = total
         transaction.payment_method = data.payment_method
         transaction.payment_received = payment_received

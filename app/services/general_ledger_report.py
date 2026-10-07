@@ -17,6 +17,7 @@ def build_ledger_query(
     db: Session,
     *,
     account_id: int | None = None,
+    account_ids: str | None = None,
     account_from_id: int | None = None,
     account_to_id: int | None = None,
     search_type: str = "ALL",
@@ -33,6 +34,13 @@ def build_ledger_query(
         JournalEntry.status == "POSTED",
         JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")),
     )
+    if account_ids:
+        try:
+            ids = [int(value) for value in account_ids.split(",")]
+        except ValueError as exc:
+            from fastapi import HTTPException
+            raise HTTPException(422, "Invalid account selection") from exc
+        q = q.filter(JournalLine.account_id.in_(ids))
     if account_id:
         q = q.filter(JournalLine.account_id == account_id)
     if account_from_id:
@@ -138,6 +146,7 @@ def opening_balances(
     db: Session,
     *,
     account_id: int | None = None,
+    account_ids: str | None = None,
     account_from_id: int | None = None,
     account_to_id: int | None = None,
     date_from: date | None = None,
@@ -158,6 +167,7 @@ def opening_balances(
     q = build_ledger_query(
         db,
         account_id=account_id,
+        account_ids=account_ids,
         account_from_id=account_from_id,
         account_to_id=account_to_id,
         reference_type=reference_type,
@@ -184,6 +194,8 @@ def opening_balances(
         for account_id_value, (debit, credit) in snapshot.items():
             account = db.get(ChartOfAccount, account_id_value)
             if not account:
+                continue
+            if account_ids and account_id_value not in {int(value) for value in account_ids.split(",")}:
                 continue
             if account_id is not None and account_id_value != account_id:
                 continue
@@ -255,6 +267,7 @@ def ledger_grouped_report(
     db: Session,
     *,
     account_id: int | None = None,
+    account_ids: str | None = None,
     account_from_id: int | None = None,
     account_to_id: int | None = None,
     search_type: str = "ALL",
@@ -271,6 +284,7 @@ def ledger_grouped_report(
     q = build_ledger_query(
         db,
         account_id=account_id,
+        account_ids=account_ids,
         account_from_id=account_from_id,
         account_to_id=account_to_id,
         search_type=search_type,
@@ -286,6 +300,7 @@ def ledger_grouped_report(
     openings = opening_balances(
         db,
         account_id=account_id,
+        account_ids=account_ids,
         account_from_id=account_from_id,
         account_to_id=account_to_id,
         date_from=date_from,

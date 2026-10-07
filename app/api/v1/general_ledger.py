@@ -58,6 +58,7 @@ def listing(
     search: str | None = None,
     search_type: str = Query("ALL", pattern="^(ALL|JOURNAL|DOCUMENT|DESCRIPTION|ACCOUNT|SUPPLIER)$"),
     account_id: int | None = None,
+    account_ids: str | None = None,
     account_from_id: int | None = None,
     account_to_id: int | None = None,
     date_from: date | None = None,
@@ -83,6 +84,7 @@ def listing(
     q = build_ledger_query(
         db,
         account_id=account_id,
+        account_ids=account_ids,
         account_from_id=account_from_id,
         account_to_id=account_to_id,
         search_type=search_type,
@@ -99,7 +101,7 @@ def listing(
     total_debit, total_credit = ledger_totals(q)
     rows = ledger_rows_with_balance(q).offset((page - 1) * page_size).limit(page_size).all()
     openings = opening_balances(
-        db, account_id=account_id, account_from_id=account_from_id,
+        db, account_id=account_id, account_ids=account_ids, account_from_id=account_from_id,
         account_to_id=account_to_id, date_from=date_from,
         reference_type=reference_type, supplier_id=supplier_id,
         department_id=department_id, location_id=location_id,
@@ -122,6 +124,7 @@ def printable(
     search: str | None = None,
     search_type: str = Query("ALL", pattern="^(ALL|JOURNAL|DOCUMENT|DESCRIPTION|ACCOUNT|SUPPLIER)$"),
     account_id: int | None = None,
+    account_ids: str | None = None,
     account_from_id: int | None = None,
     account_to_id: int | None = None,
     date_from: date | None = None,
@@ -147,6 +150,7 @@ def printable(
     accounts, control_debit, control_credit = ledger_grouped_report(
         db,
         account_id=account_id,
+        account_ids=account_ids,
         account_from_id=account_from_id,
         account_to_id=account_to_id,
         search_type=search_type,
@@ -165,6 +169,7 @@ def printable(
         "period": {"date_from": date_from, "date_to": date_to},
         "filters": {
             "account_id": account_id,
+            "account_ids": account_ids,
             "account_from_id": account_from_id,
             "account_to_id": account_to_id,
             "search_type": search_type,

@@ -78,7 +78,7 @@ class JournalService:
             total_debit += debit
             total_credit += credit
 
-        if total_debit != total_credit:
+        if total_debit != total_credit and journal.reference_type.upper() != "MANUAL":
             raise HTTPException(
                 status_code=400,
                 detail="Journal is not balanced.",

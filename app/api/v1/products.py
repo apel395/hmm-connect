@@ -102,7 +102,9 @@ def _validate_treatment(payload: dict, product: Product | None = None) -> None:
 
 
 def _validate_sales_profile(db: Session, payload: dict, product: Product | None = None) -> None:
-    if any(field in payload and payload[field] is None for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate")):
+    if Decimal(payload.get("service_charge_rate", getattr(product, "service_charge_rate", 0) if product else 0) or 0) > 0 and payload.get("item_type", getattr(product, "item_type", "BUY") if product else "BUY") != "SELL":
+        raise HTTPException(422, "Service charge is for SELL items only")
+    if any(field in payload and payload[field] is None for field in ("service_charge_rate", "pbjt_rate", "sales_ppn_rate", "pph23_rate")):
         raise HTTPException(422, "Sales tax rates must be numbers between 0 and 100")
     values = {field: payload.get(field, getattr(product, field, None) if product else None)
               for field in ("sales_business_unit_id", "sales_location_id", "pbjt_rate", "sales_ppn_rate", "pph23_rate")}

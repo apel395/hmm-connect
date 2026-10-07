@@ -238,3 +238,17 @@ def overview(
             "overdue_invoice_count": payable["overdue_invoice_count"],
         }
     return serialize(result)
+
+
+@router.get("/management")
+def management(year: int, month: int, location_id: int | None = None,
+               business_unit_id: int | None = None, department_id: int | None = None,
+               db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if not has_permission(user, "finance.view"):
+        raise HTTPException(403, "Finance dashboard access required")
+    if not 2026 <= year <= 2100 or not 1 <= month <= 12:
+        raise HTTPException(422, "Select a valid month and year")
+    from app.services.management_dashboard import build_dashboard
+    return serialize(build_dashboard(db, year=year, month=month,
+        location_id=resolve_location_id(user, location_id), business_unit_id=business_unit_id,
+        department_id=department_id))

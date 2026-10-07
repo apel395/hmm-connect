@@ -116,6 +116,10 @@ def _generate_general_ledger_xlsx(db, output_path: Path, params: dict | None) ->
     q = build_ledger_query(
         db,
         account_id=_int(data.get("account_id")),
+        account_ids=_string(data.get("account_ids")),
+        account_from_id=_int(data.get("account_from_id")),
+        account_to_id=_int(data.get("account_to_id")),
+        search_type=_string(data.get("search_type")) or "ALL",
         date_from=_date(data.get("date_from")),
         date_to=_date(data.get("date_to")),
         reference_type=_string(data.get("reference_type")),
@@ -129,7 +133,7 @@ def _generate_general_ledger_xlsx(db, output_path: Path, params: dict | None) ->
         ws.append([
             line.journal_entry.posting_date,
             line.journal_entry.journal_number,
-            f"{line.account.account_number} - {line.account.account_name}",
+            line.account.account_name,
             line.description,
             line.journal_entry.document_number,
             line.location.name if line.location else None,

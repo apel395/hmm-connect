@@ -125,7 +125,7 @@ class FinancialReportingService:
         return available
 
     def build(self, *, report_type, as_of_date, location_id=None, business_unit_id=None,
-              department_id=None, budget_id=None, kap=False, include_zero=False):
+              department_id=None, budget_id=None, kap=False, include_zero=False, detail=False):
         scope = dict(location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
         calendar = periods(as_of_date)
         values, originals, summaries, budget_available, comparison_available = {}, {}, {}, {}, {}
@@ -168,7 +168,7 @@ class FinancialReportingService:
         settings = self.db.query(FinancialReportSetting).filter_by(report_type=report_type).first() if self.report_setup_available else None
         selected = set(settings.selected_account_ids) if settings and settings.selected_account_ids is not None else None
         all_accounts = {a.id: a for a in self.db.query(ChartOfAccount).all()}
-        header_only = kap or bool(settings and settings.header_only)
+        header_only = False if detail else kap or bool(settings and settings.header_only)
         display = {}
         for key, original in originals.items():
             account = all_accounts.get(original["account_id"])

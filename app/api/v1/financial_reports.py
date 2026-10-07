@@ -85,42 +85,52 @@ def save_setup(data: ReportSetupInput, report_type: str, db: Session = Depends(g
 def comparison(report_type: str = Query(pattern=TYPES), as_of_date: date = Query(),
                location_id: int | None = None, business_unit_id: int | None = None,
                department_id: int | None = None, budget_id: int | None = None,
-               kap: bool = False, include_zero: bool = False,
+               kap: bool = False, include_zero: bool = False, detail: bool = False,
                db: Session = Depends(get_db), user=Depends(view)):
     scope = resolve_location_id(user, location_id)
-    return serialize(FinancialReportingService(db).build(report_type=report_type, as_of_date=as_of_date,
+    report = FinancialReportingService(db).build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
-        budget_id=budget_id, kap=kap, include_zero=include_zero))
+        budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
+    if report_type == "PROFIT_LOSS":
+        from app.services.management_dashboard import activity_rows, departments
+        report["departments"] = departments(db, activity_rows(db, as_of_date, report["scope"]), as_of_date.month, report["scope"])
+    return serialize(report)
 
 
 @router.get("/comparison/export")
 def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date = Query(),
                       location_id: int | None = None, business_unit_id: int | None = None,
                       department_id: int | None = None, budget_id: int | None = None,
-                      kap: bool = False, include_zero: bool = False,
+                      kap: bool = False, include_zero: bool = False, detail: bool = False,
                       db: Session = Depends(get_db), user=Depends(view)):
     scope = resolve_location_id(user, location_id)
     report = FinancialReportingService(db).build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
-        budget_id=budget_id, kap=kap, include_zero=include_zero)
+        budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
     sheets = []
     for period in ("MTD", "YTD"):
         rows = []
         labels = report["scope_labels"]
         rows.append([report_type, as_of_date.isoformat(), "Location", labels["location_id"], "Unit", labels["business_unit_id"], "Department", labels["department_id"]])
         metrics = ("current", "budget", "last_month", "last_year", "variance") + (("movement",) if report_type == "BALANCE_SHEET" else ())
-        rows.append(["Account", "Name", "Current", "Budget", "Last month", "Same period last year", "Variance"] + (["Period movement"] if report_type == "BALANCE_SHEET" else []))
+        rows.append(["Name", "Current", "Budget", "Last month", "Same period last year", "Variance"] + (["Period movement"] if report_type == "BALANCE_SHEET" else []))
         for section, totals in report["section_totals"].items():
             values = totals[period]
-            rows.append([section, "Total", *[values[m] if values[m] is not None else None for m in metrics]])
+            rows.append([section, *[values[m] if values[m] is not None else None for m in metrics]])
             for row in report["rows"]:
                 if row["section"] != section:
                     continue
                 values = row["periods"][period]
-                rows.append([row["account_code"], row["account_name"], *[values[m] if values[m] is not None else None for m in metrics]])
+                rows.append([row["account_name"], *[values[m] if values[m] is not None else None for m in metrics]])
         if report_type == "PROFIT_LOSS":
             v = report["section_totals"]
-            rows.append(["NET", "Net profit", *[None if any(v[s][period][m] is None for s in v) else v["REVENUE"][period][m] - v["COST_OF_REVENUE"][period][m] - v["EXPENSES"][period][m] for m in metrics]])
+            rows.append(["Net profit", *[None if any(v[s][period][m] is None for s in v) else v["REVENUE"][period][m] - v["COST_OF_REVENUE"][period][m] - v["EXPENSES"][period][m] for m in metrics]])
+            from app.services.management_dashboard import activity_rows, departments
+            rows.append([])
+            rows.append(["Department", "Revenue", "Cost of revenue", "Operating expenses", "Other expenses", "Profit / loss"])
+            for department in departments(db, activity_rows(db, as_of_date, report["scope"]), as_of_date.month, report["scope"]):
+                values = department[period]
+                rows.append([department["department_name"], *[values[key] for key in ("revenue", "cogs", "operating_expenses", "other_expenses", "nop")]])
         sheets.append((period, rows))
     output = BytesIO(build_xlsx(sheets))
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -1,4 +1,4 @@
-from . import financial_reports, budgets
+from . import financial_reports, budgets, cashier, ar_invoice_print
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -54,6 +54,8 @@ for router in (
     budgets.router,
     balance_sheet.router,
     cash_flow.router,
+    cashier.router,
+    ar_invoice_print.router,
     bank_accounts.router,
     bank_reconciliations.router,
     fixed_assets_core.router,

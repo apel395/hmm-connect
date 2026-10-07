@@ -15,6 +15,7 @@ from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
+from app.services.payment_charges import charge_entries, funding_total, validate_charge_accounts
 from app.models.payment import Payment, PaymentAllocation, PaymentFundingLine
 from app.models.payment_voucher import PaymentVoucher
 from app.models.supplier import Supplier
@@ -186,6 +187,8 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
                 409,
                 f"Allocation exceeds available balance for {invoice.internal_invoice_number}: {available}",
             )
+        if Decimal(allocation.allocated_amount) < available and not str(data.difference_reason or "").strip():
+            raise HTTPException(422, "Enter a reason when paying less than the selected invoice balance")
         invoices.append(invoice)
 
     bank_accounts = []
@@ -218,7 +221,8 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
     total = Decimal(data.total_amount)
     if allocated_total != total:
         raise HTTPException(422, "Allocations must equal payment total")
-    if funded_total != total:
+    validate_charge_accounts(db, data)
+    if funded_total != funding_total(data):
         raise HTTPException(422, "Funding lines must equal payment total")
 
     if invoices:
@@ -260,8 +264,12 @@ def validate_payment_journal_integrity(db: Session, payment: Payment, journal: J
     ):
         raise HTTPException(409, "Payment journal context does not match its source payment")
 
-    expected_debits = {payable_account.id: Decimal(payment.amount)}
+    validate_charge_accounts(db, payment)
+    expected_debits = defaultdict(Decimal, {payable_account.id: Decimal(payment.amount)})
     expected_credits = defaultdict(Decimal)
+    for aid, debit, credit, _ in charge_entries(payment):
+        if debit: expected_debits[aid] += debit
+        if credit: expected_credits[aid] += credit
     funding_accounts = []
     for funding in payment.funding_lines:
         account = funding.bank_account.coa_account
@@ -297,7 +305,7 @@ def validate_payment_journal_integrity(db: Session, payment: Payment, journal: J
         if credit:
             actual_credits[line.account_id] += credit
 
-    if dict(actual_debits) != expected_debits:
+    if dict(actual_debits) != dict(expected_debits):
         raise HTTPException(
             409,
             "Payment journal debit must match the scoped Accounts Payable control account and payment total",
@@ -323,6 +331,12 @@ def serialize(payment: Payment):
         "payment_method": payment.payment_method,
         "currency": payment.currency,
         "total_amount": payment.amount,
+        "bank_charge_amount": payment.bank_charge_amount,
+        "short_over_amount": payment.short_over_amount,
+        "bank_charge_account_id": payment.bank_charge_account_id,
+        "short_over_account_id": payment.short_over_account_id,
+        "difference_reason": payment.difference_reason,
+        "expected_funding": funding_total(payment),
         "allocated_amount": allocated,
         "funded_amount": funded,
         "business_unit_id": payment.business_unit_id,
@@ -625,6 +639,11 @@ def create(data: PaymentCreate, db: Session = Depends(get_db), user=Depends(paym
         supplier_id=data.supplier_id,
         payment_date=data.payment_date,
         amount=data.total_amount,
+        bank_charge_amount=data.bank_charge_amount,
+        short_over_amount=data.short_over_amount,
+        bank_charge_account_id=data.bank_charge_account_id,
+        short_over_account_id=data.short_over_account_id,
+        difference_reason=data.difference_reason,
         payment_method=data.payment_method,
         currency=data.currency.upper(),
         reference_number=data.reference_number,
@@ -659,6 +678,8 @@ def update(payment_id: int, data: PaymentUpdate, db: Session = Depends(get_db), 
     payment.supplier_id = data.supplier_id
     payment.payment_date = data.payment_date
     payment.amount = data.total_amount
+    for name in ("bank_charge_amount", "short_over_amount", "bank_charge_account_id", "short_over_account_id", "difference_reason"):
+        setattr(payment, name, getattr(data, name))
     payment.payment_method = data.payment_method
     payment.currency = data.currency.upper()
     payment.reference_number = data.reference_number
@@ -695,7 +716,7 @@ def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(payment
 
     if sum((Decimal(row.allocated_amount) for row in payment.allocations), ZERO) != Decimal(payment.amount):
         raise HTTPException(409, "Allocations must equal payment total")
-    if sum((Decimal(row.amount) for row in payment.funding_lines), ZERO) != Decimal(payment.amount):
+    if sum((Decimal(row.amount) for row in payment.funding_lines), ZERO) != funding_total(payment):
         raise HTTPException(409, "Funding lines must equal payment total")
     payment.status = "APPROVED"
     payment.approved_by_id = user.id
@@ -785,6 +806,8 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(paymen
             cash_flow_category=category,
             cash_flow_direction="OUTFLOW",
         ))
+    for aid, debit, credit, label in charge_entries(payment):
+        journal.lines.append(JournalLine(line_number=len(journal.lines) + 1, account_id=aid, debit=debit, credit=credit, description=label, supplier_id=payment.supplier_id, business_unit_id=payment.business_unit_id, location_id=payment.location_id, department_id=payment.department_id, cash_flow_category="OPERATING", cash_flow_direction="OUTFLOW"))
     validate_payment_journal_integrity(db, payment, journal)
     db.add(journal)
     db.flush()
@@ -807,7 +830,7 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_ma
     validate_payment_journal_integrity(db, payment, journal)
     debit = sum((Decimal(line.debit) for line in journal.lines), ZERO)
     credit = sum((Decimal(line.credit) for line in journal.lines), ZERO)
-    if debit != credit or debit != Decimal(payment.amount):
+    if debit != credit:
         raise HTTPException(409, "Payment journal is not balanced")
 
     locked_invoices = _lock_allocated_invoices(db, payment)
