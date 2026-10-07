@@ -9,6 +9,12 @@ export type Payment = {
   payment_method: string;
   currency: string;
   total_amount: number;
+  bank_charge_amount?: number;
+  short_over_amount?: number;
+  bank_charge_account_id?: number | null;
+  short_over_account_id?: number | null;
+  difference_reason?: string | null;
+  expected_funding?: number;
   allocated_amount: number;
   funded_amount: number;
   reference_number?: string | null;

@@ -71,8 +71,7 @@ export default function TrialBalancePrintPage() {
         { label: "Account Count", value: rows.length },
       ]}
       columns={[
-        { label: "COA No.", render: (row) => row.account_code },
-        { label: "COA Name", render: (row) => row.account_name },
+        { label: "Account", render: (row) => row.account_name },
         { label: "Opening Balance", align: "right", render: (row) => money(row.opening_balance) },
         { label: "Debit Movement", align: "right", render: (row) => money(row.period_debit) },
         { label: "Credit Movement", align: "right", render: (row) => money(row.period_credit) },
@@ -83,7 +82,7 @@ export default function TrialBalancePrintPage() {
       rowKey={(row) => row.account_id}
       footerRows={
         <tr className="font-bold">
-          <td colSpan={3} className="border border-slate-700 px-1.5 py-1 text-right">TOTAL MOVEMENT</td>
+          <td colSpan={2} className="border border-slate-700 px-1.5 py-1 text-right">TOTAL MOVEMENT</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalDebit)}</td>
           <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalCredit)}</td>
           <td className="border border-slate-700 px-1.5 py-1" />

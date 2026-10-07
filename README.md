@@ -1,6 +1,6 @@
-# HMM Connect ERP
+# MMH Connect ERP
 
-HMM Connect is the operational ERP for Hotel Mutiara Merdeka and Project Catering. The system covers purchasing, receiving, inventory, POS, finance, fiscal reporting, administration, approvals, and audit traceability.
+MMH Connect is the operational ERP for Hotel Mutiara Merdeka and Project Catering. The system covers purchasing, receiving, inventory, POS, finance, fiscal reporting, administration, approvals, and audit traceability.
 
 This README is the **current module snapshot**. Keep it updated when a module, workflow, permission, or accounting rule changes so the next maintenance/fix session starts from the same picture.
 
@@ -423,9 +423,9 @@ General Ledger account filter is searchable by account code or account name and 
 Trial Balance calculation:
 
 ```text
-Opening Balance = all POSTED journal activity before date_from
-Period Movement = POSTED activity from date_from through date_to
-Closing Balance = Opening + Period Movement
+Opening Balance = manually recorded fiscal-year opening balances
+Period Movement = posted activity in the selected 2026 period
+Closing Balance = Opening + cumulative activity through date_to
 ```
 
 Only posted journals affect financial statements and ledger reports.
@@ -729,7 +729,7 @@ Historical import scripts should be treated as controlled migration/reconciliati
 
 ## Maintenance rule
 
-When fixing or extending HMM Connect:
+When fixing or extending MMH Connect:
 
 1. Use the current backend behavior / API contract as the source of truth for frontend changes.
 2. Preserve organization scope: Business Unit, Department, Location.
@@ -745,3 +745,27 @@ When fixing or extending HMM Connect:
 - P&L printing groups MTD and YTD comparisons. Balance Sheet printing begins with a T-format closing position, followed by separate MTD/YTD comparison pages. Tables repeat column headings and retain complete account names, signed amounts and unavailable comparison dashes. KAP uses the API's header-only rows.
 - Journal creation/editing, supplier payment creation/editing and supplier invoice creation/editing recover unsaved browser input by authenticated user and document ID. Closing, navigation or refresh preserves it; successful saves and explicit Discard input clear it. Restored input still uses normal API validation and never submits, approves or posts automatically.
 - Recovery uses versioned browser local storage, so it is specific to that browser/device and excludes credentials/files. Session expiry clears session credentials without erasing input recovery. When storage is unavailable, the form shows an alert instead of promising recovery.
+
+
+## Finance delivery — 2026-10-07
+
+- Visible branding is MMH. The financial dashboard uses posted monthly/YTD activity, department performance, margins, rankings and actual financial position. The HTML reference supplies presentation only; its embedded numbers are never imported.
+- Financial report presentation uses account names. IDs/codes remain internal mappings. Account drilldown uses exact account IDs and preserves date/location/unit scope. P&L includes configured departments, even with zero activity, in screen/print/Excel. Balance Sheet offers separate KAP summary and detailed print layouts.
+- Manual journals may contain a single debit or credit line and may be posted with a difference. No contra is inserted. The difference remains in GL and Trial Balance. Source-document journals must still balance, posting still requires an open accounting period, and opening balances remain separate manually entered starting values.
+- SELL items support a service-charge percentage. POS snapshots charge rates and amounts on each sale line and includes the charge in the sale total and revenue account 400. Existing tax calculations are unchanged; service charge is not silently treated as tax.
+- Payments keep invoice allocation, bank fee and signed short/over separate. Cash funding = invoice settlement + bank fee + short/over. A positive short/over increases cash paid; a negative amount decreases it. Fees require explicit expense accounts, and a difference reason is required for fees/short-over or partial settlement. Editing funding never rewrites invoice allocations or taxes.
+- Budget Input uses the existing monthly/location/department budget module. General Cashier and Petty Cash Usage create auditable draft journals with supporting references, location and department; posting creates GL once. Supplier/customer invoice settlements stay in their respective payment modules. Draft cashier entries can be voided and entered again. Cashier print loads all filtered pages.
+- AR invoice printing supports per-client title, billing details, description, payment instructions, footer and optional settlement display. Legacy AR has no location dimension, so these invoice reads/settings require consolidated finance access. Exact client stationery requires the client's approved sample; the app does not invent invoice line items or tax.
+- The workspace Back control closes the current tab and returns to the last active tab. Unsaved journal/payment/invoice/cashier inputs remain recoverable in the user's browser.
+
+Backend is deployed to Lambda by pushing/merging `backend`. EC2 handles PostgreSQL migrations and heavy export workers, not the API server. Required migration: `20261007_finance_delivery` (additive columns and AR print settings; no balance changes).
+
+```bash
+cd /opt/hmm-connect
+git pull --ff-only origin backend
+.venv/bin/alembic upgrade head
+.venv/bin/alembic current
+.venv/bin/python scripts/check_finance_1007.py --year 2026 --month 10
+```
+
+Restart the existing EC2 export worker after pulling so Excel GL drilldown uses the same exact account and search filters. Keep existing imports/private-backups and environment configuration.

@@ -12,6 +12,7 @@ interface PrintPosItem {
   quantity: number;
   unit_price: number;
   tax_rate: number;
+  service_charge_amount?: number;
   tax_amount: number;
 }
 interface PrintPosSale {
@@ -25,6 +26,7 @@ interface PrintPosSale {
   payment_received: number;
   change_amount: number;
   discount_amount: number;
+  service_charge_amount?: number;
   subtotal: number;
   tax_amount: number;
   total_amount: number;
@@ -64,13 +66,14 @@ export default function PosReceiptPrintPage() {
       { label: "QTY", align: "right", render: (item: PrintPosItem) => `${num(item.quantity)} ${item.uom}` },
       { label: "PRICE", align: "right", render: (item: PrintPosItem) => money(item.unit_price) },
       { label: "PPN", align: "right", render: (item: PrintPosItem) => money(item.tax_amount) },
-      { label: "AMOUNT", align: "right", render: (item: PrintPosItem) => money(Number(item.quantity) * Number(item.unit_price) + Number(item.tax_amount)) },
+      { label: "AMOUNT", align: "right", render: (item: PrintPosItem) => money(Number(item.quantity) * Number(item.unit_price) + Number(item.tax_amount) + Number(item.service_charge_amount || 0)) },
     ]}
     rows={data.items}
     rowKey={(item) => item.id}
     totals={[
       { label: "Subtotal", value: money(data.subtotal) },
       { label: "Discount", value: data.discount_amount > 0 ? `-${money(data.discount_amount)}` : "-" },
+      { label: "Service charge", value: money(data.service_charge_amount) },
       { label: "PPN", value: money(data.tax_amount) },
       { label: "Total", value: money(data.total_amount), emphasis: true },
     ]}

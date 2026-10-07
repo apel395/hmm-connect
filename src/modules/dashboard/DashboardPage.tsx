@@ -7,6 +7,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "@/api/interceptor";
+import ManagementDashboard from "./ManagementDashboard";
 import Card from "@/components/ui/Card";
 import { hasPermission } from "@/lib/access";
 import useAuthStore from "@/store/auth";
@@ -140,6 +141,7 @@ export default function DashboardPage() {
   ] : [];
 
   return <div className="mx-auto max-w-[1600px] space-y-7 pb-10">
+    {hasPermission(user, "finance.view") && <ManagementDashboard />}
     <header className="relative overflow-hidden rounded-2xl bg-slate-900 px-6 py-7 text-white sm:px-8 sm:py-8">
       <div className="pointer-events-none absolute -right-16 -top-32 h-80 w-80 rounded-full bg-emerald-500/15 blur-3xl" />
       <div className="relative flex flex-wrap items-end justify-between gap-5">

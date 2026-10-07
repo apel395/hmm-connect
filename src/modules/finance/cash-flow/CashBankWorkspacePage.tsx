@@ -8,6 +8,8 @@ type Section = "overview" | "transfers" | "reconciliation" | "cash-flow";
 
 const tabs = [
   { label: "Overview", to: "/cash-bank", exact: true },
+  { label: "General Cashier", to: "/cash-bank/cashier" },
+  { label: "Petty Cash", to: "/cash-bank/petty-cash" },
   { label: "Transfers", to: "/cash-bank/transfers" },
   { label: "Reconciliation", to: "/cash-bank/reconciliation" },
   { label: "Cash Flow", to: "/cash-bank/cash-flow" },

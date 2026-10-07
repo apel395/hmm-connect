@@ -18,7 +18,7 @@ const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { m
 const num = (v: unknown) => Number(v ?? 0).toLocaleString("id-ID");
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
-interface CartLine { product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; tax_rate: number; is_taxable: boolean; stock: number; }
+interface CartLine { product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; is_taxable: boolean; stock: number; }
 
 export default function PosRegisterPage() {
   const queryClient = useQueryClient();
@@ -54,7 +54,8 @@ export default function PosRegisterPage() {
   const subtotal = cart.reduce((sum, line) => sum + line.quantity * line.unit_price, 0);
   const tax = cart.reduce((sum, line) => sum + (line.is_taxable && line.tax_rate > 0 ? line.quantity * line.unit_price * line.tax_rate / 100 : 0), 0);
   const discountValue = Math.min(Number(discount) || 0, subtotal);
-  const total = subtotal - discountValue + tax;
+  const serviceCharge=cart.reduce((sum,line)=>sum+Math.round(line.quantity*line.unit_price*line.service_charge_rate)/100,0);
+  const total = subtotal - discountValue + tax + serviceCharge;
   const change = paymentMethod === "CASH" ? Math.max((Number(amountReceived) || 0) - total, 0) : 0;
   const inCart = (id: number) => cart.find((line) => line.product_id === id);
 
@@ -66,7 +67,7 @@ export default function PosRegisterPage() {
       setCart((rows) => rows.map((line) => line.product_id === product.product_id ? { ...line, quantity: line.quantity + 1 } : line));
       return;
     }
-    setCart((rows) => [...rows, { product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), tax_rate: Number(product.tax_rate ?? 0), is_taxable: Boolean(product.is_taxable), stock: Number(product.quantity ?? 0) }]);
+    setCart((rows) => [...rows, { product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), service_charge_rate:Number(product.service_charge_rate??0), tax_rate: Number(product.tax_rate ?? 0), is_taxable: Boolean(product.is_taxable), stock: Number(product.quantity ?? 0) }]);
   };
   const changeQty = (id: number, delta: number) => setCart((rows) => rows.map((line) => line.product_id === id ? { ...line, quantity: Math.max(0, Math.min(line.stock, line.quantity + delta)) } : line).filter((line) => line.quantity > 0));
   const clear = () => { setCart([]); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
@@ -126,7 +127,7 @@ export default function PosRegisterPage() {
         <Card className="h-fit p-4">
           <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2 text-sm font-semibold"><ShoppingCart className="h-4 w-4 text-[#0F6758]" />Order</div>{cart.length > 0 && <button type="button" onClick={clear} className="text-xs text-slate-500">Clear</button>}</div>
           <div className="space-y-2">{cart.length === 0 && <div className="rounded-md border border-dashed p-6 text-center text-xs text-slate-500">Pilih menu untuk memulai.</div>}{cart.map((line) => <div key={line.product_id} className="rounded-md border p-2"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-semibold">{line.product_name}</div><div className="text-[10px] text-slate-400">{money(line.unit_price)} / {line.uom}</div></div><button type="button" onClick={() => changeQty(line.product_id, -line.quantity)} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div><div className="mt-2 flex items-center justify-between"><div className="flex items-center gap-1"><button type="button" onClick={() => changeQty(line.product_id, -1)} className="grid h-7 w-7 place-items-center rounded border"><Minus className="h-3.5 w-3.5" /></button><span className="w-8 text-center text-sm">{line.quantity}</span><button type="button" onClick={() => changeQty(line.product_id, 1)} className="grid h-7 w-7 place-items-center rounded border"><Plus className="h-3.5 w-3.5" /></button></div><span className="text-sm font-semibold">{money(line.quantity * line.unit_price)}</span></div></div>)}</div>
-          <div className="mt-4 space-y-2 border-t pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div><div className="flex items-center justify-between"><span>Discount</span><input className="h-9 w-32 rounded border px-2 text-right" type="number" min={0} value={discount} onChange={(e) => setDiscount(e.target.value)} /></div><div className="flex justify-between"><span>PPN</span><span>{money(tax)}</span></div><div className="flex justify-between border-t pt-2 text-base font-bold"><span>Total</span><span>{money(total)}</span></div></div>
+          <div className="mt-4 space-y-2 border-t pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div><div className="flex items-center justify-between"><span>Discount</span><input className="h-9 w-32 rounded border px-2 text-right" type="number" min={0} value={discount} onChange={(e) => setDiscount(e.target.value)} /></div><div className="flex justify-between"><span>Service charge</span><span>{money(serviceCharge)}</span></div><div className="flex justify-between"><span>PPN</span><span>{money(tax)}</span></div><div className="flex justify-between border-t pt-2 text-base font-bold"><span>Total</span><span>{money(total)}</span></div></div>
           <div className="mt-4 space-y-2"><select className={input} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PosPaymentMethod)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></select>{paymentMethod === "CASH" && <><input className={input} type="number" min={0} placeholder="Cash received" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} /><div className="flex justify-between text-xs text-slate-500"><span>Change</span><span>{money(change)}</span></div></>}</div>
           {error && <div className="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
           {lastNumber && <div className="mt-3 rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">Saved: <strong>{lastNumber}</strong></div>}

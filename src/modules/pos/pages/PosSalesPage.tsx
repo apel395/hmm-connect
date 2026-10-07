@@ -211,7 +211,7 @@ export default function PosSalesPage() {
                   <tfoot>
                     <tr className="border-t text-slate-600"><td className="px-2 py-2" colSpan={4}>Subtotal</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.subtotal)}</td></tr>
                     {detail.discount_amount > 0 && <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Discount</td><td className="px-2 py-2 text-right tabular-nums">-{money(detail.discount_amount)}</td></tr>}
-                    <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>PPN</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.tax_amount)}</td></tr>
+                    <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Service charge</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.service_charge_amount)}</td></tr><tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>PPN</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.tax_amount)}</td></tr>
                     <tr className="font-bold"><td className="px-2 py-2" colSpan={4}>Total</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.total_amount)}</td></tr>
                     {detail.payment_received > 0 && <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Received</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.payment_received)}</td></tr>}
                   </tfoot>
