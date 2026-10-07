@@ -1,4 +1,5 @@
 import console from "node:console";
+import { URLSearchParams } from "node:url";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
