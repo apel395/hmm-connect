@@ -1,7 +1,9 @@
+import InventoryPrintButton from "@/components/print/InventoryPrintButton";
+import { inventoryDocumentReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {Plus, Trash2, Eye, Pencil, PlayCircle, Ban, Boxes, Printer} from "lucide-react";
+import {Plus, Trash2, Eye, Pencil, PlayCircle, Ban, Boxes} from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
@@ -263,7 +265,7 @@ export default function StockAdjustmentPage() {
   return (
     <div className="inventory-print-report space-y-6">
 <InventoryReportHeading title="Stock Adjustment" context={`Search: ${search || "All"} · Status: ${status}${warehouseFilter ? ` · Warehouse ID: ${warehouseFilter}` : ""}`} rows={rows.length} total={data.total_items ?? 0}/>
-      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Stock Adjustment" description="Correct warehouse stock for damage, expiry, found surplus or bookkeeping errors. Adjustments are posted to inventory and recorded as stock movements." />
+      <PageHeader  actions={<InventoryPrintButton loadReport={() => inventoryDocumentReport("adjustments",{status:status === "ALL" ? undefined : status,search:search.trim() || undefined,warehouse_id:warehouseFilter ? Number(warehouseFilter) : undefined}, `Search: ${search || "All"} · Status: ${status} · Warehouse: ${warehouses.find(w => w.id === Number(warehouseFilter))?.name || "All"}`)}/>} title="Stock Adjustment" description="Correct warehouse stock for damage, expiry, found surplus or bookkeeping errors. Adjustments are posted to inventory and recorded as stock movements." />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Adjustments</div><div className="mt-2 text-2xl font-bold">{num(data.total_items ?? 0)}</div></Card>

@@ -1,10 +1,10 @@
+import InventoryPrintButton from "@/components/print/InventoryPrintButton";
+import { stockListReport, lowStockReport, warehouseValuationReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
-import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import Badge from "@/components/ui/Badge";
 import { inventoryApi } from "../api";
@@ -68,7 +68,7 @@ export default function InventoryReportsPage() {
   return (
     <div className="inventory-print-report space-y-6">
     <InventoryReportHeading title={"Inventory Reports"} context={`Report: ${section} · As of: ${asOf || "Current"}`} rows={section === "low-stock" ? lowStockItems.length : undefined} total={section === "low-stock" ? lowStockData.total_items : undefined}/>
-      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Inventory Reports" description="Stock valuation and movement insights computed from warehouse inventory on the selected date." />
+      <PageHeader  actions={<InventoryPrintButton loadReport={() => (section === "low-stock" ? lowStockReport : section === "by-warehouse" ? warehouseValuationReport : (params: Record<string,unknown>,context: string) => stockListReport(params,context,"Inventory Valuation"))({as_of:asOf || undefined}, `As of: ${asOf || "Current"}`)}/>} title="Inventory Reports" description="Stock valuation and movement insights computed from warehouse inventory on the selected date." />
       <Card className="p-4 print:hidden">
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
