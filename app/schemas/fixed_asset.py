@@ -16,6 +16,7 @@ class CategoryInput(BaseModel):
     description: str | None = None
 
 class AssetInput(BaseModel):
+    product_id: int | None = None
     asset_name: str = Field(min_length=1)
     asset_category_id: int
     description: str | None = None
@@ -46,6 +47,7 @@ class AssetInput(BaseModel):
     notes: str | None = None
 
 class AssetUpdate(BaseModel):
+    product_id: int | None = None
     asset_name: str | None = None
     description: str | None = None
     serial_number: str | None = None

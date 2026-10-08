@@ -9,6 +9,7 @@ from app.models.journal_entry import JournalEntry
 from app.models.location import Location
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.services.audit import record_audit
+from app.services.asset_item_master import link_asset_item
 from app.services.document_number import next_document_number
 
 
@@ -29,6 +30,8 @@ def register_invoice_asset(
     if existing:
         if existing.asset_account_id != account_id or Decimal(existing.acquisition_cost) != Decimal(line.line_amount):
             raise HTTPException(409, "Existing fixed asset differs from its posted invoice line")
+        if not existing.product_id:
+            link_asset_item(db, existing, user=user)
         if existing.status == "SOURCE_UNPOSTED":
             existing.status = "DRAFT" if existing.asset_category_id else "PENDING_SETUP"
         return existing
@@ -85,6 +88,7 @@ def register_invoice_asset(
     )
     db.add(asset)
     db.flush()
+    link_asset_item(db, asset, user=user)
     db.add(FixedAssetMovement(
         fixed_asset_id=asset.id, movement_type="ACQUISITION",
         to_business_unit_id=business_unit_id, to_location_id=location_id,
@@ -119,7 +123,7 @@ def sync_posted_invoice_assets(db: Session, *, user) -> int:
         account = db.get(ChartOfAccount, debit.account_id) if debit else None
         if not account or not account.account_number.startswith("100-600-"):
             continue
-        if not db.query(FixedAsset.id).filter(FixedAsset.source_invoice_line_id == line.id).first():
+        if not db.query(FixedAsset.id).filter(FixedAsset.source_invoice_line_id == line.id, FixedAsset.product_id.is_not(None)).first():
             register_invoice_asset(db, invoice=invoice, line=line, account_id=account.id, journal=journal, user=user)
             registered += 1
 
@@ -140,7 +144,7 @@ def sync_posted_invoice_assets(db: Session, *, user) -> int:
             account = db.get(ChartOfAccount, line.account_id)
             if not account or not account.account_number.startswith("100-600-"):
                 continue
-            if not db.query(FixedAsset.id).filter(FixedAsset.source_invoice_line_id == line.id).first():
+            if not db.query(FixedAsset.id).filter(FixedAsset.source_invoice_line_id == line.id, FixedAsset.product_id.is_not(None)).first():
                 register_invoice_asset(db, invoice=invoice, line=line, account_id=account.id, journal=source, user=user)
                 registered += 1
     return registered

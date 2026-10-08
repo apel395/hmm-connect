@@ -146,3 +146,9 @@ Restart the existing EC2 export worker after pulling so Excel GL drilldown uses 
 New items show an automatic code after selecting their group/subgroup (BUY) or sales classification (SELL). `/products/next-code` is a read-only preview; saving uses `auto_code=true` and recomputes the next available code under a PostgreSQL transaction lock. The existing numeric pattern is retained, e.g. FOOD / MEAT `1-1` gives `1-100001`. Existing/inactive codes are not reused, BUY/SELL catalogs are validated separately, and existing item codes remain unchanged during editing. Explicit codes remain supported for existing API/import clients.
 
 Purchase and Usage UOM are text inputs with optional common-unit suggestions. Custom units such as Tray, Portion, Bucket or Serving are accepted within the existing 20-character field size. This change requires no database migration and does not alter stock, journals or existing classifications.
+
+
+### BUY Item Master and Fixed Assets — 2026-10-08
+Asset intake creates or reuses a classified BUY/FIXED_ASSET item and persists its ID on the fixed asset. Invoice registration also links the manual invoice line to that item, using a reference-only update so posted source tax and amounts remain unchanged. Existing codes and accounting are not regenerated. The ASSET catalog is reused; computer equipment under 100-600-104 uses the existing KOMPUTER subgroup. Ambiguous matches require explicit selection rather than silently reclassifying items.
+
+Run `alembic upgrade head` to add the nullable fixed asset item link. For the historical computer, run `python scripts/link_fixed_asset_items.py --asset-id 2 --invoice-id 611 --user-id 45 --subgroup 4-4` for a dry run, then repeat with `--apply`. The script locks and checks the expected source, records an audit, and leaves invoice amounts, tax, journals and inventory unchanged. Fixed Asset details show the linked BUY item code and name.

@@ -71,6 +71,8 @@ def test_posted_invoice_reclassification_registers_once_without_new_journal(monk
     db = Db(invoice)
     monkeypatch.setattr(registration, "next_document_number", lambda db, prefix: "FA-TEST-1")
     monkeypatch.setattr(registration, "record_audit", lambda *args, **kwargs: None)
+    def link(db, asset, **kwargs): asset.product_id = 5
+    monkeypatch.setattr(registration, "link_asset_item", link)
 
     first = registration.register_invoice_asset(
         db, invoice=invoice, line=line, account_id=104, journal=journal,
@@ -86,6 +88,7 @@ def test_posted_invoice_reclassification_registers_once_without_new_journal(monk
     assert first.acquisition_cost == Decimal("5500000.00")
     assert first.purchase_invoice_id == 611
     assert first.source_invoice_line_id == 900
+    assert first.product_id == 5
     assert len(db.movements) == 1
 
 

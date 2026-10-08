@@ -119,6 +119,12 @@ def update(asset_id: int, data: AssetUpdate, db: Session = Depends(get_db), user
     access(user); service = FixedAssetService(db); item = service.get(asset_id)
     if item.status != "DRAFT": raise HTTPException(409, "Only draft assets can be edited")
     values = data.model_dump(exclude_unset=True)
+    if "product_id" in values:
+        from app.services.asset_item_master import ensure_asset_item
+        if not values["product_id"]: raise HTTPException(422, "An asset must retain its BUY item link")
+        product = ensure_asset_item(db, name=item.asset_name, account_id=item.asset_account_id, product_id=values["product_id"], user=user)
+        if item.source_invoice_line_id and item.product_id != product.id:
+            raise HTTPException(409, "Repair source invoice and asset links together; source item cannot be changed here")
     from app.services.organization_dimensions import validate_dimensions
     validate_dimensions(db, values.get("business_unit_id", item.business_unit_id), values.get("location_id", item.location_id), values.get("department_id", item.department_id), required=True)
     for key, value in values.items(): setattr(item, key, value)
