@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/form/SearchableSelect";
 import type { InventoryTreatment, ItemType, Product, ProductGroup, TaxCategory } from "../types";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listLocations } from "@/modules/admin/organization/api";
+import api from "@/api/client";
 
 const UOMS = ["Kg", "Gram", "Liter", "Ml", "Bottle", "Box", "Pack", "Pcs", "Can", "Roll", "Meter", "Set"];
 const TAX_CATEGORIES: { value: TaxCategory; label: string; help: string }[] = [
@@ -54,6 +55,15 @@ const blank = () => ({
 
 export default function ProductForm({ open, product, groups = [], loading, onClose, onSubmit }: Props) {
   const [form, setForm] = useState(blank());
+  const uomListId = useId();
+  const codePreview = useQuery({
+    queryKey: ["item-next-code", form.item_type, form.group_code, form.subgroup_code],
+    queryFn: async () => (await api.get<{ code: string }>("/products/next-code", { params: { item_type: form.item_type, group_code: form.group_code, subgroup_code: form.subgroup_code } })).data,
+    enabled: open && !product && Boolean(form.group_code) && (form.item_type === "SELL" || Boolean(form.subgroup_code)),
+    staleTime: 0,
+    retry: 1,
+  });
+  const displayedCode = product ? form.code : codePreview.data?.code ?? "";
   const accounts = useQuery({
     queryKey: ["product-coa-lookup", "all-active-posting"],
     queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }),
@@ -239,7 +249,8 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
 
   const subgroupRequired = form.item_type === "BUY";
   const valid = Boolean(
-    form.code.trim() &&
+    displayedCode.trim() &&
+    (Boolean(product) || !codePreview.isError) &&
     form.name.trim() &&
     form.group_code &&
     (!subgroupRequired || form.subgroup_code) &&
@@ -257,7 +268,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
     const payload = {
       ...itemFields,
       ...(cogs_account_id !== (product?.cogs_account_id ?? null) ? { cogs_account_id } : {}),
-      code: form.code.trim(),
+      code: displayedCode.trim(),
       name: form.name.trim(),
       subgroup_name: form.subgroup_name === "GRESORIS" ? "GROCERIES" : form.subgroup_name,
       uom: form.uom.trim(),
@@ -275,7 +286,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
       onSubmit(rest);
       return;
     }
-    onSubmit(payload);
+    onSubmit({ ...payload, auto_code: true });
   };
 
   const selectedTax = TAX_CATEGORIES.find((item) => item.value === form.tax_category);
@@ -298,7 +309,8 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
           </div>
 
           <label className="col-span-2 text-sm font-medium">Product Code
-            <Input className="mt-1" disabled={Boolean(product)} maxLength={20} value={form.code} onChange={(event) => update("code", event.target.value)} />
+            <Input className="mt-1" readOnly maxLength={20} value={displayedCode} placeholder={codePreview.isFetching ? "Generating code…" : "Select group and subgroup"} title="Generated automatically; finalized when saved" />
+            {!product && codePreview.isError && <span role="alert" className="mt-1 flex items-center gap-2 text-xs text-red-700">Item code could not be generated.<Button type="button" size="xs" variant="outline" onClick={() => codePreview.refetch()}>Retry</Button></span>}
           </label>
           <label className="col-span-2 text-sm font-medium">Product Name
             <Input className="mt-1" value={form.name} onChange={(event) => update("name", event.target.value)} />
@@ -345,13 +357,12 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
           </div>}
 
           <label className="text-sm font-medium">Purchase UOM
-            <Input className="mt-1" list="purchase-uom-options" value={form.uom} onChange={(event) => update("uom", event.target.value)} />
-            <datalist id="purchase-uom-options">{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
+            <Input className="mt-1" type="text" autoComplete="off" maxLength={20} placeholder="Type a unit, e.g. Kg, Pcs, Tray" list={uomListId} value={form.uom} onChange={(event) => update("uom", event.target.value)} />
           </label>
           <label className="text-sm font-medium">Usage UOM
-            <Input className="mt-1" list="usage-uom-options" value={form.usage_uom} onChange={(event) => update("usage_uom", event.target.value)} />
-            <datalist id="usage-uom-options">{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
+            <Input className="mt-1" type="text" autoComplete="off" maxLength={20} placeholder="Type a unit, e.g. Gram, Pcs, Portion" list={uomListId} value={form.usage_uom} onChange={(event) => update("usage_uom", event.target.value)} />
           </label>
+          <datalist id={uomListId}>{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
 
           <label className="text-sm font-medium">Conversion
             <Input className="mt-1" type="number" min="0.0001" step="0.0001" value={form.conversion} onChange={(event) => update("conversion", Number(event.target.value))} />
