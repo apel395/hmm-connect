@@ -139,3 +139,10 @@ git pull --ff-only origin backend
 ```
 
 Restart the existing EC2 export worker after pulling so Excel GL drilldown uses the same exact account and search filters. Keep existing imports/private-backups and environment configuration.
+
+
+## Item creation — 2026-10-08
+
+New items show an automatic code after selecting their group/subgroup (BUY) or sales classification (SELL). `/products/next-code` is a read-only preview; saving uses `auto_code=true` and recomputes the next available code under a PostgreSQL transaction lock. The existing numeric pattern is retained, e.g. FOOD / MEAT `1-1` gives `1-100001`. Existing/inactive codes are not reused, BUY/SELL catalogs are validated separately, and existing item codes remain unchanged during editing. Explicit codes remain supported for existing API/import clients.
+
+Purchase and Usage UOM are text inputs with optional common-unit suggestions. Custom units such as Tray, Portion, Bucket or Serving are accepted within the existing 20-character field size. This change requires no database migration and does not alter stock, journals or existing classifications.

@@ -8,7 +8,8 @@ InventoryTreatment = Literal["STOCK", "DIRECT_USE", "FIXED_ASSET", "NON_STOCK", 
 
 
 class ProductCreate(BaseModel):
-    code: str
+    code: str = ""
+    auto_code: bool = False
     name: str
     group_code: str
     group_name: str

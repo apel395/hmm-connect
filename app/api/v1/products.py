@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
@@ -20,6 +21,7 @@ from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.supplier import Supplier
 from app.schemas.product import ProductCreate, ProductTaxProfileUpdate, ProductUpdate
 from app.services.direct_coa_service import DirectCoaService
+from app.services.item_code import lock_item_creation, next_item_code
 
 router = APIRouter(prefix="/products", tags=["Products"])
 MARKET_SUBGROUPS = {"VEGETABLES", "FRUIT"}
@@ -201,6 +203,21 @@ def lookup_products(search: Annotated[str, Query(max_length=100)] = "", market_o
     price_history = _last_purchase_prices(db, [row.id for row in rows])
     return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "inventory_treatment": row.inventory_treatment, "inventory_account_id": row.inventory_account_id, "purchase_account_id": row.purchase_account_id, "cogs_account_id": row.cogs_account_id, "asset_account_id": row.asset_account_id, "is_market_item": _is_market_subgroup(row.subgroup_name), **price_history.get(row.id, {"last_purchase_price": None, "last_purchase_date": None, "last_purchase_po_number": None})} for row in rows]
 
+def numbering_classification(db, item_type, group_code, subgroup_code):
+    catalog = classification_master(item_type=item_type, db=db)
+    group = next((g for g in catalog if g["code"] == group_code), None)
+    if not group:
+        raise HTTPException(422, "Select an active group for this item type")
+    sub = next((s for s in group["subgroups"] if s["code"] == subgroup_code), None)
+    if (item_type == "BUY" or subgroup_code) and not sub:
+        raise HTTPException(422, "Select an active subgroup belonging to the selected group")
+    return group, sub
+
+@router.get("/next-code")
+def preview_item_code(group_code: str, subgroup_code: str = "", item_type: Annotated[str, Query(pattern="^(BUY|SELL)$")] = "BUY", db: Session = Depends(get_db), _=Depends(get_current_user)):
+    numbering_classification(db, item_type, group_code, subgroup_code)
+    return {"code": next_item_code(db, group_code, subgroup_code)}
+
 @router.get("/{product_id}")
 def product_detail(product_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     product = db.get(Product, product_id)
@@ -248,14 +265,20 @@ def product_detail(product_id: int, db: Session = Depends(get_db), _=Depends(get
 def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if not is_superuser(user):
         raise HTTPException(status_code=403, detail="Only SYSTEM_ADMINISTRATOR can create new Item Master records")
-    normalized_code = data.code.strip().upper()
+    payload = data.model_dump()
+    automatic = payload.pop("auto_code") or not data.code.strip()
+    lock_item_creation(db)
+    if automatic:
+        group, sub = numbering_classification(db, data.item_type, data.group_code, data.subgroup_code)
+        payload.update(group_name=group["name"], subgroup_name=sub["name"] if sub else "")
+    normalized_code = next_item_code(db, data.group_code, data.subgroup_code) if automatic else data.code.strip().upper()
     normalized_name = " ".join(data.name.strip().lower().split())
     if db.query(Product).filter(func.upper(func.trim(Product.code)) == normalized_code).first():
         raise HTTPException(status_code=409, detail="Product code already exists")
     duplicate_name = db.query(Product).filter(func.lower(func.regexp_replace(func.trim(Product.name), r"\s+", " ", "g")) == normalized_name).first()
     if duplicate_name:
         raise HTTPException(status_code=409, detail=f"Product name duplicates existing item {duplicate_name.code} — {duplicate_name.name}")
-    payload = data.model_dump()
+    payload["code"] = normalized_code
     if str(payload.get("subgroup_name") or "").strip().upper() == "GRESORIS":
         payload["subgroup_name"] = "GROCERIES"
     payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
@@ -265,7 +288,11 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     _validate_sales_profile(db, payload)
     product = Product(**payload)
     db.add(product)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Item code was taken by another creation. Please retry")
     db.refresh(product)
     return product
 
