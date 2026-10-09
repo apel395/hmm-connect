@@ -4,7 +4,7 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
@@ -308,7 +308,12 @@ def listing(
         ).filter(JournalLine.journal_entry_id.in_(journal_ids)).one()
     else:
         total_debit = total_credit = ZERO
-    rows = q.order_by(JournalEntry.posting_date.desc(), JournalEntry.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    rows = q.options(
+        selectinload(JournalEntry.lines).joinedload(JournalLine.account),
+        selectinload(JournalEntry.lines).joinedload(JournalLine.location),
+        selectinload(JournalEntry.lines).joinedload(JournalLine.department),
+        joinedload(JournalEntry.created_by), joinedload(JournalEntry.posted_by),
+    ).order_by(JournalEntry.posting_date.desc(), JournalEntry.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [serialize(x, user) for x in rows],
         "summary": {"total_debit": total_debit, "total_credit": total_credit},
