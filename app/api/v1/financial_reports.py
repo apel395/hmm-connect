@@ -22,6 +22,7 @@ from app.api.v1.profit_loss import serialize
 router = APIRouter(prefix="/financial-reports", tags=["Financial Reports"])
 view = require_permission("finance.view")
 manage = require_permission("finance.manage")
+METRIC_NAMES = ("current", "budget", "last_month", "last_year", "variance")
 TYPES = "^(PROFIT_LOSS|BALANCE_SHEET)$"
 
 
@@ -86,14 +87,18 @@ def comparison(report_type: str = Query(pattern=TYPES), as_of_date: date = Query
                location_id: int | None = None, business_unit_id: int | None = None,
                department_id: int | None = None, budget_id: int | None = None,
                kap: bool = False, include_zero: bool = False, detail: bool = False,
+               department_tables: bool = False,
                db: Session = Depends(get_db), user=Depends(view)):
     scope = resolve_location_id(user, location_id)
-    report = FinancialReportingService(db).build(report_type=report_type, as_of_date=as_of_date,
+    service = FinancialReportingService(db)
+    report = service.build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
         budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
-    if report_type == "PROFIT_LOSS":
+    if report_type == "PROFIT_LOSS" and not department_tables:
         from app.services.management_dashboard import activity_rows, departments
         report["departments"] = departments(db, activity_rows(db, as_of_date, report["scope"]), as_of_date.month, report["scope"])
+    if report_type == "PROFIT_LOSS" and department_tables:
+        report["department_reports"] = service.department_reports(report, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
     return serialize(report)
 
 
@@ -102,9 +107,11 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
                       location_id: int | None = None, business_unit_id: int | None = None,
                       department_id: int | None = None, budget_id: int | None = None,
                       kap: bool = False, include_zero: bool = False, detail: bool = False,
+               department_tables: bool = False,
                       db: Session = Depends(get_db), user=Depends(view)):
     scope = resolve_location_id(user, location_id)
-    report = FinancialReportingService(db).build(report_type=report_type, as_of_date=as_of_date,
+    service = FinancialReportingService(db)
+    report = service.build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
         budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
     sheets = []
@@ -125,13 +132,25 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
         if report_type == "PROFIT_LOSS":
             v = report["section_totals"]
             rows.append(["Net profit", *[None if any(v[s][period][m] is None for s in v) else v["REVENUE"][period][m] - v["COST_OF_REVENUE"][period][m] - v["EXPENSES"][period][m] for m in metrics]])
-            from app.services.management_dashboard import activity_rows, departments
-            rows.append([])
-            rows.append(["Department", "Revenue", "Cost of revenue", "Operating expenses", "Other expenses", "Profit / loss"])
-            for department in departments(db, activity_rows(db, as_of_date, report["scope"]), as_of_date.month, report["scope"]):
-                values = department[period]
-                rows.append([department["department_name"], *[values[key] for key in ("revenue", "cogs", "operating_expenses", "other_expenses", "nop")]])
+            if not department_tables:
+                from app.services.management_dashboard import activity_rows, departments
+                rows.append([])
+                rows.append(["Department", "Revenue", "Cost of revenue", "Operating expenses", "Other expenses", "Profit / loss"])
+                for department in departments(db, activity_rows(db, as_of_date, report["scope"]), as_of_date.month, report["scope"]):
+                    values = department[period]
+                    rows.append([department["department_name"], *[values[key] for key in ("revenue", "cogs", "operating_expenses", "other_expenses", "nop")]])
         sheets.append((period, rows))
+    if report_type == "PROFIT_LOSS" and department_tables:
+        for index, department in enumerate(service.department_reports(report, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail), 1):
+            for period in ("MTD", "YTD"):
+                rows = [[department["department_name"], period, as_of_date.isoformat()],
+                        ["Name", "Current", "Budget", "Last month", "Last year", "Variance"]]
+                for section, totals in department["section_totals"].items():
+                    rows.append([section, *[totals[period][m] for m in METRIC_NAMES]])
+                    rows += [[row["account_name"], *[row["periods"][period][m] for m in METRIC_NAMES]] for row in department["rows"] if row["section"] == section]
+                v = department["section_totals"]
+                rows.append(["Net profit", *[None if any(v[section][period][m] is None for section in v) else v["REVENUE"][period][m]-v["COST_OF_REVENUE"][period][m]-v["EXPENSES"][period][m] for m in METRIC_NAMES]])
+                sheets.append((f"D{index} {period}", rows))
     output = BytesIO(build_xlsx(sheets))
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{report_type.lower()}-{as_of_date}.xlsx"'})

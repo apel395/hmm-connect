@@ -86,7 +86,7 @@ def test_trial_balance_reports_unbalanced_opening_even_when_account_search_filte
         engine.dispose()
 
 
-def test_trial_balance_keeps_annual_snapshot_opening_and_all_year_activity_as_movement():
+def test_trial_balance_keeps_annual_snapshot_and_separates_prior_from_selected_movement():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, expire_on_commit=False)()
@@ -128,12 +128,14 @@ def test_trial_balance_keeps_annual_snapshot_opening_and_all_year_activity_as_mo
         )
         row = report["items"][0]
         assert report["opening_as_of"] == date(2025, 12, 31)
-        assert report["movement_from"] == date(2026, 1, 1)
+        assert report["movement_from"] == date(2026, 9, 1)
         assert row["opening_debit"] == Decimal("100.00")
-        assert row["period_debit"] == Decimal("15.00")
+        assert row["prior_debit"] == Decimal("10.00")
+        assert row["period_debit"] == Decimal("5.00")
         assert row["closing_debit"] == Decimal("115.00")
         assert report["summary"]["opening_debit"] == Decimal("100.00")
-        assert report["summary"]["period_debit"] == Decimal("15.00")
+        assert report["summary"]["prior_debit"] == Decimal("10.00")
+        assert report["summary"]["period_debit"] == Decimal("5.00")
     finally:
         db.close()
         engine.dispose()

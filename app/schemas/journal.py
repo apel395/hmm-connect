@@ -16,6 +16,7 @@ class JournalLineCreate(BaseModel):
 
 
 class JournalCreate(BaseModel):
+    copied_from_journal_id: int | None = None
     business_unit_id: int | None = None
     location_id: int | None = None
     department_id: int | None = None

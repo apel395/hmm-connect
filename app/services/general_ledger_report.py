@@ -59,8 +59,9 @@ def build_ledger_query(
         q = q.filter(JournalEntry.reference_type == reference_type)
     if supplier_id:
         q = q.filter(JournalLine.supplier_id == supplier_id)
-    if department_id:
-        q = q.filter(JournalLine.department_id == department_id)
+    if department_id is not None:
+        department = func.coalesce(JournalLine.department_id, JournalEntry.department_id)
+        q = q.filter(department.is_(None) if department_id == 0 else department == department_id)
     if location_id:
         q = q.filter(JournalLine.location_id == location_id)
     if business_unit_id:
