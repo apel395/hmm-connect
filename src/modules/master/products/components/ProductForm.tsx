@@ -8,6 +8,8 @@ import type { InventoryTreatment, ItemType, Product, ProductGroup, TaxCategory }
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listLocations } from "@/modules/admin/organization/api";
 import api from "@/api/client";
+import { useAuthStore } from "@/store/auth";
+import { isSuperuser } from "@/lib/access";
 
 const UOMS = ["Kg", "Gram", "Liter", "Ml", "Bottle", "Box", "Pack", "Pcs", "Can", "Roll", "Meter", "Set"];
 const TAX_CATEGORIES: { value: TaxCategory; label: string; help: string }[] = [
@@ -56,14 +58,16 @@ const blank = () => ({
 export default function ProductForm({ open, product, groups = [], loading, onClose, onSubmit }: Props) {
   const [form, setForm] = useState(blank());
   const uomListId = useId();
+  const user = useAuthStore((state) => state.user);
+  const repairImportCode = Boolean(product?.code.toUpperCase().startsWith("RBI-") && isSuperuser(user));
   const codePreview = useQuery({
     queryKey: ["item-next-code", form.item_type, form.group_code, form.subgroup_code],
     queryFn: async () => (await api.get<{ code: string }>("/products/next-code", { params: { item_type: form.item_type, group_code: form.group_code, subgroup_code: form.subgroup_code } })).data,
-    enabled: open && !product && Boolean(form.group_code) && (form.item_type === "SELL" || Boolean(form.subgroup_code)),
+    enabled: open && (!product || repairImportCode) && Boolean(form.group_code) && (form.item_type === "SELL" || Boolean(form.subgroup_code)),
     staleTime: 0,
     retry: 1,
   });
-  const displayedCode = product ? form.code : codePreview.data?.code ?? "";
+  const displayedCode = product && !repairImportCode ? form.code : codePreview.data?.code ?? "";
   const accounts = useQuery({
     queryKey: ["product-coa-lookup", "all-active-posting"],
     queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }),
@@ -250,7 +254,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
   const subgroupRequired = form.item_type === "BUY";
   const valid = Boolean(
     displayedCode.trim() &&
-    (Boolean(product) || !codePreview.isError) &&
+    (Boolean(product && !repairImportCode) || !codePreview.isError) &&
     form.name.trim() &&
     form.group_code &&
     (!subgroupRequired || form.subgroup_code) &&
@@ -283,7 +287,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
     };
     if (product) {
       const { code: _unchangedCode, ...rest } = payload;
-      onSubmit(rest);
+      onSubmit({ ...rest, ...(repairImportCode ? { regenerate_code: true, expected_code: product.code } : {}) });
       return;
     }
     onSubmit({ ...payload, auto_code: true });
@@ -310,7 +314,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
 
           <label className="col-span-2 text-sm font-medium">Product Code
             <Input className="mt-1" readOnly maxLength={20} value={displayedCode} placeholder={codePreview.isFetching ? "Generating code…" : "Select group and subgroup"} title="Generated automatically; finalized when saved" />
-            {!product && codePreview.isError && <span role="alert" className="mt-1 flex items-center gap-2 text-xs text-red-700">Item code could not be generated.<Button type="button" size="xs" variant="outline" onClick={() => codePreview.refetch()}>Retry</Button></span>}
+            {(!product || repairImportCode) && codePreview.isError && <span role="alert" className="mt-1 flex items-center gap-2 text-xs text-red-700">Item code could not be generated.<Button type="button" size="xs" variant="outline" onClick={() => codePreview.refetch()}>Retry</Button></span>}
           </label>
           <label className="col-span-2 text-sm font-medium">Product Name
             <Input className="mt-1" value={form.name} onChange={(event) => update("name", event.target.value)} />
