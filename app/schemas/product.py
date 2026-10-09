@@ -54,6 +54,8 @@ class ProductCreate(BaseModel):
 
 
 class ProductUpdate(BaseModel):
+    regenerate_code: bool = False
+    expected_code: str | None = Field(default=None, max_length=20)
     name: str | None = None
     group_code: str | None = None
     group_name: str | None = None

@@ -75,3 +75,43 @@ def test_postgres_creation_lock_is_transaction_scoped():
     fake = SimpleNamespace(get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql")), execute=lambda statement: calls.append(str(statement)))
     lock_item_creation(fake)
     assert calls == ["SELECT pg_advisory_xact_lock(hashtext('MMH_ITEM_CODE'))"]
+
+
+def test_repair_import_code_uses_selected_subgroup_and_preserves_source_links(db, monkeypatch):
+    from datetime import date
+    from sqlalchemy import insert
+    from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
+    from app.api.v1 import products as api
+    group = db.query(ItemGroup).filter(ItemGroup.code == "1").one()
+    db.add(ItemSubgroup(code="1-9",name="SNACK",group_id=group.id,is_active=True));db.commit()
+    def snack(name,code):
+        return payload(name,code=code).model_copy(update={"subgroup_code":"1-9","subgroup_name":"SNACK"})
+    old = "RBI-88903CDB6423DF2D"
+    item=create_product(snack("PEMPEK KAPAL SELAM",old),db,ADMIN)
+    create_product(snack("Reserved snack","1-900009"),db,ADMIN)
+    db.execute(insert(SupplierInvoice).values(id=1,internal_invoice_number="INV-TEST",supplier_invoice_number="TEST",supplier_id=1,invoice_date=date(2026,1,1),subtotal=100,total_amount=100,balance_amount=100,status="POSTED"))
+    db.execute(insert(SupplierInvoiceLine).values(id=1,supplier_invoice_id=1,product_id=item.id,description=item.name,quantity=1,unit_price=100,line_amount=100,tax_amount=0))
+    db.commit()
+    ident=item.id
+    audits=[]
+    monkeypatch.setattr(api,"record_audit",lambda *a,**kw:audits.append(kw))
+    repaired=update_product(ident,ProductUpdate(regenerate_code=True,expected_code=old),db,ADMIN)
+    assert repaired.id == ident and repaired.code == "1-900010"
+    assert db.get(SupplierInvoiceLine,1).product_id == ident
+    assert db.get(SupplierInvoiceLine,1).line_amount == 100
+    assert audits[0]["before_data"]["code"] == old
+    assert audits[0]["after_data"]["code"] == "1-900010"
+    with pytest.raises(HTTPException) as error:
+        update_product(ident,ProductUpdate(regenerate_code=True,expected_code=old),db,ADMIN)
+    assert error.value.status_code == 409
+
+
+def test_code_repair_rejects_non_admin_and_regular_codes(db):
+    item=create_product(payload(code="RBI-1234567890123456"),db,ADMIN)
+    with pytest.raises(HTTPException) as error:
+        update_product(item.id,ProductUpdate(regenerate_code=True,expected_code=item.code),db,SimpleNamespace(roles=[SimpleNamespace(name="FINANCE")]))
+    assert error.value.status_code == 403
+    regular=create_product(payload("Normal item",code="1-100007"),db,ADMIN)
+    with pytest.raises(HTTPException) as error:
+        update_product(regular.id,ProductUpdate(regenerate_code=True,expected_code=regular.code),db,ADMIN)
+    assert error.value.status_code == 409

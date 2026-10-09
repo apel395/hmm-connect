@@ -156,3 +156,9 @@ Run `alembic upgrade head` to add the nullable fixed asset item link. For the hi
 
 ### Direct-use receiving and approved-draft edits — 2026-10-09
 Receiving detail uses `Post Direct Use` for DIRECT_USE and `Post to Inventory` for warehouse receiving. Posting still follows the stored destination; direct-use receiving creates no Inventory or StockMovement records. Users with both `receiving.edit` and `receiving.manage` can edit an approved, unposted report. Saving restarts its existing approval chain and archives previous decisions in ActivityLog; posting is blocked until the new approval completes. Posted reports continue to use dedicated correction/return actions. Location scope, item identity, quantity checks and historical-entry rules remain enforced. No database migration or EC2 worker update is required.
+
+
+### Temporary import item codes — 2026-10-09
+SYSTEM_ADMINISTRATOR editing a temporary `RBI-` item gets a classification-based code preview. Saving sends `regenerate_code` and the expected current code; the backend locks code allocation and the same product row, validates its selected catalog, allocates a unique next code, and audits old/new codes. Existing regular item codes are retained. Product IDs and source document links remain unchanged. No migration required.
+
+One-item EC2 repair is also available: `python scripts/repair_item_code.py --old-code RBI-88903CDB6423DF2D --name 'PEMPEK KAPAL SELAM' --user-id 45` previews only; append `--apply` to save. The actual sequential code depends on codes already present when saving.

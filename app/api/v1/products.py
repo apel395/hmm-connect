@@ -22,6 +22,7 @@ from app.models.supplier import Supplier
 from app.schemas.product import ProductCreate, ProductTaxProfileUpdate, ProductUpdate
 from app.services.direct_coa_service import DirectCoaService
 from app.services.item_code import lock_item_creation, next_item_code
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/products", tags=["Products"])
 MARKET_SUBGROUPS = {"VEGETABLES", "FRUIT"}
@@ -311,11 +312,29 @@ def update_product_tax_profile(product_id: int, data: ProductTaxProfileUpdate, d
     return product
 
 @router.patch("/{product_id}")
-def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     payload = data.model_dump(exclude_unset=True)
+    regenerate = payload.pop("regenerate_code", False)
+    expected_code = payload.pop("expected_code", None)
+    before_code = product.code
+    if regenerate:
+        if not is_superuser(user):
+            raise HTTPException(403, "Only SYSTEM_ADMINISTRATOR can repair imported item codes")
+        lock_item_creation(db)
+        product = db.query(Product).filter(Product.id == product_id).populate_existing().with_for_update().one()
+        before_code = product.code
+        if not expected_code or expected_code != product.code:
+            raise HTTPException(409, "Item code changed; refresh the item before repairing it")
+        if not product.code.upper().startswith("RBI-"):
+            raise HTTPException(409, "Only temporary RBI import codes can be repaired here")
+        kind = payload.get("item_type", product.item_type)
+        group_code = payload.get("group_code", product.group_code)
+        subgroup_code = payload.get("subgroup_code", product.subgroup_code)
+        group, subgroup = numbering_classification(db, kind, group_code, subgroup_code)
+        payload.update(code=next_item_code(db, group_code, subgroup_code), group_name=group["name"], subgroup_name=subgroup["name"] if subgroup else "")
     if str(payload.get("subgroup_name") or "").strip().upper() == "GRESORIS":
         payload["subgroup_name"] = "GROCERIES"
     _normalize_item_coa(payload, product)
@@ -326,6 +345,9 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
         if field != "is_market_item":
             setattr(product, field, value)
     product.is_market_item = _is_market_subgroup(product.subgroup_name)
+    if regenerate:
+        record_audit(db, user, "ITEM_CODE_REPAIRED", "PRODUCT", f"Replaced import code {before_code} with {product.code}", entity_id=product.id,
+            before_data={"code": before_code}, after_data={"code": product.code, "group_code": product.group_code, "subgroup_code": product.subgroup_code})
     db.commit()
     db.refresh(product)
     return product
