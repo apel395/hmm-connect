@@ -11,7 +11,6 @@ import Card from "@/components/ui/Card";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
 import Loading from "@/components/ui/Loading";
-import { exportCsv } from "@/utils/exportCsv";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { archiveAccount, createAccount, getAccountLookup, getAccounts, getAccountTree, restoreAccount, updateAccount } from "../api";
 import type { AccountPayload, AccountType, ChartOfAccount, ChartOfAccountNode, NormalBalance } from "../types";
@@ -72,6 +71,15 @@ export default function ChartOfAccountPage() {
   const save = useMutation({ mutationFn: () => editing ? updateAccount(editing.id, form) : createAccount(form), onSuccess: () => { toast.success(`Account ${editing ? "updated" : "created"}.`); setFormOpen(false); refresh(); }, onError: (e) => toast.error(message(e)) });
   const activeMutation = useMutation({ mutationFn: (account: ChartOfAccount) => account.is_active ? archiveAccount(account.id) : restoreAccount(account.id), onSuccess: (_, account) => { toast.success(`Account ${account.is_active ? "archived" : "restored"}.`); refresh(); }, onError: (e) => toast.error(message(e)) });
 
+  const excelExport = useMutation({
+    mutationFn: async () => {
+      const { exportAccountsExcel } = await import("../excel");
+      return exportAccountsExcel(params);
+    },
+    onSuccess: count => toast.success(`Exported ${count} accounts to Excel.`),
+    onError: error => toast.error(message(error)),
+  });
+
   const descendants = (accountId?: number) => {
     const excluded = new Set<number>();
     const visit = (nodes: ChartOfAccountNode[]) => nodes.forEach((node) => { if (excluded.has(node.parent_account_id ?? -1) || node.id === accountId) excluded.add(node.id); visit(node.children); });
@@ -88,7 +96,7 @@ export default function ChartOfAccountPage() {
 
   return <>
     <div className="space-y-6">
-      <PageHeader title="Chart of Accounts" description="Manage the finance account structure and availability." actions={<div className="flex flex-wrap gap-2"><Button onClick={() => openForm()}><Plus size={16}/> Create</Button><Button variant="outline" disabled title="COA import is not available yet">Import</Button><Button variant="outline" onClick={() => exportCsv("chart-of-accounts.csv", ["Code","Name","Type","Normal Balance","Posting","Status"], (accounts.data?.items ?? []).map((item) => [item.account_code,item.account_name,item.account_type,item.normal_balance,item.is_posting ? "Yes" : "No",item.is_active ? "Active" : "Archived"]))}>Export</Button>  <PrintPreviewButton src={printSrc} title="Chart of Accounts Register" ariaLabel="Preview chart of accounts" label="Print" />
+      <PageHeader title="Chart of Accounts" description="Manage the finance account structure and availability." actions={<div className="flex flex-wrap gap-2"><Button onClick={() => openForm()}><Plus size={16}/> Create</Button><Button variant="outline" disabled title="COA import is not available yet">Import</Button><Button variant="outline" loading={excelExport.isPending} disabled={excelExport.isPending} title="Export all filtered accounts to Excel" onClick={() => excelExport.mutate()}>Export Excel</Button>  <PrintPreviewButton src={printSrc} title="Chart of Accounts Register" ariaLabel="Preview chart of accounts" label="Print" />
 </div>}/>
       <ModuleSummary metrics={[
         {label:"Total Accounts",value:accounts.data?.total_items ?? lookup.data?.length ?? 0},
