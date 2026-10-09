@@ -498,6 +498,9 @@ class GoodsReceiptService:
         receipt.notes = data.notes
         cls._recalculate_totals(receipt)
 
+        from app.services.receiving_edit_policy import reopen_approved_receiving
+        reopen_approved_receiving(db, receipt, user)
+
         ActivityService.log(
             db=db,
             user=user,
