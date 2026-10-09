@@ -29,6 +29,7 @@ const TREATMENTS: { value: InventoryTreatment; label: string; help: string }[] =
 ];
 
 interface Props {
+  catalogType?: "CATERING" | "HOTEL";
   open: boolean;
   product?: Product | null;
   groups?: ProductGroup[];
@@ -38,6 +39,8 @@ interface Props {
 }
 
 const blank = () => ({
+  catalog_type: "CATERING" as "CATERING" | "HOTEL",
+  reference_cost_method: "LAST_PURCHASE" as "LAST_PURCHASE" | "AVERAGE_PURCHASE" | "MANUAL",
   code: "", name: "", item_type: "BUY" as ItemType,
   sales_service_name: "", sales_business_unit_id: null as number | null, sales_location_id: null as number | null,
   service_charge_rate: 0, pbjt_rate: 0, sales_ppn_rate: 0, pph23_rate: 0,
@@ -55,7 +58,7 @@ const blank = () => ({
   asset_account_id: null as number | null,
 });
 
-export default function ProductForm({ open, product, groups = [], loading, onClose, onSubmit }: Props) {
+export default function ProductForm({ catalogType = "CATERING", open, product, groups = [], loading, onClose, onSubmit }: Props) {
   const [form, setForm] = useState(blank());
   const uomListId = useId();
   const user = useAuthStore((state) => state.user);
@@ -151,6 +154,8 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
       usage_uom: product.usage_uom,
       conversion: Number(product.conversion),
       minimum_stock: Number(product.minimum_stock ?? 0),
+      catalog_type: product.catalog_type ?? catalogType,
+      reference_cost_method: product.reference_cost_method ?? "LAST_PURCHASE",
       cost_price: Number(product.cost_price ?? 0),
       selling_price: Number(product.selling_price ?? 0),
       sales_service_name: product.sales_service_name ?? "",
@@ -171,7 +176,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
       cogs_account_id: product.cogs_account_id ?? null,
       asset_account_id: product.asset_account_id ?? null,
     } : blank());
-  }, [open, product]);
+  }, [open, product, catalogType]);
 
   const update = (key: string, value: unknown) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -271,6 +276,7 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
     const { cogs_account_id, ...itemFields } = form;
     const payload = {
       ...itemFields,
+      catalog_type: catalogType,
       ...(cogs_account_id !== (product?.cogs_account_id ?? null) ? { cogs_account_id } : {}),
       code: displayedCode.trim(),
       name: form.name.trim(),
@@ -323,6 +329,11 @@ export default function ProductForm({ open, product, groups = [], loading, onClo
           <SearchableSelect label="Group" value={form.group_code || undefined} required placeholder="Type group code or name..." options={groupOptions} onChange={updateGroup} />
           <SearchableSelect label="Sub Group" value={form.subgroup_code || undefined} required={subgroupRequired} disabled={!form.group_code} placeholder={form.group_code ? "Type subgroup code or name..." : "Select Group first"} options={subGroupOptions} onChange={updateSubgroup} />
 
+          {form.item_type === "BUY" && <div className="col-span-2 grid grid-cols-2 gap-3">
+            <label className="text-sm font-medium">Reference cost method<select className="mt-1 w-full rounded border p-2" value={form.reference_cost_method} onChange={e => update("reference_cost_method", e.target.value as typeof form.reference_cost_method)}><option value="LAST_PURCHASE">Last purchase</option><option value="AVERAGE_PURCHASE">Weighted average purchase</option><option value="MANUAL">Manual reference</option></select></label>
+            <label className="text-sm font-medium">{form.reference_cost_method === "MANUAL" ? "Reference unit cost" : "Fallback unit cost"}<Input className="mt-1" type="number" min="0" step="0.01" value={form.cost_price} onChange={e => update("cost_price", Number(e.target.value))}/></label>
+            {product && <p className="col-span-2 text-xs text-slate-500">Last: Rp {Number(product.last_purchase_price ?? 0).toLocaleString("id-ID")} · Average: Rp {Number(product.average_purchase_price ?? 0).toLocaleString("id-ID")} / {product.uom}</p>}
+          </div>}
           {form.item_type === "SELL" && <div className="col-span-2 grid gap-4 rounded-lg border border-blue-200 bg-blue-50/30 p-4 md:grid-cols-2">
             <div className="md:col-span-2">
               <div className="font-semibold">Selling item</div>

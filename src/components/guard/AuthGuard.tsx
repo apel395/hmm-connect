@@ -38,6 +38,7 @@ const ROUTE_ACCESS: RouteAccess[] = [
   { prefix: "/store-requests", permission: "store_request.view", legacyRoles: ["WAREHOUSE", "DEPARTMENT", "PURCHASING", "GENERAL_MANAGER", "AUDITOR"] },
   { prefix: "/stock-opnames", permission: "stock_opname.view", legacyRoles: ["WAREHOUSE", "GENERAL_MANAGER", "AUDITOR"] },
   { prefix: "/products", permission: "products.view", legacyRoles: ["PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
+  { prefix: "/hotel-items", permission: "products.view", legacyRoles: ["PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
   { prefix: "/suppliers", permission: "suppliers.view", legacyRoles: ["PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
   { prefix: "/warehouses", permission: "warehouse.view", legacyRoles: ["WAREHOUSE", "GENERAL_MANAGER", "AUDITOR"] },
   { prefix: "/users", permission: "admin.users.manage", legacyRoles: ["SYSTEM_ADMINISTRATOR"] },

@@ -15,6 +15,7 @@ export type ProductListParams = {
   active_only?: boolean;
   market_only?: boolean;
   exclude_market?: boolean;
+  catalog_type?: "CATERING" | "HOTEL";
   item_type?: ItemType;
   inventory_treatment?: InventoryTreatment;
   tax_category?: TaxCategory;
@@ -35,8 +36,8 @@ export const productApi = {
   classificationMaster: () =>
     api.get<ProductClassificationGroup[]>("/products/classification-master"),
 
-  lookup: (search = "", limit = 30, marketOnly = false, excludeMarket = false) =>
-    api.get("/products/lookup", { params: { search, limit, market_only: marketOnly, exclude_market: excludeMarket } }),
+  lookup: (search = "", limit = 30, marketOnly = false, excludeMarket = false, catalogType?: "CATERING" | "HOTEL") =>
+    api.get("/products/lookup", { params: { search, limit, market_only: marketOnly, exclude_market: excludeMarket, catalog_type: catalogType } }),
 
   detail: (id: number) =>
     api.get<ProductDetail>(`/products/${id}`),
