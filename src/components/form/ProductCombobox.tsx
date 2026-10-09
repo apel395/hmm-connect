@@ -8,6 +8,7 @@ import useAuthorization from "@/hooks/useAuthorization";
 
 export interface ProductComboboxOption {
   id: number;
+  catalog_type?: "CATERING" | "HOTEL";
   code?: string;
   product_code?: string;
   name?: string;
@@ -15,15 +16,19 @@ export interface ProductComboboxOption {
   description?: string | null;
   uom?: string;
   usage_uom?: string;
+  inventory_treatment?: string;
   tax_category?: string;
   is_taxable?: boolean;
   tax_rate?: number | string;
+  reference_cost?: number | string;
+  average_purchase_price?: number | string | null;
   last_purchase_price?: number | string | null;
   last_purchase_date?: string | null;
   last_purchase_po_number?: string | null;
 }
 
 interface Props {
+  catalogType?: "CATERING" | "HOTEL";
   value?: number;
   products?: ProductComboboxOption[];
   disabled?: boolean;
@@ -56,20 +61,20 @@ function getScrollableAncestors(element: HTMLElement): HTMLElement[] {
   }
   return ancestors;
 }
-async function loadRemoteProducts(search: string, marketOnly: boolean, excludeMarket: boolean): Promise<ProductComboboxOption[]> {
+async function loadRemoteProducts(search: string, marketOnly: boolean, excludeMarket: boolean, catalogType?: "CATERING" | "HOTEL"): Promise<ProductComboboxOption[]> {
   try {
-    const lookup = await productApi.lookup(search, 30, marketOnly, excludeMarket);
+    const lookup = await productApi.lookup(search, 30, marketOnly, excludeMarket, catalogType);
     if (Array.isArray(lookup.data) && lookup.data.length > 0) return lookup.data;
   } catch {
     // Fall through to canonical pagination endpoint.
   }
-  const list = await productApi.list({ page: 1, page_size: 30, search, active_only: true, market_only: marketOnly, exclude_market: excludeMarket });
+  const list = await productApi.list({ page: 1, page_size: 30, catalog_type: catalogType, item_type: "BUY", search, active_only: true, market_only: marketOnly, exclude_market: excludeMarket });
   const payload = list.data;
   if (Array.isArray(payload)) return payload;
   return Array.isArray(payload?.items) ? payload.items : [];
 }
 
-export default function ProductCombobox({ value, products = [], disabled, placeholder = "Type product code or name...", remote = false, marketOnly = false, excludeMarket = false, requireTaxReady = false, onChange, onSelect }: Props) {
+export default function ProductCombobox({ catalogType, value, products = [], disabled, placeholder = "Type product code or name...", remote = false, marketOnly = false, excludeMarket = false, requireTaxReady = false, onChange, onSelect }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -90,7 +95,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
   const [position, setPosition] = useState<DropdownPosition | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
   const withTaxOverride = useCallback((product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }), [taxOverrides]);
-  const options = useMemo(() => (remote ? remoteProducts : products).map(withTaxOverride), [remote, remoteProducts, products, withTaxOverride]);
+  const options = useMemo(() => (remote ? remoteProducts : products).filter(product => !catalogType || product.catalog_type === catalogType).map(withTaxOverride), [remote, remoteProducts, products, withTaxOverride, catalogType]);
   const selected = useMemo(() => [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value), [products, remoteProducts, withTaxOverride, value]);
   const selectedLabel = selected ? labelFor(selected) : "";
   const [query, setQuery] = useState(selectedLabel);
@@ -129,7 +134,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       setLoading(true);
       setLoadError(false);
       try {
-        const rows = await loadRemoteProducts(selected && raw === selectedLabel ? "" : raw, marketOnly, excludeMarket);
+        const rows = await loadRemoteProducts(selected && raw === selectedLabel ? "" : raw, marketOnly, excludeMarket, catalogType);
         if (requestId === requestIdRef.current) setRemoteProducts(rows);
       } catch {
         if (requestId === requestIdRef.current) { setRemoteProducts([]); setLoadError(true); }
@@ -138,7 +143,7 @@ export default function ProductCombobox({ value, products = [], disabled, placeh
       }
     }, raw ? 250 : 0);
     return () => window.clearTimeout(timer);
-  }, [remote, disabled, open, query, selected, selectedLabel, marketOnly, excludeMarket]);
+  }, [remote, disabled, open, query, selected, selectedLabel, marketOnly, excludeMarket, catalogType]);
 
   useEffect(() => {
     if (!open) return;

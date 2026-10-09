@@ -42,9 +42,10 @@ url:"/stock-card",
 title:"Master Data",
 children:[
 {
-title:"Products",
+title:"Catering Items",
 url:"/products",
 },
+{ title:"Hotel Items", url:"/hotel-items" },
 {
 title:"Suppliers",
 url:"/suppliers",

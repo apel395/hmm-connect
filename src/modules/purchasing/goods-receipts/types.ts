@@ -1,6 +1,7 @@
 export interface GoodsReceiptItemPayload {
   purchase_order_item_id?: number | null;
   product_id?: number | null;
+  expense_account_id?: number | null;
   quantity: number;
   unit_cost?: number | null;
 }
@@ -27,14 +28,16 @@ export interface GoodsReceiptUpdatePayload {
   destination_type: "WAREHOUSE" | "DIRECT_USE";
   warehouse_id?: number | null;
   notes?: string | null;
-  items: Array<{ item_id: number; quantity: number; unit_cost: number; is_taxable: boolean; tax_rate: number }>;
+  items: Array<{ item_id: number; expense_account_id?: number | null; quantity: number; unit_cost: number; is_taxable: boolean; tax_rate: number }>;
 }
 
 export interface GoodsReceiptCostCorrectionPayload { reason: string; items: Array<{ item_id: number; unit_cost: number }> }
 export interface ApprovalHistoryItem { id?:number;level?:number;step_order?:number;name?:string;approver_role?:string;approver_role_name?:string;status:string;approver_name?:string|null;decided_at?:string|null;comment?:string|null }
 
 export interface GoodsReceiptItem {
+  catalog_type?: "CATERING" | "HOTEL"; inventory_treatment?: string;
   id: number; purchase_order_item_id?: number | null; product_id: number; product_code: string; product_name: string; uom?: string | null;
+  expense_account_id?: number | null;
   quantity: number; unit_cost: number; line_subtotal?: number; is_taxable?: boolean; tax_rate?: number; tax_amount?: number; line_total?: number;
 }
 

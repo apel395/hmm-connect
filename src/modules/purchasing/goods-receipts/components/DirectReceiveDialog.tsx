@@ -22,11 +22,12 @@ import {
 } from "@/modules/admin/organization/api";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import useAuthorization from "@/hooks/useAuthorization";
 import { nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
 
-type Line = { product_id: number; quantity: number; unit_cost: number };
+type Line = { product_id: number; quantity: number; unit_cost: number; expense_account_id?: number | null };
 const money = (value: unknown) =>
   Number(value ?? 0).toLocaleString("id-ID", {
     minimumFractionDigits: 2,
@@ -48,6 +49,7 @@ export default function DirectReceiveDialog({
   const { data: warehouses = [] } = useWarehouses();
   const receive = useReceiveGoods();
   const { hasPermission } = useAuthorization();
+  const [catalogType, setCatalogType] = useState<"CATERING" | "HOTEL">("CATERING");
   const [supplierId, setSupplierId] = useState<number>();
   const [businessUnitId, setBusinessUnitId] = useState<number>();
   const [departmentId, setDepartmentId] = useState<number>();
@@ -55,6 +57,7 @@ export default function DirectReceiveDialog({
   const [destinationType, setDestinationType] = useState<
     "WAREHOUSE" | "DIRECT_USE"
   >("WAREHOUSE");
+  const expenseAccounts = useQuery({queryKey:["receiving-expense-accounts"],queryFn:()=>getAllAccountLookup({account_type:"EXPENSE",is_active:true,is_posting:true}),enabled:open && destinationType === "DIRECT_USE"});
   const [warehouseId, setWarehouseId] = useState<number>();
   const [receivedAt, setReceivedAt] = useState(nowLocal());
   const [historical, setHistorical] = useState(false);
@@ -70,10 +73,10 @@ export default function DirectReceiveDialog({
     enabled: open,
   });
   const departments = useQuery({
-    queryKey: ["departments", "direct-receipt", businessUnitId],
+    queryKey: ["departments", "direct-receipt", businessUnitId, locationId],
     queryFn: () =>
-      listDepartments({ business_unit_id: businessUnitId, is_active: true }),
-    enabled: open && !!businessUnitId,
+      listDepartments({ business_unit_id: businessUnitId, location_id: locationId, is_active: true }),
+    enabled: open && !!locationId,
   });
   const locations = useQuery({
     queryKey: ["locations", "direct-receipt", businessUnitId],
@@ -133,10 +136,15 @@ export default function DirectReceiveDialog({
       .filter((line) => line.product_id && line.quantity > 0)
       .map((line) => ({
         product_id: line.product_id,
+        expense_account_id: destinationType === "DIRECT_USE" ? line.expense_account_id ?? null : null,
         quantity: line.quantity,
         unit_cost: line.unit_cost,
       }));
     if (!items.length) return alert("Add at least one valid item.");
+    if (destinationType === "DIRECT_USE" && items.some(item => {
+      const product=productRows.find(row=>row.id===item.product_id);
+      return product?.catalog_type === "HOTEL" && product.inventory_treatment !== "FIXED_ASSET" && !item.expense_account_id;
+    })) return alert("Choose an expense destination for each Hotel Direct Use item in the selected department.");
     if (items.some((item) => Number(item.unit_cost) <= 0))
       return alert(
         "Unit cost must be greater than zero for every received item.",
@@ -184,8 +192,7 @@ export default function DirectReceiveDialog({
           {!historical && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
             Use this only when goods/services are received without a Purchase
             Order. Saving creates a <strong>Draft RR</strong>; it must follow
-            Store → Chef → PM/Camp Boss → HO Purchasing → Finance → General
-            Manager approval before it can be posted to inventory.
+            Store and PM/Camp Boss approval by two different people before posting.
           </div>}
           <div className="grid gap-3 md:grid-cols-2">
             <SearchableSelect
@@ -208,6 +215,7 @@ export default function DirectReceiveDialog({
             />
             <SearchableSelect
               label="Department"
+              disabled={!locationId || departments.isLoading}
               value={departmentId}
               placeholder="Type department..."
               options={(departments.data ?? []).map(option)}
@@ -218,7 +226,7 @@ export default function DirectReceiveDialog({
               value={locationId}
               placeholder="Type location..."
               options={(locations.data ?? []).map(option)}
-              onChange={setLocationId}
+              onChange={id=>{setLocationId(id);setDepartmentId(undefined);setWarehouseId(undefined)}}
             />
             <label className="text-xs font-medium text-slate-700">
               Receipt Date
@@ -268,6 +276,7 @@ export default function DirectReceiveDialog({
             </div>
           )}
           <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <label className="mb-2 block text-xs">Item catalog<select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL")}><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>
             <table className="min-w-[940px] w-full text-xs">
               <thead className="bg-slate-50">
                 <tr>
@@ -294,13 +303,14 @@ export default function DirectReceiveDialog({
                     <tr key={index} className="border-t">
                       <td className="p-2">
                         <ProductCombobox
+                          catalogType={catalogType}
                           products={productRows}
                           remote
                           value={line.product_id || undefined}
                           onChange={(id) =>
                             patch(index, { product_id: id || 0 })
                           }
-                          onSelect={rememberProduct}
+                          onSelect={product => { rememberProduct(product); patch(index, {product_id:product.id, unit_cost:Number(product.reference_cost ?? product.last_purchase_price ?? 0)}); }}
                         />
                         {product?.tax_category === "REVIEW_REQUIRED" && (
                           <div className="mt-1 text-xs font-medium text-red-700">
@@ -324,6 +334,7 @@ export default function DirectReceiveDialog({
                             patch(index, { unit_cost: value })
                           }
                         />
+                        {destinationType === "DIRECT_USE" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" className="w-full rounded border p-1" value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}
                       </td>
                       <td>
                         {product?.is_taxable

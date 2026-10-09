@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import Button from "@/components/ui/Button";
@@ -33,6 +34,9 @@ interface Props {
 }
 interface ReceiveLine {
   purchase_order_item_id: number;
+  expense_account_id?: number | null;
+  catalog_type?: "CATERING" | "HOTEL";
+  inventory_treatment?: string;
   product_code?: string;
   product_name: string;
   uom?: string;
@@ -63,6 +67,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
   const [notes, setNotes] = useState("");
   const [costCorrectionReason, setCostCorrectionReason] = useState("");
   const [lines, setLines] = useState<ReceiveLine[]>([]);
+  const expenses=useQuery({queryKey:["receiving-expense-accounts"],queryFn:()=>getAllAccountLookup({account_type:"EXPENSE",is_active:true,is_posting:true}),enabled:open && destinationType === "DIRECT_USE"});
   const selectedPO: any = purchaseOrder ?? (receivable.data ?? []).find((order: any) => order.id === purchaseOrderId);
   const businessUnits = useQuery({ queryKey: ["business-units", "receiving-dimensions"], queryFn: () => filterBusinessUnits({ is_active: true }), enabled: open && Boolean(selectedPO?.business_unit_id) && !selectedPO?.business_unit_name });
   const departments = useQuery({ queryKey: ["departments", "receiving-dimensions", selectedPO?.business_unit_id], queryFn: () => listDepartments({ business_unit_id: selectedPO?.business_unit_id, is_active: true }), enabled: open && Boolean(selectedPO?.department_id) && !selectedPO?.department_name });
@@ -92,11 +97,12 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
     
     const selected = lines.filter((line) => line.quantity > 0);
     if (!selected.length) return alert("Enter a received quantity greater than zero.");
+    if(destinationType === "DIRECT_USE" && selected.some(line=>line.catalog_type === "HOTEL" && line.inventory_treatment !== "FIXED_ASSET" && !line.expense_account_id))return alert("Choose an expense destination for each Hotel item in the PO department.");
     if (selected.some((line) => line.unit_cost <= 0)) return alert("Unit cost must be greater than zero.");
     if (hasCostOverride && !canCorrectCost) return alert("Only an authorized manager can override PO unit cost.");
     if (hasCostOverride && costCorrectionReason.trim().length < 3) return alert("Enter a correction reason.");
     try {
-      await receive.mutateAsync({ purchaseOrderId, payload: { source_type: historical ? "HISTORICAL_ENTRY" : "LIVE", received_at: new Date(receivedAt).toISOString(), external_reference: deliveryNote || null, destination_type: destinationType, warehouse_id: destinationType === "WAREHOUSE" ? warehouseId : null, notes: notes || null, cost_correction_reason: hasCostOverride ? costCorrectionReason.trim() : null, items: selected.map((line) => ({ purchase_order_item_id: line.purchase_order_item_id, quantity: line.quantity, unit_cost: line.unit_cost })) } });
+      await receive.mutateAsync({ purchaseOrderId, payload: { source_type: historical ? "HISTORICAL_ENTRY" : "LIVE", received_at: new Date(receivedAt).toISOString(), external_reference: deliveryNote || null, destination_type: destinationType, warehouse_id: destinationType === "WAREHOUSE" ? warehouseId : null, notes: notes || null, cost_correction_reason: hasCostOverride ? costCorrectionReason.trim() : null, items: selected.map((line) => ({ purchase_order_item_id: line.purchase_order_item_id, quantity: line.quantity, unit_cost: line.unit_cost, expense_account_id:destinationType === "DIRECT_USE" ? line.expense_account_id ?? null : null })) } });
       onClose();
     } catch (error) {
       const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
@@ -118,7 +124,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">Partial receiving is supported. Enter only the quantity physically received. Remaining quantities stay open for the next Receiving Report.{isPartial && <strong className="ml-1">This draft is a partial receipt.</strong>}</div>
           <label>Destination<select className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={destinationType} onChange={(event) => setDestinationType(event.target.value as "WAREHOUSE" | "DIRECT_USE")}><option value="WAREHOUSE">Warehouse</option><option value="DIRECT_USE">Direct Use</option></select></label>
           {destinationType === "WAREHOUSE" && <SearchableSelect label="Warehouse" required value={warehouseId ?? undefined} disabled={warehouses.length===0} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={(value)=>setWarehouseId(value ?? null)}/>} 
-          {remaining.isLoading ? <p>Loading remaining PO items…</p> : !!lines.length && <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[900px] text-xs"><thead><tr><th className="w-[42%] p-2 text-left">Item</th><th className="w-24 p-2 text-right">Ordered</th><th className="w-28 p-2 text-right">Received</th><th className="w-24 p-2 text-right">Remaining</th><th className="w-28 p-2 text-right">Receive Now</th><th className="w-20 p-2 text-left">UOM</th><th className="w-40 p-2 text-left">Unit Cost</th></tr></thead><tbody>{lines.map((line) => <tr key={line.purchase_order_item_id} className="border-t"><td className="p-2"><div className="font-medium">{line.product_code} — {line.product_name}</div></td><td className="p-2 text-right">{line.ordered_quantity}</td><td className="p-2 text-right">{line.received_quantity}</td><td className="p-2 text-right font-semibold">{line.remaining_quantity}</td><td className="p-2"><input type="number" min="0" max={line.remaining_quantity} step="0.01" className="h-9 w-24 rounded-md border px-2 text-right text-[13px] tabular-nums" value={line.quantity} onChange={(event) => updateQuantity(line.purchase_order_item_id, Number(event.target.value))}/></td><td className="p-2">{line.uom ?? "—"}</td><td className="p-2">{canCorrectCost ? <div className="w-40"><CurrencyInput value={line.unit_cost} onValueChange={(value) => updateCost(line.purchase_order_item_id, value)}/></div> : money(line.unit_cost)}</td></tr>)}</tbody></table></div>}
+          {remaining.isLoading ? <p>Loading remaining PO items…</p> : !!lines.length && <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[900px] text-xs"><thead><tr><th className="w-[42%] p-2 text-left">Item</th><th className="w-24 p-2 text-right">Ordered</th><th className="w-28 p-2 text-right">Received</th><th className="w-24 p-2 text-right">Remaining</th><th className="w-28 p-2 text-right">Receive Now</th><th className="w-20 p-2 text-left">UOM</th><th className="w-40 p-2 text-left">Unit Cost</th>{destinationType === "DIRECT_USE" && <th className="min-w-64 p-2 text-left">Expense destination</th>}</tr></thead><tbody>{lines.map((line) => <tr key={line.purchase_order_item_id} className="border-t"><td className="p-2"><div className="font-medium">{line.product_code} — {line.product_name}</div></td><td className="p-2 text-right">{line.ordered_quantity}</td><td className="p-2 text-right">{line.received_quantity}</td><td className="p-2 text-right font-semibold">{line.remaining_quantity}</td><td className="p-2"><input type="number" min="0" max={line.remaining_quantity} step="0.01" className="h-9 w-24 rounded-md border px-2 text-right text-[13px] tabular-nums" value={line.quantity} onChange={(event) => updateQuantity(line.purchase_order_item_id, Number(event.target.value))}/></td><td className="p-2">{line.uom ?? "—"}</td><td className="p-2">{canCorrectCost ? <div className="w-40"><CurrencyInput value={line.unit_cost} onValueChange={(value) => updateCost(line.purchase_order_item_id, value)}/></div> : money(line.unit_cost)}</td>{destinationType === "DIRECT_USE" && <td className="p-2"><select aria-label={`Expense destination for ${line.product_name}`} className="w-full rounded border p-2" value={line.expense_account_id ?? ""} onChange={e=>setLines(current=>current.map(item=>item.purchase_order_item_id === line.purchase_order_item_id ? {...item,expense_account_id:Number(e.target.value)||null}:item))}><option value="">Item expense mapping</option>{expenses.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></td>}</tr>)}</tbody></table></div>}
           <div className="ml-auto w-full max-w-sm rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs tabular-nums">Subtotal <strong className="float-right">{money(subtotal)}</strong><br/>PPN (booked on invoice) <strong className="float-right">{money(taxAmount)}</strong><hr className="my-2"/>Grand Total <strong className="float-right">{money(subtotal + taxAmount)}</strong></div>
           {hasCostOverride && <textarea className="min-h-20 w-full rounded-md border p-2 text-[13px]" placeholder="Cost correction reason" value={costCorrectionReason} onChange={(event) => setCostCorrectionReason(event.target.value)}/>}<textarea className="min-h-20 w-full rounded-md border p-2 text-[13px]" placeholder="Notes" value={notes} onChange={(event) => setNotes(event.target.value)}/>
         </div>

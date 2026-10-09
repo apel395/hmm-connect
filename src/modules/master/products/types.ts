@@ -14,6 +14,12 @@ export interface Product {
   usage_uom: string;
   conversion: string | number;
   item_type: ItemType;
+  catalog_type?: "CATERING" | "HOTEL";
+  reference_cost_method?: "LAST_PURCHASE" | "AVERAGE_PURCHASE" | "MANUAL";
+  reference_cost?: string | number;
+  reference_cost_source?: string;
+  last_purchase_price?: string | number | null;
+  average_purchase_price?: string | number | null;
   cost_price: string | number;
   selling_price: string | number;
   sales_service_name?: string | null;
@@ -66,6 +72,12 @@ export interface ProductCreateRequest {
   usage_uom: string;
   conversion: number;
   item_type: ItemType;
+  catalog_type?: "CATERING" | "HOTEL";
+  reference_cost_method?: "LAST_PURCHASE" | "AVERAGE_PURCHASE" | "MANUAL";
+  reference_cost?: string | number;
+  reference_cost_source?: string;
+  last_purchase_price?: string | number | null;
+  average_purchase_price?: string | number | null;
   cost_price: number;
   selling_price: number;
   sales_service_name?: string | null;

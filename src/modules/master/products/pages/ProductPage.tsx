@@ -22,7 +22,7 @@ const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
 const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
 const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
-export default function ProductPage() {
+export default function ProductPage({ catalogType = "CATERING" }: { catalogType?: "CATERING" | "HOTEL" }) {
   const user = useAuthStore((state) => state.user);
   const canCreateProduct = isSuperuser(user);
   const [formOpen, setFormOpen] = useState(false);
@@ -40,7 +40,7 @@ export default function ProductPage() {
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const query = useProducts({ page, page_size: pageSize, search: debouncedSearch || undefined, item_type: itemTypeFilter || undefined, inventory_treatment: treatmentFilter || undefined, tax_category: taxFilter || undefined });
+  const query = useProducts({ catalog_type: catalogType, page, page_size: pageSize, search: debouncedSearch || undefined, item_type: itemTypeFilter || undefined, inventory_treatment: treatmentFilter || undefined, tax_category: taxFilter || undefined });
   const classification = useQuery({
     queryKey: ["product-classification-master"],
     queryFn: async () => (await productApi.classificationMaster()).data,
@@ -144,7 +144,7 @@ export default function ProductPage() {
     setExportError(null);
     setExportStatus("starting");
     try {
-      const response = await exportApi.createProductsExport();
+      const response = await exportApi.createProductsExport(catalogType);
       setExportJobId(response.data.job_id);
       setExportStatus("processing");
     } catch (error: any) {
@@ -163,8 +163,8 @@ export default function ProductPage() {
   return <>
     <div className="space-y-6">
       <PageHeader
-        title="Products"
-        description="Product Master"
+        title={catalogType === "HOTEL" ? "Hotel Items" : "Catering Items"}
+        description="Item Master"
         actions={<div className="flex items-center gap-2">
           <Button onClick={handleExport} disabled={exportBusy}>{exportLabel}</Button>
           {canCreateProduct && <Button onClick={handleCreate}>New Product</Button>}
@@ -206,7 +206,7 @@ export default function ProductPage() {
       </Card>
     </div>
     {formOpen && classification.isError && <div role="alert" className="fixed bottom-4 right-4 z-[100] rounded border border-red-200 bg-white p-3 text-sm text-red-700">Item classifications could not be loaded. <Button size="sm" variant="outline" onClick={() => classification.refetch()}>Retry</Button></div>}
-    <ProductForm open={formOpen} product={selected} groups={classification.data ?? []} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
+    <ProductForm catalogType={catalogType} open={formOpen} product={selected} groups={classification.data ?? []} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
     <ProductDetailDialog productId={detailId} accounts={accountLookup.data ?? []} onClose={() => setDetailId(null)} onEdit={(product) => { setDetailId(null); handleEdit(product); }}/>
   </>;
 }
