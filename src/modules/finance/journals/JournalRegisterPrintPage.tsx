@@ -31,6 +31,8 @@ export default function JournalRegisterPrintPage() {
       search: searchParams.get("search") || "",
       status: searchParams.get("status") || "",
       location_id: searchParams.get("location_id") || "",
+      business_unit_id: searchParams.get("business_unit_id") || "",
+      supplier_id: searchParams.get("supplier_id") || "",
     }).filter(([, value]) => value !== ""),
   );
 

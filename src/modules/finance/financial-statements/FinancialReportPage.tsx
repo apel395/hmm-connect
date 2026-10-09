@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, ListFilter, RefreshCw, Settings2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import DepartmentPerformanceTable, { type DepartmentPerformance } from "./DepartmentPerformanceTable";
+import type { DepartmentPerformance } from "./DepartmentPerformanceTable";
+import DepartmentStatementTables, { type DepartmentStatement } from "./DepartmentStatementTables";
 import api from "@/api/client";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import PageHeader from "@/components/common/PageHeader";
@@ -16,7 +17,7 @@ export type Kind = "PROFIT_LOSS" | "BALANCE_SHEET";
 export type Period = "MTD" | "YTD";
 export type Amounts = { current: string; budget: string | null; last_month: string | null; last_year: string | null; variance: string | null; movement?: string };
 export type Row = { account_code: string; account_name: string; account_ids: number[]; section: string; periods: Record<Period, Amounts> };
-export type Report = { departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
+export type Report = { department_reports?: DepartmentStatement[]; departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
 const money = (value: string | number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { maximumFractionDigits: 2 });
 const input = "h-8 rounded border border-slate-300 bg-white px-2 text-xs";
 const labels: Record<string, string> = { REVENUE: "Pendapatan", COST_OF_REVENUE: "Beban pokok", EXPENSES: "Beban", ASSETS: "Aset", LIABILITIES: "Liabilitas", EQUITY: "Ekuitas" };
@@ -36,11 +37,11 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const [filters, setFilters] = useState(initialFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [period, setPeriod] = useState<Period>("MTD");
-  const params = Object.fromEntries(Object.entries({ ...filters, report_type: kind }).filter(([, value]) => value !== ""));
+  const params = Object.fromEntries(Object.entries({ ...filters, report_type: kind, department_tables: kind === "PROFIT_LOSS" }).filter(([, value]) => value !== ""));
   const report = useQuery({ queryKey: ["financial-report-comparison", kind, filters], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params })).data });
   const units = useQuery({ queryKey: ["report-units"], queryFn: listBusinessUnits, enabled: showFilters });
   const locations = useQuery({ queryKey: ["report-locations", draft.business_unit_id], queryFn: () => listLocations({ is_active: true, business_unit_id: Number(draft.business_unit_id) || undefined }), enabled: showFilters });
-  const departments = useQuery({ queryKey: ["report-departments", draft.business_unit_id], queryFn: () => listDepartments({ is_active: true, business_unit_id: Number(draft.business_unit_id) || undefined }), enabled: showFilters });
+  const departments = useQuery({ queryKey: ["report-departments", draft.business_unit_id, draft.location_id], queryFn: () => listDepartments({ is_active: true, business_unit_id: Number(draft.business_unit_id) || undefined, location_id: Number(draft.location_id) || undefined }), enabled: showFilters });
   const budgets = useQuery({ queryKey: ["report-budgets", draft.as_of_date.slice(0, 4)], queryFn: async () => (await api.get("/budgets", { params: { fiscal_year: draft.as_of_date.slice(0, 4), page_size: 500 } })).data, enabled: showFilters });
   const title = kind === "PROFIT_LOSS" ? "Profit & Loss" : "Balance Sheet";
   const data = report.data;
@@ -91,7 +92,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     {showFilters && <Card className="p-2 print:hidden"><form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); setFilters({ ...draft }); setShowFilters(false); }}>
       <label className="grid text-xs">As of<input className={input} type="date" required value={draft.as_of_date} onChange={event => setDraft({ ...draft, as_of_date: event.target.value })} /></label>
       <label className="grid text-xs">Unit<select className={input} value={draft.business_unit_id} onChange={event => setDraft({ ...draft, business_unit_id: event.target.value, location_id: "", department_id: "" })}><option value="">All units</option>{units.data?.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label>
-      <label className="grid text-xs">Location<select className={input} value={draft.location_id} onChange={event => setDraft({ ...draft, location_id: event.target.value })}><option value="">{locations.data?.length === 1 ? locations.data[0].name : "Consolidated"}</option>{locations.data?.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+      <label className="grid text-xs">Location<select className={input} value={draft.location_id} onChange={event => setDraft({ ...draft, location_id: event.target.value, department_id: "" })}><option value="">{locations.data?.length === 1 ? locations.data[0].name : "Consolidated"}</option>{locations.data?.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
       <label className="grid text-xs">Department<select className={input} value={draft.department_id} onChange={event => setDraft({ ...draft, department_id: event.target.value })}><option value="">All departments</option>{departments.data?.map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
       <label className="grid text-xs">Budget<select className={input} value={draft.budget_id} onChange={event => setDraft({ ...draft, budget_id: event.target.value })}><option value="">Approved budgets</option>{budgets.data?.items?.filter((budget: { status: string }) => ["APPROVED", "LOCKED"].includes(budget.status)).map((budget: { id: number; name: string }) => <option key={budget.id} value={budget.id}>{budget.name}</option>)}</select></label>
       <label className="flex h-8 items-center gap-1 text-xs"><input type="checkbox" checked={draft.kap} onChange={event => setDraft({ ...draft, kap: event.target.checked })} />KAP headers</label>
@@ -102,7 +103,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
       <div className="flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "EXPENSES"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}{kind === "PROFIT_LOSS" && <div className="px-3 py-2"><span className="mr-2 text-slate-500">Laba / Rugi</span><b className="tabular-nums">{money(profit[0])}</b></div>}</div>
       {kind === "BALANCE_SHEET" ? <div className="grid items-start gap-2 xl:grid-cols-2">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : table(["REVENUE", "COST_OF_REVENUE", "EXPENSES"])}
-      {kind === "PROFIT_LOSS" && data.departments && <DepartmentPerformanceTable departments={data.departments} period={period} asOf={filters.as_of_date} locationId={data.scope.location_id} businessUnitId={data.scope.business_unit_id} />}
+      {kind === "PROFIT_LOSS" && data.department_reports && <DepartmentStatementTables statements={data.department_reports} period={period} asOf={filters.as_of_date} locationId={data.scope.location_id} businessUnitId={data.scope.business_unit_id} />}
       <div className="hidden print:block text-xs">{user?.full_name || user?.username} · {new Date().toLocaleString()}</div>
     </>}
   </div>;

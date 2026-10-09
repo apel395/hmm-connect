@@ -17,7 +17,7 @@ import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/a
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { supplierApi } from "@/modules/master/suppliers/api/supplierApi";
 import { todayLocal } from "@/utils/dateConstraints";
-import { bulkJournalAction, createJournal, journalAction, listJournals } from "./api";
+import { bulkJournalAction, createJournal, journalAction, listJournals, getJournalScope, getJournalCopyTemplate } from "./api";
 import { sourceDocumentPath } from "./sourceDocument";
 import { paymentAction } from "@/modules/finance/payments/api";
 import useAuthorization from "@/hooks/useAuthorization";
@@ -25,10 +25,10 @@ import useAuthorization from "@/hooks/useAuthorization";
 import useFormRecovery from "@/hooks/useFormRecovery";
 import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 
-type Line = { account_id: number; debit: number; credit: number; description: string };
+type Line = { account_id: number; debit: number; credit: number; description: string; department_id?: number | null; supplier_id?: number | null };
 const blankLine = (): Line => ({ account_id: 0, debit: 0, credit: 0, description: "" });
 
-type JournalInput = { postingDate: string; documentNumber: string; description: string; businessUnitId?: number; departmentId?: number; locationId?: number; lines: Line[] };
+type JournalInput = { copiedFromId?: number; postingDate: string; documentNumber: string; description: string; businessUnitId?: number; departmentId?: number; locationId?: number; lines: Line[] };
 const validInput = (v: unknown): v is JournalInput => { const x = v as JournalInput; return !!x && typeof x.postingDate === "string" && typeof x.documentNumber === "string" && typeof x.description === "string" && Array.isArray(x.lines) && x.lines.every(l => typeof l.account_id === "number" && typeof l.debit === "number" && typeof l.credit === "number" && typeof l.description === "string"); };
 
 export default function JournalListPage() {
@@ -41,6 +41,10 @@ export default function JournalListPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [filterUnitId, setFilterUnitId] = useState<number>();
+  const [scopeReady, setScopeReady] = useState(false);
+  const [copiedFromId, setCopiedFromId] = useState<number>();
+  const scope = useQuery({ queryKey: ["journal-scope"], queryFn: getJournalScope });
   const [filterLocationId, setFilterLocationId] = useState<number>();
   const [filterSupplierId, setFilterSupplierId] = useState<number>();
   const [open, setOpen] = useState(false);
@@ -52,16 +56,17 @@ export default function JournalListPage() {
   const [departmentId, setDepartmentId] = useState<number>();
   const [locationId, setLocationId] = useState<number>();
   const [lines, setLines] = useState<Line[]>([blankLine(), blankLine()]);
-  const recovery = useFormRecovery("journal:create", { postingDate, documentNumber, description, businessUnitId, departmentId, locationId, lines }, open, validInput);
+  const recovery = useFormRecovery("journal:create", { copiedFromId, postingDate, documentNumber, description, businessUnitId, departmentId, locationId, lines }, open, validInput);
   const openCreate = () => {
     const saved = recovery.load();
-    if (saved) { setPostingDate(saved.postingDate); setDocumentNumber(saved.documentNumber); setDescription(saved.description); setBusinessUnitId(saved.businessUnitId); setDepartmentId(saved.departmentId); setLocationId(saved.locationId); setLines(saved.lines); recovery.notifyRestored(); }
+    if (saved) { setCopiedFromId(saved.copiedFromId); setPostingDate(saved.postingDate); setDocumentNumber(saved.documentNumber); setDescription(saved.description); setBusinessUnitId(saved.businessUnitId); setDepartmentId(saved.departmentId); setLocationId(saved.locationId); setLines(saved.lines); recovery.notifyRestored(); }
+    if (!saved) { setCopiedFromId(undefined); setBusinessUnitId(filterUnitId); setLocationId(filterLocationId ?? scope.data?.default_location_id ?? undefined); }
     setOpen(true);
   };
-  const discardInput = () => { recovery.clear(); setOpen(false); setPostingDate(todayLocal()); setDocumentNumber(""); setDescription("Salary journal"); setBusinessUnitId(undefined); setDepartmentId(undefined); setLocationId(undefined); setLines([blankLine(), blankLine()]); };
+  const discardInput = () => { recovery.clear(); setCopiedFromId(undefined); setOpen(false); setPostingDate(todayLocal()); setDocumentNumber(""); setDescription("Salary journal"); setBusinessUnitId(undefined); setDepartmentId(undefined); setLocationId(undefined); setLines([blankLine(), blankLine()]); };
   const [selected, setSelected] = useState<number[]>([]);
 
-  const q = useQuery({ queryKey: ["journal-entries", page, pageSize, search, status, filterLocationId, filterSupplierId], queryFn: () => listJournals({ page, page_size: pageSize, search: search || undefined, status: status || undefined, location_id: filterLocationId ?? undefined, supplier_id: filterSupplierId ?? undefined }) });
+  const q = useQuery({ queryKey: ["journal-entries", page, pageSize, search, status, filterUnitId, filterLocationId, filterSupplierId], queryFn: () => listJournals({ page, page_size: pageSize, search: search || undefined, status: status || undefined, location_id: filterLocationId ?? undefined, supplier_id: filterSupplierId ?? undefined, business_unit_id: filterUnitId }), enabled: scopeReady });
   const accounts = useQuery({ queryKey: ["journal-account-lookup"], queryFn: () => getAllAccountLookup({ is_posting: true, is_active: true }), enabled: open });
   const businessUnits = useQuery({ queryKey: ["business-units", "manual-journal", "active"], queryFn: () => filterBusinessUnits({ is_active: true }), enabled: open });
   const departments = useQuery({ queryKey: ["journal-departments", businessUnitId, locationId], queryFn: () => listDepartments({ business_unit_id: businessUnitId, location_id: locationId, is_active: true }), enabled: open && Boolean(businessUnitId && locationId) });
@@ -69,7 +74,16 @@ export default function JournalListPage() {
   const filterLocations = useQuery({ queryKey: ["journal-filter-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
   const filterSuppliers = useQuery({ queryKey: ["journal-filter-suppliers"], queryFn: () => supplierApi.lookup("", 100) });
 
-  useEffect(() => { setSelected([]); }, [page, pageSize, search, status, filterLocationId, filterSupplierId]);
+  useEffect(() => {
+    if (scope.data && !scopeReady) {
+      setFilterUnitId(scope.data.default_business_unit_id ?? undefined);
+      setFilterLocationId(scope.data.default_location_id ?? undefined);
+      setBusinessUnitId(scope.data.default_business_unit_id ?? undefined);
+      setLocationId(scope.data.default_location_id ?? undefined);
+      setScopeReady(true);
+    }
+  }, [scope.data, scopeReady]);
+  useEffect(() => { setSelected([]); }, [page, pageSize, search, status, filterUnitId, filterLocationId, filterSupplierId]);
   useEffect(() => window.localStorage.setItem("journal-page-size", String(pageSize)), [pageSize]);
   useEffect(() => { if (open && !businessUnitId && businessUnits.data?.length === 1) setBusinessUnitId(businessUnits.data[0].id); }, [open, businessUnitId, businessUnits.data]);
 
@@ -79,7 +93,17 @@ export default function JournalListPage() {
   const voidSourcePayment = useMutation({ mutationFn: (paymentId: number) => paymentAction(paymentId, "void"), onSuccess: () => { toast.success("Payment and its draft journal were voided."); refreshFinance(); }, onError: (error: any) => toast.error(error?.response?.data?.detail || "Payment could not be voided.") });
   const lifecycle = useMutation({ mutationFn: ({ id, action }: { id: number; action: "post" | "unpost" }) => journalAction(id, action), onSuccess: (_, vars) => { toast.success(vars.action === "post" ? "Journal posted." : "Journal returned to draft."); refreshFinance(); }, onError: (error: any) => toast.error(error?.response?.data?.detail || "Journal action failed.") });
   const bulkLifecycle = useMutation({ mutationFn: ({ ids, action }: { ids: number[]; action: "post" | "unpost" }) => bulkJournalAction(ids, action), onSuccess: (result) => { toast.success(`${result.processed} journal(s) changed to ${result.status}.`); setSelected([]); refreshFinance(); }, onError: (error: any) => toast.error(error?.response?.data?.detail || "Bulk journal action failed. No journals were changed.") });
-  const save = useMutation({ mutationFn: () => createJournal({ posting_date: postingDate, document_type: "MANUAL_JOURNAL", document_number: documentNumber.trim(), reference_type: "MANUAL", reference_id: 0, description: description.trim() || undefined, business_unit_id: businessUnitId!, department_id: departmentId ?? null, location_id: locationId ?? null, lines: validLines.map((line) => ({ ...line, description: line.description || undefined, business_unit_id: businessUnitId, department_id: departmentId ?? null, location_id: locationId ?? null })) }), onSuccess: (journal) => { toast.success("Journal entry created."); recovery.clear(); setOpen(false); setPostingDate(todayLocal()); setDocumentNumber(""); setDescription("Salary journal"); setDepartmentId(undefined); setLocationId(undefined); setBusinessUnitId(businessUnits.data?.length === 1 ? businessUnits.data[0].id : undefined); setLines([blankLine(), blankLine()]); refreshFinance(); nav(`/journal-entries/${journal.id}`); }, onError: (error: any) => toast.error(typeof error?.response?.data?.detail === "string" ? error.response.data.detail : "Journal entry could not be created.") });
+  const save = useMutation({ mutationFn: () => createJournal({ copied_from_journal_id: copiedFromId, posting_date: postingDate, document_type: "MANUAL_JOURNAL", document_number: documentNumber.trim(), reference_type: "MANUAL", reference_id: 0, description: description.trim() || undefined, business_unit_id: businessUnitId!, department_id: departmentId ?? null, location_id: locationId ?? null, lines: validLines.map((line) => ({ ...line, description: line.description || undefined, business_unit_id: businessUnitId, department_id: line.department_id === undefined ? departmentId ?? null : line.department_id, location_id: locationId ?? null })) }), onSuccess: (journal) => { toast.success("Journal entry created."); setCopiedFromId(undefined); recovery.clear(); setOpen(false); setPostingDate(todayLocal()); setDocumentNumber(""); setDescription("Salary journal"); setDepartmentId(undefined); setLocationId(undefined); setBusinessUnitId(businessUnits.data?.length === 1 ? businessUnits.data[0].id : undefined); setLines([blankLine(), blankLine()]); refreshFinance(); nav(`/journal-entries/${journal.id}`); }, onError: (error: any) => toast.error(typeof error?.response?.data?.detail === "string" ? error.response.data.detail : "Journal entry could not be created.") });
+  const copy = useMutation({ mutationFn: getJournalCopyTemplate, onSuccess: template => {
+    const saved = recovery.load();
+    if (saved && !window.confirm("Replace the saved journal form with this copy?")) return;
+    setCopiedFromId(template.copied_from_journal_id); setPostingDate(todayLocal());
+    setDocumentNumber(""); setDescription(template.description || "");
+    setBusinessUnitId(template.business_unit_id ?? scope.data?.locations.find(row => row.id === template.location_id)?.business_unit_id ?? undefined);
+    setLocationId(template.location_id ?? undefined); setDepartmentId(template.department_id ?? undefined);
+    setLines(template.lines.map(line => ({ account_id: line.account_id, debit: Number(line.debit), credit: Number(line.credit), description: line.description || "", department_id: line.department_id, supplier_id: line.supplier_id })));
+    setOpen(true);
+  }, onError: () => toast.error("Journal could not be copied.") });
   const updateLine = (index: number, patch: Partial<Line>) => setLines(lines.map((line, i) => i === index ? { ...line, ...patch } : line));
   const balanced = totals.debit > 0 && Math.abs(totals.debit - totals.credit) < 0.005;
   const valid = Boolean(documentNumber.trim() && businessUnitId && locationId && validLines.length >= 1 && postingDate && (!departmentId || departments.data?.some(department => department.id === departmentId)));
@@ -90,23 +114,28 @@ export default function JournalListPage() {
   const filteredJournalTotals = q.data?.summary?.total_debit != null && q.data?.summary?.total_credit != null
     ? { debit: Number(q.data.summary.total_debit), credit: Number(q.data.summary.total_credit) }
     : null;
-  const printQuery = new URLSearchParams(Object.fromEntries(Object.entries({ search, status, location_id: filterLocationId ? String(filterLocationId) : "", supplier_id: filterSupplierId ? String(filterSupplierId) : "" }).filter(([, value]) => value !== ""))).toString();
+  const printQuery = new URLSearchParams(Object.fromEntries(Object.entries({ search, status, business_unit_id: filterUnitId ? String(filterUnitId) : "", location_id: filterLocationId ? String(filterLocationId) : "", supplier_id: filterSupplierId ? String(filterSupplierId) : "" }).filter(([, value]) => value !== ""))).toString();
   const printSrc = `/journal/register/print${printQuery ? `?${printQuery}` : ""}`;
   const selectedRows = visibleRows.filter((row) => selected.includes(row.id));
   const bulkCandidates = (action: "post" | "unpost") => { const desiredStatus = action === "post" ? "DRAFT" : "POSTED"; const source = selectedRows.length ? selectedRows : visibleRows; return source.filter((row) => row.status === desiredStatus).map((row) => row.id); };
   const runBulk = (action: "post" | "unpost") => { const ids = bulkCandidates(action); if (!ids.length) return toast.error(`No ${action === "post" ? "draft" : "posted"} journals available on this page.`); const verb = action === "post" ? "Post" : "Unpost"; if (!window.confirm(`${verb} ${ids.length} journal(s)?\n\nThis operation is atomic. If one journal fails validation, none will be changed.`)) return; bulkLifecycle.mutate({ ids, action }); };
   const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((row) => selected.includes(row.id));
   const toggleAllVisible = () => setSelected(allVisibleSelected ? [] : visibleRows.map((row) => row.id));
-  const buOptions=(businessUnits.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
+  const buOptions=(businessUnits.data??[]).filter(item => !scope.data?.location_locked || scope.data.units.some(unit => unit.id === item.id)).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const departmentOptions=(departments.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const locationOptions=(locations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
-  const filterLocationOptions=(filterLocations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
+  const filterLocationOptions=(scope.data?.locations??filterLocations.data??[]).filter(item => !filterUnitId || item.business_unit_id === filterUnitId).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const filterSupplierOptions=(filterSuppliers.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const accountOptions=(accounts.data??[]).filter(account=>!["REVENUE","INCOME"].includes(account.account_type)||account.account_code==="400").map((account:any)=>({id:account.id,label:`${account.account_code} — ${account.account_name}`,keywords:[account.account_code,account.account_name,account.account_type,account.account_subtype]}));
 
   return <>
-    <PageHeader title="Journal Entries" description="Review debit and credit entries, then post or safely unpost eligible journals." actions={<div className="flex flex-wrap gap-2">{canBulkManage && <><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post All</Button><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost All</Button></>}<Button variant="outline" onClick={() => setBulkImportOpen(true)}>Import Bulk</Button><Button onClick={openCreate}>Create Journal Entry</Button>  <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
+    <PageHeader title="Journal Entries" description="Review debit and credit entries, then post or safely unpost eligible journals." actions={<div className="flex flex-wrap gap-2">{canBulkManage && <><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post All</Button><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost All</Button></>}<Button variant="outline" onClick={() => setBulkImportOpen(true)}>Import Bulk</Button><Button disabled={!scopeReady} onClick={openCreate}>Create Journal Entry</Button>  <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
 </div>} />
+    <div className="flex flex-wrap gap-1" aria-label="Journal business unit">
+      {!scope.data?.location_locked && <Button size="sm" variant={!filterUnitId ? "primary" : "outline"} onClick={() => { setFilterUnitId(undefined); setFilterLocationId(undefined); setPage(1); }}>All units</Button>}
+      {scope.data?.units.map(unit => <Button key={unit.id} size="sm" variant={filterUnitId === unit.id ? "primary" : "outline"} onClick={() => { setFilterUnitId(unit.id); if (!scope.data.location_locked) setFilterLocationId(undefined); setPage(1); }}>{unit.name}</Button>)}
+    </div>
+    {scope.isError && <p role="alert" className="text-sm text-red-700">Journal location scope could not be loaded.</p>}
     <div className="grid gap-3 sm:grid-cols-3"><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Journals</div><div className="mt-1 text-xl font-semibold">{q.data?.total_items ?? 0}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Debit</div><div className="mt-1 text-xl font-semibold tabular-nums">{filteredJournalTotals ? filteredJournalTotals.debit.toLocaleString("id-ID",{minimumFractionDigits:2}) : "Awaiting backend totals"}</div><div className="mt-1 text-[11px] text-slate-400">Page {visibleTotals.debit.toLocaleString("id-ID",{minimumFractionDigits:2})}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Credit</div><div className="mt-1 text-xl font-semibold tabular-nums">{filteredJournalTotals ? filteredJournalTotals.credit.toLocaleString("id-ID",{minimumFractionDigits:2}) : "Awaiting backend totals"}</div><div className="mt-1 text-[11px] text-slate-400">Page {visibleTotals.credit.toLocaleString("id-ID",{minimumFractionDigits:2})}</div></Card></div>
     <Card className="p-3"><div className="mb-2 flex flex-wrap items-end gap-2">
       <label className="min-w-[240px] flex-1 text-xs font-medium text-slate-600">Search
@@ -120,14 +149,14 @@ export default function JournalListPage() {
       </Button>
     </div>
     {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-2">
-      <SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={filterLocationOptions} onChange={(id) => { setFilterLocationId(id); setPage(1); }} />
+      <SearchableSelect label="Location" value={filterLocationId} disabled={scope.isLoading || scope.data?.location_locked} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={filterLocationOptions} onChange={(id) => { setFilterLocationId(id); setPage(1); }} />
       <SearchableSelect label="Supplier" value={filterSupplierId} disabled={filterSuppliers.isLoading} placeholder={filterSuppliers.isLoading ? "Loading suppliers..." : "Type supplier code or name..."} options={filterSupplierOptions} onChange={(id) => { setFilterSupplierId(id); setPage(1); }} />
     </div>}
-      <Table className="min-w-[850px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH className="w-10"><input type="checkbox" aria-label="Select all journals on this page" checked={allVisibleSelected} onChange={toggleAllVisible} /></TH><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Amount</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead><TBody>{visibleRows.map((x: any) => <TR key={x.id} className="whitespace-nowrap"><TD><input type="checkbox" aria-label={`Select ${x.journal_number}`} checked={selected.includes(x.id)} onChange={() => setSelected((current) => current.includes(x.id) ? current.filter((value) => value !== x.id) : [...current, x.id])} /></TD><TD><TableCellStack primary={x.journal_number} secondary={x.reference_type?.replaceAll("_", " ")}/></TD><TD>{x.journal_date}</TD><TD className="font-medium">{sourceDocumentPath(x.reference_type, x.reference_id) ? <Link className="text-emerald-700 hover:underline" to={sourceDocumentPath(x.reference_type, x.reference_id)!} state={{ returnTo: `/journal-entries/${x.id}` }} title="Open source document">{x.reference_number || "Open Source"}</Link> : x.reference_number || "—"}</TD><TD className="max-w-[280px]"><span className="block truncate" title={x.description || undefined}>{x.description || "—"}</span></TD><TD numeric className="font-semibold">{Number(x.total_debit).toLocaleString("id-ID", { minimumFractionDigits: 2 })}</TD><TD>{x.status}</TD><TD><div className="flex justify-end gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}{x.allowed_actions?.can_void_source_payment&&<Button size="xs" variant="danger" loading={voidSourcePayment.isPending} onClick={()=>{if(window.confirm(`Void payment ${x.reference_number} and its draft journal ${x.journal_number}? This releases the invoice reservation and keeps both records as VOID.`))voidSourcePayment.mutate(x.reference_id)}}>Void Payment</Button>}</div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{q.data?.total_items ?? 0} journals · Page {page} of {Math.max(q.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div></Card>
+      <Table className="min-w-[850px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH className="w-10"><input type="checkbox" aria-label="Select all journals on this page" checked={allVisibleSelected} onChange={toggleAllVisible} /></TH><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Amount</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead><TBody>{visibleRows.map((x: any) => <TR key={x.id} className="whitespace-nowrap"><TD><input type="checkbox" aria-label={`Select ${x.journal_number}`} checked={selected.includes(x.id)} onChange={() => setSelected((current) => current.includes(x.id) ? current.filter((value) => value !== x.id) : [...current, x.id])} /></TD><TD><TableCellStack primary={x.journal_number} secondary={x.reference_type?.replaceAll("_", " ")}/></TD><TD>{x.journal_date}</TD><TD className="font-medium">{sourceDocumentPath(x.reference_type, x.reference_id) ? <Link className="text-emerald-700 hover:underline" to={sourceDocumentPath(x.reference_type, x.reference_id)!} state={{ returnTo: `/journal-entries/${x.id}` }} title="Open source document">{x.reference_number || "Open Source"}</Link> : x.reference_number || "—"}</TD><TD className="max-w-[280px]"><span className="block truncate" title={x.description || undefined}>{x.description || "—"}</span></TD><TD numeric className="font-semibold">{Number(x.total_debit).toLocaleString("id-ID", { minimumFractionDigits: 2 })}</TD><TD>{x.status}</TD><TD><div className="flex justify-end gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_copy && <Button size="xs" variant="outline" loading={copy.isPending} onClick={() => copy.mutate(x.id)}>Copy</Button>}{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}{x.allowed_actions?.can_void_source_payment&&<Button size="xs" variant="danger" loading={voidSourcePayment.isPending} onClick={()=>{if(window.confirm(`Void payment ${x.reference_number} and its draft journal ${x.journal_number}? This releases the invoice reservation and keeps both records as VOID.`))voidSourcePayment.mutate(x.reference_id)}}>Void Payment</Button>}</div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{q.data?.total_items ?? 0} journals · Page {page} of {Math.max(q.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div></Card>
 
     <JournalBulkImportDialog open={bulkImportOpen} onOpenChange={setBulkImportOpen} onImported={refreshFinance} />
 
-    <Dialog open={open} onOpenChange={next => { if (!save.isPending) setOpen(next); }}><DialogContent className="max-w-6xl max-h-[92vh]"><DialogHeader className="py-3"><DialogTitle>Create Journal Entry</DialogTitle></DialogHeader><DialogBody className="space-y-3 overflow-y-auto py-3">
+    <Dialog open={open} onOpenChange={next => { if (!save.isPending) setOpen(next); }}><DialogContent className="max-w-6xl max-h-[92vh]"><DialogHeader className="py-3"><DialogTitle>{copiedFromId ? "Copy Journal Entry" : "Create Journal Entry"}</DialogTitle></DialogHeader><DialogBody className="space-y-3 overflow-y-auto py-3">
       <div className="grid gap-x-3 gap-y-2 md:grid-cols-3">
         <label className="text-sm font-medium">Posting Date<Input className="mt-1" type="date" data-accounting-date="true" value={postingDate} onChange={(e) => setPostingDate(e.target.value)} /></label>
         <label className="text-sm font-medium">Document Number<Input className="mt-1" placeholder="PAYROLL-2026-08" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} /></label>

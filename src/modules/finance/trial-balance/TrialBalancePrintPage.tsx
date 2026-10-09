@@ -55,13 +55,11 @@ export default function TrialBalancePrintPage() {
   if (!query.data) return <p>Trial balance could not be loaded.</p>;
 
   const rows = query.data.rows;
-  const totalDebit = rows.reduce((sum, row) => sum + Number(row.period_debit || 0), 0);
-  const totalCredit = rows.reduce((sum, row) => sum + Number(row.period_credit || 0), 0);
 
   return (
     <FinancialReportPrintTemplate
       title="Trial Balance"
-      subtitle={`Opening ${params.date_from.slice(0, 4)}-01-01 · Movement through ${params.date_to} · Rupiah (IDR)`}
+      subtitle={`Opening ${Number(params.date_from.slice(0, 4))-1}-12-31 · Movement ${params.date_from} to ${params.date_to} · Rupiah (IDR)`}
       filters={[
         { label: "Search", value: params.search || "All accounts" },
         { label: "Location", value: params.location_id ? locations.data?.find(row => row.id === params.location_id)?.name || "Selected location" : "Consolidated" },
@@ -73,6 +71,10 @@ export default function TrialBalancePrintPage() {
       columns={[
         { label: "Account", render: (row) => row.account_name },
         { label: "Opening Balance", align: "right", render: (row) => money(row.opening_balance) },
+        ...(params.date_from.slice(5) !== "01-01" ? [
+          { label: "Prior Debit", align: "right" as const, render: (row: TrialBalanceRow) => money(row.prior_debit) },
+          { label: "Prior Credit", align: "right" as const, render: (row: TrialBalanceRow) => money(row.prior_credit) },
+        ] : []),
         { label: "Debit Movement", align: "right", render: (row) => money(row.period_debit) },
         { label: "Credit Movement", align: "right", render: (row) => money(row.period_credit) },
         { label: "Closing", align: "right", render: (row) => money(row.closing_balance) },
@@ -80,15 +82,7 @@ export default function TrialBalancePrintPage() {
       ]}
       rows={rows}
       rowKey={(row) => row.account_id}
-      footerRows={
-        <tr className="font-bold">
-          <td colSpan={2} className="border border-slate-700 px-1.5 py-1 text-right">TOTAL MOVEMENT</td>
-          <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalDebit)}</td>
-          <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalCredit)}</td>
-          <td className="border border-slate-700 px-1.5 py-1" />
-          <td className="border border-slate-700 px-1.5 py-1" />
-        </tr>
-      }
+
     />
   );
 }
