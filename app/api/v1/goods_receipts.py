@@ -22,7 +22,6 @@ from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCr
 from app.services.approval import (
     approve_current_step,
     can_user_decide_step,
-    can_user_edit_pending_approval,
     current_steps,
     get_request,
     reject_current_step,
@@ -30,6 +29,7 @@ from app.services.approval import (
 )
 from app.services.document_context import document_context, print_metadata
 from app.services.goods_receipt_service import GoodsReceiptService
+from app.services.receiving_edit_policy import can_edit_receiving
 from app.services.location_access import (
     apply_location_scope,
     enforce_warehouse_access,
@@ -77,14 +77,7 @@ def receipt_actions(receipt: GoodsReceipt, user, db: Session):
         and approval.status == "PENDING"
         and any(can_user_decide_step(step, user) for step in current_steps(approval))
     )
-    can_edit = bool(
-        receipt.status == "DRAFT"
-        and has_permission(user, "receiving.edit")
-        and (
-            approval is None
-            or (approval.status == "PENDING" and can_user_edit_pending_approval(approval, user))
-        )
-    )
+    can_edit = can_edit_receiving(receipt, approval, user)
     return {
         "can_edit": can_edit,
         "can_submit": receipt.status == "DRAFT" and receipt.source_type != "HISTORICAL_ENTRY" and approval is None and has_permission(user, "receiving.submit"),
@@ -389,9 +382,10 @@ def update_receipt(
 ):
     receipt = _scoped_receipt_for_update(db, receipt_id, user)
     approval = get_request(db, "GOODS_RECEIPT", receipt.id)
-    if approval is not None:
-        if approval.status != "PENDING" or not can_user_edit_pending_approval(approval, user):
-            raise HTTPException(403, "User cannot edit this Receiving Report at the current approval stage")
+    if receipt.status != "DRAFT":
+        raise HTTPException(409, "Only unposted Receiving Reports can be edited")
+    if not can_edit_receiving(receipt, approval, user):
+        raise HTTPException(403, "User cannot edit this Receiving Report at the current approval stage")
     updated = GoodsReceiptService.update(db=db, receipt=receipt, data=data, user=user)
     result = serialize_receipt(updated, db)
     result.update(document_context(db, "GOODS_RECEIPT", updated.id, updated.status, user))
