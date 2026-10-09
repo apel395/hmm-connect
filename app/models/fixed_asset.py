@@ -46,6 +46,8 @@ class FixedAsset(Base):
     custodian_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"))
     purchase_invoice_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_invoices.id"), index=True)
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True, index=True)
+    product = relationship("Product")
     source_invoice_line_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_invoice_lines.id"), unique=True, nullable=True, index=True)
     purchase_order_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id"))
     goods_receipt_id: Mapped[int | None] = mapped_column(ForeignKey("goods_receipts.id"))
