@@ -20,7 +20,9 @@ class ProductCreate(BaseModel):
     conversion: Decimal = Decimal("1")
     description: str | None = None
     item_type: Literal["BUY", "SELL"] = "BUY"
-    cost_price: Decimal = Decimal("0")
+    catalog_type: Literal["CATERING", "HOTEL"] = "CATERING"
+    reference_cost_method: Literal["LAST_PURCHASE", "AVERAGE_PURCHASE", "MANUAL"] = "LAST_PURCHASE"
+    cost_price: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
     selling_price: Decimal = Decimal("0")
     sales_service_name: str | None = Field(default=None, max_length=120)
     sales_business_unit_id: int | None = None
@@ -66,7 +68,9 @@ class ProductUpdate(BaseModel):
     conversion: Decimal | None = None
     description: str | None = None
     item_type: Literal["BUY", "SELL"] | None = None
-    cost_price: Decimal | None = None
+    catalog_type: Literal["CATERING", "HOTEL"] | None = None
+    reference_cost_method: Literal["LAST_PURCHASE", "AVERAGE_PURCHASE", "MANUAL"] | None = None
+    cost_price: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     selling_price: Decimal | None = None
     sales_service_name: str | None = Field(default=None, max_length=120)
     sales_business_unit_id: int | None = None

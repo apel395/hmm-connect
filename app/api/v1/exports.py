@@ -64,6 +64,9 @@ def create_export(
     if export_type not in SUPPORTED_EXPORTS:
         raise HTTPException(status_code=400, detail=f"Unsupported export type: {export_type}")
 
+    if export_type == "products" and (data.params or {}).get("catalog_type") not in {None, "CATERING", "HOTEL"}:
+        raise HTTPException(422, "Choose Catering or Hotel Items")
+
     job = ExportJob(user_id=current_user.id, export_type=export_type, params=data.params, status="PENDING")
     db.add(job)
     db.commit()

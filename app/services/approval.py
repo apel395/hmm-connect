@@ -29,7 +29,7 @@ MANAGER_APPROVAL_CHAIN = (
 WORKFLOW_CHAINS = {
     "PR_APPROVAL": LOCAL_APPROVAL_CHAIN,
     "ML_APPROVAL": MARKET_LIST_APPROVAL_CHAIN,
-    "RR_APPROVAL": LOCAL_APPROVAL_CHAIN,
+    "RR_APPROVAL": ((1, "Store Approval", "STORE"), (2, "PM / Camp Boss Approval", "PM/CAMP BOSS")),
     "SO_APPROVAL": LOCAL_APPROVAL_CHAIN,
     "PO_APPROVAL": MANAGER_APPROVAL_CHAIN,
 }
@@ -329,9 +329,17 @@ def _lock_request(db: Session, request: ApprovalRequest) -> ApprovalRequest:
     return locked
 
 
+def has_receiving_approval(request, user) -> bool:
+    return request.entity_type == "GOODS_RECEIPT" and any(
+        step.status == "APPROVED" and step.approved_by_id == user.id for step in request.steps
+    )
+
+
 def approve_current_step(db: Session, *, request, user, comment=None) -> None:
     request = _lock_request(db, request)
     step = _select_current_step(request, user)
+    if has_receiving_approval(request, user):
+        raise HTTPException(409, "Receiving requires approvals by two different people")
     step.status = "APPROVED"
     step.approved_by_id = user.id
     step.decided_at = datetime.now(timezone.utc)

@@ -277,7 +277,18 @@ class DirectCoaService:
         return {"is_ready": not blockers, "blockers": blockers}
 
     def snapshot_invoice_line(self, invoice: SupplierInvoice, line: SupplierInvoiceLine) -> ChartOfAccount:
-        inventory = bool(invoice.goods_receipt and invoice.goods_receipt.destination_type == "WAREHOUSE")
+        from app.models.goods_receipt import GoodsReceiptItem
+        source_id = getattr(line, "goods_receipt_item_id", None)
+        source = self.db.get(GoodsReceiptItem, source_id) if source_id else None
+        receipt = source.goods_receipt if source else invoice.goods_receipt
+        inventory = bool(receipt and receipt.destination_type == "WAREHOUSE")
+        if source and getattr(source, "expense_account_id", None):
+            from app.services.goods_receipt_service import GoodsReceiptService
+            # Keep the selected Direct Use expense on the invoice snapshot too.
+            account = GoodsReceiptService._receiving_debit_account(self, receipt, source.product, source.expense_account_id)
+            line.account_id = account.id
+            self.validate_invoice_debit(account, inventory=False)
+            return account
         if line.account_id:
             account = self.account(line.account_id, "Supplier invoice line")
         elif line.product:
