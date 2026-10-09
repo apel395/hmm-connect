@@ -57,7 +57,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           items:items.map(item=>({item_id:item.item_id,quantity:item.quantity,unit_cost:item.unit_cost,is_taxable:item.is_taxable,tax_rate:item.is_taxable?item.tax_rate:0})),
         },
       });
-      toast.success("Receiving updated");
+      toast.success(receipt.approval_status==="APPROVED"?"Receiving updated; approval restarted":"Receiving updated");
       onClose();
     }catch(error){
       const detail=axios.isAxiosError(error)?error.response?.data?.detail:null;
@@ -97,7 +97,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           </table>
         </div>
       </DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={update.isPending} onClick={save}>Save Changes</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={update.isPending} onClick={save}>{receipt.approval_status==="APPROVED"?"Save & Restart Approval":"Save Changes"}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }
