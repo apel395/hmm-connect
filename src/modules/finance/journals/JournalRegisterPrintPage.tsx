@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import Loading from "@/components/ui/Loading";
 import FinancialReportPrintTemplate from "@/components/print/FinancialReportPrintTemplate";
-import { listJournals } from "./api";
+import { listJournals, getJournalScope } from "./api";
 
 const money = (value: unknown) =>
   Number(value || 0).toLocaleString("id-ID", {
@@ -31,6 +31,8 @@ export default function JournalRegisterPrintPage() {
       search: searchParams.get("search") || "",
       status: searchParams.get("status") || "",
       location_id: searchParams.get("location_id") || "",
+      business_unit_id: searchParams.get("business_unit_id") || "",
+      supplier_id: searchParams.get("supplier_id") || "",
     }).filter(([, value]) => value !== ""),
   );
 
@@ -39,7 +41,8 @@ export default function JournalRegisterPrintPage() {
     queryFn: () => loadAll(params),
   });
 
-  if (query.isLoading) return <Loading />;
+  const scope = useQuery({ queryKey: ["journal-scope"], queryFn: getJournalScope });
+  if (query.isLoading || scope.isLoading) return <Loading />;
   if (!query.data) return <p>Journal register could not be loaded.</p>;
 
   const rows = query.data;
@@ -53,7 +56,8 @@ export default function JournalRegisterPrintPage() {
       filters={[
         { label: "Search", value: params.search || "All" },
         { label: "Status", value: params.status || "All" },
-        { label: "Location ID", value: params.location_id || "All" },
+        { label: "Location", value: scope.data?.locations.find(row => row.id === Number(params.location_id || (scope.data?.location_locked ? scope.data.default_location_id : 0)))?.name || "All locations" },
+        { label: "Unit", value: scope.data?.units.find(row => row.id === Number(params.business_unit_id))?.name || "All units" },
         { label: "Journal Count", value: rows.length },
       ]}
       columns={[

@@ -88,3 +88,16 @@ assert.equal(ledgerFilters.date_from, "2026-01-01");
 assert.equal(ledgerFilters.date_to, "2026-10-07");
 assert.equal(ledgerFilters.account_id, undefined);
 console.log("GL print scope PASS: exact account IDs, ranges, search type, dates and dimensions retained.");
+
+const departmentData = { ...data, department_reports: [
+  { department_id: 8, department_name: "House Keeping", rows: data.rows, section_totals: data.section_totals },
+  { department_id: null, department_name: "Unassigned department", rows: data.rows, section_totals: data.section_totals },
+] };
+const departmentPrint = renderToStaticMarkup(createElement(FinancialStatementPrint, { kind: "PROFIT_LOSS", data: departmentData, asOf: "2026-10-06" }));
+assert.equal((departmentPrint.match(/class="department-statement/g) ?? []).length, 4);
+assert.match(departmentPrint, /House Keeping — MTD/);
+assert.match(departmentPrint, /House Keeping — YTD/);
+assert.match(departmentPrint, /Unassigned department — MTD/);
+assert.doesNotMatch(departmentPrint, /100-600-104/);
+assert.match(departmentPrint, /Full account name &lt;script&gt; &amp; equipment/);
+console.log("Department print PASS: one table per department and period, unassigned retained, account codes hidden.");

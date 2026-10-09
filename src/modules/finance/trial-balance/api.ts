@@ -31,6 +31,9 @@ export interface TrialBalanceRow {
   opening_balance: string;
   opening_debit: string;
   opening_credit: string;
+  prior_debit: string;
+  prior_credit: string;
+  prior_total: string;
   period_debit: string;
   period_credit: string;
   period_total: string;
@@ -67,15 +70,17 @@ export async function exportTrialBalanceXlsx(params: TrialBalanceFilters) {
 
   const rows: (string | number)[][] = [
     ["Trial Balance"],
-    ["Opening as of", `${params.date_from.slice(0, 4)}-01-01`, "Movement through", params.date_to],
+    ["Opening as of", `${Number(params.date_from.slice(0, 4))-1}-12-31`, "Movement from", params.date_from, "Movement to", params.date_to],
     ...(params.search ? [["Account search", params.search]] : []),
     ...(params.location_id ? [["Location ID", params.location_id]] : []),
     [],
-    ["COA No.", "COA Name", "Opening Balance", "Debit Movement", "Credit Movement", "Closing", "Status"],
+    ["COA No.", "COA Name", "Opening Balance", "Prior Debit", "Prior Credit", "Debit Movement", "Credit Movement", "Closing", "Status"],
     ...items.map((row) => [
       row.account_code,
       row.account_name,
       Number(row.opening_balance),
+      Number(row.prior_debit),
+      Number(row.prior_credit),
       Number(row.period_debit),
       Number(row.period_credit),
       Number(row.closing_balance),
@@ -85,11 +90,11 @@ export async function exportTrialBalanceXlsx(params: TrialBalanceFilters) {
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   sheet["!cols"] = [
     { wch: 18 }, { wch: 44 }, { wch: 22 }, { wch: 20 },
-    { wch: 20 }, { wch: 22 }, { wch: 16 },
+    { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 16 },
   ];
   const headerRow = rows.findIndex((row) => row[0] === "COA No.");
   for (let r = headerRow + 1; r < rows.length; r += 1) {
-    for (let c = 2; c <= 5; c += 1) {
+    for (let c = 2; c <= 7; c += 1) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       if (cell) cell.z = "#,##0.00;[Red](#,##0.00)";
     }

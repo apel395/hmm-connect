@@ -14,6 +14,7 @@ export type JournalLine = {
   department_name?: string | null;
   location_id?: number | null;
   location_name?: string | null;
+  supplier_id?: number | null;
 };
 
 export type Journal = {
@@ -41,6 +42,7 @@ export type Journal = {
 };
 
 export type JournalCreatePayload = {
+  copied_from_journal_id?: number;
   posting_date: string;
   document_type: string;
   document_number: string;
@@ -58,6 +60,7 @@ export type JournalCreatePayload = {
     business_unit_id?: number | null;
     department_id?: number | null;
     location_id?: number | null;
+    supplier_id?: number | null;
   }>;
 };
 
@@ -73,6 +76,7 @@ export type JournalUpdatePayload = {
     business_unit_id?: number | null;
     department_id?: number | null;
     location_id?: number | null;
+    supplier_id?: number | null;
   }>;
 };
 
@@ -238,3 +242,17 @@ export const uploadJournalImport = async (file: File, batchName: string) => {
   await completeJournalImportUpload(job.id);
   return startJournalImport(job.id);
 };
+
+export type JournalScope = {
+  units: { id: number; name: string; code: string }[];
+  locations: { id: number; name: string; code: string; business_unit_id: number | null }[];
+  default_business_unit_id: number | null;
+  default_location_id: number | null;
+  location_locked: boolean;
+};
+export const getJournalScope = async () => (await api.get<JournalScope>("/journal-entries/scope")).data;
+export const getJournalCopyTemplate = async (id: number) => (await api.get<{
+  copied_from_journal_id: number; source_number: string; description: string | null;
+  business_unit_id: number | null; location_id: number | null; department_id: number | null;
+  lines: JournalLine[];
+}>(`/journal-entries/${id}/copy-template`)).data;

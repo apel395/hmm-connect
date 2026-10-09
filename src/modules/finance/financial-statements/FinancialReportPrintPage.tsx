@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import DepartmentPerformanceTable from "./DepartmentPerformanceTable";
+import DepartmentStatementTables from "./DepartmentStatementTables";
 import api from "@/api/client";
 import useAuthStore from "@/store/auth";
 import type { Kind, Period, Amounts, Row, Report } from "./FinancialReportPage";
@@ -59,7 +59,7 @@ export function FinancialStatementPrint({ kind, data, asOf, printedBy }: { kind:
       {metadata}
       {(["MTD", "YTD"] as const).map(period => <section className="comparison-page" key={period}><ReportHeader kind={kind} data={data} asOf={asOf} caption={`Perbandingan ${period}`} /><table><thead><tr><th className="account">Akun</th>{[...metricNames, "Movement"].map((name, i) => <th className="amount" key={name}>{name}{data.periods[period][comparisons[i]] ? <span className="period-range">{data.periods[period][comparisons[i]].join(" — ")}</span> : null}</th>)}</tr></thead><tbody><SectionRows data={data} sections={["ASSETS", "LIABILITIES", "EQUITY"]} periods={[period]} columns={comparisons} /><tr className="grand-total"><td>Total Liabilitas + Ekuitas</td>{comparisons.map(metric => <td key={metric} className="amount">{money(sum(data, ["LIABILITIES", "EQUITY"], period, metric))}</td>)}</tr></tbody></table>{metadata}</section>)}
     </>}{kind === "PROFIT_LOSS" ? metadata : null}
-    {kind === "PROFIT_LOSS" && data.departments && <>{(["MTD", "YTD"] as const).map(period => <DepartmentPerformanceTable key={period} departments={data.departments ?? []} period={period} asOf={asOf} locationId={data.scope.location_id} businessUnitId={data.scope.business_unit_id} />)}</>}
+    {kind === "PROFIT_LOSS" && data.department_reports && <>{(["MTD", "YTD"] as const).map(period => <DepartmentStatementTables key={period} statements={data.department_reports ?? []} period={period} asOf={asOf} locationId={data.scope.location_id} businessUnitId={data.scope.business_unit_id} printable />)}</>}
   </article>;
 }
 
@@ -68,7 +68,7 @@ export default function FinancialReportPrintPage({ kind }: { kind: Kind }) {
   const user = useAuthStore(state => state.user);
   const params = Object.fromEntries(search);
   const asOf = search.get("as_of_date") || new Date().toLocaleDateString("en-CA");
-  const query = useQuery({ queryKey: ["financial-report-print", kind, params], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params: { ...params, report_type: kind, as_of_date: asOf } })).data });
+  const query = useQuery({ queryKey: ["financial-report-print", kind, params], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params: { ...params, report_type: kind, as_of_date: asOf, department_tables: kind === "PROFIT_LOSS" } })).data });
   if (query.isPending) return <p data-print-ready="false">Loading report…</p>;
   if (query.isError) return <p data-print-ready="false" role="alert">Report could not be loaded. Close this preview and try again.</p>;
   return <FinancialStatementPrint kind={kind} data={query.data} asOf={asOf} printedBy={user?.full_name || user?.username} />;
