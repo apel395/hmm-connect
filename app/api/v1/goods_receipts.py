@@ -22,6 +22,7 @@ from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCr
 from app.services.approval import (
     approve_current_step,
     can_user_decide_step,
+    has_receiving_approval,
     current_steps,
     get_request,
     reject_current_step,
@@ -81,7 +82,7 @@ def receipt_actions(receipt: GoodsReceipt, user, db: Session):
     return {
         "can_edit": can_edit,
         "can_submit": receipt.status == "DRAFT" and receipt.source_type != "HISTORICAL_ENTRY" and approval is None and has_permission(user, "receiving.submit"),
-        "can_approve": can_decide and has_permission(user, "receiving.approve"),
+        "can_approve": can_decide and not has_receiving_approval(approval, user) and has_permission(user, "receiving.approve"),
         "can_reject": can_decide and has_permission(user, "receiving.approve"),
         "can_post": receipt.status == "DRAFT" and (approval_status == "APPROVED" or (receipt.source_type == "HISTORICAL_ENTRY" and approval is None)) and has_permission(user, "receiving.post"),
         "can_return": receipt.status == "POSTED" and has_permission(user, "receiving.return"),
@@ -133,6 +134,9 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
                 "id": item.id,
                 "purchase_order_item_id": item.purchase_order_item_id,
                 "product_id": item.product_id,
+                "catalog_type": item.product.catalog_type if item.product else None,
+                "inventory_treatment": item.product.inventory_treatment if item.product else None,
+                "expense_account_id": item.expense_account_id,
                 "product_code": item.product.code if item.product else None,
                 "product_name": item.product.name if item.product else None,
                 "uom": (item.purchase_order_item.uom if item.purchase_order_item else None) or (item.product.uom if item.product else None),
@@ -187,6 +191,8 @@ def remaining_items(purchase_order: PurchaseOrder):
         {
             "purchase_order_item_id": item.id,
             "product_id": item.product_id,
+            "catalog_type": item.product.catalog_type if item.product else None,
+            "inventory_treatment": item.product.inventory_treatment if item.product else None,
             "product_code": item.product.code if item.product else None,
             "product_name": item.product.name if item.product else None,
             "uom": item.uom or (item.product.uom if item.product else None),

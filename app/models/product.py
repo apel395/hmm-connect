@@ -21,6 +21,8 @@ class Product(Base, TimestampMixin):
     usage_uom: Mapped[str] = mapped_column(String(20))
     conversion: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=1)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    catalog_type: Mapped[str] = mapped_column(String(16), default="CATERING", server_default="CATERING", nullable=False, index=True)
+    reference_cost_method: Mapped[str] = mapped_column(String(24), default="LAST_PURCHASE", server_default="LAST_PURCHASE", nullable=False)
     cost_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     selling_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     sales_service_name: Mapped[str | None] = mapped_column(String(120), nullable=True)

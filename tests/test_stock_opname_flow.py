@@ -62,17 +62,17 @@ def test_stock_opname_derives_business_unit_from_selected_location(monkeypatch):
         default_department_id=None,
         department_id=None,
     )
-    data = StockOpnameCreate(warehouse_id=1, location_id=7)
+    data = StockOpnameCreate(warehouse_id=1, location_id=7, department_id=8)
 
     result = StockOpnameService._resolve_dimensions(
         FakeDb(), data=data, current_user=user
     )
 
-    assert result == (3, 7, None)
+    assert result == (3, 7, 8)
     assert validated == {
         "business_unit_id": 3,
         "location_id": 7,
-        "department_id": None,
+        "department_id": 8,
         "required": True,
     }
 

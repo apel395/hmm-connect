@@ -17,12 +17,13 @@ from app.services.general_ledger_report import (
     ledger_totals,
 )
 from app.services.location_access import resolve_location_id
+from app.services.item_reference_cost import receipt_costs, reference_payload
 
 
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-def _generate_products_xlsx(db, output_path: Path) -> None:
+def _generate_products_xlsx(db, output_path: Path, params=None, user=None) -> None:
     wb = Workbook(write_only=True)
     ws = wb.create_sheet("Products")
     ws.append([
@@ -35,7 +36,9 @@ def _generate_products_xlsx(db, output_path: Path) -> None:
         "Purchase UOM",
         "Usage UOM",
         "Conversion",
-        "Cost Price",
+        "Reference Cost",
+        "Reference Method",
+        "Catalog",
         "Selling Price",
         "Minimum Stock",
         "Reorder Level",
@@ -47,29 +50,32 @@ def _generate_products_xlsx(db, output_path: Path) -> None:
         "Active",
     ])
 
-    query = db.query(Product).order_by(Product.code).yield_per(1000)
-    for row in query:
-        ws.append([
-            row.code,
-            row.name,
-            row.group_code,
-            row.group_name,
-            row.subgroup_code,
-            row.subgroup_name,
-            row.uom,
-            row.usage_uom,
-            float(row.conversion or 0),
-            float(row.cost_price or 0),
-            float(row.selling_price or 0),
-            float(row.minimum_stock or 0),
-            float(row.reorder_level or 0),
-            float(row.maximum_stock or 0),
-            row.lead_time_days,
-            row.tax_category,
-            bool(row.is_taxable),
-            float(row.tax_rate or 0),
-            bool(row.is_active),
-        ])
+    catalog = (params or {}).get("catalog_type")
+    if catalog not in {None, "CATERING", "HOTEL"}:
+        raise ValueError("Unknown item catalog")
+    query = db.query(Product)
+    if catalog:
+        query = query.filter(Product.catalog_type == catalog)
+    # Read price history in batches, so exports do not issue one query per item.
+    last_id = 0
+    while True:
+        rows = query.filter(Product.id > last_id).order_by(Product.id).limit(500).all()
+        if not rows:
+            break
+        history = receipt_costs(db, [row.id for row in rows], user) if user else {}
+        for row in rows:
+            ref = reference_payload(row, history.get(row.id))
+            ws.append([
+                row.code, row.name, row.group_code, row.group_name,
+                row.subgroup_code, row.subgroup_name, row.uom, row.usage_uom,
+                float(row.conversion or 0), float(ref["reference_cost"]),
+                row.reference_cost_method, row.catalog_type,
+                float(row.selling_price or 0), float(row.minimum_stock or 0),
+                float(row.reorder_level or 0), float(row.maximum_stock or 0),
+                row.lead_time_days, row.tax_category, bool(row.is_taxable),
+                float(row.tax_rate or 0), bool(row.is_active),
+            ])
+        last_id = rows[-1].id
     wb.save(output_path)
 
 
@@ -164,9 +170,9 @@ def run_job(job_id: str) -> None:
         db.commit()
 
         if job.export_type == "products":
-            filename = f"HMM-Master-Products-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.xlsx"
+            filename = f"MMH-Master-Products-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.xlsx"
         elif job.export_type == "general_ledger":
-            filename = f"HMM-General-Ledger-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.xlsx"
+            filename = f"MMH-General-Ledger-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.xlsx"
         else:
             raise ValueError(f"Unsupported export type: {job.export_type}")
 
@@ -175,7 +181,10 @@ def run_job(job_id: str) -> None:
         output_path = tmp_dir / f"{job.id}.xlsx"
 
         if job.export_type == "products":
-            _generate_products_xlsx(db, output_path)
+            user = db.get(User, job.user_id)
+            if not user:
+                raise ValueError("Export owner no longer exists")
+            _generate_products_xlsx(db, output_path, job.params, user)
         elif job.export_type == "general_ledger":
             params = dict(job.params or {})
             user = db.get(User, job.user_id)

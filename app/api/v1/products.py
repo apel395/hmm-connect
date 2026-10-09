@@ -23,6 +23,9 @@ from app.schemas.product import ProductCreate, ProductTaxProfileUpdate, ProductU
 from app.services.direct_coa_service import DirectCoaService
 from app.services.item_code import lock_item_creation, next_item_code
 from app.services.audit import record_audit
+from app.services.item_reference_cost import scoped_items, receipt_costs, reference_payload, serialize_item, validate_reference_profile
+from app.services.location_access import apply_location_scope, assigned_location_id
+from app.models.warehouse import Warehouse
 
 router = APIRouter(prefix="/products", tags=["Products"])
 MARKET_SUBGROUPS = {"VEGETABLES", "FRUIT"}
@@ -142,13 +145,14 @@ def list_products(
     market_only: bool = False,
     exclude_market: bool = False,
     item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None,
+    catalog_type: Annotated[str | None, Query(pattern="^(CATERING|HOTEL)$")] = None,
     inventory_treatment: Annotated[str | None, Query(pattern="^(STOCK|DIRECT_USE|FIXED_ASSET|NON_STOCK|REVIEW_REQUIRED)$")] = None,
     tax_category: Annotated[str | None, Query(pattern="^(STANDARD|EXEMPT|NON_TAXABLE|SPECIAL|REVIEW_REQUIRED)$")] = None,
     search: Annotated[str | None, Query(max_length=100)] = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
     query = _apply_filters(db.query(Product), active_only=active_only, search=search, market_only=market_only, exclude_market=exclude_market)
     if item_type:
@@ -157,10 +161,12 @@ def list_products(
         query = query.filter(Product.inventory_treatment == inventory_treatment)
     if tax_category:
         query = query.filter(Product.tax_category == tax_category)
+    query = scoped_items(query, db, user, catalog_type)
     total = query.count()
     rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
     total_pages = ceil(total / page_size) if total else 0
-    return {"items": rows, "page": page, "page_size": page_size, "total_items": total, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
+    costs = receipt_costs(db, [row.id for row in rows], user)
+    return {"items": [serialize_item(row, costs.get(row.id)) for row in rows], "page": page, "page_size": page_size, "total_items": total, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
 
 def classification_catalog(groups, products, item_type=None):
     catalog = {}
@@ -198,11 +204,12 @@ def classification_master(item_type: Annotated[str | None, Query(pattern="^(BUY|
     return classification_catalog(groups, products, item_type)
 
 @router.get("/lookup")
-def lookup_products(search: Annotated[str, Query(max_length=100)] = "", market_only: bool = False, exclude_market: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), _=Depends(get_current_user)):
+def lookup_products(catalog_type: Annotated[str | None, Query(pattern="^(CATERING|HOTEL)$")] = None, item_type: Annotated[str, Query(pattern="^(BUY|SELL)$")] = "BUY", search: Annotated[str, Query(max_length=100)] = "", market_only: bool = False, exclude_market: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), user=Depends(get_current_user)):
     query = _apply_filters(db.query(Product), active_only=True, search=search, market_only=market_only, exclude_market=exclude_market)
+    query = scoped_items(query.filter(Product.item_type == item_type), db, user, catalog_type)
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
-    price_history = _last_purchase_prices(db, [row.id for row in rows])
-    return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "inventory_treatment": row.inventory_treatment, "inventory_account_id": row.inventory_account_id, "purchase_account_id": row.purchase_account_id, "cogs_account_id": row.cogs_account_id, "asset_account_id": row.asset_account_id, "is_market_item": _is_market_subgroup(row.subgroup_name), **price_history.get(row.id, {"last_purchase_price": None, "last_purchase_date": None, "last_purchase_po_number": None})} for row in rows]
+    price_history = receipt_costs(db, [row.id for row in rows], user)
+    return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "inventory_treatment": row.inventory_treatment, "inventory_account_id": row.inventory_account_id, "purchase_account_id": row.purchase_account_id, "cogs_account_id": row.cogs_account_id, "asset_account_id": row.asset_account_id, "is_market_item": _is_market_subgroup(row.subgroup_name), "catalog_type": row.catalog_type, "cost_price": row.cost_price, **reference_payload(row, price_history.get(row.id))} for row in rows]
 
 def numbering_classification(db, item_type, group_code, subgroup_code):
     catalog = classification_master(item_type=item_type, db=db)
@@ -220,15 +227,15 @@ def preview_item_code(group_code: str, subgroup_code: str = "", item_type: Annot
     return {"code": next_item_code(db, group_code, subgroup_code)}
 
 @router.get("/{product_id}")
-def product_detail(product_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    product = db.get(Product, product_id)
+def product_detail(product_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    product = scoped_items(db.query(Product), db, user).filter(Product.id == product_id).first()
     if product is None:
         raise HTTPException(status_code=404, detail="Item not found")
 
     stock = []
     if product.inventory_treatment == "STOCK":
         inventory_rows = (db.query(Inventory).options(selectinload(Inventory.warehouse))
-                          .filter(Inventory.product_id == product_id)
+                          .filter(Inventory.product_id == product_id, *([Inventory.warehouse.has(Warehouse.location_id == assigned_location_id(user))] if assigned_location_id(user) else []))
                           .order_by(Inventory.warehouse_id).all())
         stock = [{"warehouse_id": row.warehouse_id,
                   "warehouse": row.warehouse.name if row.warehouse else None,
@@ -239,7 +246,7 @@ def product_detail(product_id: int, db: Session = Depends(get_db), _=Depends(get
               .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
               .join(Supplier, Supplier.id == PurchaseOrder.supplier_id)
               .filter(PurchaseOrderItem.product_id == product_id,
-                      PurchaseOrder.status.notin_(("DRAFT", "REJECTED", "CANCELLED", "EXPIRED")))
+                      PurchaseOrder.status.notin_(("DRAFT", "REJECTED", "CANCELLED", "EXPIRED")), *([PurchaseOrder.location_id == assigned_location_id(user)] if assigned_location_id(user) else []))
               .order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc(), PurchaseOrderItem.id.desc())
               .limit(20).all())
     purchases = [{"order_id": order.id, "po_number": order.po_number,
@@ -249,7 +256,7 @@ def product_detail(product_id: int, db: Session = Depends(get_db), _=Depends(get
 
     receipts = (db.query(GoodsReceiptItem, GoodsReceipt)
                 .join(GoodsReceipt, GoodsReceipt.id == GoodsReceiptItem.goods_receipt_id)
-                .filter(GoodsReceiptItem.product_id == product_id, GoodsReceipt.status == "POSTED")
+                .filter(GoodsReceiptItem.product_id == product_id, GoodsReceipt.status == "POSTED", *([GoodsReceipt.location_id == assigned_location_id(user)] if assigned_location_id(user) else []))
                 .order_by(GoodsReceipt.received_at.desc(), GoodsReceipt.id.desc(), GoodsReceiptItem.id.desc())
                 .limit(20).all())
     receiving = [{"receipt_id": receipt.id, "receipt_number": receipt.receipt_number,
@@ -258,7 +265,7 @@ def product_detail(product_id: int, db: Session = Depends(get_db), _=Depends(get
                  for line, receipt in receipts]
     unit = db.get(BusinessUnit, product.sales_business_unit_id) if product.sales_business_unit_id else None
     location = db.get(Location, product.sales_location_id) if product.sales_location_id else None
-    return {"item": product, "stock": stock, "purchases": purchases, "receiving": receiving,
+    return {"item": serialize_item(product, receipt_costs(db, [product_id], user).get(product_id)), "stock": stock, "purchases": purchases, "receiving": receiving,
             "sales_scope": {"business_unit": unit.name if unit else None,
                             "location": location.name if location else None}}
 
@@ -276,7 +283,7 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     normalized_name = " ".join(data.name.strip().lower().split())
     if db.query(Product).filter(func.upper(func.trim(Product.code)) == normalized_code).first():
         raise HTTPException(status_code=409, detail="Product code already exists")
-    duplicate_name = db.query(Product).filter(func.lower(func.regexp_replace(func.trim(Product.name), r"\s+", " ", "g")) == normalized_name).first()
+    duplicate_name = db.query(Product).filter(Product.item_type == data.item_type, Product.catalog_type == data.catalog_type, func.lower(func.regexp_replace(func.trim(Product.name), r"\s+", " ", "g")) == normalized_name).first()
     if duplicate_name:
         raise HTTPException(status_code=409, detail=f"Product name duplicates existing item {duplicate_name.code} — {duplicate_name.name}")
     payload["code"] = normalized_code
@@ -287,6 +294,7 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     _validate_treatment(payload)
     _validate_coa_mappings(db, payload)
     _validate_sales_profile(db, payload)
+    validate_reference_profile(db, payload)
     product = Product(**payload)
     db.add(product)
     try:
@@ -312,7 +320,7 @@ def update_product_tax_profile(product_id: int, data: ProductTaxProfileUpdate, d
     return product
 
 @router.patch("/{product_id}")
-def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db), user=Depends(require_permission("products.manage"))):
     product = db.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -341,6 +349,7 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     _validate_treatment(payload, product)
     _validate_coa_mappings(db, payload, product)
     _validate_sales_profile(db, payload, product)
+    validate_reference_profile(db, payload, product)
     for field, value in payload.items():
         if field != "is_market_item":
             setattr(product, field, value)

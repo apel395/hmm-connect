@@ -52,6 +52,7 @@ class GoodsReceiptItem(Base):
     goods_receipt_id: Mapped[int] = mapped_column(ForeignKey("goods_receipts.id", ondelete="CASCADE"), nullable=False, index=True)
     purchase_order_item_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_order_items.id"), nullable=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
+    expense_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     is_taxable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

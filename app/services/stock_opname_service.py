@@ -61,11 +61,9 @@ class StockOpnameService:
                 422, "Selected Location is not assigned to a Business Unit"
             )
 
-        department_id = (
-            data.department_id
-            or current_user.default_department_id
-            or current_user.department_id
-        )
+        department_id = data.department_id
+        if not department_id:
+            raise HTTPException(422, "Select a department for Stock Opname")
 
         validate_dimensions(
             db,

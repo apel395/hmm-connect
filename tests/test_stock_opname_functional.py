@@ -11,6 +11,8 @@ from app.api.v1.stock_opnames import listing
 from app.models import Base
 from app.models.business_unit import BusinessUnit
 from app.models.inventory import Inventory
+from app.models.department import Department
+from app.models.location_department import LocationDepartment
 from app.models.location import Location
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
@@ -44,6 +46,9 @@ def stock_db(monkeypatch):
     db.add(location)
     db.flush()
 
+    department=Department(code="OPS",name="Operations",business_unit_id=business_unit.id,is_active=True)
+    db.add(department);db.flush()
+    db.add(LocationDepartment(location_id=location.id,department_id=department.id))
     warehouse = Warehouse(code="WH-1", name="Warehouse 1", is_active=True, location_id=location.id)
     user = User(
         username="warehouse",
@@ -54,6 +59,7 @@ def stock_db(monkeypatch):
         location_id=location.id,
         default_location_id=location.id,
         default_business_unit_id=business_unit.id,
+        default_department_id=department.id,
     )
     products = [
         Product(code="A", name="Product A", group_code="1", group_name="Food", subgroup_code="1-1", subgroup_name="GROCERIES", uom="PCS", usage_uom="PCS", is_active=True),
@@ -70,7 +76,7 @@ def stock_db(monkeypatch):
 
 
 def create_opname(db, warehouse, user):
-    return StockOpnameService.create(db=db, data=StockOpnameCreate(warehouse_id=warehouse.id), current_user=user)
+    return StockOpnameService.create(db=db, data=StockOpnameCreate(warehouse_id=warehouse.id, department_id=user.default_department_id), current_user=user)
 
 
 def test_create_snapshots_inventory_and_snapshot_is_immutable(stock_db):
@@ -242,7 +248,7 @@ def test_create_rejects_warehouse_location_mismatch(stock_db):
     with pytest.raises(HTTPException) as error:
         StockOpnameService.create(
             db=db,
-            data=StockOpnameCreate(warehouse_id=warehouse.id, location_id=other.id),
+            data=StockOpnameCreate(warehouse_id=warehouse.id, location_id=other.id, department_id=user.default_department_id),
             current_user=user,
         )
 

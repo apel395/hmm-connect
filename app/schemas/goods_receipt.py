@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 class GoodsReceiptItemCreate(BaseModel):
     purchase_order_item_id: int | None = None
     product_id: int | None = None
+    expense_account_id: int | None = None
     quantity: Decimal = Field(gt=0)
     unit_cost: Decimal | None = Field(default=None, gt=0)
     is_taxable: bool = False
@@ -73,6 +74,7 @@ class GoodsReceiptCostCorrection(BaseModel):
 
 class GoodsReceiptItemUpdate(BaseModel):
     item_id: int
+    expense_account_id: int | None = None
     quantity: Decimal = Field(gt=0)
     unit_cost: Decimal = Field(gt=0)
     is_taxable: bool
