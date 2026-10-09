@@ -25,6 +25,9 @@ class Query:
     def join(self, *expressions):
         return self
 
+    def options(self, *loaders):
+        return self
+
     def order_by(self, *expressions):
         return self
 
