@@ -149,6 +149,24 @@ def audit_location_candidates(db) -> None:
             for token in str(location["code"] or "").replace("-", " ").split()
             if len(token) >= 3
         }
+        inventory = [
+            account for account in accounts
+            if account.account_type == "ASSET"
+            and account.normal_balance == "DEBIT"
+            and str(account.account_subtype or "").upper() not in FUNDING_SUBTYPES
+            and any(token in str(account.account_name or "").lower() for token in tokens)
+        ]
+        alias_tokens = set(tokens)
+        for account in inventory:
+            words = {
+                word.lower().strip(".,()/")
+                for word in str(account.account_name or "").replace("-", " ").split()
+                if len(word.strip(".,()/")) >= 3
+            }
+            alias_tokens.update(
+                word for word in words
+                if word not in {"inv", "makanan", "minuman", "material", "cash", "sales", "clearance"}
+            )
         ap = [
             account for account in accounts
             if account.account_type == "LIABILITY"
@@ -157,18 +175,88 @@ def audit_location_candidates(db) -> None:
                 "hutang usaha" in str(account.account_name or "").lower()
                 or "payable" in str(account.account_name or "").lower()
             )
-            and any(token in str(account.account_name or "").lower() for token in tokens)
-        ]
-        inventory = [
-            account for account in accounts
-            if account.account_type == "ASSET"
-            and account.normal_balance == "DEBIT"
-            and str(account.account_subtype or "").upper() not in FUNDING_SUBTYPES
-            and any(token in str(account.account_name or "").lower() for token in tokens)
+            and any(token in str(account.account_name or "").lower() for token in alias_tokens)
         ]
         print(f"{location['name']} ({location['code']}):")
         print("  AP candidates: " + (", ".join(account_label(x) for x in ap) if ap else "NONE"))
         print("  Inventory candidates: " + (", ".join(account_label(x) for x in inventory[:10]) if inventory else "NONE"))
+        if not ap:
+            all_ap = [
+                account for account in accounts
+                if account.account_type == "LIABILITY"
+                and account.normal_balance == "CREDIT"
+                and (
+                    "hutang usaha" in str(account.account_name or "").lower()
+                    or "payable" in str(account.account_name or "").lower()
+                )
+            ]
+            print("  Nearby AP review list: " + ", ".join(account_label(x) for x in all_ap[:40]))
+
+
+def audit_location_setup_coverage(db) -> None:
+    print("\n=== LOCATION SETUP COVERAGE ===")
+    locations = db.execute(
+        __import__("sqlalchemy").text(
+            """
+            SELECT l.id, l.code, l.name, bu.id AS business_unit_id, bu.name AS business_unit_name
+            FROM locations l
+            LEFT JOIN business_units bu ON bu.id = l.business_unit_id
+            WHERE l.is_active = true
+            ORDER BY bu.name NULLS LAST, l.name, l.id
+            """
+        )
+    ).mappings().all()
+
+    for location in locations:
+        bu_id = location["business_unit_id"]
+        loc_id = location["id"]
+
+        def selected_rule(event: str):
+            return AccountingPostingRuleService(db).select_rule(event, bu_id, loc_id)
+
+        inv = selected_rule("SUPPLIER_INVOICE_INVENTORY")
+        direct = selected_rule("SUPPLIER_INVOICE_DIRECT_USE")
+        payment = selected_rule("SUPPLIER_PAYMENT")
+
+        local_accounts = (
+            db.query(BankAccount)
+            .filter(
+                BankAccount.is_active.is_(True),
+                BankAccount.business_unit_id == bu_id,
+                BankAccount.location_id == loc_id,
+            )
+            .count()
+            if bu_id is not None
+            else 0
+        )
+        global_accounts = (
+            db.query(BankAccount)
+            .filter(
+                BankAccount.is_active.is_(True),
+                BankAccount.business_unit_id == bu_id,
+                BankAccount.location_id.is_(None),
+            )
+            .count()
+            if bu_id is not None
+            else 0
+        )
+
+        def rule_state(rule, event: str) -> str:
+            if not rule:
+                return "MISSING"
+            exact = rule.business_unit_id == bu_id and rule.location_id == loc_id
+            bu_fallback = rule.business_unit_id == bu_id and rule.location_id is None
+            global_fallback = rule.business_unit_id is None and rule.location_id is None
+            scope = "EXACT" if exact else "BU-FALLBACK" if bu_fallback else "GLOBAL-FALLBACK" if global_fallback else "OTHER-FALLBACK"
+            return f"{scope}#{rule.id}"
+
+        print(
+            f"{location['name']} ({location['code']}, id={loc_id}, BU={location['business_unit_name'] or '—'}): "
+            f"Inventory={rule_state(inv, 'SUPPLIER_INVOICE_INVENTORY')} | "
+            f"DirectUse={rule_state(direct, 'SUPPLIER_INVOICE_DIRECT_USE')} | "
+            f"Payment={rule_state(payment, 'SUPPLIER_PAYMENT')} | "
+            f"FundingLocal={local_accounts} | FundingGlobalBU={global_accounts}"
+        )
 
 
 def apply_safe(db) -> None:
@@ -241,6 +329,7 @@ def main() -> int:
         bank_issues = audit_bank_accounts(db)
         rule_issues = audit_rules(db)
         audit_location_candidates(db)
+        audit_location_setup_coverage(db)
         if args.apply_safe:
             apply_safe(db)
             print("\n=== AFTER REPAIR ===")
