@@ -1,6 +1,7 @@
-import csv
+from decimal import Decimal
+from io import BytesIO
+from app.services.xlsx_export import build_xlsx
 from datetime import date
-from io import StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -17,6 +18,9 @@ MONEY_FIELDS = (
     "opening_balance",
     "opening_debit",
     "opening_credit",
+    "prior_debit",
+    "prior_credit",
+    "prior_total",
     "period_debit",
     "period_credit",
     "period_total",
@@ -38,10 +42,11 @@ def access(user):
 def serialize(report: dict) -> dict:
     for row in report["items"]:
         for field in MONEY_FIELDS:
-            row[field] = f"{row[field]:.2f}"
+            if field in row:
+                row[field] = f"{Decimal(str(row[field])):.2f}"
     for field in (*MONEY_FIELDS, "difference", "opening_difference", "closing_difference"):
         if field in report["summary"]:
-            report["summary"][field] = f"{report['summary'][field]:.2f}"
+            report["summary"][field] = f"{Decimal(str(report['summary'][field])):.2f}"
     return report
 
 
@@ -141,22 +146,16 @@ def export_trial_balance_csv(
         parent_account_id, include_zero_balance, include_inactive, location_id,
         department_id, business_unit_id, sort_by, sort_order, paginate=False,
     )
-    headers = [
-        "Account", "Opening Debit", "Opening Credit",
-        "Debit Movement", "Credit Movement", "Closing Debit", "Closing Credit",
-    ]
-    fields = [
-        "account_name", "opening_debit", "opening_credit",
-        "period_debit", "period_credit", "closing_debit", "closing_credit",
-    ]
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(headers)
-    for row in report["items"]:
-        writer.writerow([row[field] for field in fields])
-    filename = f"trial-balance-{date_from}-{date_to}.csv"
+    columns = [("Account", "account_name"), ("Opening Balance", "opening_balance")]
+    if report["has_prior_movement"]:
+        columns += [("Prior Debit", "prior_debit"), ("Prior Credit", "prior_credit")]
+    columns += [("Debit Movement", "period_debit"), ("Credit Movement", "period_credit"), ("Closing", "closing_balance"), ("Status", "status")]
+    rows = [["Trial Balance", date_from.isoformat(), date_to.isoformat()],
+            ["Opening as of", report["opening_as_of"].isoformat()],
+            [label for label, _ in columns]]
+    rows += [[row[field] for _, field in columns] for row in report["items"]]
     return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        BytesIO(build_xlsx([("Trial Balance", rows)])),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="trial-balance-{date_from}-{date_to}.xlsx"'},
     )

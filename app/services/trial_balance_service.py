@@ -60,7 +60,8 @@ class TrialBalanceService:
             query = query.filter(JournalEntry.posting_date <= date_to)
         for name, value in (("location_id", location_id), ("department_id", department_id), ("business_unit_id", business_unit_id)):
             if value is not None:
-                query = query.filter(func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name)) == value)
+                dimension = func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name))
+                query = query.filter(dimension.is_(None) if name == "department_id" and value == 0 else dimension == value)
         return {
             account_id: (Decimal(debit), Decimal(credit))
             for account_id, debit, credit in query.group_by(JournalLine.account_id).all()
@@ -128,16 +129,24 @@ class TrialBalanceService:
         # preceding year. Earlier transactions in this year remain movement.
         opening = snapshot if snapshot_date == year_start else {}
         period = self._activity(
-            date_from=year_start,
+            date_from=date_from,
             date_to=date_to,
             location_id=location_id,
             department_id=department_id,
             business_unit_id=business_unit_id,
         )
 
+        prior = self._activity(
+            date_from=year_start, before=date_from,
+            location_id=location_id, department_id=department_id,
+            business_unit_id=business_unit_id,
+        ) if date_from > year_start else {}
+
         rows = []
         for account in accounts_query.all():
             opening_debit_activity, opening_credit_activity = opening.get(account.id, (ZERO, ZERO))
+            prior_debit, prior_credit = prior.get(account.id, (ZERO, ZERO))
+            prior_total = self._normal_balance_amount(account.normal_balance, prior_debit, prior_credit)
             period_debit, period_credit = period.get(account.id, (ZERO, ZERO))
             opening_balance = self._normal_balance_amount(
                 account.normal_balance,
@@ -149,13 +158,13 @@ class TrialBalanceService:
                 period_debit,
                 period_credit,
             )
-            closing_balance = opening_balance + period_total
+            closing_balance = opening_balance + prior_total + period_total
             opening_net_debit = opening_debit_activity - opening_credit_activity
-            closing_net_debit = opening_net_debit + period_debit - period_credit
+            closing_net_debit = opening_net_debit + prior_debit - prior_credit + period_debit - period_credit
             status = "ABNORMAL" if closing_balance < ZERO else "NORMAL"
 
             if not include_zero_balance and not any(
-                (opening_debit_activity, opening_credit_activity, period_debit, period_credit)
+                (opening_debit_activity, opening_credit_activity, prior_debit, prior_credit, period_debit, period_credit)
             ):
                 continue
 
@@ -173,6 +182,9 @@ class TrialBalanceService:
                     "opening_balance": opening_balance,
                     "opening_debit": max(opening_net_debit, ZERO),
                     "opening_credit": max(-opening_net_debit, ZERO),
+                    "prior_debit": prior_debit,
+                    "prior_credit": prior_credit,
+                    "prior_total": prior_total,
                     "period_debit": period_debit,
                     "period_credit": period_credit,
                     "period_total": period_total,
@@ -189,6 +201,9 @@ class TrialBalanceService:
 
         summary = {
             "opening_balance": sum((row["opening_balance"] for row in rows), ZERO),
+            "prior_debit": sum((row["prior_debit"] for row in rows), ZERO),
+            "prior_credit": sum((row["prior_credit"] for row in rows), ZERO),
+            "prior_total": sum((row["prior_total"] for row in rows), ZERO),
             "period_debit": sum((row["period_debit"] for row in rows), ZERO),
             "period_credit": sum((row["period_credit"] for row in rows), ZERO),
             "period_total": sum((row["period_total"] for row in rows), ZERO),
@@ -205,7 +220,7 @@ class TrialBalanceService:
         summary["opening_credit"] = opening_credit
         summary["opening_difference"] = opening_debit - opening_credit
         summary["closing_difference"] = (
-            opening_debit + period_debit_all - opening_credit - period_credit_all
+            opening_debit + sum((d-c for d,c in prior.values()), ZERO) + period_debit_all - opening_credit - period_credit_all
         )
         summary["is_balanced"] = summary["closing_difference"] == ZERO
         summary["account_count"] = len(rows)
@@ -217,7 +232,10 @@ class TrialBalanceService:
             "items": items,
             "summary": summary,
             "opening_as_of": date(date_to.year - 1, 12, 31),
-            "movement_from": year_start,
+            "movement_from": date_from,
+            "movement_to": date_to,
+            "prior_movement_from": year_start,
+            "has_prior_movement": date_from > year_start,
             "page": page,
             "page_size": page_size,
             "total_items": total,

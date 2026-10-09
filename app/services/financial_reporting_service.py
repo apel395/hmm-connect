@@ -48,6 +48,8 @@ class FinancialReportingService:
         self.statements = FinancialStatementService(db)
         self._actual_cache = {}
         self._year_evidence = {}
+        self._accounts = None
+        self._report_settings = {}
         self._schema = inspect(db.connection())
         self.report_setup_available = self._schema.has_table("financial_report_settings")
         self.budget_setup_available = all(self._schema.has_table(name) for name in ("budgets", "budget_lines"))
@@ -66,7 +68,8 @@ class FinancialReportingService:
             query = query.filter(Budget.id == budget_id)
         for key, value in scope.items():
             if value is not None:
-                query = query.filter(getattr(BudgetLine, key) == value)
+                column = getattr(BudgetLine, key)
+                query = query.filter(column.is_(None) if key == "department_id" and value == 0 else column == value)
         if report_type == "BALANCE_SHEET":
             # A balance-sheet budget is a monthly closing target, not a flow.
             query = query.filter(BudgetLine.month == end.month)
@@ -112,7 +115,8 @@ class FinancialReportingService:
             JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT", "PERIOD_CLOSE", "YEAR_END")))
         for name, value in scope.items():
             if value is not None:
-                query = query.filter(func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name)) == value)
+                dimension = func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name))
+                query = query.filter(dimension.is_(None) if name == "department_id" and value == 0 else dimension == value)
         available = query.first() is not None
         if not available and kind == "BALANCE_SHEET" and scope["department_id"] is None:
             opening = self.db.query(OpeningBalance.id).filter(OpeningBalance.fiscal_year == year)
@@ -165,9 +169,13 @@ class FinancialReportingService:
         # Layout setup is optional for reading actual balances. During a staged
         # deployment, keep the full ledger readable without creating tables or
         # changing any accounting values. Setup writes still require migration.
-        settings = self.db.query(FinancialReportSetting).filter_by(report_type=report_type).first() if self.report_setup_available else None
+        if report_type not in self._report_settings:
+            self._report_settings[report_type] = self.db.query(FinancialReportSetting).filter_by(report_type=report_type).first() if self.report_setup_available else None
+        settings = self._report_settings[report_type]
         selected = set(settings.selected_account_ids) if settings and settings.selected_account_ids is not None else None
-        all_accounts = {a.id: a for a in self.db.query(ChartOfAccount).all()}
+        if self._accounts is None:
+            self._accounts = {a.id: a for a in self.db.query(ChartOfAccount).all()}
+        all_accounts = self._accounts
         header_only = False if detail else kap or bool(settings and settings.header_only)
         display = {}
         for key, original in originals.items():
@@ -232,7 +240,7 @@ class FinancialReportingService:
         scope_labels = {}
         for dimension, model, default in (("location_id", Location, "Consolidated"), ("business_unit_id", BusinessUnit, "All units"), ("department_id", Department, "All departments")):
             record = self.db.get(model, scope[dimension]) if scope[dimension] is not None else None
-            scope_labels[dimension] = record.name if record else default
+            scope_labels[dimension] = "Unassigned department" if dimension == "department_id" and scope[dimension] == 0 else record.name if record else default
         return {"report_type": report_type, "as_of_date": as_of_date, "scope": scope, "scope_labels": scope_labels,
                 "periods": calendar, "rows": rows, "section_totals": totals, "summary": summaries,
                 "header_only": header_only, "budget_available": budget_available, "comparison_available": comparison_available,
@@ -241,3 +249,51 @@ class FinancialReportingService:
                     "display_selection_only": selected is not None, "totals_scope": "COMPLETE_REPORT",
                     "budget_basis": "FULL_MONTH_PLAN" if report_type == "PROFIT_LOSS" else "MONTH_END_BALANCE_TARGET",
                     "closing_entries_excluded_from_profit_loss": True}}
+
+
+    def department_reports(self, report, *, budget_id=None, kap=False, include_zero=False, detail=False):
+        """One full statement per configured or historically used department.
+
+        Null departmental activity is queried explicitly, never redistributed.
+        Inactive departments with historical postings/budgets remain visible.
+        """
+        from app.models.location_department import LocationDepartment
+        scope = report["scope"]
+        ids = set()
+        if scope["department_id"] is not None:
+            ids.add(scope["department_id"])
+        else:
+            configured = self.db.query(Department.id).filter(Department.is_active.is_(True))
+            if scope["location_id"] is not None:
+                configured = configured.join(LocationDepartment).filter(LocationDepartment.location_id == scope["location_id"])
+            elif scope["business_unit_id"] is not None:
+                configured = configured.filter(Department.business_unit_id == scope["business_unit_id"])
+            ids.update(row[0] for row in configured.all())
+            activity = self.db.query(func.coalesce(JournalLine.department_id, JournalEntry.department_id)).join(
+                JournalEntry, JournalEntry.id == JournalLine.journal_entry_id).join(
+                ChartOfAccount, ChartOfAccount.id == JournalLine.account_id).filter(
+                JournalEntry.status == "POSTED", ChartOfAccount.account_type.in_(("REVENUE", "INCOME", "EXPENSE")),
+                JournalEntry.posting_date.between(date(report["as_of_date"].year - 1, 1, 1), report["as_of_date"]))
+            for name in ("location_id", "business_unit_id"):
+                if scope[name] is not None:
+                    activity = activity.filter(func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name)) == scope[name])
+            ids.update(row[0] or 0 for row in activity.distinct().all())
+            if self.budget_setup_available:
+                budgets = self.db.query(BudgetLine.department_id).join(Budget).filter(
+                    Budget.fiscal_year == report["as_of_date"].year, Budget.status.in_(("APPROVED", "LOCKED")))
+                if budget_id is not None:
+                    budgets = budgets.filter(Budget.id == budget_id)
+                for name in ("location_id", "business_unit_id"):
+                    if scope[name] is not None:
+                        budgets = budgets.filter(getattr(BudgetLine, name) == scope[name])
+                ids.update(row[0] or 0 for row in budgets.distinct().all())
+        names = {row.id: row.name for row in self.db.query(Department).filter(Department.id.in_(ids)).all()}
+        result = []
+        for dept_id in sorted(ids, key=lambda value: (value == 0, names.get(value, ""))):
+            child = self.build(report_type="PROFIT_LOSS", as_of_date=report["as_of_date"],
+                location_id=scope["location_id"], business_unit_id=scope["business_unit_id"],
+                department_id=dept_id, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
+            result.append({"department_id": dept_id or None, "department_name": names.get(dept_id, "Unassigned department"),
+                           "rows": child["rows"], "section_totals": child["section_totals"],
+                           "periods": child["periods"], "comparison_available": child["comparison_available"]})
+        return result
