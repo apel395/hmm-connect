@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -25,7 +26,7 @@ export default function PurchaseRequisitionDetailPage(){
  const navigate=useNavigate();const prId=Number(useParams().id);const prQuery=usePurchaseRequisition(prId);const approvalQuery=useApproval("PURCHASE_REQUISITION",prId);const data:any=prQuery.data;const approval=approvalQuery.data;
  const submit=useSubmitPurchaseRequisition(),approve=useApprovePurchaseRequisition(),reject=useRejectPurchaseRequisition(),reopen=useReopenPurchaseRequisition(),update=useUpdatePurchaseRequisition();const{isSuperuser,hasPermission}=useAuthorization();const[editing,setEditing]=useState(false);
  if(prQuery.isLoading)return <div className="py-24"><Loading/></div>;
- if(prQuery.isError||!data)return <Card className="mx-auto mt-12 max-w-2xl"><h2 className="text-lg font-semibold text-red-700">Purchase requisition could not be displayed</h2><p className="mt-2 text-sm text-slate-600">{errorMessage(prQuery.error)}</p><div className="mt-5 flex gap-3"><Button variant="outline" onClick={()=>navigate("/purchase-requisitions")}>Back</Button><Button onClick={()=>prQuery.refetch()}>Try Again</Button></div></Card>;
+ if(prQuery.isError||!data)return <Card className="mx-auto mt-12 max-w-2xl"><h2 className="text-lg font-semibold text-red-700">Purchase requisition could not be displayed</h2><p className="mt-2 text-sm text-slate-600">{errorMessage(prQuery.error)}</p><div className="mt-5 flex gap-3"><WorkspaceBackButton /><Button onClick={()=>prQuery.refetch()}>Try Again</Button></div></Card>;
  const admin=isSuperuser(),pendingApproval=data.status==="PENDING_APPROVAL",approvalPending=approval?.status==="PENDING",canSubmit=hasPermission("pr.submit")&&data.status==="DRAFT"&&Boolean(data.allowed_actions?.can_submit),canApprove=hasPermission("pr.approve")&&pendingApproval&&approvalPending&&Boolean(approval?.can_decide),canReject=hasPermission("pr.approve")&&pendingApproval&&approvalPending&&Boolean(approval?.can_decide),canEdit=hasPermission("pr.edit")&&Boolean(data.allowed_actions?.can_edit),canReopen=admin&&data.status!=="DRAFT"&&Boolean(data.allowed_actions?.can_reopen??true);
  const subtotal=Number(data.subtotal??(data.items??[]).reduce((sum:number,item:any)=>sum+Number(item.line_subtotal??item.quantity*item.estimated_price),0));
  const taxAmount=Number(data.tax_amount??(data.items??[]).reduce((sum:number,item:any)=>sum+Number(item.tax_amount??0),0));

@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
@@ -41,7 +42,7 @@ function BudgetEditor({ id, initial }: { id: number; initial?: Budget }) {
   }, onSuccess: (budget: { id: number }) => { client.invalidateQueries({ queryKey: ["budgets"] }); client.invalidateQueries({ queryKey: ["budget", id] }); toast.success("Budget saved"); navigate(`/budgets/${budget.id}`); }, onError: (error: { response?: { data?: { detail?: string } } }) => toast.error(error.response?.data?.detail || "Budget could not be saved") });
   const change = (index: number, values: Partial<Line>) => setLines(old => old.map((line, i) => i === index ? { ...line, ...values } : line));
   const available = accounts.data?.accounts.filter(account => account.is_posting && (!["REVENUE", "INCOME"].includes(account.type) || account.code === "400")) ?? [];
-  return <form className="space-y-2" onSubmit={event => { event.preventDefault(); save.mutate(); }}><PageHeader title={id ? "Edit Budget" : "New Budget"} actions={<><Button type="button" size="sm" variant="outline" onClick={() => navigate("/budgets")}>Back</Button><Button type="submit" size="sm" disabled={save.isPending || !lines.length || lines.some(line => !line.account_id)}>Save draft</Button></>} />
+  return <form className="space-y-2" onSubmit={event => { event.preventDefault(); save.mutate(); }}><PageHeader title={id ? "Edit Budget" : "New Budget"} actions={<><WorkspaceBackButton /><Button type="submit" size="sm" disabled={save.isPending || !lines.length || lines.some(line => !line.account_id)}>Save draft</Button></>} />
     <div className="flex flex-wrap items-end gap-2"><label className="grid text-xs">Name<input required className={input} value={name} onChange={event => setName(event.target.value)} /></label><label className="grid text-xs">Year<input required min={2000} max={2100} type="number" className={`${input} w-24`} value={year} disabled={!!id} onChange={event => setYear(Number(event.target.value))} /></label>
       <label className="grid text-xs">Unit<select className={input} value={unit} onChange={event => { setUnit(event.target.value); setLocation(""); setDepartment(""); }}><option value="">Select unit</option>{units.data?.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
       <label className="grid text-xs">Location<select className={input} value={location} onChange={event => setLocation(event.target.value)}><option value="">Select location</option>{locations.data?.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>

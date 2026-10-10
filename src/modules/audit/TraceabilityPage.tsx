@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { Printer } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
@@ -32,7 +33,7 @@ export default function TraceabilityPage() {
         title={`Traceability: ${data.document.number}`}
         description="Document approvals, downstream documents, stock movements, and audit events."
         actions={<>
-<Button variant="outline" onClick={() => navigate(-1)}>Back</Button>
+<WorkspaceBackButton />
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}
       />

@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -198,7 +199,7 @@ export default function StockOpnameDetailPage() {
                 Void
               </Button>
             )}
-            <Button variant="outline" onClick={() => navigate("/stock-opnames")}>Back</Button>
+            <WorkspaceBackButton />
             <Button variant="outline" onClick={() => navigate(`/stock-opnames/${id}/print`)}><Printer size={16}/> Print</Button>
 </div>
         }

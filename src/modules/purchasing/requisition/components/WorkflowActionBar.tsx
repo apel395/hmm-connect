@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import { ArrowLeft } from "lucide-react";
@@ -54,7 +55,7 @@ export default function WorkflowActionBar({
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap gap-3">
-        <Button variant="outline" onClick={onBack}><ArrowLeft size={17}/> Back</Button>
+        <WorkspaceBackButton />
         {canPrint && <PrintPreviewButton src={resolvedPrintSrc} title={resolvedPrintTitle} ariaLabel={`Preview ${resolvedPrintTitle}`} />}
         {canEdit && <Button variant="outline" onClick={onEdit}>Edit</Button>}
         {canSubmit && <Button loading={submitting} onClick={onSubmit}>Submit</Button>}

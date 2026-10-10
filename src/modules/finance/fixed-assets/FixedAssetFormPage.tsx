@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -49,7 +50,7 @@ export default function FixedAssetFormPage() {
 
   return <div className="space-y-4">
     <PageHeader title="New Fixed Asset" description="Register an asset as draft before capitalization." actions={<>
-<Button variant="outline" onClick={() => nav("/fixed-assets")}>Back</Button>
+<WorkspaceBackButton />
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>} />
     <Card className="grid gap-3 p-4 md:grid-cols-3">

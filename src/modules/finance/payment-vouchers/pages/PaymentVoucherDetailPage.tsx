@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -32,7 +33,7 @@ export default function PaymentVoucherDetailPage() {
     <div className="space-y-6">
       <PageHeader title={v.voucher_number} description={`${v.location_name} • ${v.voucher_date} • ${v.status}`} actions={
         <div className="flex gap-2">
-          <Link to="/finance/payment-vouchers"><Button variant="outline">Back</Button></Link>
+          <WorkspaceBackButton />
           <PrintPreviewButton src={`/finance/payment-vouchers/${v.id}/print`} title={`Payment Voucher ${v.voucher_number}`} ariaLabel="Preview payment voucher" />
           {v.status === "DRAFT" && <Button onClick={() => submit.mutate()} loading={submit.isPending}>Submit</Button>}
           {v.status === "PENDING_APPROVAL" && <><Button onClick={() => approve.mutate()} loading={approve.isPending}>Approve</Button><Button variant="outline" onClick={() => reject.mutate()} loading={reject.isPending}>Reject</Button></>}

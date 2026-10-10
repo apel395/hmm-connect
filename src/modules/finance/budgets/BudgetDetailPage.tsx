@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useAuthStore from "@/store/auth";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -35,7 +36,7 @@ export default function BudgetDetailPage() {
 
   return <div className="space-y-4">
     <PageHeader title={budget?.budget_number || "Budget"} description={`${budget?.name || ""} · ${budget?.date_from || ""} to ${budget?.date_to || ""}`} actions={<>
-      <Button variant="outline" onClick={() => navigate("/budgets")}>Back</Button>
+      <WorkspaceBackButton />
       <Button variant="outline" onClick={() => window.print()}><Printer size={15} /></Button>
       {actions?.can_submit && <Button disabled={busy} onClick={() => act("submit")}>Submit</Button>}
       {actions?.can_approve && <Button disabled={busy} onClick={() => act("approve")}>Approve</Button>}

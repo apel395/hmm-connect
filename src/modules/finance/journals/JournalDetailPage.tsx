@@ -1,3 +1,4 @@
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { ArrowLeft } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -157,7 +158,7 @@ export default function JournalDetailPage() {
 
   return <div className="space-y-6">
     <div className="flex flex-wrap justify-between gap-3">
-      <div className="flex items-center gap-3"><Button variant="outline" onClick={() => nav("/journal")}><ArrowLeft size={16}/> Back</Button><h1 className="text-2xl font-bold">{x.journal_number}</h1><Badge>{x.status}</Badge></div>
+      <div className="flex items-center gap-3"><WorkspaceBackButton /><h1 className="text-2xl font-bold">{x.journal_number}</h1><Badge>{x.status}</Badge></div>
       <div className="flex flex-wrap gap-2">
         {sourcePath && <Button variant="outline" onClick={() => nav(sourcePath, { state: { returnTo: `/journal-entries/${x.id}` } })}>Open Source Document</Button>}
         <PrintPreviewButton src={`/journal-entries/${x.id}/print`} title={`Journal ${x.journal_number}`} ariaLabel="Preview journal" />
