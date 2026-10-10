@@ -170,7 +170,7 @@ export default function GeneralLedgerPage() {
     {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
     </div>
     <Card>
-      <Table variant="grid" stickyHeader className="min-w-[980px]" containerClassName="border-0 shadow-none">
+      <Table variant="grid" stickyHeader className="min-w-[980px]" containerClassName="max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible">
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
         <TBody>{ledger.data?.items.map((row: any) => {
           const contextPrimary = row.supplier_name || row.business_unit_name;
