@@ -1,17 +1,18 @@
-import { Printer } from "lucide-react";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Printer } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import api from "@/api/client";
+import PageHeader from "@/components/common/PageHeader";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
-import PageHeader from "@/components/common/PageHeader";
 
 export default function TraceabilityPage() {
   const { documentType, id } = useParams();
-  const navigate = useNavigate();
+  
   const endpointType = documentType === "po" ? "purchase-orders" : "purchase-requisitions";
 
   const { data, isLoading } = useQuery({
@@ -32,7 +33,7 @@ export default function TraceabilityPage() {
         title={`Traceability: ${data.document.number}`}
         description="Document approvals, downstream documents, stock movements, and audit events."
         actions={<>
-<Button variant="outline" onClick={() => navigate(-1)}>Back</Button>
+<WorkspaceBackButton />
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}
       />

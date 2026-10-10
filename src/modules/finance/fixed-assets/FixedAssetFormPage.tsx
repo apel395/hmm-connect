@@ -1,15 +1,16 @@
-import { Printer } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
-import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import { filterBusinessUnits, listLocations, listDepartments } from "@/modules/admin/organization/api";
+import Card from "@/components/ui/Card";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
+import { filterBusinessUnits,listDepartments,listLocations } from "@/modules/admin/organization/api";
 import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { todayLocal } from "@/utils/dateConstraints";
-import { createAsset, listCategories } from "./api";
+import { useQuery } from "@tanstack/react-query";
+import { Printer } from "lucide-react";
+import { useEffect,useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { createAsset,listCategories } from "./api";
 
 const input = "h-9 rounded border px-2 text-sm";
 
@@ -49,7 +50,7 @@ export default function FixedAssetFormPage() {
 
   return <div className="space-y-4">
     <PageHeader title="New Fixed Asset" description="Register an asset as draft before capitalization." actions={<>
-<Button variant="outline" onClick={() => nav("/fixed-assets")}>Back</Button>
+<WorkspaceBackButton />
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>} />
     <Card className="grid gap-3 p-4 md:grid-cols-3">

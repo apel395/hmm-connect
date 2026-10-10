@@ -1,12 +1,13 @@
-import { Printer } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
-import { stockOpnameApi } from "./api";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useAuthorization from "@/hooks/useAuthorization";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { Printer } from "lucide-react";
+import { useEffect,useRef,useState } from "react";
+import { useNavigate,useParams } from "react-router-dom";
+import { stockOpnameApi } from "./api";
 
 export default function StockOpnameDetailPage() {
   const id = Number(useParams().id);
@@ -198,7 +199,7 @@ export default function StockOpnameDetailPage() {
                 Void
               </Button>
             )}
-            <Button variant="outline" onClick={() => navigate("/stock-opnames")}>Back</Button>
+            <WorkspaceBackButton />
             <Button variant="outline" onClick={() => navigate(`/stock-opnames/${id}/print`)}><Printer size={16}/> Print</Button>
 </div>
         }

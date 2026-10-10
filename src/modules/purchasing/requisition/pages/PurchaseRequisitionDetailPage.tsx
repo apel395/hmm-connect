@@ -1,20 +1,21 @@
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
-import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
+import useAuthorization from "@/hooks/useAuthorization";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
+import { useState } from "react";
+import { Link,useParams } from "react-router-dom";
+import { toast } from "sonner";
 import DocumentActivity from "../../components/DocumentActivity";
-import WorkflowHeader from "../components/WorkflowHeader";
-import WorkflowActionBar from "../components/WorkflowActionBar";
 import ApprovalSummary from "../components/ApprovalSummary";
 import PurchaseRequisitionForm from "../components/PurchaseRequisitionForm";
-import { usePurchaseRequisition, useSubmitPurchaseRequisition, useApprovePurchaseRequisition, useRejectPurchaseRequisition, useReopenPurchaseRequisition, useUpdatePurchaseRequisition } from "../hooks/usePurchaseRequisitions";
+import WorkflowActionBar from "../components/WorkflowActionBar";
+import WorkflowHeader from "../components/WorkflowHeader";
 import { useApproval } from "../hooks/useApprovals";
-import useAuthorization from "@/hooks/useAuthorization";
+import { useApprovePurchaseRequisition,usePurchaseRequisition,useRejectPurchaseRequisition,useReopenPurchaseRequisition,useSubmitPurchaseRequisition,useUpdatePurchaseRequisition } from "../hooks/usePurchaseRequisitions";
 
 const money=(value:unknown)=>Number(value??0).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2});
 const badgeVariant=(status?:string)=>{switch((status??"").toUpperCase()){case"APPROVED":return"success";case"PENDING":case"SUBMITTED":case"PENDING_APPROVAL":return"warning";case"REJECTED":return"danger";case"CANCELLED":return"secondary";default:return"outline";}};
@@ -22,10 +23,10 @@ const taxBadge=(item:any)=>{const category=String(item.tax_category??"").toUpper
 function errorMessage(error:unknown){const candidate=error as{response?:{data?:{detail?:string|{message?:string}}};message?:string};const detail=candidate.response?.data?.detail;if(typeof detail==="string")return detail;return detail?.message??candidate.message??"Purchase requisition could not be loaded.";}
 
 export default function PurchaseRequisitionDetailPage(){
- const navigate=useNavigate();const prId=Number(useParams().id);const prQuery=usePurchaseRequisition(prId);const approvalQuery=useApproval("PURCHASE_REQUISITION",prId);const data:any=prQuery.data;const approval=approvalQuery.data;
+ const prId=Number(useParams().id);const prQuery=usePurchaseRequisition(prId);const approvalQuery=useApproval("PURCHASE_REQUISITION",prId);const data:any=prQuery.data;const approval=approvalQuery.data;
  const submit=useSubmitPurchaseRequisition(),approve=useApprovePurchaseRequisition(),reject=useRejectPurchaseRequisition(),reopen=useReopenPurchaseRequisition(),update=useUpdatePurchaseRequisition();const{isSuperuser,hasPermission}=useAuthorization();const[editing,setEditing]=useState(false);
  if(prQuery.isLoading)return <div className="py-24"><Loading/></div>;
- if(prQuery.isError||!data)return <Card className="mx-auto mt-12 max-w-2xl"><h2 className="text-lg font-semibold text-red-700">Purchase requisition could not be displayed</h2><p className="mt-2 text-sm text-slate-600">{errorMessage(prQuery.error)}</p><div className="mt-5 flex gap-3"><Button variant="outline" onClick={()=>navigate("/purchase-requisitions")}>Back</Button><Button onClick={()=>prQuery.refetch()}>Try Again</Button></div></Card>;
+ if(prQuery.isError||!data)return <Card className="mx-auto mt-12 max-w-2xl"><h2 className="text-lg font-semibold text-red-700">Purchase requisition could not be displayed</h2><p className="mt-2 text-sm text-slate-600">{errorMessage(prQuery.error)}</p><div className="mt-5 flex gap-3"><WorkspaceBackButton /><Button onClick={()=>prQuery.refetch()}>Try Again</Button></div></Card>;
  const admin=isSuperuser(),pendingApproval=data.status==="PENDING_APPROVAL",approvalPending=approval?.status==="PENDING",canSubmit=hasPermission("pr.submit")&&data.status==="DRAFT"&&Boolean(data.allowed_actions?.can_submit),canApprove=hasPermission("pr.approve")&&pendingApproval&&approvalPending&&Boolean(approval?.can_decide),canReject=hasPermission("pr.approve")&&pendingApproval&&approvalPending&&Boolean(approval?.can_decide),canEdit=hasPermission("pr.edit")&&Boolean(data.allowed_actions?.can_edit),canReopen=admin&&data.status!=="DRAFT"&&Boolean(data.allowed_actions?.can_reopen??true);
  const subtotal=Number(data.subtotal??(data.items??[]).reduce((sum:number,item:any)=>sum+Number(item.line_subtotal??item.quantity*item.estimated_price),0));
  const taxAmount=Number(data.tax_amount??(data.items??[]).reduce((sum:number,item:any)=>sum+Number(item.tax_amount??0),0));
@@ -38,7 +39,7 @@ export default function PurchaseRequisitionDetailPage(){
 </>}/>
   <WorkflowHeader document={data} approval={approval}/>
   {canReopen&&<div className="flex justify-end"><Button variant="outline" loading={reopen.isPending} onClick={reopenForCorrection}>Reopen for Correction</Button></div>}
-  <WorkflowActionBar document={data} approval={approval} canSubmit={canSubmit} canApprove={canApprove} canReject={canReject} canEdit={canEdit} canPrint={data.allowed_actions?.can_print!==false} printSrc={`/purchase-requisitions/${data.id}/print`} printTitle={`Purchase Requisition ${data.pr_number}`} submitting={submit.isPending} approving={approve.isPending} rejecting={reject.isPending} onBack={()=>navigate("/purchase-requisitions")} onSubmit={()=>act("submit")} onEdit={()=>setEditing(true)} onApprove={()=>act("approve")} onReject={()=>act("reject")}/>
+  <WorkflowActionBar document={data} approval={approval} canSubmit={canSubmit} canApprove={canApprove} canReject={canReject} canEdit={canEdit} canPrint={data.allowed_actions?.can_print!==false} printSrc={`/purchase-requisitions/${data.id}/print`} printTitle={`Purchase Requisition ${data.pr_number}`} submitting={submit.isPending} approving={approve.isPending} rejecting={reject.isPending} onSubmit={()=>act("submit")} onEdit={()=>setEditing(true)} onApprove={()=>act("approve")} onReject={()=>act("reject")}/>
   {approvalQuery.isError&&<div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Approval details are not available yet. The purchase requisition itself is still accessible.</div>}
   <div className="grid gap-6 lg:grid-cols-12"><div className="space-y-6 lg:col-span-8">
    <Card className="overflow-hidden p-0"><div className="border-b bg-slate-50 px-6 py-4 font-semibold">Requisition Items</div><div className="overflow-x-auto"><table className="min-w-[1120px] w-full text-sm"><thead className="bg-slate-100"><tr><th className="px-5 py-3 text-left">Product</th><th>UOM</th><th className="text-right">Qty</th><th className="text-right">Estimated Price</th><th className="text-right">Subtotal</th><th>Tax</th><th className="text-right">PPN</th><th className="px-5 text-right">Line Total</th></tr></thead><tbody>{(data.items??[]).map((item:any,index:number)=>{const lineSubtotal=Number(item.line_subtotal??item.quantity*item.estimated_price);const lineTax=Number(item.tax_amount??0);return <tr key={item.id??index} className="border-t"><td className="px-5 py-4"><div className="font-medium">{item.product_name}</div><div className="text-xs text-slate-500">{item.product_code}</div></td><td>{item.uom??item.product_uom??"—"}</td><td className="text-right tabular-nums">{item.quantity}</td><td className="text-right tabular-nums">{money(item.estimated_price)}</td><td className="text-right tabular-nums">{money(lineSubtotal)}</td><td>{taxBadge(item)}</td><td className="text-right tabular-nums">{money(lineTax)}</td><td className="px-5 text-right font-semibold tabular-nums">{money(lineSubtotal+lineTax)}</td></tr>})}</tbody></table></div><div className="border-t bg-slate-50 px-6 py-4"><div className="ml-auto max-w-sm space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><strong>{money(subtotal)}</strong></div><div className="flex justify-between"><span>PPN</span><strong>{money(taxAmount)}</strong></div><div className="flex justify-between border-t pt-2 text-base"><span>Grand Total</span><strong>{money(total)}</strong></div></div></div></Card>

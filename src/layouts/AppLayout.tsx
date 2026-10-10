@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "@/components/navigation/Sidebar";
 import Header from "@/components/navigation/Header";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import WorkspaceTabs from "@/components/workspace/WorkspaceTabs";
 
 export default function AppLayout() {
@@ -11,7 +12,7 @@ export default function AppLayout() {
   const location = useLocation();
 
   if (location.pathname.endsWith("/print")) {
-    return <Outlet />;
+    return <><div className="p-2 print:hidden"><WorkspaceBackButton /></div><Outlet /></>;
   }
 
   return (

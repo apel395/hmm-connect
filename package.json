@@ -10,7 +10,8 @@
     "lint": "eslint . --ext ts,tsx --max-warnings 0",
     "format": "prettier --write .",
     "test:finance": "node scripts/test-finance-print-recovery.mjs && node scripts/test-form-recovery-hook.cjs",
-    "test:inventory-print": "node scripts/test-inventory-print.mjs"
+    "test:inventory-print": "node scripts/test-inventory-print.mjs",
+    "test:workspace": "node scripts/test-workspace-back.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

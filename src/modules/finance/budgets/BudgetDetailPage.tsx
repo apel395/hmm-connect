@@ -1,21 +1,22 @@
-import useAuthStore from "@/store/auth";
-import { toast } from "sonner";
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
-import { Printer } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
-import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
-import { budgetAction, getBudget } from "./api";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import { Table,TBody,TD,TH,THead,TR } from "@/components/ui/Table";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
+import useAuthStore from "@/store/auth";
+import { useQuery,useQueryClient } from "@tanstack/react-query";
+import { Printer } from "lucide-react";
+import { useState } from "react";
+import { useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { budgetAction,getBudget } from "./api";
 
 const money = (value: unknown) => Number(value || 0).toLocaleString("id-ID");
 
 export default function BudgetDetailPage() {
   const id = Number(useParams().id);
-  const navigate = useNavigate();
+  
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["budget", id], queryFn: () => getBudget(id) });
   const budget = query.data;
@@ -35,7 +36,7 @@ export default function BudgetDetailPage() {
 
   return <div className="space-y-4">
     <PageHeader title={budget?.budget_number || "Budget"} description={`${budget?.name || ""} · ${budget?.date_from || ""} to ${budget?.date_to || ""}`} actions={<>
-      <Button variant="outline" onClick={() => navigate("/budgets")}>Back</Button>
+      <WorkspaceBackButton />
       <Button variant="outline" onClick={() => window.print()}><Printer size={15} /></Button>
       {actions?.can_submit && <Button disabled={busy} onClick={() => act("submit")}>Submit</Button>}
       {actions?.can_approve && <Button disabled={busy} onClick={() => act("approve")}>Approve</Button>}

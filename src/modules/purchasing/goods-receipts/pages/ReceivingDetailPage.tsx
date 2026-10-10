@@ -1,20 +1,21 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import { ArrowLeft, FilePlus2, Pencil, PencilLine, RotateCcw } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
+import CurrencyInput from "@/components/form/CurrencyInput";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import Dialog,{ DialogBody,DialogContent,DialogFooter,DialogHeader,DialogTitle } from "@/components/ui/Dialog";
 import Loading from "@/components/ui/Loading";
-import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
-import CurrencyInput from "@/components/form/CurrencyInput";
-import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
+import useAuthorization from "@/hooks/useAuthorization";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
-import { useApproveGoodsReceipt, useCorrectGoodsReceiptCosts, useGoodsReceipt, usePostGoodsReceipt, useRejectGoodsReceipt, useReturnGoodsReceipt, useSubmitGoodsReceipt } from "../hooks/useGoodsReceipts";
+import axios from "axios";
+import { FilePlus2,Pencil,PencilLine,RotateCcw } from "lucide-react";
+import { useEffect,useState } from "react";
+import { Link,useNavigate,useParams } from "react-router-dom";
+import { toast } from "sonner";
 import DocumentActivity from "../../components/DocumentActivity";
 import EditReceivingDialog from "../components/EditReceivingDialog";
-import useAuthorization from "@/hooks/useAuthorization";
+import { useApproveGoodsReceipt,useCorrectGoodsReceiptCosts,useGoodsReceipt,usePostGoodsReceipt,useRejectGoodsReceipt,useReturnGoodsReceipt,useSubmitGoodsReceipt } from "../hooks/useGoodsReceipts";
 
 const money=(value:unknown)=>Number(value??0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const approvalLabel=(role?:string)=>({STORE:"Store",CHEF:"Chef","PM/CAMP BOSS":"PM / Camp Boss",PM:"PM / Camp Boss","HO PURCHASING":"HO Purchasing",FINANCE:"Finance","GENERAL MANAGER":"General Manager"}[String(role??"").toUpperCase()]??role??"Approval");
@@ -32,7 +33,7 @@ export default function ReceivingDetailPage(){
  const subtotal=Number(data.subtotal??data.items.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_cost),0));const taxAmount=Number(data.tax_amount??data.items.reduce((sum,item)=>sum+Number(item.tax_amount??0),0));const grandTotal=Number(data.total_amount??subtotal+taxAmount);
  const submitCostCorrection=async()=>{if(!changedItems.length)return toast.error("Change at least one unit cost.");if(reason.trim().length<3)return toast.error("Correction reason is required.");try{await correctCosts.mutateAsync({id:data.id,payload:{reason:reason.trim(),items:changedItems.map(item=>({item_id:item.id,unit_cost:Number(costs[item.id])}))}});toast.success("Receiving cost corrected.");setCostDialogOpen(false);setReason("")}catch(error){const detail=axios.isAxiosError(error)?error.response?.data?.detail:null;toast.error(typeof detail==="string"?detail:"Cost correction failed")}};
  return <div className="space-y-6">
-  <div className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-4"><Button variant="outline" size="sm" onClick={()=>navigate("/receiving")}><ArrowLeft size={17}/> Back</Button><div><div className="text-sm text-slate-500">Receiving Report</div><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-bold">{data.receipt_number}</h1><Badge>{data.status}</Badge>{data.approval_status&&<Badge variant={data.approval_status==="APPROVED"?"success":data.approval_status==="REJECTED"?"danger":"warning"}>{data.approval_status}</Badge>}{data.source_mode==="DIRECT"&&<Badge variant="warning">Direct</Badge>}</div></div></div>
+  <div className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-4"><WorkspaceBackButton /><div><div className="text-sm text-slate-500">Receiving Report</div><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-bold">{data.receipt_number}</h1><Badge>{data.status}</Badge>{data.approval_status&&<Badge variant={data.approval_status==="APPROVED"?"success":data.approval_status==="REJECTED"?"danger":"warning"}>{data.approval_status}</Badge>}{data.source_mode==="DIRECT"&&<Badge variant="warning">Direct</Badge>}</div></div></div>
    <div className="flex flex-wrap gap-2">{data.status==="POSTED"&&hasPermission("supplier_invoice.create")&&<Button onClick={()=>navigate(`/supplier-invoices?receipt_id=${data.id}`)}><FilePlus2 size={16}/> Create Supplier Invoice</Button>}{actions?.can_edit&&<Button variant="outline" onClick={()=>setEditOpen(true)}><Pencil size={16}/> Edit Receiving</Button>}{actions?.can_correct_cost&&<Button variant="outline" onClick={()=>{setCosts(Object.fromEntries(data.items.map(item=>[item.id,Number(item.unit_cost)])));setReason("");setCostDialogOpen(true)}}><PencilLine size={16}/> Correct Cost</Button>}{actions?.can_print!==false&&<PrintPreviewButton src={`/receiving/${data.id}/print`} title={`Receiving ${data.receipt_number}`} ariaLabel="Preview receiving document"/>}{canSubmit&&<Button loading={submitApproval.isPending} onClick={()=>submitApproval.mutate(data.id,{onSuccess:()=>toast.success("Receiving submitted for approval")})}>Submit for Approval</Button>}{canApprove&&<Button loading={approve.isPending} onClick={()=>approve.mutate({id:data.id},{onSuccess:()=>toast.success("Approval stage completed")})}>Approve</Button>}{canReject&&<Button variant="danger" onClick={()=>setRejectOpen(true)}>Reject</Button>}{canPerform("post",["WAREHOUSE","PURCHASING"],actions?.can_post??false,"receiving.post")&&<Button loading={post.isPending} onClick={()=>post.mutate(data.id,{onSuccess:()=>toast.success(data.destination_type==="DIRECT_USE"?"Direct-use receiving posted":"Receiving posted to inventory"),onError:(error)=>{const detail=axios.isAxiosError(error)?error.response?.data?.detail:null;toast.error(typeof detail==="string"?detail:"Receiving could not be posted")}})}>{data.destination_type==="DIRECT_USE"?"Post Direct Use":historical?"Post":"Post to Inventory"}</Button>}{canReturn&&<Button variant="danger" loading={returned.isPending} onClick={()=>{if(window.confirm("Return all quantities from this receipt?"))returned.mutate(data.id,{onSuccess:()=>toast.success("Receipt returned")})}}><RotateCcw size={16}/> Return</Button>}</div></div>
   {!historical&&data.status==="DRAFT"&&data.approval_status!=="APPROVED"&&<div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Receiving has <strong>not</strong> been posted yet. Receiving must complete Store → Chef → PM/Camp Boss approval before posting.</div>}
   <Card><div className="grid gap-5 md:grid-cols-3 lg:grid-cols-6"><Info label="Source">{data.purchase_order_id?<Link className="font-medium text-emerald-700 hover:underline" to={`/purchase-orders/${data.purchase_order_id}`}>{data.purchase_order_number}</Link>:"Direct Receiving"}</Info><Info label="Supplier">{data.supplier_name??"—"}</Info><Info label="Business Unit">{data.business_unit_name??data.business_unit_id??"—"}</Info><Info label="Location">{data.location_name??data.location_id??"—"}</Info><Info label="Department">{data.department_name??data.department_id??"—"}</Info><Info label="Warehouse">{data.destination_type==="WAREHOUSE"?data.warehouse_name??"—":"Direct Use"}</Info></div></Card>

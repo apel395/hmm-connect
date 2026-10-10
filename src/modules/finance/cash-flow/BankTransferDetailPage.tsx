@@ -1,14 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-import { toast } from "sonner";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
-import Badge from "@/components/ui/Badge";
 import Loading from "@/components/ui/Loading";
-import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useAuthorization from "@/hooks/useAuthorization";
-import { getTransfer, transferAction, updateTransfer } from "./api";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { Link,useNavigate,useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { getTransfer,transferAction,updateTransfer } from "./api";
 
 export default function BankTransferDetailPage() {
   const { id } = useParams();
@@ -36,7 +36,7 @@ export default function BankTransferDetailPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={() => nav("/bank-transfers")}><ArrowLeft size={16} /> Back</Button>
+          <WorkspaceBackButton />
           <h1 className="text-2xl font-bold">{x.transfer_number}</h1><Badge>{x.status}</Badge>{admin && <Badge variant="outline">Admin</Badge>}
         </div>
         <div className="flex flex-wrap gap-2">

@@ -1,21 +1,21 @@
-import { useState } from "react";
-import { todayLocal } from "@/utils/dateConstraints";
-import { ArrowLeft } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
-import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
-import Loading from "@/components/ui/Loading";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
-import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
-import DocumentActivity from "@/modules/purchasing/components/DocumentActivity";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import Loading from "@/components/ui/Loading";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useAuthorization from "@/hooks/useAuthorization";
-import { getAccounts } from "@/modules/master/chart-of-accounts/api";
 import { listLocations } from "@/modules/admin/organization/api";
-import { adminReopenInvoice, adminUnpostInvoice, getInvoice, invoiceAction, reclassifyInvoiceAsset } from "./api";
+import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
+import { getAccounts } from "@/modules/master/chart-of-accounts/api";
+import DocumentActivity from "@/modules/purchasing/components/DocumentActivity";
+import { todayLocal } from "@/utils/dateConstraints";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link,useNavigate,useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { adminReopenInvoice,adminUnpostInvoice,getInvoice,invoiceAction,reclassifyInvoiceAsset } from "./api";
 
 const money=(value:unknown)=>Number(value??0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 
@@ -40,7 +40,7 @@ export default function SupplierInvoiceDetailPage(){
  const hasVat=Number(invoice.tax_amount||0)>0;
  const locationName=invoice.location_name||locationQuery.data?.find((location:any)=>location.id===invoice.location_id)?.name||"—";
  return <div className="space-y-6">
-  <PageHeader title={<span className="flex items-center gap-3"><Button size="sm" variant="outline" onClick={()=>navigate("/supplier-invoices")}><ArrowLeft size={16}/> Back</Button>{invoice.internal_invoice_number}<Badge>{invoice.status}</Badge>{admin&&<Badge variant="outline">Admin</Badge>}</span> as any} actions={<div className="flex flex-wrap gap-2"><PrintPreviewButton src={`/supplier-invoices/${invoice.id}/print`} title={`Supplier Invoice ${invoice.internal_invoice_number}`} ariaLabel="Preview supplier invoice"/>{hasPermission("supplier_invoice.edit")&&allowed.can_edit&&<Button variant="outline" onClick={()=>navigate(`/supplier-invoices?edit_id=${invoice.id}`)}>Edit</Button>}{hasPermission("supplier_invoice.verify")&&invoice.status==="DRAFT"&&<Button disabled={!allowed.can_verify} loading={action.isPending} title={!readiness?.is_ready?"Complete the accounting mappings shown below":undefined} onClick={()=>action.mutate("verify")}>Verify & Create Journal</Button>}{hasPermission("supplier_invoice.reject")&&allowed.can_reject&&<Button variant="danger" onClick={()=>{if(window.confirm("Reject this supplier invoice?"))action.mutate("reject")}}>Reject</Button>}{hasPermission("supplier_invoice.post")&&allowed.can_generate_journal&&<Button loading={action.isPending} onClick={()=>action.mutate("generate-journal")}>Create Missing Journal</Button>}{hasPermission("supplier_invoice.void")&&allowed.can_void&&<Button variant="danger" onClick={()=>{if(window.confirm("Void this supplier invoice? This is a permanent financial action."))action.mutate("void")}}>Void</Button>}{canAdminUnpost&&<Button loading={adminAction.isPending} variant="outline" onClick={()=>{if(window.confirm("Unpost this supplier invoice? The liability GL will be removed and the invoice returns to VERIFIED. Posted payments/adjustments must be unwound first."))adminAction.mutate("unpost")}}>Admin Unpost</Button>}{canAdminReopen&&<Button loading={adminAction.isPending} variant="outline" onClick={()=>{if(window.confirm("Reopen this verified supplier invoice as DRAFT for correction? Any draft invoice journal will be voided."))adminAction.mutate("reopen")}}>Reopen Draft</Button>}</div>}/>
+  <PageHeader title={<span className="flex items-center gap-3"><WorkspaceBackButton />{invoice.internal_invoice_number}<Badge>{invoice.status}</Badge>{admin&&<Badge variant="outline">Admin</Badge>}</span> as any} actions={<div className="flex flex-wrap gap-2"><PrintPreviewButton src={`/supplier-invoices/${invoice.id}/print`} title={`Supplier Invoice ${invoice.internal_invoice_number}`} ariaLabel="Preview supplier invoice"/>{hasPermission("supplier_invoice.edit")&&allowed.can_edit&&<Button variant="outline" onClick={()=>navigate(`/supplier-invoices?edit_id=${invoice.id}`)}>Edit</Button>}{hasPermission("supplier_invoice.verify")&&invoice.status==="DRAFT"&&<Button disabled={!allowed.can_verify} loading={action.isPending} title={!readiness?.is_ready?"Complete the accounting mappings shown below":undefined} onClick={()=>action.mutate("verify")}>Verify & Create Journal</Button>}{hasPermission("supplier_invoice.reject")&&allowed.can_reject&&<Button variant="danger" onClick={()=>{if(window.confirm("Reject this supplier invoice?"))action.mutate("reject")}}>Reject</Button>}{hasPermission("supplier_invoice.post")&&allowed.can_generate_journal&&<Button loading={action.isPending} onClick={()=>action.mutate("generate-journal")}>Create Missing Journal</Button>}{hasPermission("supplier_invoice.void")&&allowed.can_void&&<Button variant="danger" onClick={()=>{if(window.confirm("Void this supplier invoice? This is a permanent financial action."))action.mutate("void")}}>Void</Button>}{canAdminUnpost&&<Button loading={adminAction.isPending} variant="outline" onClick={()=>{if(window.confirm("Unpost this supplier invoice? The liability GL will be removed and the invoice returns to VERIFIED. Posted payments/adjustments must be unwound first."))adminAction.mutate("unpost")}}>Admin Unpost</Button>}{canAdminReopen&&<Button loading={adminAction.isPending} variant="outline" onClick={()=>{if(window.confirm("Reopen this verified supplier invoice as DRAFT for correction? Any draft invoice journal will be voided."))adminAction.mutate("reopen")}}>Reopen Draft</Button>}</div>}/>
   {hasDraftJournal&&<div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">Invoice verification is complete and its accounting journal has been prepared.</div>}
   {invoice.status==="DRAFT"&&readiness&&!readiness.is_ready&&<div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><div className="font-semibold">Accounting setup must be completed before verification</div><ul className="mt-2 list-disc space-y-1 pl-5">{readiness.blockers.map((blocker)=><li key={blocker.code}>{blocker.message}</li>)}</ul></div>}
   {canAdminUnpost&&<div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Administrator recovery is available. Unpost first, then Reopen Draft to edit the supplier invoice. Posted payments or posted credit/debit notes are hard dependencies and must be unwound first. Closed fiscal periods remain locked.</div>}

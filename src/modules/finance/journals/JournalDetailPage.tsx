@@ -1,24 +1,24 @@
-import { ArrowLeft } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
+import CurrencyInput from "@/components/form/CurrencyInput";
+import FormRecoveryActions from "@/components/form/FormRecoveryActions";
+import SearchableSelect from "@/components/form/SearchableSelect";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
-import Badge from "@/components/ui/Badge";
-import Loading from "@/components/ui/Loading";
-import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
+import Dialog,{ DialogBody,DialogContent,DialogFooter,DialogHeader,DialogTitle } from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
-import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
-import CurrencyInput from "@/components/form/CurrencyInput";
-import PrintPreviewButton from "@/components/print/PrintPreviewButton";
-import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
-import { listLocations } from "@/modules/admin/organization/api";
-import SearchableSelect from "@/components/form/SearchableSelect";
+import Loading from "@/components/ui/Loading";
+import { Table,TableCellStack,TBody,TD,TH,THead,TR } from "@/components/ui/Table";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useFormRecovery from "@/hooks/useFormRecovery";
-import FormRecoveryActions from "@/components/form/FormRecoveryActions";
-import { getJournal, journalAction, updateJournal } from "./api";
+import { listLocations } from "@/modules/admin/organization/api";
 import { paymentAction } from "@/modules/finance/payments/api";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useMemo,useState } from "react";
+import { Link,useNavigate,useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { getJournal,journalAction,updateJournal } from "./api";
 import { sourceDocumentPath } from "./sourceDocument";
 
 type EditLine = {
@@ -157,7 +157,7 @@ export default function JournalDetailPage() {
 
   return <div className="space-y-6">
     <div className="flex flex-wrap justify-between gap-3">
-      <div className="flex items-center gap-3"><Button variant="outline" onClick={() => nav("/journal")}><ArrowLeft size={16}/> Back</Button><h1 className="text-2xl font-bold">{x.journal_number}</h1><Badge>{x.status}</Badge></div>
+      <div className="flex items-center gap-3"><WorkspaceBackButton /><h1 className="text-2xl font-bold">{x.journal_number}</h1><Badge>{x.status}</Badge></div>
       <div className="flex flex-wrap gap-2">
         {sourcePath && <Button variant="outline" onClick={() => nav(sourcePath, { state: { returnTo: `/journal-entries/${x.id}` } })}>Open Source Document</Button>}
         <PrintPreviewButton src={`/journal-entries/${x.id}/print`} title={`Journal ${x.journal_number}`} ariaLabel="Preview journal" />
