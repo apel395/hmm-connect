@@ -9,7 +9,11 @@ export default function useWorkspaceBack() {
     if (disabled) return;
     // Print routes are outside the workspace and must not close their source tab.
     if (location.pathname.endsWith("/print")) {
-      navigate(`${location.pathname.slice(0, -6)}${location.search}`, { replace: true });
+      const source = location.pathname === "/journal/register/print" ? "/journal"
+        : location.pathname === "/finance-setup/coa/print" ? "/finance-setup"
+        : /^\/pos\/sales\/\d+\/print$/.test(location.pathname) ? "/pos/sales"
+        : location.pathname.slice(0, -6);
+      navigate(`${source}${location.search}`, { replace: true });
       return;
     }
     const path = `${location.pathname}${location.search}`;
