@@ -137,6 +137,7 @@ export type JournalImportJob = {
 
 export type JournalImportPreviewRow = {
   journal_group: string;
+  document_number?: string | null;
   posting_date?: string | null;
   description?: string | null;
   location?: string | null;

@@ -194,7 +194,7 @@ export default function JournalBulkImportDialog({
                     <table className="w-full min-w-[760px] text-sm">
                       <thead className="sticky top-0 bg-slate-100 text-left text-xs uppercase text-slate-600">
                         <tr>
-                          <th className="px-3 py-2">Group</th>
+                          <th className="px-3 py-2">Document Number</th>
                           <th className="px-3 py-2">Date / Description</th>
                           <th className="px-3 py-2">Lines</th>
                           <th className="px-3 py-2 text-right">Debit</th>
@@ -206,7 +206,7 @@ export default function JournalBulkImportDialog({
                       <tbody>
                         {preview.data.journals.map((row, index) => (
                           <tr key={`${row.journal_group}-${index}`} className="border-t align-top">
-                            <td className="px-3 py-2 font-medium">{row.journal_group}</td>
+                            <td className="px-3 py-2 font-medium">{row.document_number || row.journal_group}</td>
                             <td className="px-3 py-2">
                               <div>{row.posting_date || "—"}</div>
                               <div className="max-w-xs truncate text-xs text-slate-500">{row.description || row.location || "—"}</div>
@@ -299,7 +299,7 @@ function UploadStep({
     <>
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
         <div className="font-semibold">Simple journal blocks</div>
-        <div className="mt-1">Enter a journal group, date and location once. Blank header cells continue the group above. ERP generates the official journal number.</div>
+        <div className="mt-1">Use the same fields as Create Journal Entry. Document Number identifies each journal; blank header cells continue the preceding document. ERP generates the official journal number.</div>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="text-sm font-medium">
