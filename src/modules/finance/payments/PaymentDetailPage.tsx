@@ -1,23 +1,21 @@
-import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
-import { ArrowLeft } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
-import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
+import useAuthorization from "@/hooks/useAuthorization";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 import DocumentActivity from "@/modules/purchasing/components/DocumentActivity";
-import useAuthorization from "@/hooks/useAuthorization";
-import { adminCancelPostedPayment, adminReopenPayment, adminUnpostPayment, getPayment, paymentAction } from "./api";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { Link,useNavigate,useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { adminCancelPostedPayment,adminReopenPayment,adminUnpostPayment,getPayment,paymentAction } from "./api";
 
 const money=(value:unknown)=>Number(value||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 
 export default function PaymentDetailPage(){
- const{id}=useParams();const navigate=useNavigate();const location=useLocation();const qc=useQueryClient();const{isSuperuser}=useAuthorization();
- const returnTo=(location.state as {returnTo?:string}|null)?.returnTo||"/payments";
+ const{id}=useParams();const navigate=useNavigate();const qc=useQueryClient();const{isSuperuser}=useAuthorization();
  const query=useQuery({queryKey:["payment",id],queryFn:()=>getPayment(Number(id)),enabled:!!id});
  const refreshFinance=()=>{
    qc.invalidateQueries({queryKey:["payment",id]});qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["supplier-invoice"]});qc.invalidateQueries({queryKey:["supplier-invoices"]});qc.invalidateQueries({queryKey:["accounts-payable-aging"]});qc.invalidateQueries({queryKey:["finance-dashboard"]});qc.invalidateQueries({queryKey:["cash-flow"]});qc.invalidateQueries({queryKey:["cash-accounts"]});qc.invalidateQueries({queryKey:["journal-entries"]});qc.invalidateQueries({queryKey:["dashboard","overview"]});qc.invalidateQueries({queryKey:["general-ledger"]});qc.invalidateQueries({queryKey:["trial-balance"]});qc.invalidateQueries({queryKey:["balance-sheet"]});qc.invalidateQueries({queryKey:["profit-loss"]});

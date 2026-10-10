@@ -1,22 +1,22 @@
+import PageHeader from "@/components/common/PageHeader";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import { Table,TBody,TD,TH,THead,TR } from "@/components/ui/Table";
 import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useAuthStore from "@/store/auth";
-import { toast } from "sonner";
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
-import PageHeader from "@/components/common/PageHeader";
-import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
-import { budgetAction, getBudget } from "./api";
+import { useState } from "react";
+import { useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { budgetAction,getBudget } from "./api";
 
 const money = (value: unknown) => Number(value || 0).toLocaleString("id-ID");
 
 export default function BudgetDetailPage() {
   const id = Number(useParams().id);
-  const navigate = useNavigate();
+  
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["budget", id], queryFn: () => getBudget(id) });
   const budget = query.data;

@@ -1,27 +1,26 @@
-import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
-import { useState } from "react";
-import { ArrowLeft } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
-import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
+import useAuthorization from "@/hooks/useAuthorization";
 import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
 import ReceiveGoodsDialog from "@/modules/purchasing/goods-receipts/components/ReceiveGoodsDialog";
 import { useGoodsReceipts } from "@/modules/purchasing/goods-receipts/hooks/useGoodsReceipts";
-import GoodsReceiptHistory from "../components/GoodsReceiptHistory";
+import { useState } from "react";
+import { Link,useParams } from "react-router-dom";
+import { toast } from "sonner";
 import DocumentActivity from "../../components/DocumentActivity";
+import GoodsReceiptHistory from "../components/GoodsReceiptHistory";
 import PurchaseOrderForm from "../components/PurchaseOrderForm";
-import { useApprovePurchaseOrder, usePurchaseOrder, useRejectPurchaseOrder, useReopenPurchaseOrder, useSubmitPurchaseOrder, useUpdatePurchaseOrder } from "../hooks/usePurchaseOrders";
-import type { ApprovalHistoryItem, PurchaseOrderItem } from "../types";
-import useAuthorization from "@/hooks/useAuthorization";
+import { useApprovePurchaseOrder,usePurchaseOrder,useRejectPurchaseOrder,useReopenPurchaseOrder,useSubmitPurchaseOrder,useUpdatePurchaseOrder } from "../hooks/usePurchaseOrders";
+import type { ApprovalHistoryItem,PurchaseOrderItem } from "../types";
 
 const money=(value:unknown)=>Number(value??0).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2});
 const taxBadge=(item:any)=>{const category=String(item.tax_category??"").toUpperCase();if(category==="REVIEW_REQUIRED")return <Badge variant="warning">Review Required</Badge>;if(item.is_taxable)return <Badge variant="warning">PPN {Number(item.tax_rate??0)}%</Badge>;return <Badge variant="outline">Non-PPN</Badge>;};
 export default function PurchaseOrderDetailPage(){
- const navigate=useNavigate();const{id}=useParams();const poId=Number(id);const{data,isLoading}=usePurchaseOrder(poId);const{data:receipts=[]}=useGoodsReceipts(poId);const submit=useSubmitPurchaseOrder(),approve=useApprovePurchaseOrder(),reject=useRejectPurchaseOrder(),reopen=useReopenPurchaseOrder(),update=useUpdatePurchaseOrder();const{isSuperuser}=useAuthorization();const[receiving,setReceiving]=useState(false),[editing,setEditing]=useState(false);
+ const{id}=useParams();const poId=Number(id);const{data,isLoading}=usePurchaseOrder(poId);const{data:receipts=[]}=useGoodsReceipts(poId);const submit=useSubmitPurchaseOrder(),approve=useApprovePurchaseOrder(),reject=useRejectPurchaseOrder(),reopen=useReopenPurchaseOrder(),update=useUpdatePurchaseOrder();const{isSuperuser}=useAuthorization();const[receiving,setReceiving]=useState(false),[editing,setEditing]=useState(false);
  if(isLoading)return <Loading/>;if(!data)return null;
  const actions=data.allowed_actions??{},admin=isSuperuser(),canEdit=Boolean(actions.can_edit),canApprove=data.status==="PENDING_APPROVAL"&&Boolean(actions.can_approve),canReject=data.status==="PENDING_APPROVAL"&&Boolean(actions.can_reject),hasActiveReceiving=receipts.some((receipt:any)=>!["POSTED","RETURNED","CANCELLED","VOID"].includes(String(receipt.status??"").toUpperCase())),baseCanReceive=admin?["APPROVED","PARTIALLY_RECEIVED"].includes(data.status):Boolean(actions.can_receive),canReceive=baseCanReceive&&!hasActiveReceiving,canReopen=admin&&data.status!=="DRAFT"&&Boolean((actions as any).can_reopen??true);
  const subtotal=Number((data as any).subtotal??data.items.reduce((sum:number,item:any)=>sum+Number(item.line_subtotal??item.quantity*item.unit_price),0));const discount=Number((data as any).discount_amount??0);const taxAmount=Number((data as any).tax_amount??data.items.reduce((sum:number,item:any)=>sum+Number(item.tax_amount??0),0));const grandTotal=Number(data.total_amount??subtotal-discount+taxAmount);

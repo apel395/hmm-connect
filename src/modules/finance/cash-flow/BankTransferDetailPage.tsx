@@ -1,15 +1,14 @@
-import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-import { toast } from "sonner";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
-import Badge from "@/components/ui/Badge";
 import Loading from "@/components/ui/Loading";
-import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useAuthorization from "@/hooks/useAuthorization";
-import { getTransfer, transferAction, updateTransfer } from "./api";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { Link,useNavigate,useParams } from "react-router-dom";
+import { toast } from "sonner";
+import { getTransfer,transferAction,updateTransfer } from "./api";
 
 export default function BankTransferDetailPage() {
   const { id } = useParams();

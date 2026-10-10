@@ -1,7 +1,6 @@
-import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
-import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
-import { ArrowLeft } from "lucide-react";
+import Button from "@/components/ui/Button";
+import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 
 interface Props {
   document: any;
@@ -16,7 +15,6 @@ interface Props {
   submitting?: boolean;
   approving?: boolean;
   rejecting?: boolean;
-  onBack: () => void;
   onSubmit: () => void;
   onEdit: () => void;
   onApprove: () => void;
@@ -36,7 +34,6 @@ export default function WorkflowActionBar({
   submitting = false,
   approving = false,
   rejecting = false,
-  onBack,
   onSubmit,
   onEdit,
   onApprove,
