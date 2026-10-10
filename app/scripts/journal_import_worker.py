@@ -129,7 +129,7 @@ def parse_date(value, field: str) -> date:
         return value
     raw = text(value)
     if not raw:
-        raise ValueError(f"{field}: required on the first line of each journal group")
+        raise ValueError(f"{field}: required on the first line of each journal document")
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
         try:
             return datetime.strptime(raw[:10], fmt).date()
@@ -327,7 +327,7 @@ def validate_group(db: Session, user: User, batch: ImportBatch, rows: list[Impor
         data = row.normalized_data_json or {}
         for field in INHERITED_FIELDS:
             if text(data.get(field)) != text(first.get(field)):
-                errors.append(f"Row {row.row_number}: {field} conflicts with journal group {label}; start a new journal_group")
+                errors.append(f"Row {row.row_number}: {field} conflicts with journal document {label}; use a different document_number for a new journal")
 
     debit_total = ZERO
     credit_total = ZERO
@@ -360,7 +360,7 @@ def validate_group(db: Session, user: User, batch: ImportBatch, rows: list[Impor
     if debit_total != credit_total:
         difference = debit_total - credit_total
         side = "credit" if difference > ZERO else "debit"
-        errors.append(f"Journal group {label} needs {side} {abs(difference)} to balance")
+        errors.append(f"Journal document {label} needs {side} {abs(difference)} to balance")
 
     if posting_date:
         batch.period_from = posting_date if batch.period_from is None else min(batch.period_from, posting_date)

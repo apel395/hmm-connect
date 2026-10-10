@@ -39,19 +39,13 @@ ALLOWED_TYPES = {
     "application/octet-stream",
 }
 
+TEMPLATE_KEYS = [
+    "posting_date", "document_number", "description", "business_unit_code",
+    "location_code", "department_code", "account_code", "line_description", "debit", "credit",
+]
 TEMPLATE_HEADERS = [
-    "journal_group",
-    "posting_date",
-    "description",
-    "location_code",
-    "business_unit_code (optional)",
-    "department_code (optional)",
-    "account_code",
-    "line_description",
-    "debit",
-    "credit",
-    "supplier_code (optional)",
-    "external_reference (optional)",
+    "posting_date", "document_number", "description", "business_unit_code (optional)",
+    "location_code", "department_code (optional)", "account_code", "line_description", "debit", "credit",
 ]
 
 
@@ -287,20 +281,20 @@ def _build_template(db: Session, user: User) -> bytes:
 
     instructions = [
         ["Easy Bulk Journal Import"],
-        ["1", "Enter journal_group only on the first line of a journal. Blank group cells continue the journal above."],
-        ["2", "Enter date, description, location and optional dimensions only on the first line; blank cells inherit them."],
-        ["3", "Enter one account line per row. Each row must contain either debit or credit."],
+        ["1", "Use Document Number to identify each journal, as in Create Journal Entry. Repeat it on separated lines of the same journal; blank cells continue the preceding journal."],
+        ["2", "Enter Posting Date, Description, Business Unit, Work Location and Department on the first line; blank header cells inherit them. Business Unit may be inferred from Work Location."],
+        ["3", "Enter one account line per row. Each row must contain either debit or credit. Total debit and credit must balance per document."],
         ["4", "Upload first validates only. Review the preview, then import valid journals as Draft or Post them."],
-        ["5", "One invalid journal does not block other valid journals."],
+        ["5", "One invalid journal does not block other valid journals. If Document Number is blank throughout, the file is one journal with a generated document number."],
     ]
     validations = []
     defined_names = []
     master_specs = [
-        ("D2:D501", "LocationCodes", "Master Locations", locations),
-        ("E2:E501", "BusinessUnitCodes", "Master Business Units", units),
+        ("E2:E501", "LocationCodes", "Master Locations", locations),
+        ("D2:D501", "BusinessUnitCodes", "Master Business Units", units),
         ("F2:F501", "DepartmentCodes", "Master Departments", departments),
         ("G2:G501", "AccountCodes", "Master Accounts", accounts),
-        ("K2:K501", "SupplierCodes", "Master Suppliers", suppliers),
+        
     ]
     for cell_range, range_name, sheet_name, values in master_specs:
         if values:
@@ -312,9 +306,9 @@ def _build_template(db: Session, user: User) -> bytes:
         {
             "title": "Journal Import",
             "rows": [TEMPLATE_HEADERS],
-            "widths": [16, 15, 30, 18, 24, 22, 18, 30, 18, 18, 22, 28],
+            "widths": [15, 25, 30, 24, 18, 22, 18, 30, 18, 18],
             "validations": validations,
-            "auto_filter": "A1:L501",
+            "auto_filter": "A1:J501",
         },
         {
             "title": "Master Locations",
@@ -512,6 +506,7 @@ def get_preview(
         errors = list(dict.fromkeys(message for row in group_rows for message in (row.error_messages_json or [])))
         result.append({
             "journal_group": first.get("_group_label"),
+            "document_number": first.get("document_number"),
             "posting_date": first.get("posting_date"),
             "description": first.get("description"),
             "location": first.get("location_code") or first.get("location"),
@@ -564,23 +559,21 @@ def correction_file(
     ).order_by(ImportRow.id).all()
     if not rows:
         raise HTTPException(404, "This import has no rejected rows")
-    headers = [*TEMPLATE_HEADERS, "validation_errors"]
-    keys = ["journal_group", "posting_date", "description", "location_code", "business_unit_code", "department_code", "account_code", "line_description", "debit", "credit", "supplier_code", "external_reference"]
+    # Preserve optional metadata from older templates when correcting rejected rows.
+    extra_keys = [key for key in ("supplier_code", "supplier", "external_reference")
+                  if any((row.normalized_data_json or {}).get(key) for row in rows)]
+    headers = [*TEMPLATE_HEADERS, *extra_keys, "validation_errors"]
     output_rows = [headers]
-    previous_group = None
     for row in rows:
         data = row.normalized_data_json or {}
-        group = data.get("_group_label")
-        output_group = group if group != previous_group else ""
-        previous_group = group
-        values = [output_group, *[data.get(key, "") for key in keys[1:]]]
+        values = [data.get(key, "") for key in [*TEMPLATE_KEYS, *extra_keys]]
         values.append(" | ".join(row.error_messages_json or []))
         output_rows.append(values)
     payload = _build_xlsx([{
         "title": "Correction",
         "rows": output_rows,
         "widths": [22] * (len(headers) - 1) + [70],
-        "auto_filter": f"A1:M{len(output_rows)}",
+        "auto_filter": f"A1:{chr(64 + len(headers))}{len(output_rows)}",
     }])
     return {
         "filename": f"{batch.batch_number}-corrections.xlsx",
