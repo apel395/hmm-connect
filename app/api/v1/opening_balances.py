@@ -1,3 +1,7 @@
+from io import BytesIO
+from fastapi.responses import StreamingResponse
+from app.services.xlsx_export import build_xlsx
+from app.services.organization_access import resolve_organization_access
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -41,6 +45,31 @@ def accounts(
 ):
     location_id = resolve_location_id(user, location_id)
     return OpeningBalanceService(db).accounts(fiscal_year=fiscal_year, location_id=location_id)
+
+
+@router.get("/export")
+def export_excel(
+    fiscal_year: int = Query(..., ge=1900, le=9999),
+    location_id: int | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(journal_view_user),
+):
+    scope = resolve_organization_access(db, user, location_id=location_id)
+    data = OpeningBalanceService(db).accounts(
+        fiscal_year=fiscal_year, location_id=scope["location_id"],
+        business_unit_id=scope["business_unit_id"],
+    )
+    rows = [[f"Opening balances {fiscal_year}"],
+            ["Account code", "Account name", "Type", "Normal balance", "Debit", "Credit"]]
+    rows.extend([
+        item["account_code"], item["account_name"], item["account_type"],
+        item["normal_balance"], item["existing_debit"], item["existing_credit"],
+    ] for item in data["items"])
+    return StreamingResponse(
+        BytesIO(build_xlsx([("Opening balances", rows)])),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="opening-balances-{fiscal_year}.xlsx"'},
+    )
 
 
 @router.get("")

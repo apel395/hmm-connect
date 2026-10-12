@@ -10,7 +10,7 @@ def assigned_location_id(user: User) -> int | None:
     """Return the assigned row-level location scope for an operational user."""
     if is_superuser(user):
         return None
-    return user.default_location_id or user.location_id
+    return getattr(user, "default_location_id", None) or getattr(user, "location_id", None)
 
 
 def apply_location_scope(query: Query, location_column, user: User) -> Query:

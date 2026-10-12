@@ -15,6 +15,8 @@ from app.models.journal_line import JournalLine
 from app.schemas.amortization import AmortizationCreate, AmortizationUpdate
 from app.services.document_number import next_document_number
 from app.services.organization_dimensions import validate_dimensions
+from app.services.organization_access import resolve_organization_access
+from app.services.asset_posting import post_asset_ledger
 
 
 router = APIRouter(prefix="/amortizations", tags=["Amortization"])
@@ -74,15 +76,25 @@ def posting_date(item: Amortization) -> date:
 @router.get("")
 def list_amortizations(db: Session = Depends(get_db), user=Depends(get_current_user)):
     require_finance(user)
-    return [serialize(item) for item in db.query(Amortization).order_by(Amortization.id.desc()).all()]
+    scope=resolve_organization_access(db,user)
+    query=db.query(Amortization)
+    for key,value in scope.items():
+        if value is not None: query=query.filter(getattr(Amortization,key)==value)
+    return [serialize(item) for item in query.order_by(Amortization.id.desc()).all()]
 
 
 @router.post("", status_code=201)
 def create_amortization(data: AmortizationCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     require_finance(user)
+    scope=resolve_organization_access(db,user,location_id=data.location_id,business_unit_id=data.business_unit_id,department_id=data.department_id)
+    data=data.model_copy(update=scope)
     validate_dimensions(db, data.business_unit_id, data.location_id, data.department_id, required=True)
-    validate_account(db, data.asset_account_id, "ASSET", "Amortizable asset account")
-    validate_account(db, data.accumulated_amortization_account_id, "ASSET", "Accumulated amortization account", True)
+    asset=validate_account(db, data.asset_account_id, "ASSET", "Amortizable asset account")
+    if asset.account_number.startswith("100-600"):
+        raise HTTPException(422,"Use Fixed Assets for account 100-600")
+    if data.accumulated_amortization_account_id==data.asset_account_id and not asset.account_number.startswith("100-400"):
+        raise HTTPException(422,"Direct cost reduction requires account 100-400")
+    validate_account(db, data.accumulated_amortization_account_id, "ASSET", "Amortization credit account", data.accumulated_amortization_account_id != data.asset_account_id)
     validate_account(db, data.amortization_expense_account_id, "EXPENSE", "Amortization expense account")
     item = Amortization(
         amortization_number=next_document_number(db, "AMR", digits=6),
@@ -105,10 +117,12 @@ def update_amortization(amortization_id: int, data: AmortizationUpdate, db: Sess
     item = db.get(Amortization, amortization_id)
     if not item:
         raise HTTPException(404, "Amortization record not found")
+    resolve_organization_access(db,user,location_id=item.location_id,business_unit_id=item.business_unit_id,department_id=item.department_id)
     values = data.model_dump(exclude_unset=True)
     business_unit_id = values.get("business_unit_id", item.business_unit_id)
     location_id = values.get("location_id", item.location_id)
     department_id = values.get("department_id", item.department_id)
+    resolve_organization_access(db,user,location_id=location_id,business_unit_id=business_unit_id,department_id=department_id)
     validate_dimensions(db, business_unit_id, location_id, department_id, required=True)
     for key, value in values.items():
         setattr(item, key, value)
@@ -123,6 +137,7 @@ def post_next_amortization(amortization_id: int, db: Session = Depends(get_db), 
     item = db.query(Amortization).filter(Amortization.id == amortization_id).with_for_update().first()
     if not item:
         raise HTTPException(404, "Amortization record not found")
+    resolve_organization_access(db,user,location_id=item.location_id,business_unit_id=item.business_unit_id,department_id=item.department_id)
     if item.status != "ACTIVE" or item.months_posted >= item.useful_life_months or Decimal(item.net_book_value) <= ZERO:
         raise HTTPException(409, "No remaining amortization to post")
 
@@ -172,6 +187,8 @@ def post_next_amortization(amortization_id: int, db: Session = Depends(get_db), 
             department_id=item.department_id,
         ),
     ])
+    db.flush()
+    post_asset_ledger(db,entry,user)
     item.months_posted += 1
     item.accumulated_amortization = Decimal(item.accumulated_amortization) + amount
     item.net_book_value = max(ZERO, Decimal(item.original_cost) - Decimal(item.accumulated_amortization))

@@ -18,6 +18,7 @@ from app.models.financial_report_setting import FinancialReportSetting
 from app.services.audit import record_audit
 from app.services.financial_reporting_service import FinancialReportingService
 from app.services.location_access import resolve_location_id
+from app.services.organization_access import resolve_organization_access
 from app.api.v1.profit_loss import serialize
 
 router = APIRouter(prefix="/financial-reports", tags=["Financial Reports"])
@@ -112,7 +113,8 @@ def comparison(report_type: str = Query(pattern=TYPES), as_of_date: date = Query
                department_tables: bool = False,
                report_scope: str | None = None,
                db: Session = Depends(get_db), user=Depends(view)):
-    scope = resolve_location_id(user, location_id)
+    allowed = resolve_organization_access(db, user, location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
+    scope, business_unit_id, department_id = allowed["location_id"], allowed["business_unit_id"], allowed["department_id"]
     service = FinancialReportingService(db)
     if report_type == "PROFIT_LOSS" and report_scope is not None:
         report = deliver(service, as_of_date=as_of_date, report_scope=report_scope, location_id=scope,
@@ -138,7 +140,8 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
                department_tables: bool = False,
                report_scope: str | None = None,
                       db: Session = Depends(get_db), user=Depends(view)):
-    scope = resolve_location_id(user, location_id)
+    allowed = resolve_organization_access(db, user, location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
+    scope, business_unit_id, department_id = allowed["location_id"], allowed["business_unit_id"], allowed["department_id"]
     service = FinancialReportingService(db)
     if report_type == "PROFIT_LOSS" and report_scope is not None:
         report = deliver(service, as_of_date=as_of_date, report_scope=report_scope, location_id=scope,

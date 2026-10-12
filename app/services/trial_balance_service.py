@@ -1,3 +1,4 @@
+from app.services.organization_access import effective_business_unit
 from datetime import date
 from decimal import Decimal
 from math import ceil
@@ -61,6 +62,7 @@ class TrialBalanceService:
         for name, value in (("location_id", location_id), ("department_id", department_id), ("business_unit_id", business_unit_id)):
             if value is not None:
                 dimension = func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name))
+                if name == "business_unit_id": dimension = effective_business_unit(dimension, func.coalesce(JournalLine.location_id, JournalEntry.location_id))
                 query = query.filter(dimension.is_(None) if name == "department_id" and value == 0 else dimension == value)
         return {
             account_id: (Decimal(debit), Decimal(credit))

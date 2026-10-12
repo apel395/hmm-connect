@@ -101,7 +101,7 @@ def test_report_setup_mapping_is_explicit_and_totals_ignore_hidden_details(recor
     assert subtotal(report,'NOP')==745
     details=[r for r in report['presentation_rows'] if r['kind']=='detail']
     assert {aid for r in details for aid in r['account_ids']}=={accounts[0].id}
-    assert next(r for r in report['presentation_rows'] if r['key']=='UNCLASSIFIED')['periods']['MTD']['current']==5
+    assert next(r for r in report['presentation_rows'] if r['key']=='UNDER_EXPENSE')['periods']['MTD']['current']==15
 
 
 def test_organization_gap_is_reported_not_redistributed(records):
@@ -113,3 +113,15 @@ def test_organization_gap_is_reported_not_redistributed(records):
     assert report['split_control']['MTD']['COST_OF_REVENUE']==17
     assert subtotal(report,'NOP')==4453
     assert db.query(JournalEntry).count()==4
+
+
+def test_exact_summary_order_and_drilldown_includes_zero_accounts(records):
+    db,*_=records
+    zero=ChartOfAccount(account_number='700-999',account_name='Zero operations expense',account_type='EXPENSE',normal_balance='DEBIT',is_posting=True,financial_statement_group='OPERATING_EXPENSE')
+    db.add(zero);db.commit()
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='HOTEL')
+    assert [r['key'] for r in report['presentation_rows'] if r['kind']!='detail']==['REVENUE','BEBAN','COST_OF_REVENUE','OPERATING_PAYROLL','OPERATING_EXPENSE','GOI','OVERHEAD_PAYROLL','OVERHEAD_EXPENSE','GOP','UNDER_EXPENSE','NOP']
+    row=next(r for r in report['related_accounts'] if r['account_id']==zero.id)
+    assert row['periods']['MTD']['current']==0
+    assert zero.id in next(r for r in report['presentation_rows'] if r['key']=='OPERATING_EXPENSE')['account_ids']
+    assert zero.id in next(r for r in report['presentation_rows'] if r['key']=='NOP')['account_ids']

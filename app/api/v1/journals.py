@@ -126,7 +126,7 @@ def serialize(x, user=None):
             ),
             "can_void": x.status == "DRAFT" and source not in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE", "GENERAL_CASHIER"},
             "can_void_source_payment": x.status == "DRAFT" and source == "SUPPLIER_PAYMENT" and bool(user and has_permission(user, "payment.manage")),
-            "can_copy": source not in {"OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT", "PERIOD_CLOSE", "YEAR_END"} and bool(user and has_permission(user, "journal.manage")),
+            "can_copy": source == "MANUAL" and bool(user and has_permission(user, "journal.manage")),
             "can_print": True,
         },
         "lines": [

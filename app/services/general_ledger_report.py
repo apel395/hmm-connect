@@ -9,6 +9,7 @@ from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.supplier import Supplier
 from app.services.opening_snapshot import opening_snapshot
+from app.services.organization_access import effective_business_unit
 
 ZERO = Decimal("0")
 
@@ -63,9 +64,9 @@ def build_ledger_query(
         department = func.coalesce(JournalLine.department_id, JournalEntry.department_id)
         q = q.filter(department.is_(None) if department_id == 0 else department == department_id)
     if location_id:
-        q = q.filter(JournalLine.location_id == location_id)
+        q = q.filter(func.coalesce(JournalLine.location_id, JournalEntry.location_id) == location_id)
     if business_unit_id:
-        q = q.filter(JournalLine.business_unit_id == business_unit_id)
+        q = q.filter(effective_business_unit(func.coalesce(JournalLine.business_unit_id, JournalEntry.business_unit_id), func.coalesce(JournalLine.location_id, JournalEntry.location_id)) == business_unit_id)
     token = str(search or "").strip()
     term = f"%{token}%" if token else None
     if term:

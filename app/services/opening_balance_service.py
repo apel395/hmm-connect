@@ -70,7 +70,7 @@ class OpeningBalanceService:
             )
 
     def accounts(
-        self, *, fiscal_year: int, location_id: int | None
+        self, *, fiscal_year: int, location_id: int | None, business_unit_id: int | None = None
     ) -> dict:
         join_on = (
             (OpeningBalance.account_id == ChartOfAccount.id)
@@ -78,6 +78,10 @@ class OpeningBalanceService:
         )
         if location_id is not None:
             join_on = join_on & (OpeningBalance.location_id == location_id)
+        if business_unit_id is not None:
+            join_on = join_on & OpeningBalance.location_id.in_(
+                self.db.query(Location.id).filter(Location.business_unit_id == business_unit_id)
+            )
         rows = (
             self.db.query(
                 ChartOfAccount.id,

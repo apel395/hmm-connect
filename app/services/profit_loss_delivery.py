@@ -24,68 +24,73 @@ def category(account, mappings):
     if configured in CATEGORIES:
         return configured
     group = account.financial_statement_group
+    if group == 'OPERATING_EXPENSE' and re.search(r'\b(gaji|salary|salaries|payroll)\b', account.account_name, re.I):
+        return 'OPERATING_PAYROLL'
     if group in CATEGORIES:
         return group
     return 'UNDER_EXPENSE' if group == 'OTHER_EXPENSE' else 'UNCLASSIFIED'
 
 
 def presentation(report, originals, values, accounts, mappings, selected):
-    """All ledger values determine totals; display choices only hide details."""
-    members = {key: [] for key in CATEGORIES}
-    for aid, original in originals.items():
+    """Summary layout plus complete related accounts, including zero values."""
+    members = {key: [] for key in CATEGORIES if key != 'UNCLASSIFIED'}
+    for aid in originals:
         account = accounts.get(aid)
         if account:
-            members[category(account, mappings)].append((aid, account))
-    result, totals = [], {}
-    for code, label in CATEGORIES.items():
-        totals[code] = {}
+            code = category(account, mappings)
+            members['UNDER_EXPENSE' if code == 'UNCLASSIFIED' else code].append((aid, account))
+    def amounts(ids):
+        result = {}
         for period in ('MTD', 'YTD'):
-            totals[code][period] = {}
+            result[period] = {}
             for metric in METRICS[:-1]:
                 unavailable = (metric == 'budget' and not report['budget_available'][period]) or report['comparison_available'][period].get(metric) is False
-                totals[code][period][metric] = None if unavailable else sum((values[period][metric].get(aid, ZERO) for aid, _ in members[code]), ZERO)
-            v = totals[code][period]
+                result[period][metric] = None if unavailable else sum((values[period][metric].get(aid, ZERO) for aid in ids), ZERO)
+            v = result[period]
             v['variance'] = v['current'] - v['budget'] if v['budget'] is not None else None
-        result.append(dict(key=code, label=label, kind='category', periods=totals[code], account_ids=[aid for aid, _ in members[code]]))
+        return result
+    totals = {code: amounts([aid for aid, _ in group]) for code, group in members.items()}
+    related = []
+    for code, group in members.items():
+        for aid, account in group:
+            related.append(dict(account_id=aid, account_code=account.account_number,
+                account_name=account.account_name, category=code, periods=amounts([aid])))
+    report['related_accounts'] = sorted(related, key=lambda r: r['account_code'])
+    result = []
+    for code, group in members.items():
+        if code == 'COST_OF_REVENUE':
+            expense_ids = [aid for c, rows in members.items() if c != 'REVENUE' for aid, _ in rows]
+            result.append(dict(key='BEBAN', label='Beban', kind='category', account_ids=expense_ids, periods=amounts(expense_ids)))
+        result.append(dict(key=code, label=CATEGORIES[code], kind='category',
+            account_ids=[aid for aid, _ in group], periods=totals[code]))
         visible = {}
-        for aid, account in members[code]:
+        for aid, account in group:
             ancestors, current = set(), account
             while current and current.id not in ancestors:
-                ancestors.add(current.id)
-                current = accounts.get(current.parent_account_id)
+                ancestors.add(current.id); current = accounts.get(current.parent_account_id)
             if selected is not None and not selected.intersection(ancestors):
                 continue
             parent = accounts.get(account.parent_account_id) if report['header_only'] else None
-            name = label if code == 'REVENUE' else parent.account_name if parent else label if report['header_only'] else account.account_name
-            row = visible.setdefault(name, dict(key=f'{code}:{name}', label=name, kind='detail', account_ids=[], periods={p: {m: ZERO for m in METRICS} for p in ('MTD', 'YTD')}))
-            row['account_ids'].append(aid)
-            for period in ('MTD', 'YTD'):
-                for metric in METRICS[:-1]:
-                    row['periods'][period][metric] += values[period][metric].get(aid, ZERO)
-        for row in sorted(visible.values(), key=lambda r: r['label']):
-            for period in ('MTD', 'YTD'):
-                for metric in METRICS[:-1]:
-                    if totals[code][period][metric] is None:
-                        row['periods'][period][metric] = None
-                v = row['periods'][period]
-                v['variance'] = v['current'] - v['budget'] if v['budget'] is not None else None
-            if report.get('include_zero') or any(v not in (ZERO, None) for amounts in row['periods'].values() for v in amounts.values()):
-                result.append(row)
-        if code in ('OPERATING_EXPENSE', 'OVERHEAD_EXPENSE', 'UNCLASSIFIED'):
+            name = CATEGORIES[code] if code == 'REVENUE' else parent.account_name if parent else CATEGORIES[code] if report['header_only'] else account.account_name
+            visible.setdefault(name, []).append(aid)
+        for name, ids in sorted(visible.items()):
+            data = amounts(ids)
+            if report.get('include_zero') or any(v not in (ZERO, None) for p in data.values() for v in p.values()):
+                result.append(dict(key=f'{code}:{name}', label=name, kind='detail', account_ids=ids, periods=data))
+        if code in ('OPERATING_EXPENSE', 'OVERHEAD_EXPENSE', 'UNDER_EXPENSE'):
             deductions = ['COST_OF_REVENUE', 'OPERATING_PAYROLL', 'OPERATING_EXPENSE']
-            key, title = 'GOI', 'Gross Operating Income / Loss'
-            if code in ('OVERHEAD_EXPENSE', 'UNCLASSIFIED'):
-                deductions += ['OVERHEAD_PAYROLL', 'OVERHEAD_EXPENSE']
-                key, title = 'GOP', 'GOP / GOL'
-            if code == 'UNCLASSIFIED':
-                deductions += ['UNDER_EXPENSE', 'UNCLASSIFIED']
-                key, title = 'NOP', 'Net Operating Profit / Loss'
-            amounts = {p: {} for p in ('MTD', 'YTD')}
-            for p in amounts:
+            key, label = 'GOI', 'Gross Operating Income / Profit / Loss'
+            if code in ('OVERHEAD_EXPENSE', 'UNDER_EXPENSE'):
+                deductions += ['OVERHEAD_PAYROLL', 'OVERHEAD_EXPENSE']; key, label = 'GOP', 'GOP / GOL'
+            if code == 'UNDER_EXPENSE':
+                deductions += ['UNDER_EXPENSE']; key, label = 'NOP', 'NOP'
+            data = {p: {} for p in ('MTD', 'YTD')}
+            for p in data:
                 for m in METRICS:
                     vs = [totals[c][p][m] for c in ['REVENUE', *deductions]]
-                    amounts[p][m] = None if any(v is None for v in vs) else vs[0] - sum(vs[1:])
-            result.append(dict(key=key, label=title, kind='subtotal', account_ids=[], periods=amounts))
+                    data[p][m] = None if any(v is None for v in vs) else vs[0] - sum(vs[1:])
+            result.append(dict(key=key, label=label, kind='subtotal', periods=data,
+                account_ids=[aid for c in ['REVENUE', *deductions] for aid, _ in members[c]]))
     return result
 
 

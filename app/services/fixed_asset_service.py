@@ -38,7 +38,9 @@ class FixedAssetService:
         return account
 
     def validate_accounts(self, value):
-        self.account(value.asset_account_id, "ASSET", "Asset account")
+        asset_account = self.account(value.asset_account_id, "ASSET", "Asset account")
+        if asset_account.account_number.startswith("100-400"):
+            raise HTTPException(422, "Use Amortization for account 100-400 costs")
         self.account(value.accumulated_depreciation_account_id, "ASSET", "Accumulated depreciation", True)
         self.account(value.depreciation_expense_account_id, "EXPENSE", "Depreciation expense")
         if value.disposal_gain_account_id: self.account(value.disposal_gain_account_id, ("INCOME","REVENUE"), "Disposal gain")
@@ -54,6 +56,9 @@ class FixedAssetService:
 
     def create_category(self, value):
         self.validate_accounts(value)
+        code = value.code.strip().upper()
+        if self.db.query(FixedAssetCategory).filter(FixedAssetCategory.code == code).first():
+            raise HTTPException(409, "Asset category code already exists")
         category = FixedAssetCategory(**value.model_dump())
         category.code = category.code.strip().upper()
         self.db.add(category); self.db.flush(); return category
@@ -154,8 +159,14 @@ class FixedAssetService:
         if debit!=credit:raise HTTPException(422,"Journal is not balanced")
         entry=JournalEntry(journal_number=next_document_number(self.db,"JV",digits=8),posting_date=posting_date,status="POSTED",document_type="FIXED_ASSET",document_number=ref_number,reference_type=ref_type,reference_id=ref_id,description=f"{ref_type} {ref_number}",created_by_id=user.id,posted_by_id=user.id,business_unit_id=asset.business_unit_id,location_id=asset.location_id,department_id=asset.department_id,fiscal_year=posting_date.year,fiscal_period=posting_date.month)
         self.db.add(entry);self.db.flush()
-        for number,(account_id,d,c) in enumerate(lines,1): self.db.add(JournalLine(journal_entry_id=entry.id,line_number=number,account_id=account_id,debit=d,credit=c,description=entry.description,business_unit_id=asset.business_unit_id,location_id=asset.location_id,department_id=asset.department_id))
-        self.db.flush();return entry
+        for number,values in enumerate(lines,1):
+            account_id,d,c = values[:3]
+            organization = values[3] if len(values) > 3 else asset
+            self.db.add(JournalLine(journal_entry_id=entry.id,line_number=number,account_id=account_id,debit=d,credit=c,description=entry.description,business_unit_id=organization.business_unit_id,location_id=organization.location_id,department_id=organization.department_id))
+        self.db.flush()
+        from app.services.asset_posting import post_asset_ledger
+        post_asset_ledger(self.db, entry, user)
+        return entry
 
     def dispose(self, asset, value, user, write_off=False):
         if asset.status not in ("ACTIVE","FULLY_DEPRECIATED"): raise HTTPException(409,"Asset cannot be disposed")
@@ -192,11 +203,18 @@ class DepreciationRunService:
         if run.status!="CALCULATED":raise HTTPException(409,"Run must be calculated")
         rows=self.calculate_rows(run);grouped=defaultdict(lambda:[ZERO,ZERO,None])
         for s in rows:
+            from app.services.organization_access import resolve_organization_access
+            resolve_organization_access(self.db,user,location_id=s.asset.location_id,business_unit_id=s.asset.business_unit_id,department_id=s.asset.department_id)
             a=s.asset;key=(a.depreciation_expense_account_id,a.accumulated_depreciation_account_id,a.business_unit_id,a.location_id,a.department_id);grouped[key][0]+=Decimal(s.depreciation_amount);grouped[key][1]+=Decimal(s.depreciation_amount);grouped[key][2]=a
         lines=[]
-        for (expense,accumulated,*_),amounts in grouped.items():lines.extend([(expense,amounts[0],ZERO),(accumulated,ZERO,amounts[1])])
+        for (expense,accumulated,*_),amounts in grouped.items():lines.extend([(expense,amounts[0],ZERO,amounts[2]),(accumulated,ZERO,amounts[1],amounts[2])])
         representative=rows[0].asset if rows else None
         if not representative:raise HTTPException(409,"No depreciation schedules for this run")
+        if len({(s.asset.business_unit_id,s.asset.location_id) for s in rows}) > 1:
+            raise HTTPException(409,"Select one business unit and work location per depreciation run")
+        if len({s.asset.department_id for s in rows}) > 1:
+            from types import SimpleNamespace
+            representative=SimpleNamespace(business_unit_id=representative.business_unit_id, location_id=representative.location_id, department_id=None)
         posting=month_end(date(run.period_year,run.period_month,1));entry=self.assets._journal(posting,"FIXED_ASSET_DEPRECIATION",run.id,run.run_number,lines,representative,user)
         now=datetime.now(timezone.utc)
         for s in rows:s.status="POSTED";s.journal_entry_id=entry.id;s.posted_at=now;s.asset.accumulated_depreciation=Decimal(s.asset.accumulated_depreciation)+Decimal(s.depreciation_amount);s.asset.net_book_value=Decimal(s.asset.acquisition_cost)-Decimal(s.asset.accumulated_depreciation);s.asset.status="FULLY_DEPRECIATED" if s.asset.net_book_value<=s.asset.residual_value else "ACTIVE"

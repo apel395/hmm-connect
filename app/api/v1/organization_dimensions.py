@@ -18,6 +18,7 @@ from app.schemas.organization_dimensions import (
 )
 from app.services.audit import record_audit
 from app.services.location_access import assigned_location_id
+from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 
 
 router = APIRouter(tags=["Organization Dimensions"])
@@ -121,7 +122,9 @@ def replace_location_departments(db, location, department_ids):
 
 @router.get("/business-units")
 def list_business_units(is_active: bool | None = None, active_only: bool = False, search: Search = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    require_access(user); query = db.query(BusinessUnit); active_filter = True if active_only else is_active
+    require_access(user); query = db.query(BusinessUnit); unit_scope = business_unit_scope(db, user)
+    if unit_scope is not None: query = query.filter(BusinessUnit.id == unit_scope)
+    active_filter = True if active_only else is_active
     if active_filter is not None: query = query.filter(BusinessUnit.is_active.is_(active_filter))
     if search:
         term = f"%{search.strip()}%"; query = query.filter(or_(BusinessUnit.code.ilike(term), BusinessUnit.name.ilike(term)))
@@ -137,6 +140,8 @@ def create_business_unit(data: BusinessUnitCreate, db: Session = Depends(get_db)
 def get_business_unit(business_unit_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     require_access(user); value = db.get(BusinessUnit, business_unit_id)
     if not value: raise HTTPException(404, "Business Unit not found")
+    unit_scope = business_unit_scope(db, user)
+    if unit_scope is not None and value.id != unit_scope: raise HTTPException(404, "Business Unit not found")
     return business_unit_row(value)
 
 
@@ -154,7 +159,11 @@ def update_business_unit(business_unit_id: int, data: BusinessUnitUpdate, db: Se
 
 @router.get("/departments")
 def list_departments(business_unit_id: int | None = None, location_id: int | None = None, is_active: bool | None = None, include_shared: bool = True, search: Search = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    require_access(user); query = db.query(Department).options(joinedload(Department.business_unit))
+    require_access(user)
+    scope = resolve_organization_access(db, user, location_id=location_id, business_unit_id=business_unit_id)
+    location_id, business_unit_id = scope["location_id"], scope["business_unit_id"]
+    query = db.query(Department).options(joinedload(Department.business_unit))
+    if department_scope(user) is not None: query = query.filter(Department.id == department_scope(user))
     if location_id is not None:
         location = db.get(Location, location_id)
         if not location:
@@ -182,6 +191,7 @@ def create_department(data: DepartmentCreate, db: Session = Depends(get_db), use
 def get_department(department_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
     require_access(user); value=db.query(Department).options(joinedload(Department.business_unit)).filter(Department.id==department_id).first()
     if not value: raise HTTPException(404,"Department not found")
+    resolve_organization_access(db, user, department_id=value.id)
     return department_row(value)
 
 
@@ -221,10 +231,12 @@ def list_locations(
     if business_unit_id is not None:
         validate_business_unit(db,business_unit_id,required=True)
         query=query.filter(Location.business_unit_id==business_unit_id)
-    if assigned_only:
-        location_id=assigned_location_id(user)
-        if location_id is not None:
-            query=query.filter(Location.id==location_id)
+    location_id=assigned_location_id(user)
+    if location_id is not None:
+        query=query.filter(Location.id==location_id)
+    unit_scope=business_unit_scope(db,user)
+    if unit_scope is not None:
+        query=query.filter(Location.business_unit_id==unit_scope)
     if location_type:
         query=query.filter(Location.location_type==normalize_location_type(location_type))
     if is_active is not None:
@@ -244,6 +256,7 @@ def create_location(data:LocationCreate,db:Session=Depends(get_db),user=Depends(
 def get_location(location_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
     require_access(user); value=db.query(Location).options(joinedload(Location.business_unit)).filter(Location.id==location_id).first()
     if not value: raise HTTPException(404,"Location not found")
+    resolve_organization_access(db, user, location_id=value.id, business_unit_id=value.business_unit_id)
     return location_row(value)
 
 
