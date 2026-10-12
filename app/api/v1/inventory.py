@@ -541,7 +541,7 @@ def list_movements(
         {
             "id": movement.id,
             "movement_number": f"SM-{movement.id:08d}",
-            "movement_date": movement_date,
+            "movement_date": movement_date.isoformat() if isinstance(movement_date, date) else movement_date,
             "recorded_at": movement.created_at,
             "movement_type": movement.movement_type,
             "source_kind": _stock_source(movement)[0],

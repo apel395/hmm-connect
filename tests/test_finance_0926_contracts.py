@@ -96,7 +96,7 @@ def test_stock_reconciliation_empty_contract(db):
 
 
 def test_receiving_before_2026_rejected_at_service_boundary():
-    data = SimpleNamespace(received_at=datetime(2025, 12, 31, tzinfo=timezone.utc))
+    data = SimpleNamespace(source_type="HISTORICAL_ENTRY", received_at=datetime(2025, 12, 31, tzinfo=timezone.utc))
     with pytest.raises(HTTPException) as error:
         GoodsReceiptService.create(db=None, data=data, user=ADMIN)
     assert error.value.status_code == 422
