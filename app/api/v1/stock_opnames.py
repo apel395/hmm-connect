@@ -1,3 +1,5 @@
+from app.dependencies.authorization import is_superuser
+from app.services.location_access import assigned_location_id
 from decimal import Decimal
 from math import ceil
 
@@ -19,7 +21,11 @@ router = APIRouter(prefix="/stock-opnames", tags=["Stock Opname"])
 warehouse_user = require_permission("stock_opname.manage")
 
 
-def _row(opname: StockOpname):
+def _blind_count(user):
+    return user is not None and not is_superuser(user) and assigned_location_id(user) is not None
+
+
+def _row(opname: StockOpname, user=None):
     variance = sum(
         (Decimal(item.variance_quantity or 0) for item in opname.items), Decimal("0")
     )
@@ -41,7 +47,8 @@ def _row(opname: StockOpname):
         "department_name": opname.department.name if opname.department else None,
         "created_by_name": opname.created_by.full_name if opname.created_by else None,
         "total_items": len(opname.items),
-        "total_variance_quantity": variance,
+        "total_variance_quantity": None if _blind_count(user) else variance,
+        "blind_count": _blind_count(user),
         "submitted_at": opname.submitted_at,
         "posted_at": opname.posted_at,
     }
@@ -49,7 +56,7 @@ def _row(opname: StockOpname):
 
 def _detail(db: Session, opname: StockOpname, user):
     payload = {
-        **_row(opname),
+        **_row(opname, user),
         "notes": opname.notes,
         "created_at": opname.created_at,
         "updated_at": opname.updated_at,
@@ -70,6 +77,10 @@ def _detail(db: Session, opname: StockOpname, user):
             for item in opname.items
         ],
     }
+    if _blind_count(user):
+        for item in payload["items"]:
+            for field in ("system_quantity", "variance_quantity", "variance_value", "unit_cost"):
+                item.pop(field, None)
     payload.update(document_context(db, "STOCK_OPNAME", opname.id, opname.status, user))
     return payload
 
@@ -105,7 +116,7 @@ def listing(
         .all()
     )
     return {
-        "items": [_row(row) for row in items],
+        "items": [_row(row, _) for row in items],
         "page": page,
         "page_size": page_size,
         "total_items": total,

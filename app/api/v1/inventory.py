@@ -1,9 +1,10 @@
+from app.models.journal_entry import JournalEntry
 from datetime import date
 from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -19,7 +20,7 @@ from app.models.stock_opname import StockOpname
 from app.models.store_request import StoreRequest
 from app.models.warehouse import Warehouse
 from app.services.location_access import apply_warehouse_scope, resolve_location_id
-from app.services.stock_aging_service import START_DATE, age_remaining_stock
+from app.services.stock_aging_service import START_DATE, age_remaining_stock, six_month_cutoff
 
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -89,11 +90,12 @@ def _inventory_base(db: Session, user, warehouse_id: int | None = None):
 
 def _effective_movement_date():
     # Receiving uses the business receipt date; other movements use their event date.
-    return func.date(case(
+    journal_date = select(JournalEntry.posting_date).where(JournalEntry.id == StockMovement.journal_entry_id).correlate_except(JournalEntry).scalar_subquery()
+    return func.coalesce(journal_date, func.date(case(
         ((StockMovement.reference_type == "GOODS_RECEIPT")
          & (StockMovement.goods_receipt_id.is_not(None)), GoodsReceipt.received_at),
         else_=StockMovement.created_at,
-    ))
+    )))
 
 
 @router.get("")
@@ -276,7 +278,8 @@ def list_inventory(
         "low_stock": int(summary_rows[3] or 0),
         "needs_reorder": int(summary_rows[3] or 0),
         "below_minimum": int(summary_rows[3] or 0),
-        "movement_days": {"fast": 30, "dead": 90},
+        "movement_days": {"fast": 30, "dead": (as_of_date - six_month_cutoff(as_of_date)).days},
+        "dead_stock_months": 6,
         "aging_basis": "FIFO receipt layers; residual opening stock dated 2026-01-01",
         "movement_classes": movement_totals,
     }
@@ -357,7 +360,7 @@ def _movement_reference_number(movement: StockMovement, documents: dict) -> str:
     return "-"
 
 
-def _item_stock_history(db: Session, user, product_id: int, warehouse_id: int | None,
+def _item_stock_history(db: Session, user, product_id: int | list[int], warehouse_id: int | None,
                         location_id: int | None, date_from: date | None,
                         date_to: date | None) -> tuple[dict[int, Decimal], list[dict]]:
     """Rebuild a quantity timeline without treating opening stock as a transaction.
@@ -366,25 +369,28 @@ def _item_stock_history(db: Session, user, product_id: int, warehouse_id: int | 
     movements from that date onward. Date and document filters affect visible
     rows, never the running stock balance of an item/warehouse.
     """
-    current = (db.query(Inventory.warehouse_id, Warehouse.code, Warehouse.name,
+    products = [product_id] if isinstance(product_id, int) else product_id
+    if not products:
+        return {}, []
+    current = (db.query(Inventory.product_id, Inventory.warehouse_id, Warehouse.code, Warehouse.name,
                         Inventory.quantity)
                .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
-               .filter(Inventory.product_id == product_id))
+               .filter(Inventory.product_id.in_(products)))
     current = apply_warehouse_scope(current, user)
     if warehouse_id:
         current = current.filter(Inventory.warehouse_id == warehouse_id)
     if location_id:
         current = current.filter(Warehouse.location_id == location_id)
-    warehouses = {key: {"warehouse_id": key, "warehouse_code": code,
+    warehouses = {(pid, key): {"product_id": pid, "warehouse_id": key, "warehouse_code": code,
                         "warehouse_name": name, "current_quantity": Decimal(qty or 0)}
-                  for key, code, name, qty in current.all()}
+                  for pid, key, code, name, qty in current.all()}
 
     event_date = _effective_movement_date()
     timeline = (db.query(StockMovement, Warehouse.code, Warehouse.name,
                          event_date.label("event_date"))
                 .join(Warehouse, Warehouse.id == StockMovement.warehouse_id)
                 .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
-                .filter(StockMovement.product_id == product_id, event_date >= START_DATE))
+                .filter(StockMovement.product_id.in_(products), event_date >= START_DATE))
     timeline = apply_warehouse_scope(timeline, user)
     if warehouse_id:
         timeline = timeline.filter(StockMovement.warehouse_id == warehouse_id)
@@ -393,8 +399,8 @@ def _item_stock_history(db: Session, user, product_id: int, warehouse_id: int | 
     events = timeline.order_by(StockMovement.warehouse_id, event_date, StockMovement.id).all()
     totals: dict[int, Decimal] = {}
     for movement, code, name, _ in events:
-        key = movement.warehouse_id
-        warehouses.setdefault(key, {"warehouse_id": key, "warehouse_code": code,
+        key = (movement.product_id, movement.warehouse_id)
+        warehouses.setdefault(key, {"product_id": movement.product_id, "warehouse_id": movement.warehouse_id, "warehouse_code": code,
                                     "warehouse_name": name, "current_quantity": Decimal("0")})
         amount = abs(Decimal(movement.quantity or 0))
         totals[key] = totals.get(key, Decimal("0")) + (
@@ -410,7 +416,7 @@ def _item_stock_history(db: Session, user, product_id: int, warehouse_id: int | 
     by_movement: dict[int, Decimal] = {}
     for movement, _, _, raw_date in events:
         when = raw_date if isinstance(raw_date, date) else date.fromisoformat(raw_date)
-        key = movement.warehouse_id
+        key = (movement.product_id, movement.warehouse_id)
         amount = abs(Decimal(movement.quantity or 0))
         balances[key] += -amount if movement.movement_type == "OUT" else amount
         by_movement[movement.id] = balances[key]
@@ -516,9 +522,10 @@ def list_movements(
     ).order_by(*order).offset(
         (page - 1) * page_size
     ).limit(page_size).all()
-    running, history = (_item_stock_history(db, user, product_id, warehouse_id,
-                                            location_id, date_from, date_to)
-                        if product_id else ({}, []))
+    running, history = _item_stock_history(db, user, product_id or list({row[0].product_id for row in rows}),
+                                            warehouse_id, location_id, date_from, date_to)
+    if not product_id:
+        history = []
     documents = {}
     for reference, model, number_field in (
         ("STORE_REQUEST", StoreRequest, StoreRequest.sr_number),

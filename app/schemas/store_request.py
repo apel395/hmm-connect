@@ -25,5 +25,6 @@ class StoreRequestIssueItem(BaseModel):
 
 
 class StoreRequestIssueCreate(BaseModel):
+    issue_date: date | None = None
     items: list[StoreRequestIssueItem] = Field(min_length=1)
     notes: str | None = None

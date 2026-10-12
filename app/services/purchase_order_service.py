@@ -54,6 +54,12 @@ class PurchaseOrderService:
         )
 
     @staticmethod
+    def _validate_source_dates(order_date, requisitions):
+        for source in requisitions:
+            if source.request_date and order_date < source.request_date:
+                raise HTTPException(422, 'PO order date cannot precede its PR request date')
+
+    @staticmethod
     def _resolve_dimensions(db: Session, data: PurchaseOrderCreate, requisitions: list[PurchaseRequisition]):
         if requisitions:
             resolved = {}
@@ -137,7 +143,7 @@ class PurchaseOrderService:
                     .filter(
                         PurchaseOrderItem.purchase_requisition_item_id == source_id,
                         PurchaseOrderItem.purchase_order_id != purchase_order.id,
-                        PurchaseOrder.status != "CANCELLED",
+                        PurchaseOrder.status.notin_(["CANCELLED", "ARCHIVED", "REJECTED"]),
                     )
                     .scalar()
                     or Decimal("0")
@@ -158,6 +164,7 @@ class PurchaseOrderService:
             for item in purchase_order.items
         ]
 
+        PurchaseOrderService._validate_source_dates(data.order_date or purchase_order.order_date, requisitions)
         purchase_order.supplier_id = data.supplier_id
         purchase_order.order_date = data.order_date or purchase_order.order_date
         purchase_order.expected_date = data.expected_date
@@ -215,7 +222,7 @@ class PurchaseOrderService:
                     .join(PurchaseOrder)
                     .filter(
                         PurchaseOrderItem.purchase_requisition_item_id == requisition_item.id,
-                        PurchaseOrder.status != "CANCELLED",
+                        PurchaseOrder.status.notin_(["CANCELLED", "ARCHIVED", "REJECTED"]),
                     )
                     .scalar()
                     or Decimal("0")
@@ -300,7 +307,7 @@ class PurchaseOrderService:
             for requisition_item in requisition.items:
                 already_ordered = db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(
                     PurchaseOrderItem.purchase_requisition_item_id == requisition_item.id,
-                    PurchaseOrder.status != "CANCELLED",
+                    PurchaseOrder.status.notin_(["CANCELLED", "ARCHIVED", "REJECTED"]),
                 ).scalar() or Decimal("0")
                 remaining = Decimal(requisition_item.quantity) - Decimal(already_ordered)
                 if remaining > 0:
@@ -328,6 +335,7 @@ class PurchaseOrderService:
             if incoming.product_id is not None and incoming.product_id != requisition_item.product_id:
                 raise HTTPException(status_code=400, detail="Product identity must come from the selected purchase requisition")
 
+        PurchaseOrderService._validate_source_dates(data.order_date or date.today(), requisitions)
         purchase_order = PurchaseOrder(
             po_number=PurchaseOrderService._number(db),
             supplier_id=data.supplier_id,
@@ -379,7 +387,7 @@ class PurchaseOrderService:
             fully_converted = all(
                 (db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(
                     PurchaseOrderItem.purchase_requisition_item_id == item.id,
-                    PurchaseOrder.status != "CANCELLED",
+                    PurchaseOrder.status.notin_(["CANCELLED", "ARCHIVED", "REJECTED"]),
                 ).scalar() or Decimal("0")) + sum(
                     incoming.quantity for incoming in data.items if incoming.purchase_requisition_item_id == item.id
                 ) >= item.quantity

@@ -1,3 +1,10 @@
+from app.models.journal_entry import JournalEntry
+from app.models.journal_line import JournalLine
+from app.models.general_ledger import GeneralLedger
+from app.services.inventory_posting import post_inventory_journal
+from app.services.direct_coa_service import DirectCoaService
+from app.services.fiscal_period_service import FiscalPeriodService
+from app.services.location_access import enforce_location_access
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -387,7 +394,54 @@ class StockOpnameService:
                     409,
                     f"Stock changed after snapshot for {item.product.code}; create a new Stock Opname",
                 )
+            if Decimal(item.physical_quantity) != Decimal(item.system_quantity) and Decimal(inv.average_cost or 0) != Decimal(item.unit_cost or 0):
+                raise HTTPException(409, f"Stock cost changed after snapshot for {item.product.code}; create a new Stock Opname")
             prepared.append((item, inv))
+        enforce_location_access(current_user, op.location_id)
+        FiscalPeriodService.validate_posting_date(db, op.count_date)
+        grouped = {}
+        accounts = {}
+        resolver = DirectCoaService(db)
+        for item, inv in prepared:
+            variance = Decimal(item.physical_quantity) - Decimal(item.system_quantity)
+            if variance == ZERO:
+                continue
+            if Decimal(item.unit_cost or 0) <= 0:
+                raise HTTPException(409, f"Item {item.product.code} has no positive stock cost")
+            inventory_account = resolver.inventory_account(item.product)
+            expense_account = resolver.cogs_account(item.product)
+            accounts[item.product_id] = (inventory_account.id, expense_account.id)
+            amount = (abs(variance) * Decimal(item.unit_cost)).quantize(Decimal('0.01'))
+            key = (inventory_account.id, expense_account.id, variance > 0)
+            grouped[key] = grouped.get(key, ZERO) + amount
+        journal = None
+        if any(grouped.values()):
+            journal = db.query(JournalEntry).filter_by(reference_type='STOCK_OPNAME', reference_id=op.id).with_for_update().one_or_none()
+            if journal and journal.status == 'POSTED':
+                raise HTTPException(409, 'Stock Opname journal is already posted')
+            if journal is None:
+                journal = JournalEntry(journal_number=next_document_number(db, 'SOJ'),
+                    reference_type='STOCK_OPNAME', reference_id=op.id, document_type='STOCK_OPNAME',
+                    document_number=op.opname_number, created_by_id=current_user.id)
+                db.add(journal)
+            journal.posting_date = op.count_date
+            journal.business_unit_id = op.business_unit_id
+            journal.location_id = op.location_id
+            journal.department_id = op.department_id
+            journal.description = f'Stock count adjustment {op.opname_number}'
+            journal.status = 'DRAFT'
+            journal.lines.clear()
+            for (inv_id, expense_id, surplus), amount in grouped.items():
+                if amount == ZERO:
+                    continue
+                debit_id, credit_id = (inv_id, expense_id) if surplus else (expense_id, inv_id)
+                for account_id, debit, credit in [(debit_id, amount, ZERO), (credit_id, ZERO, amount)]:
+                    journal.lines.append(JournalLine(account_id=account_id, debit=debit, credit=credit,
+                        line_number=len(journal.lines)+1, business_unit_id=op.business_unit_id,
+                        location_id=op.location_id, department_id=op.department_id,
+                        description=journal.description))
+            db.flush()
+            post_inventory_journal(db, journal, current_user)
         for item, inv in prepared:
             physical = Decimal(item.physical_quantity)
             variance = physical - Decimal(item.system_quantity)
@@ -402,6 +456,10 @@ class StockOpnameService:
                         location_id=op.location_id,
                         department_id=op.department_id,
                         movement_type="IN" if variance > 0 else "OUT",
+                        created_at=datetime.combine(op.count_date, datetime.min.time(), tzinfo=timezone.utc),
+                        inventory_account_id=accounts[item.product_id][0],
+                        offset_account_id=accounts[item.product_id][1],
+                        journal_entry_id=journal.id if journal else None,
                         quantity=variance,
                         unit_cost=Decimal(item.unit_cost or 0),
                         reference_type="STOCK_OPNAME",
@@ -463,6 +521,24 @@ class StockOpnameService:
             raise HTTPException(409, "Only posted Stock Opname can be unposted")
         if op.posted_at is None:
             raise HTTPException(409, "Stock Opname is not posted")
+        enforce_location_access(current_user, op.location_id)
+        FiscalPeriodService.validate_posting_date(db, op.count_date)
+        # Validate the complete reversal before changing any stock row.
+        for item in op.items:
+            movement = db.query(StockMovement).filter_by(reference_type='STOCK_OPNAME', reference_id=op.id, product_id=item.product_id).order_by(StockMovement.id.desc()).first()
+            if movement and db.query(StockMovement).filter(StockMovement.product_id==item.product_id,
+                    StockMovement.warehouse_id==op.warehouse_id, StockMovement.id>movement.id).first():
+                raise HTTPException(409, f'Later stock activity exists for {item.product.code}; reverse that activity first')
+            inv = db.query(Inventory).filter_by(warehouse_id=op.warehouse_id,product_id=item.product_id).with_for_update().first()
+            if not inv or Decimal(inv.quantity or 0)-Decimal(item.variance_quantity or 0)<0:
+                raise HTTPException(409, f'Cannot reverse stock for {item.product.code}')
+        journal = db.query(JournalEntry).filter_by(reference_type='STOCK_OPNAME',reference_id=op.id).with_for_update().one_or_none()
+        if journal:
+            db.query(GeneralLedger).filter_by(reference_type='STOCK_OPNAME',reference_id=op.id,
+                reference_number=journal.journal_number).delete(synchronize_session=False)
+            journal.status='DRAFT'
+            journal.posted_at=None
+            journal.posted_by_id=None
         for item in op.items:
             inv = (
                 db.query(Inventory)

@@ -1,3 +1,5 @@
+from app.services.inventory_posting import post_inventory_journal
+from app.services.fiscal_period_service import FiscalPeriodService
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -245,6 +247,7 @@ class StoreRequestService:
             issue_number=next_document_number(db, "SI"),
             store_request_id=request.id,
             status="DRAFT",
+            issue_date=data.issue_date or FiscalPeriodService.business_today(),
             notes=data.notes,
             created_by_id=current_user.id,
         )
@@ -291,6 +294,11 @@ class StoreRequestService:
         if not issue.items:
             raise HTTPException(status_code=409, detail="Store Issue has no items")
 
+        issue_date = issue.issue_date or FiscalPeriodService.business_today()
+        if issue_date < request.request_date:
+            raise HTTPException(422, "Issue date cannot precede request date")
+        FiscalPeriodService.validate_posting_date(db, issue_date)
+        issue.issue_date = issue_date
         source_items = {item.id: item for item in request.items}
         prepared_lines = []
         # Lock and validate every line before changing stock. Sorting inventory
@@ -331,7 +339,7 @@ class StoreRequestService:
 
         journal = JournalEntry(
             journal_number=next_document_number(db, "JV", digits=4),
-            posting_date=date.today(),
+            posting_date=issue_date,
             status="DRAFT",
             document_type="STORE_ISSUE",
             document_number=issue.issue_number,
@@ -359,6 +367,7 @@ class StoreRequestService:
             line_number += 1
         db.add(journal)
         db.flush()
+        post_inventory_journal(db, journal, current_user)
 
         for source, inventory, qty, unit_cost, inventory_account, cogs_account in prepared_lines:
             inventory.quantity = Decimal(inventory.quantity or 0) - qty
@@ -370,6 +379,7 @@ class StoreRequestService:
                 department_id=request.department_id,
                 location_id=request.location_id,
                 movement_type="OUT",
+                created_at=datetime.combine(issue_date, datetime.min.time(), tzinfo=timezone.utc),
                 quantity=-qty,
                 unit_cost=unit_cost,
                 reference_type="STORE_REQUEST",

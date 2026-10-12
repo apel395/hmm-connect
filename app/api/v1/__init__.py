@@ -1,3 +1,4 @@
+from app.api.v1 import purchasing_exceptions
 from . import financial_reports, budgets, cashier, ar_invoice_print
 from fastapi import APIRouter
 
@@ -76,6 +77,7 @@ for router in (
     audit_trail.router,
     document_drilldown.router,
     document_events.router,
+    purchasing_exceptions.router,
     document_attachments.router,
     exports.router,
     fiscal.router,
