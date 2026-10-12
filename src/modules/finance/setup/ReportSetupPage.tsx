@@ -6,7 +6,7 @@ import Button from "@/components/ui/Button";
 import PageHeader from "@/components/common/PageHeader";
 
 type Account = { id: number; code: string; name: string; type: string; normal_balance: string; parent_id: number | null; is_posting: boolean };
-type Setup = { accounts: Account[]; settings: { report_type: string; selected_account_ids: number[] | null; header_only: boolean }[]; current_year_earnings_account_id: number | null };
+type Setup = { profit_loss_categories?: Record<number, string>; category_options?: Record<string, string>; accounts: Account[]; settings: { report_type: string; selected_account_ids: number[] | null; header_only: boolean }[]; current_year_earnings_account_id: number | null };
 
 export default function ReportSetupPage() {
   const [kind, setKind] = useState("PROFIT_LOSS");
@@ -21,6 +21,7 @@ function SetupForm({ kind, setup }: { kind: string; setup: Setup }) {
   const [selected, setSelected] = useState<number[] | null>(saved?.selected_account_ids ?? null);
   const [headerOnly, setHeaderOnly] = useState(saved?.header_only ?? false);
   const [earnings, setEarnings] = useState(String(setup.current_year_earnings_account_id ?? ""));
+  const [categories, setCategories] = useState<Record<number, string>>(setup.profit_loss_categories ?? {});
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
   const accounts = useMemo(() => setup.accounts.filter(a => (kind === "PROFIT_LOSS" ? ["REVENUE", "INCOME", "EXPENSE"] : ["ASSET", "LIABILITY", "EQUITY"]).includes(a.type)), [kind, setup.accounts]);
@@ -37,7 +38,7 @@ function SetupForm({ kind, setup }: { kind: string; setup: Setup }) {
     visit(account);
     return found;
   };
-  const save = useMutation({ mutationFn: async () => api.put(`/financial-reports/setup/${kind}`, { selected_account_ids: selected, header_only: headerOnly, current_year_earnings_account_id: Number(earnings) || null }),
+  const save = useMutation({ mutationFn: async () => api.put(`/financial-reports/setup/${kind}`, { profit_loss_categories: kind === "PROFIT_LOSS" ? categories : undefined, selected_account_ids: selected, header_only: headerOnly, current_year_earnings_account_id: Number(earnings) || null }),
     onSuccess: () => { toast.success("Report setup saved"); queryClient.invalidateQueries({ queryKey: ["financial-report-setup"] }); queryClient.invalidateQueries({ queryKey: ["financial-report-comparison"] }); },
     onError: (error: { response?: { data?: { detail?: string } } }) => toast.error(error.response?.data?.detail || "Report setup could not be saved") });
   const shown = accounts.filter(account => (!["REVENUE", "INCOME"].includes(account.type) || account.code === "400") && `${account.code} ${account.name}`.toLowerCase().includes(search.toLowerCase()));
@@ -48,10 +49,10 @@ function SetupForm({ kind, setup }: { kind: string; setup: Setup }) {
       <label>Current-year earnings <select aria-label="Current-year earnings account" className="h-8 rounded border px-2" value={earnings} onChange={event => setEarnings(event.target.value)}><option value="">Select account</option>{setup.accounts.filter(a => a.type === "EQUITY" && a.normal_balance === "CREDIT" && a.is_posting).map(a => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}</select></label>
       <Button size="sm" type="submit" disabled={save.isPending}>Save</Button>
     </div>
-    <div className="max-h-[70vh] overflow-auto rounded border"><table className="w-full whitespace-nowrap text-xs"><thead className="sticky top-0 bg-slate-100"><tr><th className="w-10 p-1.5">Show</th><th className="p-1.5 text-left">Account</th><th className="p-1.5 text-left">Name</th><th className="p-1.5 text-left">Type</th></tr></thead><tbody>{shown.map(account => {
+    <div className="max-h-[70vh] overflow-auto rounded border"><table className="w-full whitespace-nowrap text-xs"><thead className="sticky top-0 bg-slate-100"><tr><th className="w-10 p-1.5">Show</th><th className="p-1.5 text-left">Account</th><th className="p-1.5 text-left">Name</th><th className="p-1.5 text-left">Type</th>{kind === "PROFIT_LOSS" && <th className="p-1.5 text-left">Report category</th>}</tr></thead><tbody>{shown.map(account => {
       const children = descendants(account);
       const checked = children.length > 0 && children.every(id => ids.includes(id));
-      return <tr key={account.id} className={`border-b ${!account.is_posting ? "bg-slate-50 font-semibold" : ""}`}><td className="p-1 text-center"><input aria-label={`Show ${account.code} ${account.name}`} type="checkbox" disabled={!children.length} checked={checked} onChange={event => setSelected(event.target.checked ? [...new Set([...ids, ...children])] : ids.filter(id => !children.includes(id)))} /></td><td className="p-1">{account.code}</td><td className="p-1">{account.name}</td><td className="p-1">{account.type}</td></tr>;
+      return <tr key={account.id} className={`border-b ${!account.is_posting ? "bg-slate-50 font-semibold" : ""}`}><td className="p-1 text-center"><input aria-label={`Show ${account.code} ${account.name}`} type="checkbox" disabled={!children.length} checked={checked} onChange={event => setSelected(event.target.checked ? [...new Set([...ids, ...children])] : ids.filter(id => !children.includes(id)))} /></td><td className="p-1">{account.code}</td><td className="p-1">{account.name}</td><td className="p-1">{account.type}</td>{kind === "PROFIT_LOSS" && <td className="p-1">{account.is_posting && account.type === "EXPENSE" ? <select aria-label={`Report category for ${account.name}`} className="h-7 rounded border px-1 text-xs" value={categories[account.id] ?? ""} onChange={event => { const next = { ...categories }; if (event.target.value) next[account.id] = event.target.value; else delete next[account.id]; setCategories(next); }}><option value="">Existing COA classification</option>{Object.entries(setup.category_options ?? {}).filter(([key]) => key !== "REVENUE").map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select> : "—"}</td>}</tr>;
     })}</tbody></table></div>
   </form>;
 }

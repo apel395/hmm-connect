@@ -94,10 +94,19 @@ const departmentData = { ...data, department_reports: [
   { department_id: null, department_name: "Unassigned department", rows: data.rows, section_totals: data.section_totals },
 ] };
 const departmentPrint = renderToStaticMarkup(createElement(FinancialStatementPrint, { kind: "PROFIT_LOSS", data: departmentData, asOf: "2026-10-06" }));
-assert.equal((departmentPrint.match(/class="department-statement/g) ?? []).length, 4);
-assert.match(departmentPrint, /House Keeping — MTD/);
-assert.match(departmentPrint, /House Keeping — YTD/);
-assert.match(departmentPrint, /Unassigned department — MTD/);
+assert.equal((departmentPrint.match(/class="department-statement/g) ?? []).length, 0);
+assert.doesNotMatch(departmentPrint, /House Keeping — MTD/);
+assert.doesNotMatch(departmentPrint, /House Keeping — YTD/);
+assert.doesNotMatch(departmentPrint, /Unassigned department — MTD/);
 assert.doesNotMatch(departmentPrint, /100-600-104/);
 assert.match(departmentPrint, /Full account name &lt;script&gt; &amp; equipment/);
-console.log("Department print PASS: one table per department and period, unassigned retained, account codes hidden.");
+console.log("P&L print PASS: single scoped report without department tables, account codes hidden.");
+
+const managementData = { ...departmentData, report_scope: "HOTEL", balance_control: {difference:"123.00",is_balanced:false}, presentation_rows: [
+  {key:"REVENUE",label:"Pendapatan Hotel",kind:"category",account_ids:[1],periods:{MTD:data.section_totals.REVENUE.MTD,YTD:data.section_totals.REVENUE.YTD}},
+  {key:"GOI",label:"Gross Operating Income / Loss",kind:"subtotal",account_ids:[],periods:{MTD:data.section_totals.REVENUE.MTD,YTD:data.section_totals.REVENUE.YTD}},
+  {key:"NOP",label:"Net Operating Profit / Loss",kind:"subtotal",account_ids:[],periods:{MTD:data.section_totals.REVENUE.MTD,YTD:data.section_totals.REVENUE.YTD}}
+]};
+const managementPrint = renderToStaticMarkup(createElement(FinancialStatementPrint,{kind:"PROFIT_LOSS",data:managementData,asOf:"2026-10-06"}));
+assert.match(managementPrint,/Gross Operating Income/);assert.match(managementPrint,/Net Operating Profit/);assert.match(managementPrint,/Not balanced/);assert.doesNotMatch(managementPrint,/House Keeping/);assert.doesNotMatch(managementPrint,/100-600-104/);
+console.log("Management P&L print PASS: single statement, management subtotals and visible balance control.");
