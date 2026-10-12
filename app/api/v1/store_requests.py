@@ -52,6 +52,7 @@ def _issue_payload(issue: StoreIssue) -> dict:
     return {
         "id": issue.id,
         "issue_number": issue.issue_number,
+        "issue_date": issue.issue_date or (issue.posted_at.date() if issue.posted_at else None),
         "status": issue.status,
         "notes": issue.notes,
         "created_at": issue.created_at,

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 class GoodsReceiptItemCreate(BaseModel):
     purchase_order_item_id: int | None = None
+    market_list_item_id: int | None = None
     product_id: int | None = None
     expense_account_id: int | None = None
     quantity: Decimal = Field(gt=0)
@@ -25,6 +26,7 @@ class GoodsReceiptCreate(BaseModel):
     business_unit_id: int | None = None
     location_id: int | None = None
     department_id: int | None = None
+    market_list_id: int | None = None
     purchase_order_id: int | None = None
     supplier_id: int | None = None
     received_at: datetime | None = None
@@ -41,6 +43,10 @@ class GoodsReceiptCreate(BaseModel):
     def validate_source(self):
         if not self.items:
             raise ValueError("Receipt must contain items")
+        if self.purchase_order_id and self.market_list_id:
+            raise ValueError("Choose one source: Purchase Order or Market List")
+        if self.market_list_id and any(item.market_list_item_id is None for item in self.items):
+            raise ValueError("ML receipts require a Market List item on every line")
         if self.purchase_order_id:
             if any(item.purchase_order_item_id is None for item in self.items):
                 raise ValueError("PO receipts require purchase_order_item_id for every line")

@@ -1,3 +1,8 @@
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from app.models.market_list import MarketList, MarketListItem
+from app.services.market_list_receiving import allocated_market_items
+from app.services.fiscal_period_service import FiscalPeriodService
 from datetime import date, timedelta
 from decimal import Decimal
 from math import ceil
@@ -105,7 +110,9 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
         "approval_current_step": approval.current_step_order if approval else None,
         "purchase_order_id": receipt.purchase_order_id,
         "purchase_order_number": purchase_order.po_number if purchase_order else None,
-        "source_mode": "PO" if purchase_order else "DIRECT",
+        "source_mode": "PO" if purchase_order else "ML" if receipt.market_list_id else "DIRECT",
+        "market_list_id": receipt.market_list_id,
+        "market_list_number": receipt.market_list.ml_number if receipt.market_list else None,
         "supplier_id": purchase_order.supplier_id if purchase_order else receipt.supplier_id,
         "supplier_name": supplier.name if supplier else None,
         "received_by_id": receipt.received_by_id,
@@ -164,7 +171,9 @@ def serialize_receipt_summary(receipt: GoodsReceipt, approval: ApprovalRequest |
         "approval_current_step": approval.current_step_order if approval else None,
         "purchase_order_id": receipt.purchase_order_id,
         "purchase_order_number": purchase_order.po_number if purchase_order else None,
-        "source_mode": "PO" if purchase_order else "DIRECT",
+        "source_mode": "PO" if purchase_order else "ML" if receipt.market_list_id else "DIRECT",
+        "market_list_id": receipt.market_list_id,
+        "market_list_number": receipt.market_list.ml_number if receipt.market_list else None,
         "supplier_id": purchase_order.supplier_id if purchase_order else receipt.supplier_id,
         "supplier_name": supplier.name if supplier else None,
         "received_by_id": receipt.received_by_id,
@@ -320,17 +329,22 @@ def list_receipts(
 
 
 @router.get("/receivable-purchase-orders")
-def list_receivable_purchase_orders(db: Session = Depends(get_db), user=Depends(receiving_create_user)):
+def list_receivable_purchase_orders(date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db), user=Depends(receiving_create_user)):
     orders = (
         apply_location_scope(db.query(PurchaseOrder), PurchaseOrder.location_id, user)
         .filter(PurchaseOrder.status.in_({"APPROVED", "PARTIALLY_RECEIVED"}))
-        .order_by(PurchaseOrder.id.desc())
+        .order_by(PurchaseOrder.expected_date, PurchaseOrder.id)
         .all()
     )
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "From date must not exceed To date")
+    orders = [o for o in orders if (not date_from or (o.expected_date and o.expected_date >= date_from)) and (not date_to or (o.expected_date and o.expected_date <= date_to))]
     return [
         {
             "id": order.id,
             "po_number": order.po_number,
+            "order_date": order.order_date,
+            "expected_date": order.expected_date,
             "supplier_id": order.supplier_id,
             "supplier_name": order.supplier.name if order.supplier else None,
             "status": order.status,
@@ -347,6 +361,30 @@ def list_receivable_purchase_orders(db: Session = Depends(get_db), user=Depends(
         for order in orders
         if remaining_items(order)
     ]
+
+
+@router.get("/receivable-market-lists")
+def receivable_market_lists(db: Session = Depends(get_db), user=Depends(receiving_create_user)):
+    lists = apply_location_scope(db.query(MarketList), MarketList, user).filter(MarketList.status.in_(['APPROVED','CONVERTED'])).options(selectinload(MarketList.items).selectinload(MarketListItem.product)).order_by(MarketList.request_date,MarketList.id).all()
+    result=[]
+    for market in lists:
+        allocated=allocated_market_items(db, market.id)
+        items=[]
+        for item in market.items:
+            remaining=Decimal(item.quantity)-Decimal(allocated.get(item.id,0))
+            if remaining<=0:
+                continue
+            product=item.product
+            items.append(dict(market_list_item_id=item.id,product_id=item.product_id,
+                product_code=product.code,product_name=product.name,uom=product.uom,
+                quantity=remaining,remaining_quantity=remaining,unit_cost=item.estimated_price,
+                catalog_type=product.catalog_type, inventory_treatment=product.inventory_treatment,
+                is_taxable=item.is_taxable,tax_rate=item.tax_rate))
+        if items:
+            result.append(dict(id=market.id,ml_number=market.ml_number,request_date=market.request_date,
+                business_unit_id=market.business_unit_id,location_id=market.location_id,
+                department_id=market.department_id,items=items))
+    return result
 
 
 @router.get("/receivable-purchase-orders/{purchase_order_id}/items")
@@ -415,6 +453,9 @@ def submit_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(
         raise HTTPException(409, "Only draft receiving reports can be submitted")
     if receipt.source_type == "HISTORICAL_ENTRY":
         raise HTTPException(409, "Historical receiving uses Draft then Post")
+    if receipt.source_type == "LIVE":
+        receipt.received_at = datetime.now(timezone.utc)
+    FiscalPeriodService.validate_posting_date(db, receipt.received_at.astimezone(ZoneInfo("Asia/Jakarta")).date() if receipt.received_at.tzinfo else receipt.received_at.date())
     start_approval(
         db,
         entity_type="GOODS_RECEIPT",

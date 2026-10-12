@@ -6,12 +6,20 @@ Any on-hand quantity beyond recorded 2026 receipts belongs to the manually
 entered 2026 opening stock and is dated 2026-01-01 for this report.
 """
 
+from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 from typing import Iterable
 
 
 START_DATE = date(2026, 1, 1)
+
+
+def six_month_cutoff(as_of: date) -> date:
+    month_index = as_of.year * 12 + as_of.month - 1 - 6
+    year, month = divmod(month_index, 12)
+    month += 1
+    return date(year, month, min(as_of.day, monthrange(year, month)[1]))
 
 
 def age_remaining_stock(
@@ -32,7 +40,7 @@ def age_remaining_stock(
 
     def category(day: date) -> str:
         days = (as_of - day).days
-        return "FAST" if days <= 30 else "SLOW" if days <= 90 else "DEAD"
+        return "FAST" if days <= 30 else "SLOW" if day >= six_month_cutoff(as_of) else "DEAD"
 
     for day, received in sorted(
         inbound_layers,

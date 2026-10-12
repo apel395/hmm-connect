@@ -1,3 +1,6 @@
+from datetime import date
+from app.models.fiscal_period import FiscalPeriod
+from app.services.fiscal_period_service import FiscalPeriodService
 from decimal import Decimal
 
 import pytest
@@ -29,6 +32,8 @@ def store_db(monkeypatch):
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, expire_on_commit=False)()
+    today = FiscalPeriodService.business_today()
+    db.add(FiscalPeriod(period_name="Test year", fiscal_year=today.year, fiscal_month=1, start_date=date(today.year,1,1), end_date=date(today.year,12,31), is_open=True, is_closed=False, allow_backdated_entries=True))
     sequence = iter(range(1, 100))
     monkeypatch.setattr(
         "app.services.store_request_service.next_document_number",

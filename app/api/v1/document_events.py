@@ -299,3 +299,14 @@ def trace_purchase_order(
         "stock_movements": [],
         "events": document_events(db, references),
     }
+
+from pydantic import BaseModel
+from uuid import UUID
+from app.services.document_print_tracking import record_print
+
+class PrintRequest(BaseModel):
+    request_id: UUID
+
+@router.post('/document-events/{kind}/{document_id}/print')
+def issue_print(kind:str,document_id:int,data:PrintRequest,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    return record_print(db,user,kind,document_id,str(data.request_id))

@@ -1,3 +1,4 @@
+from app.services.purchasing_exceptions import unfinished_documents
 from calendar import month_name, monthrange
 from datetime import date
 
@@ -150,6 +151,14 @@ def create_period(
     return period
 
 
+@router.get("/{period_id}/closing-documents")
+def closing_documents(period_id:int,db:Session=Depends(get_db),current_user=Depends(manage_access)):
+    if assigned_location_id(current_user) is not None:
+        raise HTTPException(403,"Period closing requires access to all locations")
+    period=PeriodClosingService.period(db,period_id)
+    return {"items":unfinished_documents(db,current_user,period.start_date,period.end_date)}
+
+
 @router.post("/{period_id}/close")
 def close_period(
     period_id: int,
@@ -158,7 +167,10 @@ def close_period(
 ):
     if assigned_location_id(current_user) is not None:
         raise HTTPException(403, "Closing a company accounting period requires access to all locations")
+    period=PeriodClosingService.period(db,period_id)
+    unfinished=unfinished_documents(db,current_user,period.start_date,period.end_date)
     result = PeriodClosingService.close(db, period_id, current_user)
+    result["purchasing_documents"] = unfinished
     db.commit()
     return result
 

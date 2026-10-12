@@ -1,3 +1,4 @@
+from app.services.market_list_receiving import allocated_market_items
 from datetime import date
 from decimal import Decimal
 
@@ -198,23 +199,11 @@ class MarketListService:
         if not supplier or not supplier.is_active:
             raise HTTPException(status_code=404, detail="Active supplier not found")
 
-        existing_allocations = dict(
-            db.query(
-                PurchaseOrderItem.market_list_item_id,
-                func.coalesce(func.sum(PurchaseOrderItem.quantity), 0),
-            )
-            .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
-            .filter(
-                PurchaseOrderItem.market_list_item_id.in_([item.id for item in market_list.items]),
-                PurchaseOrder.status != "CANCELLED",
-            )
-            .group_by(PurchaseOrderItem.market_list_item_id)
-            .all()
-        )
+        existing_allocations = allocated_market_items(db, market_list.id)
 
         selected = data.items
         if selected is None:
-            selected_items = [(item, Decimal(item.quantity)) for item in market_list.items]
+            selected_items = [(item, Decimal(item.quantity)-Decimal(existing_allocations.get(item.id,0))) for item in market_list.items if Decimal(item.quantity)>Decimal(existing_allocations.get(item.id,0))]
         else:
             by_id = {item.id: item for item in market_list.items}
             if not selected:

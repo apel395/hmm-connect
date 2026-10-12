@@ -182,7 +182,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
 
 def print_metadata(user) -> dict:
     return {
-        "brand_name": "HMM-Connect",
+        "brand_name": "MMH-Connect",
         "hotel_name": "Hotel Mutiara Merdeka",
         "printed_by": user.full_name,
         "generated_at": datetime.now(timezone.utc),

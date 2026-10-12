@@ -179,7 +179,7 @@ def list_requisitions_eligible_for_po(db: Session = Depends(get_db), user=Depend
             "items": [],
         }
         for item in requisition.items:
-            already_ordered = db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(PurchaseOrderItem.purchase_requisition_item_id == item.id, PurchaseOrder.status != "CANCELLED").scalar() or 0
+            already_ordered = db.query(func.coalesce(func.sum(PurchaseOrderItem.quantity), 0)).join(PurchaseOrder).filter(PurchaseOrderItem.purchase_requisition_item_id == item.id, PurchaseOrder.status.notin_(["CANCELLED", "ARCHIVED", "REJECTED"])).scalar() or 0
             remaining = item.quantity - already_ordered
             if remaining <= 0:
                 continue

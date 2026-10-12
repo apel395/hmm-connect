@@ -1,3 +1,6 @@
+from app.models.market_list import MarketList
+from app.services.market_list_receiving import allocated_market_items
+from app.services.location_access import enforce_location_access
 from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
@@ -30,6 +33,10 @@ STOCK_CUTOFF = date(2026, 1, 1)
 
 
 class GoodsReceiptService:
+    @staticmethod
+    def business_date(value):
+        return value.astimezone(ZoneInfo('Asia/Jakarta')).date() if value.tzinfo else value.date()
+
     @staticmethod
     def _number(db: Session) -> str:
         return next_document_number(db, "GR", digits=5, day=True)
@@ -292,7 +299,7 @@ class GoodsReceiptService:
         if journal is None:
             journal = JournalEntry(
                 journal_number=next_document_number(db, "JV", digits=4),
-                posting_date=receipt.received_at.date(),
+                posting_date=cls.business_date(receipt.received_at),
                 status="DRAFT",
                 document_type="GOODS_RECEIPT",
                 document_number=receipt.receipt_number,
@@ -306,7 +313,7 @@ class GoodsReceiptService:
             )
             db.add(journal)
         else:
-            journal.posting_date = receipt.received_at.date()
+            journal.posting_date = cls.business_date(receipt.received_at)
             journal.business_unit_id = receipt.business_unit_id
             journal.location_id = receipt.location_id
             journal.department_id = receipt.department_id
@@ -351,8 +358,12 @@ class GoodsReceiptService:
     @classmethod
     def create(cls, db: Session, *, data: GoodsReceiptCreate, user):
         cls._check_access(user, "receiving.create")
-        if data.received_at and data.received_at.date() < STOCK_CUTOFF:
+        if data.source_type == "LIVE":
+            data = data.model_copy(update={"received_at": datetime.now(timezone.utc)})
+        if data.received_at and cls.business_date(data.received_at) < STOCK_CUTOFF:
             raise HTTPException(422, "Receiving dated before 2026 is excluded from stock")
+        if data.source_type == "HISTORICAL_IMPORT":
+            cls._check_access(user, "receiving.manage")
         if data.source_type == "HISTORICAL_ENTRY":
             cls.check_historical_entry(db, data.received_at, user)
         from app.services.organization_dimensions import validate_dimensions
@@ -371,10 +382,28 @@ class GoodsReceiptService:
                 raise HTTPException(status_code=404, detail="Active supplier not found")
             business_unit_id, location_id, department_id, supplier_id = data.business_unit_id, data.location_id, data.department_id, data.supplier_id
 
+        market = None
+        if data.market_list_id:
+            market = db.query(MarketList).filter_by(id=data.market_list_id).with_for_update().first()
+            if not market or market.status not in {'APPROVED', 'CONVERTED'}:
+                raise HTTPException(409, 'Only approved Market Lists can be received')
+            business_unit_id, location_id, department_id = market.business_unit_id, market.location_id, market.department_id
+            used = allocated_market_items(db, market.id)
+            sources = {line.id: line for line in market.items}
+            seen_ml = set()
+            for line in data.items:
+                source = sources.get(line.market_list_item_id)
+                if not source or line.market_list_item_id in seen_ml or source.product_id != line.product_id:
+                    raise HTTPException(409, 'Invalid or duplicate Market List item')
+                seen_ml.add(line.market_list_item_id)
+                if line.quantity > Decimal(source.quantity)-Decimal(used.get(source.id,0)):
+                    raise HTTPException(409, f'Market List item {source.id} exceeds remaining quantity')
+        enforce_location_access(user, location_id)
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
         cls._validate_destination(db, data, location_id)
         receipt = GoodsReceipt(
             receipt_number=cls._number(db), status="DRAFT", purchase_order_id=purchase_order.id if purchase_order else None,
+            market_list_id=market.id if market else None,
             supplier_id=supplier_id, received_by_id=user.id, received_at=data.received_at or datetime.now(timezone.utc),
             source_type=data.source_type, external_reference=data.external_reference, receipt_type=data.receipt_type,
             destination_type=data.destination_type, warehouse_id=data.warehouse_id if data.destination_type == "WAREHOUSE" else None,
@@ -421,7 +450,7 @@ class GoodsReceiptService:
                 if unit_cost <= 0:
                     raise HTTPException(status_code=409, detail=f"Receiving unit cost must be greater than zero for product {product.id}")
                 receipt.items.append(GoodsReceiptItem(
-                    purchase_order_item_id=None, product_id=product.id, quantity=incoming.quantity, unit_cost=unit_cost, expense_account_id=incoming.expense_account_id,
+                    purchase_order_item_id=None, market_list_item_id=incoming.market_list_item_id if market else None, product_id=product.id, quantity=incoming.quantity, unit_cost=unit_cost, expense_account_id=incoming.expense_account_id,
                     is_taxable=bool(product.is_taxable), tax_rate=Decimal(product.tax_rate or 0),
                 ))
 
@@ -447,11 +476,22 @@ class GoodsReceiptService:
 
     @classmethod
     def update(cls, db: Session, *, receipt: GoodsReceipt, data: GoodsReceiptUpdate, user):
-        if data.received_at.date() < STOCK_CUTOFF:
+        if receipt.source_type == "LIVE":
+            data = data.model_copy(update={"received_at": receipt.received_at})
+        if cls.business_date(data.received_at) < STOCK_CUTOFF:
             raise HTTPException(422, "Receiving dated before 2026 is excluded from stock")
         if receipt.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only unposted Receiving Reports can be edited")
 
+        if getattr(receipt, "market_list_id", None):
+            market = db.query(MarketList).filter_by(id=receipt.market_list_id).with_for_update().one()
+            used = allocated_market_items(db, market.id, receipt.id)
+            sources = {line.id:line for line in market.items}
+            for line in data.items:
+                stored = next((item for item in receipt.items if item.id == line.item_id), None)
+                source = sources.get(stored.market_list_item_id) if stored else None
+                if not source or line.quantity > Decimal(source.quantity)-Decimal(used.get(source.id,0)):
+                    raise HTTPException(409, 'Market List quantity exceeds the remaining amount')
         purchase_order = receipt.purchase_order
         destination_probe = GoodsReceiptCreate(
             business_unit_id=receipt.business_unit_id,
@@ -571,8 +611,19 @@ class GoodsReceiptService:
         if receipt.status != "DRAFT": raise HTTPException(status_code=409, detail="Only draft receipts can be posted")
         if receipt.source_type == "HISTORICAL_ENTRY":
             cls.check_historical_entry(db, receipt.received_at, user)
-        if receipt.received_at.date() < STOCK_CUTOFF:
+        FiscalPeriodService.validate_posting_date(db, cls.business_date(receipt.received_at))
+        if cls.business_date(receipt.received_at) < STOCK_CUTOFF:
             raise HTTPException(409, "Pre-2026 receiving cannot be posted into current stock")
+        if getattr(receipt, "market_list_id", None):
+            market = db.query(MarketList).filter_by(id=receipt.market_list_id).with_for_update().one()
+            if market.status not in {'APPROVED','CONVERTED'}:
+                raise HTTPException(409, 'Market List is no longer receivable')
+            used = allocated_market_items(db, market.id, receipt.id)
+            sources = {item.id:item for item in market.items}
+            for item in receipt.items:
+                source = sources.get(item.market_list_item_id)
+                if not source or item.quantity > Decimal(source.quantity)-Decimal(used.get(source.id,0)):
+                    raise HTTPException(409, 'Market List quantity is no longer available')
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
         if receipt.purchase_order_id and (not purchase_order or purchase_order.status not in {"APPROVED", "PARTIALLY_RECEIVED"}):
             raise HTTPException(status_code=409, detail="Purchase order is no longer receivable")
