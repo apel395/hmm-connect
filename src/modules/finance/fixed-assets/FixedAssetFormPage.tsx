@@ -1,9 +1,10 @@
+import { fixedAssetAccount, accumulatedDepreciationAccount, depreciationExpenseAccount } from "./accountRules";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import { filterBusinessUnits,listDepartments,listLocations } from "@/modules/admin/organization/api";
-import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { todayLocal } from "@/utils/dateConstraints";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
@@ -25,15 +26,15 @@ export default function FixedAssetFormPage() {
   const cats = useQuery({ queryKey: ["asset-categories"], queryFn: listCategories });
   const bus = useQuery({ queryKey: ["business-units", "fixed-asset", "active"], queryFn: () => filterBusinessUnits({ is_active: true }) });
   const loc = useQuery({ queryKey: ["asset-locations", f.business_unit_id], queryFn: () => listLocations({ business_unit_id: Number(f.business_unit_id), is_active: true }), enabled: Boolean(f.business_unit_id) });
-  const dep = useQuery({ queryKey: ["asset-departments", f.business_unit_id], queryFn: () => listDepartments({ business_unit_id: Number(f.business_unit_id), is_active: true }), enabled: Boolean(f.business_unit_id) });
-  const accounts = useQuery({ queryKey: ["asset-accounts"], queryFn: () => getAccountLookup({ is_active: true, is_posting: true }) });
+  const dep = useQuery({ queryKey: ["asset-departments", f.business_unit_id, f.location_id], queryFn: () => listDepartments({ business_unit_id: Number(f.business_unit_id), location_id: Number(f.location_id) || undefined, is_active: true }), enabled: Boolean(f.business_unit_id) });
+  const accounts = useQuery({ queryKey: ["asset-accounts"], queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }) });
 
   useEffect(() => {
     if (!f.business_unit_id && bus.data?.length === 1) setF((current: any) => ({ ...current, business_unit_id: String(bus.data![0].id) }));
   }, [bus.data, f.business_unit_id]);
 
   const set = (k: string, v: any) => setF((current: any) => ({ ...current, [k]: v }));
-  const account = (k: string) => <select className={input} value={f[k]} onChange={(e) => set(k, e.target.value)}><option value="">Select account</option>{accounts.data?.map((a: any) => <option key={a.id} value={a.id}>{a.account_number} — {a.account_name}</option>)}</select>;
+  const account = (k: string) => <select className={input} value={f[k]} onChange={(e) => set(k, e.target.value)}><option value="">Select account</option>{accounts.data?.filter(k === "asset_account_id" ? fixedAssetAccount : k === "accumulated_depreciation_account_id" ? accumulatedDepreciationAccount : depreciationExpenseAccount).map((a: any) => <option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}</select>;
 
   const save = async () => {
     if (!f.asset_name.trim()) return toast.error("Asset Name is required");
@@ -61,7 +62,7 @@ export default function FixedAssetFormPage() {
       <label>Residual Value<input className={`${input} block w-full text-right`} type="number" min={0} value={f.residual_value} onChange={(e) => set("residual_value", e.target.value)} /></label>
       <label>Useful Life Months *<input className={`${input} block w-full`} type="number" min={1} value={f.useful_life_months} onChange={(e) => set("useful_life_months", e.target.value)} /></label>
       <label>Business Unit *<select required className={`${input} block w-full`} value={f.business_unit_id} onChange={(e) => setF({ ...f, business_unit_id: e.target.value, location_id: "", department_id: "" })}><option value="">Select business unit</option>{bus.data?.map((x: any) => <option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}</select></label>
-      <label>Location<select disabled={!f.business_unit_id} className={`${input} block w-full`} value={f.location_id} onChange={(e) => set("location_id", e.target.value)}><option value="">Optional</option>{loc.data?.map((x: any) => <option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}</select></label>
+      <label>Location<select disabled={!f.business_unit_id} className={`${input} block w-full`} value={f.location_id} onChange={(e) => setF({ ...f, location_id: e.target.value, department_id: "" })}><option value="">Optional</option>{loc.data?.map((x: any) => <option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}</select></label>
       <label>Department<select disabled={!f.business_unit_id} className={`${input} block w-full`} value={f.department_id} onChange={(e) => set("department_id", e.target.value)}><option value="">Optional</option>{dep.data?.map((x: any) => <option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}</select></label>
       <label>Asset Account *{account("asset_account_id")}</label>
       <label>Accumulated Depreciation *{account("accumulated_depreciation_account_id")}</label>

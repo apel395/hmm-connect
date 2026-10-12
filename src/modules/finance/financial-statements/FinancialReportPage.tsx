@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { DepartmentPerformance } from "./DepartmentPerformanceTable";
 import type { DepartmentStatement } from "./DepartmentStatementTables";
-import ProfitLossTable, { type PresentationRow } from "./ProfitLossTable";
+import ProfitLossTable, { type PresentationRow, type RelatedAccount } from "./ProfitLossTable";
 import api from "@/api/client";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import PageHeader from "@/components/common/PageHeader";
@@ -18,7 +18,7 @@ export type Kind = "PROFIT_LOSS" | "BALANCE_SHEET";
 export type Period = "MTD" | "YTD";
 export type Amounts = { current: string; budget: string | null; last_month: string | null; last_year: string | null; variance: string | null; movement?: string };
 export type Row = { account_code: string; account_name: string; account_ids: number[]; section: string; periods: Record<Period, Amounts> };
-export type Report = { presentation_rows?: PresentationRow[]; report_scope?: string; balance_control?: {difference: string; is_balanced: boolean}; department_reports?: DepartmentStatement[]; departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
+export type Report = { related_accounts?: RelatedAccount[]; presentation_rows?: PresentationRow[]; report_scope?: string; balance_control?: {difference: string; is_balanced: boolean}; department_reports?: DepartmentStatement[]; departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
 const money = (value: string | number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { maximumFractionDigits: 2 });
 const input = "h-8 rounded border border-slate-300 bg-white px-2 text-xs";
 const labels: Record<string, string> = { REVENUE: "Pendapatan", COST_OF_REVENUE: "HPP", GOI: "GOI", GOP: "GOP / GOL", NOP: "NOP", EXPENSES: "Beban", ASSETS: "Aset", LIABILITIES: "Liabilitas", EQUITY: "Ekuitas" };
@@ -40,7 +40,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const [period, setPeriod] = useState<Period>("MTD");
   const params = Object.fromEntries(Object.entries({ ...filters, report_type: kind, department_tables: false, report_scope: kind === "PROFIT_LOSS" ? filters.report_scope : "" }).filter(([, value]) => value !== ""));
   const report = useQuery({ queryKey: ["financial-report-comparison", kind, filters], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params })).data });
-  const units = useQuery({ queryKey: ["report-units"], queryFn: listBusinessUnits, enabled: showFilters });
+  const units = useQuery({ queryKey: ["report-units"], queryFn: listBusinessUnits });
   const locations = useQuery({ queryKey: ["report-locations", draft.business_unit_id], queryFn: () => listLocations({ is_active: true, business_unit_id: Number(draft.business_unit_id) || undefined }), enabled: showFilters });
   const departments = useQuery({ queryKey: ["report-departments", draft.business_unit_id, draft.location_id], queryFn: () => listDepartments({ is_active: true, business_unit_id: Number(draft.business_unit_id) || undefined, location_id: Number(draft.location_id) || undefined }), enabled: showFilters });
   const budgets = useQuery({ queryKey: ["report-budgets", draft.as_of_date.slice(0, 4)], queryFn: async () => (await api.get("/budgets", { params: { fiscal_year: draft.as_of_date.slice(0, 4), page_size: 500 } })).data, enabled: showFilters });
@@ -100,12 +100,11 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
       <label className="flex h-8 items-center gap-1 text-xs"><input type="checkbox" checked={draft.include_zero} onChange={event => setDraft({ ...draft, include_zero: event.target.checked })} />Zero values</label>
       <Button size="sm" type="submit">Apply</Button>
     </form></Card>}
-    {kind === "PROFIT_LOSS" && <div className="flex flex-wrap items-center gap-1 print:hidden" aria-label="P&L business scope">{["HOTEL", "CATERING", "CONSOLIDATED"].map(scope => <Button key={scope} size="sm" variant={filters.report_scope === scope ? "primary" : "outline"} onClick={() => { const next = { ...filters, report_scope: scope, business_unit_id: "", location_id: "", department_id: "" }; setDraft(next); setFilters(next); }}>{scope === "HOTEL" ? "Hotel" : scope === "CATERING" ? "Project Catering" : "Consolidated"}</Button>)}</div>}
+    {kind === "PROFIT_LOSS" && <div className="flex flex-wrap items-center gap-1 print:hidden" aria-label="P&L business scope">{["HOTEL", "CATERING", "CONSOLIDATED"].map(scope => <Button key={scope} size="sm" variant={filters.report_scope === scope ? "primary" : "outline"} disabled={scope !== "CONSOLIDATED" && !!units.data && !units.data.some(unit => `${unit.code} ${unit.name}`.toUpperCase().includes(scope === "HOTEL" ? "HOTEL" : "CATERING"))} onClick={() => { const next = { ...filters, report_scope: scope, business_unit_id: "", location_id: "", department_id: "" }; setDraft(next); setFilters(next); }}>{scope === "HOTEL" ? "Hotel" : scope === "CATERING" ? "Project Catering" : "Consolidated"}</Button>)}</div>}
     <div className="flex items-center gap-1 print:hidden">{(["MTD", "YTD"] as const).map(value => <Button key={value} size="sm" variant={period === value ? "primary" : "outline"} onClick={() => setPeriod(value)}>{value}</Button>)}</div>
     {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
       <div className="flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}</div>
       {kind === "BALANCE_SHEET" ? <div className="grid items-start gap-2 xl:grid-cols-2">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : <ProfitLossTable data={data} periods={[period]} asOf={filters.as_of_date} />}
-      {kind === "PROFIT_LOSS" && data.balance_control && <div className={`flex items-center gap-2 rounded border px-2 py-1 text-xs ${data.balance_control.is_balanced ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"}`}><b>{data.balance_control.is_balanced ? "Balanced" : "Not balanced"}</b><span>Balance sheet difference: {money(data.balance_control.difference)}</span></div>}
       <div className="hidden print:block text-xs">{user?.full_name || user?.username} · {new Date().toLocaleString()}</div>
     </>}
   </div>;

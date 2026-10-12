@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { Download, Save } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
@@ -28,9 +28,27 @@ function message(error: unknown) {
 export default function OpeningBalancesPage() {
   const client = useQueryClient();
   const [year, setYear] = useState(() => String(new Date().getFullYear()));
+  const [exporting, setExporting] = useState(false);
   const [rows, setRows] = useState<RowState>({});
   const [description, setDescription] = useState("");
   const fiscalYear = Number(year) || new Date().getFullYear();
+
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const response = await openingBalanceApi.exportExcel(fiscalYear);
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `opening-balances-${fiscalYear}.xlsx`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      toast.error("Unable to export opening balances.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const accounts = useQuery({
     queryKey: ["opening-accounts", fiscalYear],
@@ -100,7 +118,7 @@ export default function OpeningBalancesPage() {
       <PageHeader
         title="Opening Balances"
         description="Set the starting debit or credit value for each balance-sheet account."
-        actions={<PrintPreviewButton src={`/finance-setup/opening-balances/print?year=${fiscalYear}`} title="Opening Balance Report" ariaLabel="Preview opening balance report" label="Print" />}
+        actions={<div className="flex gap-2"><Button type="button" variant="secondary" disabled={exporting || accounts.isLoading} onClick={exportExcel} title="Export saved opening balances to Excel" aria-label="Export opening balances to Excel"><Download size={16} /></Button><PrintPreviewButton src={`/finance-setup/opening-balances/print?year=${fiscalYear}`} title="Opening Balance Report" ariaLabel="Preview opening balance report" label="Print" /></div>}
       />
 
       <ModuleSummary metrics={[

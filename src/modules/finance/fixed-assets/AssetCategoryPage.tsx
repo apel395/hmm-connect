@@ -9,6 +9,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import type { AccountLookup } from "@/modules/master/chart-of-accounts/types";
 import { listCategories, saveCategory } from "./api";
+import { assetType } from "./accountRules";
 
 const input = "h-9 w-full rounded border px-2 text-sm";
 const empty = {
@@ -118,6 +119,7 @@ export default function AssetCategoryPage() {
             onChange={event => setForm({ ...form, default_useful_life_months: Number(event.target.value) })} />
         </label>
         {accountField("asset_account_id", "Fixed asset account", assetAccounts)}
+        <div className="flex items-center text-xs text-slate-600">Asset type: {form.asset_account_id ? assetType(assetAccounts.find(a => a.id === Number(form.asset_account_id))?.account_code ?? "") : "Select an asset account"}</div>
         {accountField("accumulated_depreciation_account_id", "Accumulated depreciation account", accumulatedAccounts)}
         {accountField("depreciation_expense_account_id", "Depreciation expense account", expenseAccounts)}
         <label className="space-y-1 text-sm">
@@ -132,12 +134,12 @@ export default function AssetCategoryPage() {
           </Button>
         </div>
       </Card>
-      <Table variant="grid">
-        <THead><TR><TH>Code</TH><TH>Name</TH><TH>Useful Life</TH><TH>Residual %</TH><TH>Status</TH><TH>Actions</TH></TR></THead>
+      <Table variant="grid" stickyHeader containerClassName="max-h-[60vh] overflow-auto">
+        <THead><TR><TH>Code</TH><TH>Name</TH><TH>Asset Type</TH><TH>Useful Life</TH><TH>Residual %</TH><TH>Status</TH><TH>Actions</TH></TR></THead>
         <TBody>
           {categories.data?.map((category: any) => (
             <TR key={category.id}>
-              <TD>{category.code}</TD><TD>{category.name}</TD>
+              <TD>{category.code}</TD><TD>{category.name}</TD><TD>{assetType(assetAccounts.find(a => a.id === category.asset_account_id)?.account_code ?? "")}</TD>
               <TD>{category.default_useful_life_months} months</TD>
               <TD>{category.default_residual_percentage}</TD>
               <TD>{category.is_active ? "Active" : "Inactive"}</TD>
