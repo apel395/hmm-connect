@@ -62,6 +62,9 @@ def test_assigned_user_scope_cannot_read_or_copy_other_location(data):
 def test_copy_template_is_read_only_and_save_is_independent_manual_draft(data):
     db,hotel,project,hloc,ploc=data
     original=db.query(JournalEntry).filter_by(journal_number='PRJ').one()
+    original.reference_type='MANUAL'
+    original.reference_id=0
+    db.commit()
     before=db.query(JournalEntry).count()
     template=journals.copy_template(original.id,db=db,user=ADMIN)
     assert db.query(JournalEntry).count()==before
@@ -71,12 +74,12 @@ def test_copy_template_is_read_only_and_save_is_independent_manual_draft(data):
     assert saved['status']=='DRAFT' and saved['reference_type']=='MANUAL' and saved['reference_id']==0
     assert saved['reference_number']=='MY-COPY'
     assert db.query(GeneralLedger).count()==0
-    assert original.status=='POSTED' and original.reference_type=='GOODS_RECEIPT'
+    assert original.status=='POSTED' and original.reference_type=='MANUAL'
 
 def test_opening_and_closing_journals_cannot_be_copied(data):
     db,*_=data
     original=db.query(JournalEntry).first()
-    for source in ['OPENING_BALANCE','PERIOD_CLOSE','YEAR_END']:
+    for source in ['OPENING_BALANCE','PERIOD_CLOSE','YEAR_END','GOODS_RECEIPT','SUPPLIER_INVOICE','SUPPLIER_PAYMENT','AMORTIZATION','FIXED_ASSET_DEPRECIATION']:
         original.reference_type=source
         with pytest.raises(HTTPException) as error:
             journals.copy_template(original.id,db=db,user=ADMIN)

@@ -17,6 +17,7 @@ from app.models.location import Location
 from app.models.business_unit import BusinessUnit
 from app.models.department import Department
 from app.services.financial_statement_service import FinancialStatementService
+from app.services.organization_access import effective_business_unit
 
 ZERO = Decimal("0")
 METRICS = ("current", "budget", "last_month", "last_year")
@@ -70,6 +71,7 @@ class FinancialReportingService:
         for key, value in scope.items():
             if value is not None:
                 column = getattr(BudgetLine, key)
+                if key == "business_unit_id": column = effective_business_unit(column, BudgetLine.location_id)
                 query = query.filter(column.is_(None) if key == "department_id" and value == 0 else column == value)
         if report_type == "BALANCE_SHEET":
             # A balance-sheet budget is a monthly closing target, not a flow.
@@ -117,6 +119,7 @@ class FinancialReportingService:
         for name, value in scope.items():
             if value is not None:
                 dimension = func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name))
+                if name == "business_unit_id": dimension = effective_business_unit(dimension, func.coalesce(JournalLine.location_id, JournalEntry.location_id))
                 query = query.filter(dimension.is_(None) if name == "department_id" and value == 0 else dimension == value)
         available = query.first() is not None
         if not available and kind == "BALANCE_SHEET" and scope["department_id"] is None:
@@ -286,7 +289,9 @@ class FinancialReportingService:
                 JournalEntry.posting_date.between(date(report["as_of_date"].year - 1, 1, 1), report["as_of_date"]))
             for name in ("location_id", "business_unit_id"):
                 if scope[name] is not None:
-                    activity = activity.filter(func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name)) == scope[name])
+                    dimension = func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name))
+                    if name == "business_unit_id": dimension = effective_business_unit(dimension, func.coalesce(JournalLine.location_id, JournalEntry.location_id))
+                    activity = activity.filter(dimension == scope[name])
             ids.update(row[0] or 0 for row in activity.distinct().all())
             if self.budget_setup_available:
                 budgets = self.db.query(BudgetLine.department_id).join(Budget).filter(
@@ -295,7 +300,9 @@ class FinancialReportingService:
                     budgets = budgets.filter(Budget.id == budget_id)
                 for name in ("location_id", "business_unit_id"):
                     if scope[name] is not None:
-                        budgets = budgets.filter(getattr(BudgetLine, name) == scope[name])
+                        dimension = getattr(BudgetLine, name)
+                        if name == "business_unit_id": dimension = effective_business_unit(dimension, BudgetLine.location_id)
+                        budgets = budgets.filter(dimension == scope[name])
                 ids.update(row[0] or 0 for row in budgets.distinct().all())
         names = {row.id: row.name for row in self.db.query(Department).filter(Department.id.in_(ids)).all()}
         result = []

@@ -32,21 +32,21 @@ def db(monkeypatch):
 
 
 def create(db, ids):
-    return api.create_location(LocationCreate(code="NEW", name="New location", business_unit_id=1, department_ids=ids), db, SimpleNamespace())
+    return api.create_location(LocationCreate(code="NEW", name="New location", business_unit_id=1, department_ids=ids), db, SimpleNamespace(roles=[],default_location_id=None,location_id=None))
 
 
 def test_create_edit_and_journal_location_lookup(db):
     row = create(db, [1, 2, 1])
     assert row["department_ids"] == [1, 2]
-    assert [d["id"] for d in api.list_departments(location_id=row["id"], is_active=True, db=db, user=SimpleNamespace())] == [1, 2]
+    assert [d["id"] for d in api.list_departments(location_id=row["id"], is_active=True, db=db, user=SimpleNamespace(roles=[],default_location_id=None,location_id=None))] == [1, 2]
     assert validate_dimensions(db, 1, row["id"], 1) == (1, row["id"], 1)
-    row = api.update_location(row["id"], LocationUpdate(department_ids=[2]), db, SimpleNamespace())
+    row = api.update_location(row["id"], LocationUpdate(department_ids=[2]), db, SimpleNamespace(roles=[],default_location_id=None,location_id=None))
     assert row["department_ids"] == [2]
     with pytest.raises(HTTPException, match="Department is not available"):
         validate_dimensions(db, 1, row["id"], 1)
     # Ordinary edits preserve assignments; empty selection explicitly clears them.
-    assert api.update_location(row["id"], LocationUpdate(city="New city"), db, SimpleNamespace())["department_ids"] == [2]
-    assert api.update_location(row["id"], LocationUpdate(department_ids=[]), db, SimpleNamespace())["department_ids"] == []
+    assert api.update_location(row["id"], LocationUpdate(city="New city"), db, SimpleNamespace(roles=[],default_location_id=None,location_id=None))["department_ids"] == [2]
+    assert api.update_location(row["id"], LocationUpdate(department_ids=[]), db, SimpleNamespace(roles=[],default_location_id=None,location_id=None))["department_ids"] == []
     assert db.query(LocationDepartment).count() == 0
 
 
@@ -60,6 +60,6 @@ def test_invalid_assignments_rejected_before_creation(db, ids):
 def test_business_unit_change_cannot_keep_incompatible_department(db):
     row = create(db, [1, 2])
     with pytest.raises(HTTPException):
-        api.update_location(row["id"], LocationUpdate(business_unit_id=2), db, SimpleNamespace())
-    row = api.update_location(row["id"], LocationUpdate(business_unit_id=2, department_ids=[2, 3]), db, SimpleNamespace())
+        api.update_location(row["id"], LocationUpdate(business_unit_id=2), db, SimpleNamespace(roles=[],default_location_id=None,location_id=None))
+    row = api.update_location(row["id"], LocationUpdate(business_unit_id=2, department_ids=[2, 3]), db, SimpleNamespace(roles=[],default_location_id=None,location_id=None))
     assert row["department_ids"] == [2, 3]
