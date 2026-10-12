@@ -48,6 +48,7 @@ class FinancialReportingService:
         self.statements = FinancialStatementService(db)
         self._actual_cache = {}
         self._year_evidence = {}
+        self._category_mappings = None
         self._accounts = None
         self._report_settings = {}
         self._schema = inspect(db.connection())
@@ -241,7 +242,7 @@ class FinancialReportingService:
         for dimension, model, default in (("location_id", Location, "Consolidated"), ("business_unit_id", BusinessUnit, "All units"), ("department_id", Department, "All departments")):
             record = self.db.get(model, scope[dimension]) if scope[dimension] is not None else None
             scope_labels[dimension] = "Unassigned department" if dimension == "department_id" and scope[dimension] == 0 else record.name if record else default
-        return {"report_type": report_type, "as_of_date": as_of_date, "scope": scope, "scope_labels": scope_labels,
+        report = {"report_type": report_type, "as_of_date": as_of_date, "scope": scope, "scope_labels": scope_labels,
                 "periods": calendar, "rows": rows, "section_totals": totals, "summary": summaries,
                 "header_only": header_only, "budget_available": budget_available, "comparison_available": comparison_available,
                 "metadata": {"opening_source": "MANUAL_OPENING_BALANCES", "actual_source": "POSTED_JOURNAL_LINES",
@@ -249,6 +250,15 @@ class FinancialReportingService:
                     "display_selection_only": selected is not None, "totals_scope": "COMPLETE_REPORT",
                     "budget_basis": "FULL_MONTH_PLAN" if report_type == "PROFIT_LOSS" else "MONTH_END_BALANCE_TARGET",
                     "closing_entries_excluded_from_profit_loss": True}}
+        if report_type == "PROFIT_LOSS":
+            from app.models.accounting_setting import AccountingSetting
+            from app.services.profit_loss_delivery import SETTING_PREFIX, presentation
+            if self._category_mappings is None:
+                self._category_mappings = {row.account_id: row.description for row in self.db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).all()}
+            report["include_zero"] = include_zero
+            report["presentation_rows"] = presentation(report, originals, values, all_accounts, self._category_mappings, selected)
+        return report
+
 
 
     def department_reports(self, report, *, budget_id=None, kap=False, include_zero=False, detail=False):
@@ -295,5 +305,5 @@ class FinancialReportingService:
                 department_id=dept_id, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
             result.append({"department_id": dept_id or None, "department_name": names.get(dept_id, "Unassigned department"),
                            "rows": child["rows"], "section_totals": child["section_totals"],
-                           "periods": child["periods"], "comparison_available": child["comparison_available"]})
+                           "periods": child["periods"], "presentation_rows": child["presentation_rows"], "comparison_available": child["comparison_available"]})
         return result

@@ -5,6 +5,7 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from app.services.xlsx_export import build_xlsx
+from app.services.profit_loss_delivery import CATEGORIES, SETTING_PREFIX, deliver, workbook_sheets
 from pydantic import BaseModel, Field
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ def require_report_setup(db: Session):
 
 class ReportSetupInput(BaseModel):
     selected_account_ids: list[int] | None = None
+    profit_loss_categories: dict[int, str] | None = None
     header_only: bool = False
     current_year_earnings_account_id: int | None = None
 
@@ -43,7 +45,8 @@ def setup(db: Session = Depends(get_db), user=Depends(view)):
     rows = db.query(ChartOfAccount).filter(ChartOfAccount.is_active.is_(True)).order_by(ChartOfAccount.account_number).all()
     settings = db.query(FinancialReportSetting).all()
     earnings = db.query(AccountingSetting).filter_by(setting_key="CURRENT_YEAR_EARNINGS_ACCOUNT").first()
-    return {"accounts": [{"id": a.id, "code": a.account_number, "name": a.account_name,
+    categories = {row.account_id: row.description for row in db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).all()}
+    return {"profit_loss_categories": categories, "category_options": CATEGORIES, "accounts": [{"id": a.id, "code": a.account_number, "name": a.account_name,
              "type": a.account_type, "normal_balance": a.normal_balance, "parent_id": a.parent_account_id, "is_posting": a.is_posting} for a in rows],
             "settings": [{"report_type": s.report_type, "selected_account_ids": s.selected_account_ids, "header_only": s.header_only} for s in settings],
             "current_year_earnings_account_id": earnings.account_id if earnings else None}
@@ -69,11 +72,30 @@ def save_setup(data: ReportSetupInput, report_type: str, db: Session = Depends(g
             mapping = AccountingSetting(setting_key="CURRENT_YEAR_EARNINGS_ACCOUNT")
             db.add(mapping)
         mapping.account_id = account.id
+    previous_categories = {row.account_id: row.description for row in db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).all()}
+    if data.profit_loss_categories is not None:
+        if report_type != "PROFIT_LOSS":
+            raise HTTPException(422, "P&L categories apply only to Profit & Loss")
+        for aid, code in data.profit_loss_categories.items():
+            account = db.get(ChartOfAccount, aid)
+            if not account or not account.is_posting or account.account_type != "EXPENSE" or code not in CATEGORIES or code == "REVENUE":
+                raise HTTPException(422, "Choose a valid expense account and P&L category")
+        existing = db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).with_for_update().all()
+        for mapping in existing:
+            if mapping.account_id not in data.profit_loss_categories:
+                db.delete(mapping)
+        by_id = {row.account_id: row for row in existing}
+        for aid, code in data.profit_loss_categories.items():
+            mapping = by_id.get(aid)
+            if not mapping:
+                mapping = AccountingSetting(setting_key=f"{SETTING_PREFIX}{aid}", account_id=aid)
+                db.add(mapping)
+            mapping.description = code
     setting = db.query(FinancialReportSetting).filter_by(report_type=report_type).with_for_update().first()
     if not setting:
         setting = FinancialReportSetting(report_type=report_type)
         db.add(setting)
-    before = {"selected_account_ids": setting.selected_account_ids, "header_only": setting.header_only}
+    before = {"selected_account_ids": setting.selected_account_ids, "header_only": setting.header_only, "profit_loss_categories": previous_categories}
     setting.selected_account_ids = sorted(set(data.selected_account_ids)) if data.selected_account_ids is not None else None
     setting.header_only, setting.updated_by_id = data.header_only, user.id
     record_audit(db, user, "FINANCIAL_REPORT_SETUP_UPDATED", "FINANCIAL_REPORT", f"Updated {report_type} display",
@@ -88,9 +110,15 @@ def comparison(report_type: str = Query(pattern=TYPES), as_of_date: date = Query
                department_id: int | None = None, budget_id: int | None = None,
                kap: bool = False, include_zero: bool = False, detail: bool = False,
                department_tables: bool = False,
+               report_scope: str | None = None,
                db: Session = Depends(get_db), user=Depends(view)):
     scope = resolve_location_id(user, location_id)
     service = FinancialReportingService(db)
+    if report_type == "PROFIT_LOSS" and report_scope is not None:
+        report = deliver(service, as_of_date=as_of_date, report_scope=report_scope, location_id=scope,
+                         business_unit_id=business_unit_id, department_id=department_id, budget_id=budget_id,
+                         kap=kap, include_zero=include_zero, detail=detail, include_breakdown=False)
+        return serialize(report)
     report = service.build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
         budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
@@ -108,9 +136,17 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
                       department_id: int | None = None, budget_id: int | None = None,
                       kap: bool = False, include_zero: bool = False, detail: bool = False,
                department_tables: bool = False,
+               report_scope: str | None = None,
                       db: Session = Depends(get_db), user=Depends(view)):
     scope = resolve_location_id(user, location_id)
     service = FinancialReportingService(db)
+    if report_type == "PROFIT_LOSS" and report_scope is not None:
+        report = deliver(service, as_of_date=as_of_date, report_scope=report_scope, location_id=scope,
+                         business_unit_id=business_unit_id, department_id=department_id, budget_id=budget_id,
+                         kap=False, include_zero=include_zero, detail=True)
+        output = BytesIO(build_xlsx(workbook_sheets(report)))
+        return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="profit_loss-{report_scope.lower()}-{as_of_date}.xlsx"'})
     report = service.build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
         budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
