@@ -1,4 +1,9 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
+import api from "@/api/client";
+import Button from "@/components/ui/Button";
+import { Printer } from "lucide-react";
+import { toast } from "sonner";
 
 export interface PrintField {
   label: string;
@@ -69,9 +74,33 @@ export default function DocumentPrintTemplate<Row>({
   authenticity = [],
   footer,
 }: Props<Row>) {
+  const [printing,setPrinting]=useState(false);
+  const [tracking,setTracking]=useState<{print_count:number;reprint_number:number;correction_count:number}|null>(null);
+  useEffect(()=>{
+    const match=window.location.pathname.match(/\/(purchase-requisitions|market-lists|purchase-orders|receiving|store-requests|stock-opnames)\/(\d+)\/print/);
+    if(!match)return;
+    const kinds:Record<string,string>={"purchase-requisitions":"PURCHASE_REQUISITION","market-lists":"MARKET_LIST","purchase-orders":"PURCHASE_ORDER","receiving":"GOODS_RECEIPT","store-requests":"STORE_REQUEST","stock-opnames":"STOCK_OPNAME"};
+    const target=window as Window & {mmhPreparePrint?:()=>Promise<void>};
+    const prepare=async()=>{
+      const {data}=await api.post(`/document-events/${kinds[match[1]]}/${match[2]}/print`,{request_id:crypto.randomUUID()});
+      flushSync(()=>setTracking(data));
+    };
+    target.mmhPreparePrint=prepare;
+    return()=>{if(target.mmhPreparePrint===prepare)delete target.mmhPreparePrint;};
+  },[documentNumber]);
+  const printCopy=async()=>{
+    setPrinting(true);
+    try {
+      await (window as Window & {mmhPreparePrint?:()=>Promise<void>}).mmhPreparePrint?.();
+      window.print();
+    } catch {toast.error("Unable to issue print copy. Try again.");}
+    finally {setPrinting(false);}
+  };
   const visibleAuthenticity = authenticity.filter((field) => field.value !== undefined && field.value !== null && field.value !== "");
   return <article className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
     <style>{`@page{size:A4 portrait;margin:10mm}@media print{body{background:#fff!important}.print-document{max-width:none!important;min-height:auto!important;padding:0!important}.print-document thead{display:table-header-group}.print-document tr{break-inside:avoid;page-break-inside:avoid}.avoid-break{break-inside:avoid;page-break-inside:avoid}}`}</style>
+    <div className="mb-2 flex justify-end print:hidden"><Button variant="outline" disabled={printing} aria-label="Print document" onClick={printCopy}><Printer size={16}/></Button></div>
+    {tracking && <div className="mb-2 text-right text-xs font-semibold">{tracking.reprint_number>0?`REPRINT ${tracking.reprint_number}`:"ORIGINAL"}{tracking.correction_count>0?` · CORRECTION ${tracking.correction_count}`:""}</div>}
     <header className="grid grid-cols-[1.35fr_1fr] items-center gap-8 border-b border-black pb-4">
       <div className="flex items-center gap-4">
         {showLogo && <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-16 w-auto shrink-0 object-contain" />}
@@ -97,7 +126,7 @@ export default function DocumentPrintTemplate<Row>({
 
     <table className="w-full border-collapse">
       <thead><tr>{columns.map((column, index) => <th key={`${column.label}-${index}`} className={`border-y border-black px-2 py-2 font-bold ${alignClass[column.align ?? "left"]}`}>{column.label}</th>)}</tr></thead>
-      <tbody>{rows.map((row, rowIndex) => <tr key={rowKey ? rowKey(row, rowIndex) : rowIndex}>{columns.map((column, columnIndex) => <td key={columnIndex} className={`border-b border-slate-300 px-2 py-2 align-top ${alignClass[column.align ?? "left"]}`}>{column.render(row, rowIndex)}</td>)}</tr>)}</tbody>
+      <tbody>{rows.map((row, rowIndex) => <tr key={rowKey ? rowKey(row, rowIndex) : rowIndex}>{columns.map((column, columnIndex) => <td key={columnIndex} className={`border-b border-slate-300 px-2 py-1 align-top ${alignClass[column.align ?? "left"]}`}>{column.render(row, rowIndex)}</td>)}</tr>)}</tbody>
     </table>
 
     {!!totals.length && <div className="ml-auto mt-3 w-[48%]">

@@ -234,21 +234,21 @@ export default function StockOpnameDetailPage() {
                 Enter to save that item immediately.
               </div>
             </div>
-            <Button
+            {!d.blind_count && <Button
               size="sm"
               variant="outline"
               disabled={setAllUncountedSystem.isPending}
               onClick={() => setAllUncountedSystem.mutate()}
             >
               Set All Uncounted = System
-            </Button>
+            </Button>}
           </div>
           <div className="mt-3">
             <div className="flex justify-between text-xs text-slate-500">
               <span>
                 {counted} of {d.items.length} items counted
               </span>
-              <span>Variance {varianceTotal.toLocaleString("id-ID")}</span>
+              {!d.blind_count && <span>Variance {varianceTotal.toLocaleString("id-ID")}</span>}
             </div>
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
               <div
@@ -303,7 +303,7 @@ export default function StockOpnameDetailPage() {
                           {i.product_code} — {i.product_name}
                         </div>
                         <div className="mt-0.5 text-xs text-slate-500">
-                          System {Number(i.system_quantity).toLocaleString("id-ID")} {i.uom}
+                          {!d.blind_count && <>System {Number(i.system_quantity).toLocaleString("id-ID")} </>}{i.uom}
                           {i.physical_quantity != null ? ` • Counted ${Number(i.physical_quantity).toLocaleString("id-ID")}` : ""}
                         </div>
                       </button>
@@ -333,7 +333,7 @@ export default function StockOpnameDetailPage() {
                 }
               }}
             />
-            <Button
+            {!d.blind_count && <Button
               variant="outline"
               disabled={quickItemId == null}
               onClick={() => {
@@ -343,7 +343,7 @@ export default function StockOpnameDetailPage() {
               }}
             >
               Count = System
-            </Button>
+            </Button>}
             <Button loading={saveItem.isPending} disabled={!canSaveQuick} onClick={saveQuick}>
               Save This Item
             </Button>
@@ -385,11 +385,11 @@ export default function StockOpnameDetailPage() {
                 <th className="px-4 py-3 text-left">Code</th>
                 <th className="px-4 py-3 text-left">Description</th>
                 <th className="px-4 py-3 text-left">UOM</th>
-                <th className="px-4 py-3 text-right">System</th>
+                {!d.blind_count && <th className="px-4 py-3 text-right">System</th>}
                 <th className="px-4 py-3 text-right">Physical</th>
-                <th className="px-4 py-3 text-right">Variance</th>
-                <th className="px-4 py-3 text-right">Unit Cost</th>
-                <th className="px-4 py-3 text-right">Variance Value</th>
+                {!d.blind_count && <th className="px-4 py-3 text-right">Variance</th>}
+                {!d.blind_count && <th className="px-4 py-3 text-right">Unit Cost</th>}
+                {!d.blind_count && <th className="px-4 py-3 text-right">Variance Value</th>}
               </tr>
             </thead>
             <tbody>
@@ -407,9 +407,9 @@ export default function StockOpnameDetailPage() {
                     <td className="px-4 py-2">{i.product_code}</td>
                     <td className="px-4 py-2">{i.product_name}</td>
                     <td className="px-4 py-2">{i.uom}</td>
-                    <td className="px-4 py-2 text-right">
+                    {!d.blind_count && <td className="px-4 py-2 text-right">
                       {Number(i.system_quantity).toLocaleString("id-ID")}
-                    </td>
+                    </td>}
                     <td className="px-4 py-2 text-right">
                       {canCount ? (
                         <input
@@ -431,19 +431,19 @@ export default function StockOpnameDetailPage() {
                           : Number(i.physical_quantity).toLocaleString("id-ID")
                       )}
                     </td>
-                    <td className="px-4 py-2 text-right">
+{!d.blind_count &&                     <td className="px-4 py-2 text-right">
                       {variance == null
                         ? i.variance_quantity == null
                           ? "—"
                           : Number(i.variance_quantity).toLocaleString("id-ID")
                         : variance.toLocaleString("id-ID")}
-                    </td>
-                    <td className="px-4 py-2 text-right">
+                    </td>}
+                    {!d.blind_count && <td className="px-4 py-2 text-right">
                       {Number(i.unit_cost).toLocaleString("id-ID")}
-                    </td>
-                    <td className="px-4 py-2 text-right">
+                    </td>}
+                    {!d.blind_count && <td className="px-4 py-2 text-right">
                       {Number(i.variance_value ?? 0).toLocaleString("id-ID")}
-                    </td>
+                    </td>}
                   </tr>
                 );
               })}

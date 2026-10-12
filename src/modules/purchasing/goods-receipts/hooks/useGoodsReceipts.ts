@@ -17,6 +17,7 @@ async function invalidateReceipt(qc:ReturnType<typeof useQueryClient>,id?:number
     id?qc.refetchQueries({queryKey:["goods-receipt",id],exact:true,type:"active"}):Promise.resolve(),
     qc.invalidateQueries({queryKey:["goods-receipts"]}),
     qc.invalidateQueries({queryKey:["receivable-purchase-orders"]}),
+    qc.invalidateQueries({queryKey:["receivable-market-lists"]}),
     qc.invalidateQueries({queryKey:["purchase-orders"]}),
     qc.invalidateQueries({queryKey:["approval"]}),
     qc.invalidateQueries({queryKey:["approval-inbox"]}),

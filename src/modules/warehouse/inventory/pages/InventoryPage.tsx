@@ -185,8 +185,8 @@ export default function InventoryPage() {
           const current = movementCounts[status];
           const detail = status === "FAST"
             ? `Oldest remaining stock is at most ${movementDays.fast} days old`
-            : status === "SLOW" ? `Oldest remaining stock is ${movementDays.fast + 1}–${movementDays.dead} days old`
-            : `Some stock has remained for over ${movementDays.dead} days`;
+            : status === "SLOW" ? `Remaining stock is over ${movementDays.fast} days and up to 6 months old`
+            : "Some stock has remained for over 6 months";
           return <button type="button" key={status} onClick={() => changeMovement(movementClass === status ? "ALL" : status)}
             className={`rounded-xl border p-4 text-left shadow-sm transition hover:border-emerald-400 ${movementClass === status ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white"}`}>
             <div className="text-xs uppercase tracking-wide text-slate-500">{status} STOCK</div>

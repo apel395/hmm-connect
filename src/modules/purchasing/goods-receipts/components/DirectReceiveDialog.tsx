@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import api from "@/api/client";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import Button from "@/components/ui/Button";
@@ -27,7 +28,7 @@ import useAuthorization from "@/hooks/useAuthorization";
 import { nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
 
-type Line = { product_id: number; quantity: number; unit_cost: number; expense_account_id?: number | null };
+type Line = { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; expense_account_id?: number | null };
 const money = (value: unknown) =>
   Number(value ?? 0).toLocaleString("id-ID", {
     minimumFractionDigits: 2,
@@ -41,14 +42,18 @@ const option = (row: any) => ({
 export default function DirectReceiveDialog({
   open,
   onClose,
+  marketListMode = false,
 }: {
   open: boolean;
   onClose: () => void;
+  marketListMode?: boolean;
 }) {
   const { data: suppliers = [] } = useSuppliers();
   const { data: warehouses = [] } = useWarehouses();
   const receive = useReceiveGoods();
   const { hasPermission } = useAuthorization();
+  const [marketListId, setMarketListId] = useState<number>();
+  const marketLists = useQuery({queryKey:["receivable-market-lists"],queryFn:async()=>(await api.get("/goods-receipts/receivable-market-lists")).data,enabled:open && marketListMode,refetchOnWindowFocus:false});
   const [catalogType, setCatalogType] = useState<"CATERING" | "HOTEL">("CATERING");
   const [supplierId, setSupplierId] = useState<number>();
   const [businessUnitId, setBusinessUnitId] = useState<number>();
@@ -84,6 +89,17 @@ export default function DirectReceiveDialog({
       listLocations({ business_unit_id: businessUnitId, is_active: true, assigned_only: true }),
     enabled: open && !!businessUnitId,
   });
+  useEffect(() => {
+    if (!marketListMode || !marketListId) return;
+    const source = (marketLists.data ?? []).find((row: any) => row.id === marketListId);
+    if (!source) return;
+    setBusinessUnitId(source.business_unit_id);
+    setLocationId(source.location_id);
+    setDepartmentId(source.department_id);
+    setLines(source.items.map((item: any) => ({market_list_item_id:item.market_list_item_id,product_id:item.product_id,quantity:Number(item.remaining_quantity),unit_cost:Number(item.unit_cost)})));
+    setProductRows(source.items.map((item: any) => ({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,is_taxable:item.is_taxable,tax_rate:item.tax_rate})));
+    setWarehouseId(undefined);
+  }, [marketListMode, marketListId, marketLists.data]);
   const rememberProduct = (product: ProductComboboxOption) =>
     setProductRows((current) =>
       current.some((row) => row.id === product.id)
@@ -124,6 +140,7 @@ export default function DirectReceiveDialog({
       current.map((line, i) => (i === index ? { ...line, ...value } : line)),
     );
   const submit = async () => {
+    if (marketListMode && !marketListId) return alert("Choose an approved Market List");
     if (!supplierId || !businessUnitId || !departmentId || !locationId)
       return alert(
         "Supplier, Business Unit, Department and Location are required.",
@@ -135,6 +152,7 @@ export default function DirectReceiveDialog({
     const items = lines
       .filter((line) => line.product_id && line.quantity > 0)
       .map((line) => ({
+        market_list_item_id: line.market_list_item_id,
         product_id: line.product_id,
         expense_account_id: destinationType === "DIRECT_USE" ? line.expense_account_id ?? null : null,
         quantity: line.quantity,
@@ -157,6 +175,7 @@ export default function DirectReceiveDialog({
       await receive.mutateAsync({
         payload: {
           source_type: historical ? "HISTORICAL_ENTRY" : "LIVE",
+          market_list_id: marketListMode ? marketListId : undefined,
           supplier_id: supplierId,
           business_unit_id: businessUnitId,
           department_id: departmentId,
@@ -185,7 +204,7 @@ export default function DirectReceiveDialog({
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>Create Direct Receiving Draft</DialogTitle>
+          <DialogTitle>{marketListMode ? "Receiving from Market List" : "Create Direct Receiving Draft"}</DialogTitle>
         </DialogHeader>
         <DialogBody className="space-y-4">
           {hasPermission("receiving.post") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={historical} onChange={event => setHistorical(event.target.checked)}/> Historical entry (Draft → Post)</label>}
@@ -194,6 +213,7 @@ export default function DirectReceiveDialog({
             Order. Saving creates a <strong>Draft RR</strong>; it must follow
             Store and PM/Camp Boss approval by two different people before posting.
           </div>}
+          {marketListMode && <SearchableSelect label="Approved Market List" value={marketListId} options={(marketLists.data ?? []).map((row: any)=>({id:row.id,label:`${row.ml_number} · ${row.request_date}`}))} onChange={setMarketListId} />}
           <div className="grid gap-3 md:grid-cols-2">
             <SearchableSelect
               label="Supplier"
@@ -204,6 +224,7 @@ export default function DirectReceiveDialog({
             />
             <SearchableSelect
               label="Business Unit"
+              disabled={marketListMode}
               value={businessUnitId}
               placeholder="Type business unit..."
               options={(businessUnits.data ?? []).map(option)}
@@ -215,7 +236,7 @@ export default function DirectReceiveDialog({
             />
             <SearchableSelect
               label="Department"
-              disabled={!locationId || departments.isLoading}
+              disabled={marketListMode || !locationId || departments.isLoading}
               value={departmentId}
               placeholder="Type department..."
               options={(departments.data ?? []).map(option)}
@@ -223,6 +244,7 @@ export default function DirectReceiveDialog({
             />
             <SearchableSelect
               label="Location"
+              disabled={marketListMode}
               value={locationId}
               placeholder="Type location..."
               options={(locations.data ?? []).map(option)}
@@ -231,7 +253,7 @@ export default function DirectReceiveDialog({
             <label className="text-xs font-medium text-slate-700">
               Receipt Date
               <input
-                type="datetime-local"
+                type="datetime-local" disabled={!historical}
                 data-accounting-date="true"
                 data-min-date="2026-01-01"
                 min="2026-01-01T00:00"
@@ -303,9 +325,10 @@ export default function DirectReceiveDialog({
                     <tr key={index} className="border-t">
                       <td className="p-2">
                         <ProductCombobox
+                          disabled={marketListMode}
                           catalogType={catalogType}
                           products={productRows}
-                          remote
+                          remote={!marketListMode}
                           value={line.product_id || undefined}
                           onChange={(id) =>
                             patch(index, { product_id: id || 0 })
@@ -367,6 +390,7 @@ export default function DirectReceiveDialog({
           <div className="flex items-start justify-between">
             <Button
               variant="outline"
+              disabled={marketListMode}
               onClick={() =>
                 setLines((current) => [
                   ...current,
