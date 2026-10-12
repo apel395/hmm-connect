@@ -80,7 +80,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
       const l = totals("LIABILITIES")?.[metric], e = totals("EQUITY")?.[metric];
       return <td key={metric} className="px-2 py-2 text-right tabular-nums">{money(l == null || e == null ? null : Number(l) + Number(e))}</td>;
     })}</tr>}
-    {kind === "PROFIT_LOSS" && <tr className="border-t-2 bg-slate-100 font-bold"><td className="px-2 py-2">Laba / Rugi</td>{profit.map((value, index) => <td key={metrics[index]} className={`px-2 py-2 text-right tabular-nums ${value != null && value < 0 ? "text-red-600" : ""}`}>{money(value)}</td>)}</tr>}
+    {kind === "PROFIT_LOSS" && <tr className="border-t-2 bg-slate-100 font-bold"><td className="px-2 py-2">Laba / Rugi</td>{profit.map((value, index) => <td key={metrics[index]} className={`px-2 py-2 text-right tabular-nums ${value != null && Number(value) < 0 ? "text-red-600" : ""}`}>{money(value)}</td>)}</tr>}
   </tbody></table></div>;
   return <div className="print-document space-y-2">
     <PageHeader title={title} description={`${filters.as_of_date} · ${period} · ${scopeNames.join(" · ") || "Consolidated"}${filters.kap ? " · KAP" : ""}`} actions={<div className="flex gap-1 print:hidden">
