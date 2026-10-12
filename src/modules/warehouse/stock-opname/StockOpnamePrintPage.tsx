@@ -45,13 +45,12 @@ export default function StockOpnamePrintPage() {
       { label: "CODE", align: "left", render: (row: any) => row.product_code },
       { label: "DESCRIPTION", align: "left", render: (row: any) => row.product_name },
       { label: "UOM", align: "center", render: (row: any) => row.uom || "—" },
-      { label: "SYSTEM QTY", align: "right", render: (row: any) => qty(row.system_quantity) },
+      ...(!data.blind_count ? [{ label: "SYSTEM QTY", align: "right" as const, render: (row: any) => qty(row.system_quantity) }] : []),
       { label: "PHYSICAL COUNT", align: "center", render: () => <span className="inline-block min-w-24 border-b border-black">&nbsp;</span> },
-      { label: "OFFICER", align: "center", render: () => <span className="inline-block min-w-20 border-b border-black">&nbsp;</span> },
     ]}
     rows={data.items ?? []}
     rowKey={(row: any) => row.id}
-    notes={data.notes || "Physical quantity is written by the counting officer on this sheet, then entered into MMH-Connect."}
+    notes={data.notes || "Physical quantity is written by the counting team on this sheet, then entered into MMH-Connect."}
     signatures={[
       { label: "Counted By", name: "" },
       { label: "Entered By", name: "" },

@@ -1,3 +1,4 @@
+import PurchasingExceptionPanel from "./PurchasingExceptionPanel";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -68,6 +69,7 @@ export default function PurchasingReportsPage() {
 
   return (
     <div className="space-y-6">
+      <PurchasingExceptionPanel dateFrom={dateFrom} dateTo={dateTo}/>
       <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Purchasing Reports" description="Purchase requisition, purchase order and receiving activity summarized for the selected period." />
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">

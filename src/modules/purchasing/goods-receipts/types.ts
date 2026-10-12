@@ -1,5 +1,6 @@
 export interface GoodsReceiptItemPayload {
   purchase_order_item_id?: number | null;
+  market_list_item_id?: number;
   product_id?: number | null;
   expense_account_id?: number | null;
   quantity: number;
@@ -8,6 +9,7 @@ export interface GoodsReceiptItemPayload {
 
 export interface GoodsReceiptCreatePayload {
   source_type?: "LIVE" | "HISTORICAL_ENTRY";
+  market_list_id?: number;
   purchase_order_id?: number | null;
   supplier_id?: number | null;
   business_unit_id?: number | null;
@@ -43,7 +45,9 @@ export interface GoodsReceiptItem {
 
 export interface GoodsReceipt {
   source_type?: "LIVE" | "HISTORICAL_ENTRY" | "HISTORICAL_IMPORT";
-  id: number; receipt_number: string; status: "DRAFT" | "POSTED" | "RETURNED"; source_mode?: "PO" | "DIRECT";
+  id: number; receipt_number: string; status: "DRAFT" | "POSTED" | "RETURNED"; source_mode?: "PO" | "ML" | "DIRECT";
+  market_list_id?: number | null;
+  market_list_number?: string | null;
   approval_status?: "PENDING" | "APPROVED" | "REJECTED" | null; approval_current_step?: number | null; approval_history?: ApprovalHistoryItem[];
   purchase_order_id?: number | null; purchase_order_number?: string | null; supplier_id?: number; supplier_name?: string | null;
   received_by_id: number; received_by_name?: string | null; received_at: string; destination_type: string;

@@ -16,10 +16,19 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
   const [frameLoaded, setFrameLoaded] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
 
-  const print = () => {
+  const [printing,setPrinting]=useState(false);
+  const print = async () => {
     if (!frameLoaded || frameRef.current?.contentDocument?.querySelector('[data-print-ready="false"]')) { toast.error("Wait for the report to load before printing"); return; }
-    frameRef.current?.contentWindow?.focus();
-    frameRef.current?.contentWindow?.print();
+    setPrinting(true);
+    try {
+      const target=frameRef.current?.contentWindow as (Window & {mmhPreparePrint?:()=>Promise<void>})|undefined;
+      await target?.mmhPreparePrint?.();
+      target?.focus();
+      target?.print();
+    } catch {
+      toast.error("Unable to issue a tracked print copy. Try again.");
+    } finally {setPrinting(false);}
+
   };
 
   return (
@@ -43,7 +52,7 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
-            <Button disabled={!frameLoaded} onClick={print}><Printer size={16} /> Print</Button>
+            <Button disabled={!frameLoaded || printing} onClick={print}><Printer size={16} /> Print</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

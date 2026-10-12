@@ -192,6 +192,7 @@ export async function movementReport(
     { label: "Quantity", numeric: true },
     { label: "Unit cost", numeric: true },
     { label: "Value", numeric: true },
+    { label: "Remaining", numeric: true },
   ];
   const value = (items: Row[], event: string) =>
     total(
@@ -217,6 +218,7 @@ export async function movementReport(
           num(r.quantity),
           money(r.unit_cost),
           money(r.movement_value),
+          r.running_quantity == null ? "—" : num(r.running_quantity),
         ]),
       footer: [
         "Subtotal net value",
@@ -228,6 +230,7 @@ export async function movementReport(
         null,
         null,
         money(value(items, "IN") - value(items, "OUT")),
+        null,
       ],
     })),
     summary: `IN value: ${money(value(data.items, "IN"))} · OUT value: ${money(value(data.items, "OUT"))}`,
@@ -241,6 +244,7 @@ export async function movementReport(
       null,
       null,
       money(value(data.items, "IN") - value(data.items, "OUT")),
+      null,
     ],
   };
 }

@@ -23,6 +23,7 @@ export interface StoreIssueItem {
 }
 
 export interface StoreIssue {
+  issue_date?: string;
   id: number;
   issue_number: string;
   status: "DRAFT" | "POSTED";
@@ -84,6 +85,7 @@ export interface StoreRequestPayload {
 }
 
 export interface StoreIssuePayload {
+  issue_date?: string;
   notes?: string | null;
   items: Array<{ item_id: number; quantity: number }>;
 }

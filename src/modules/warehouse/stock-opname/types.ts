@@ -4,11 +4,11 @@ export type StockOpnameItem = {
   product_code: string;
   product_name: string;
   uom: string;
-  system_quantity: number;
+  system_quantity?: number;
   physical_quantity: number | null;
-  variance_quantity: number | null;
-  unit_cost: number;
-  variance_value: number;
+  variance_quantity?: number | null;
+  unit_cost?: number;
+  variance_value?: number;
 };
 
 export type StockOpname = {
@@ -22,7 +22,8 @@ export type StockOpname = {
   department_name?: string;
   notes?: string;
   total_items: number;
-  total_variance_quantity: number;
+  total_variance_quantity: number | null;
+  blind_count?: boolean;
   items: StockOpnameItem[];
   allowed_actions?: {
     can_edit?: boolean;

@@ -253,10 +253,10 @@ export default function InventoryMovementPage() {
         <div className="border-b px-3 py-2 font-semibold">{focused ? "Item timeline · oldest first" : "Recent item events · select an item for its timeline"}</div>
         <Table className="min-w-[1320px]" containerClassName="rounded-none border-0 shadow-none">
           <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Event</TH><TH>Item code</TH><TH>Item name</TH><TH>Warehouse</TH>
-            <TH numeric>In</TH><TH numeric>Out</TH>{focused && <TH numeric>On hand</TH>}
+            <TH numeric>In</TH><TH numeric>Out</TH><TH numeric>Remaining</TH>
             <TH numeric>Unit cost</TH><TH numeric>Event value</TH><TH>Source document</TH><TH>Notes</TH>
           </TR></THead>
-          <TBody>{!rows.length ? <TR><TD colSpan={focused ? 12 : 11} className="p-10 text-center text-slate-500">No stock events match these filters.</TD></TR>
+          <TBody>{!rows.length ? <TR><TD colSpan={12} className="p-10 text-center text-slate-500">No stock events match these filters.</TD></TR>
             : rows.map(row => <TR key={row.id} className="whitespace-nowrap">
               <TD>{row.movement_date}</TD>
               <TD>{eventName(row)}</TD>
@@ -265,7 +265,7 @@ export default function InventoryMovementPage() {
               <TD>{row.warehouse_name}</TD>
               <TD numeric className="font-semibold text-emerald-700">{Number(row.in_quantity) ? quantity(row.in_quantity) : "—"}</TD>
               <TD numeric className="font-semibold text-rose-700">{Number(row.out_quantity) ? quantity(row.out_quantity) : "—"}</TD>
-              {focused && <TD numeric className="font-bold">{row.running_quantity == null ? "—" : quantity(row.running_quantity)}</TD>}
+              <TD numeric className="font-bold">{row.running_quantity == null ? "—" : quantity(row.running_quantity)}</TD>
               <TD numeric>Rp {money(row.unit_cost)}</TD><TD numeric>Rp {money(row.movement_value)}</TD>
               <TD>{sourceDocuments(row)}</TD>
               <TD className="max-w-[240px]"><span className="block truncate" title={row.notes ?? undefined}>{row.notes ?? "—"}</span></TD>
