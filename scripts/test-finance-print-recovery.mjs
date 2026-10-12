@@ -1,3 +1,4 @@
+import path from "node:path";
 import console from "node:console";
 import { URLSearchParams } from "node:url";
 import assert from "node:assert/strict";
@@ -7,7 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 const require = createRequire(import.meta.url);
 async function compile(entry) {
-  const result = await build({ entryPoints: [entry], bundle: true, write: false, platform: "node", format: "cjs", jsx: "automatic", define: { "import.meta.env.VITE_API_URL": JSON.stringify("https://test.invalid") }, external: ["react", "react/jsx-runtime"], plugins: [{ name: "browser-services", setup(build) {
+  const result = await build({ entryPoints: [entry], alias: { "@": path.resolve("src") }, bundle: true, write: false, platform: "node", format: "cjs", jsx: "automatic", define: { "import.meta.env.VITE_API_URL": JSON.stringify("https://test.invalid") }, external: ["react", "react/jsx-runtime"], plugins: [{ name: "browser-services", setup(build) {
     build.onResolve({ filter: /^(@\/api\/client|@\/store\/auth)$/ }, args => ({ path: args.path, namespace: "mock" }));
     build.onLoad({ filter: /.*/, namespace: "mock" }, () => ({ contents: "export default {};", loader: "js" }));
   }}] });
@@ -108,5 +109,5 @@ const managementData = { ...departmentData, report_scope: "HOTEL", balance_contr
   {key:"NOP",label:"Net Operating Profit / Loss",kind:"subtotal",account_ids:[],periods:{MTD:data.section_totals.REVENUE.MTD,YTD:data.section_totals.REVENUE.YTD}}
 ]};
 const managementPrint = renderToStaticMarkup(createElement(FinancialStatementPrint,{kind:"PROFIT_LOSS",data:managementData,asOf:"2026-10-06"}));
-assert.match(managementPrint,/Gross Operating Income/);assert.match(managementPrint,/Net Operating Profit/);assert.match(managementPrint,/Not balanced/);assert.doesNotMatch(managementPrint,/House Keeping/);assert.doesNotMatch(managementPrint,/100-600-104/);
-console.log("Management P&L print PASS: single statement, management subtotals and visible balance control.");
+assert.match(managementPrint,/Gross Operating Income/);assert.match(managementPrint,/Net Operating Profit/);assert.doesNotMatch(managementPrint,/Not balanced/);assert.doesNotMatch(managementPrint,/House Keeping/);assert.doesNotMatch(managementPrint,/100-600-104/);
+console.log("Management P&L print PASS: single statement, management subtotals without balance notices.");

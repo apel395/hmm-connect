@@ -1,3 +1,4 @@
+import { amortizationAssetAccount } from "./accountRules";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {Plus, Printer} from "lucide-react";
@@ -8,7 +9,7 @@ import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
-import { getAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { createAmortization, listAmortizations, postNextAmortization } from "./api";
 
 const today = new Date().toISOString().slice(0, 10);
@@ -23,8 +24,8 @@ export default function AmortizationPage() {
   const records = useQuery({ queryKey: ["amortizations"], queryFn: listAmortizations });
   const businessUnits = useQuery({ queryKey: ["business-units", "amortization", "active"], queryFn: () => filterBusinessUnits({ is_active: true }) });
   const locations = useQuery({ queryKey: ["amortization-locations", form.business_unit_id], queryFn: () => listLocations({ business_unit_id: Number(form.business_unit_id), is_active: true }), enabled: Boolean(form.business_unit_id) });
-  const departments = useQuery({ queryKey: ["amortization-departments", form.business_unit_id], queryFn: () => listDepartments({ business_unit_id: Number(form.business_unit_id), is_active: true }), enabled: Boolean(form.business_unit_id) });
-  const accounts = useQuery({ queryKey: ["amortization-accounts"], queryFn: () => getAccountLookup({ is_active: true, is_posting: true }) });
+  const departments = useQuery({ queryKey: ["amortization-departments", form.business_unit_id, form.location_id], queryFn: () => listDepartments({ business_unit_id: Number(form.business_unit_id), location_id: Number(form.location_id) || undefined, is_active: true }), enabled: Boolean(form.business_unit_id) });
+  const accounts = useQuery({ queryKey: ["amortization-accounts"], queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }) });
 
   useEffect(() => {
     if (!form.business_unit_id && businessUnits.data?.length === 1) setForm((current: any) => ({ ...current, business_unit_id: String(businessUnits.data![0].id) }));
@@ -67,7 +68,7 @@ export default function AmortizationPage() {
 
   const totalNetBookValue = useMemo(() => (records.data ?? []).reduce((sum: number, item: any) => sum + Number(item.net_book_value || 0), 0), [records.data]);
   const set = (key: string, value: any) => setForm((current: any) => ({ ...current, [key]: value }));
-  const accountSelect = (key: string) => <select className={inputClass} value={form[key]} onChange={(event) => set(key, event.target.value)}><option value="">Select account</option>{(accounts.data ?? []).map((account: any) => <option key={account.id} value={account.id}>{account.account_number} — {account.account_name}</option>)}</select>;
+  const accountSelect = (key: string) => <select className={inputClass} value={form[key]} onChange={(event) => { const selected = accounts.data?.find(a => a.id === Number(event.target.value)); setForm({ ...form, [key]: event.target.value, ...(key === "asset_account_id" ? { accumulated_amortization_account_id: selected?.account_code.startsWith("100-400") ? event.target.value : "" } : {}) }); }}><option value="">Select account</option>{(accounts.data ?? []).filter(account => key === "asset_account_id" ? amortizationAssetAccount(account) : key === "amortization_expense_account_id" ? account.account_type === "EXPENSE" && account.normal_balance === "DEBIT" : account.id === Number(form.asset_account_id) && account.account_code.startsWith("100-400") || account.account_type === "ASSET" && account.normal_balance === "CREDIT").map((account: any) => <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select>;
 
   return <div className="space-y-5">
     <PageHeader title="Amortization" description="Manage straight-line amortization for intangible assets and other amortizable costs." actions={<>
@@ -83,11 +84,11 @@ export default function AmortizationPage() {
       <label className="text-sm font-medium">Original Cost *<div className="mt-1"><CurrencyInput value={Number(form.original_cost)} onValueChange={(value) => set("original_cost", value)}/></div></label>
       <label className="text-sm font-medium">Useful Life (Months) *<input type="number" min={1} className={`${inputClass} mt-1`} value={form.useful_life_months} onChange={(event) => set("useful_life_months", Number(event.target.value))}/></label>
       <label className="text-sm font-medium">Business Unit *<select required className={`${inputClass} mt-1`} value={form.business_unit_id} onChange={(event) => setForm((current: any) => ({ ...current, business_unit_id: event.target.value, location_id: "", department_id: "" }))}><option value="">Select business unit</option>{(businessUnits.data ?? []).map((item: any) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
-      <label className="text-sm font-medium">Location<select disabled={!form.business_unit_id} className={`${inputClass} mt-1`} value={form.location_id} onChange={(event) => set("location_id", event.target.value)}><option value="">Optional</option>{(locations.data ?? []).map((item: any) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
+      <label className="text-sm font-medium">Location<select disabled={!form.business_unit_id} className={`${inputClass} mt-1`} value={form.location_id} onChange={(event) => setForm({ ...form, location_id: event.target.value, department_id: "" })}><option value="">Optional</option>{(locations.data ?? []).map((item: any) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
       <label className="text-sm font-medium">Department<select disabled={!form.business_unit_id} className={`${inputClass} mt-1`} value={form.department_id} onChange={(event) => set("department_id", event.target.value)}><option value="">Optional</option>{(departments.data ?? []).map((item: any) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
       <div />
       <label className="text-sm font-medium">Amortizable Asset Account *<div className="mt-1">{accountSelect("asset_account_id")}</div></label>
-      <label className="text-sm font-medium">Accumulated Amortization *<div className="mt-1">{accountSelect("accumulated_amortization_account_id")}</div></label>
+      <label className="text-sm font-medium">Amortization Credit Account *<div className="mt-1">{accountSelect("accumulated_amortization_account_id")}</div></label>
       <label className="text-sm font-medium">Amortization Expense *<div className="mt-1">{accountSelect("amortization_expense_account_id")}</div></label>
       <label className="text-sm font-medium md:col-span-3">Notes<textarea className="mt-1 min-h-20 w-full rounded-md border border-slate-300 p-3" value={form.notes} onChange={(event) => set("notes", event.target.value)}/></label>
       <div className="md:col-span-3 flex justify-end gap-2"><Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button><Button loading={save.isPending} onClick={submit}>Save</Button></div>

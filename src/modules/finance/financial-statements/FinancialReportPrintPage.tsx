@@ -59,7 +59,6 @@ export function FinancialStatementPrint({ kind, data, asOf, printedBy }: { kind:
       {metadata}
       {(["MTD", "YTD"] as const).map(period => <section className="comparison-page" key={period}><ReportHeader kind={kind} data={data} asOf={asOf} caption={`Perbandingan ${period}`} /><table><thead><tr><th className="account">Akun</th>{[...metricNames, "Movement"].map((name, i) => <th className="amount" key={name}>{name}{data.periods[period][comparisons[i]] ? <span className="period-range">{data.periods[period][comparisons[i]].join(" — ")}</span> : null}</th>)}</tr></thead><tbody><SectionRows data={data} sections={["ASSETS", "LIABILITIES", "EQUITY"]} periods={[period]} columns={comparisons} /><tr className="grand-total"><td>Total Liabilitas + Ekuitas</td>{comparisons.map(metric => <td key={metric} className="amount">{money(sum(data, ["LIABILITIES", "EQUITY"], period, metric))}</td>)}</tr></tbody></table>{metadata}</section>)}
     </>}{kind === "PROFIT_LOSS" ? metadata : null}
-    {kind === "PROFIT_LOSS" && data.balance_control && <p className="print-meta">{data.balance_control.is_balanced ? "Balanced" : "Not balanced"} · Balance sheet difference: {money(data.balance_control.difference)}</p>}
   </article>;
 }
 

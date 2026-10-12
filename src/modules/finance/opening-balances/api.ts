@@ -18,6 +18,8 @@ export type OpeningBalanceLine = {
 };
 
 export const openingBalanceApi = {
+  exportExcel: (fiscal_year: number, location_id?: number) =>
+    api.get("/opening-balances/export", { params: { fiscal_year, location_id: location_id || undefined }, responseType: "blob" }),
   accounts: (fiscal_year: number, location_id?: number) =>
     api.get("/opening-balances/accounts", { params: { fiscal_year, location_id: location_id || undefined } }),
   list: (fiscal_year: number, location_id?: number) =>
