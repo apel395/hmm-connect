@@ -50,6 +50,22 @@ def proposal(row):
     name = normalize(row['name'])
     prefix = name.split('-', 1)[0].strip()
     section = row['section_code']
+    # Operating equipment explicitly assigned to ASSET by the hotel owner.
+    asset_coa = None
+    if section in {'13', '14'} and prefix == 'LINEN' and not re.search(r'\b(?:ANAK REL|REL GORDEN)\b', name):
+        asset_coa = '100-900-100'
+    if section == '15' and not re.search(r'\b(?:PLASTIK|AKRILIK|MELAMIN|PISAU BLENDER|BLENDER GOBLET)\b', name):
+        if re.search(r'\b(?:SENDOK|GARPU|SPOON|FORK|CUTLERY|CUTLERIES)\b', name): asset_coa = '100-900-102'
+        elif re.search(r'\b(?:GELAS|GLASS|GOBLET|PITCHER|IRISH)\b', name): asset_coa = '100-900-103'
+        elif re.search(r'\b(?:PIRING|BOWL|CHILI DISH|TEA CUP|SAUCER)\b', name): asset_coa = '100-900-101'
+    if asset_coa:
+        issues = []
+        if not normalize(row['unit']): issues.append('UNIT_MISSING')
+        elif normalize(row['unit']) in {'1','PPN'}: issues.append('UNIT_REVIEW')
+        if row['purchase'] < 0: issues.append('NEGATIVE_PURCHASE_REFERENCE')
+        if row['expense'] < 0: issues.append('NEGATIVE_LEGACY_EXPENSE_REFERENCE')
+        return {'group': 'ASSET', 'subgroup': 'FURNITURE', 'inventory_treatment': 'FIXED_ASSET',
+                'asset_coa': asset_coa, 'issues': issues}
     food = {'MEAT': 'MEAT', 'POU': 'POULTRY', 'FISH': 'FISH',
             'SEA': 'SEAFOOD', 'SEAFOOD': 'SEAFOOD', 'VEG': 'VEGETABLES',
             'FRU': 'FRUIT', 'HERBS': 'HERB', 'HERB': 'HERB',
@@ -136,7 +152,7 @@ def main():
             products = [dict(r) for r in db.execute(text('SELECT id,name,uom,catalog_type,item_type FROM products')).mappings()]
             groups = [dict(r) for r in db.execute(text("SELECT id,name,code FROM item_groups WHERE is_active AND item_type IN ('BUY','ITEM')")).mappings()]
             subgroups = [dict(r) for r in db.execute(text('SELECT id,name,code,group_id FROM item_subgroups WHERE is_active')).mappings()]
-            accounts = [dict(r) for r in db.execute(text("SELECT id,account_number,account_name,account_type,normal_balance,is_posting FROM chart_of_accounts WHERE is_active AND (account_number LIKE '100-300%' OR account_number LIKE '100-600%' OR account_type = 'EXPENSE') ORDER BY account_number")).mappings()]
+            accounts = [dict(r) for r in db.execute(text("SELECT id,account_number,account_name,account_type,normal_balance,is_posting FROM chart_of_accounts WHERE is_active AND (account_number LIKE '100-300%' OR account_number LIKE '100-600%' OR account_number LIKE '100-900%' OR account_type = 'EXPENSE') ORDER BY account_number")).mappings()]
             db.rollback()
     rows = build_plan(source, products, groups, subgroups, database_checked=args.check_db)
     if args.check_db and not products:

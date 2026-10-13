@@ -127,7 +127,9 @@ def post_run(run_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 
 def scoped_asset(service, asset_id, user):
     asset=service.get(asset_id)
-    resolve_organization_access(service.db,user,location_id=asset.location_id,business_unit_id=asset.business_unit_id,department_id=asset.department_id)
+    scope = resolve_organization_access(service.db,user,location_id=asset.location_id,business_unit_id=asset.business_unit_id,department_id=asset.department_id)
+    if asset.status == "PENDING_REGISTRATION" and asset.business_unit_id is None and any(value is not None for value in scope.values()):
+        raise HTTPException(403, "Unassigned asset registration requires global finance access")
     return asset
 
 
@@ -151,6 +153,17 @@ def update(asset_id: int, data: AssetUpdate, db: Session = Depends(get_db), user
     validate_dimensions(db, values.get("business_unit_id", item.business_unit_id), values.get("location_id", item.location_id), values.get("department_id", item.department_id), required=True)
     for key, value in values.items(): setattr(item, key, value)
     db.commit(); return service.serialize(scoped_asset(service,asset_id,user))
+
+
+@router.post("/{asset_id}/complete-registration")
+def complete_registration(asset_id: int, data: AssetInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user)
+    service = FixedAssetService(db)
+    asset = scoped_asset(service, asset_id, user)
+    values = resolve_organization_access(db, user, location_id=data.location_id, business_unit_id=data.business_unit_id, department_id=data.department_id)
+    asset = service.complete_registration(asset, data.model_copy(update=values), user)
+    db.commit()
+    return service.serialize(service.get(asset.id))
 
 
 @router.post("/{asset_id}/assign-category")
@@ -196,7 +209,7 @@ def scoped_asset_query(db, user, query):
 
 
 def asset_report(db: Session, user):
-    return [{"id": item.id, "asset_number": item.asset_number, "asset_name": item.asset_name, "category": item.category.name if item.category else "Category setup required", "acquisition_date": item.acquisition_date, "capitalization_date": item.capitalization_date, "acquisition_cost": item.acquisition_cost, "accumulated_depreciation": item.accumulated_depreciation, "net_book_value": item.net_book_value, "residual_value": item.residual_value, "status": item.status} for item in scoped_asset_query(db,user,db.query(FixedAsset)).all()]
+    return [{"id": item.id, "asset_number": item.asset_number, "asset_name": item.asset_name, "category": item.category.name if item.category else "Category setup required", "acquisition_date": item.acquisition_date, "capitalization_date": item.capitalization_date, "acquisition_cost": item.acquisition_cost, "accumulated_depreciation": item.accumulated_depreciation, "net_book_value": item.net_book_value, "residual_value": item.residual_value, "status": item.status} for item in scoped_asset_query(db,user,db.query(FixedAsset).filter(FixedAsset.status != "PENDING_REGISTRATION")).all()]
 
 
 @reports_router.get("/fixed-assets")

@@ -95,3 +95,25 @@ def test_audit_failure_rolls_back_products_as_one_transaction(db, monkeypatch):
     with pytest.raises(RuntimeError): apply_rows(db, source(), plan(db))
     db.rollback()
     assert db.query(Product).count() == 0
+
+
+def test_operating_equipment_seed_registers_pending_asset_without_valuation(db):
+    from app.models.fixed_asset import FixedAsset
+    group = ItemGroup(id=19, code='4', name='ASSET', item_type='BUY', is_active=True)
+    group.subgroups = [ItemSubgroup(id=75, code='4-2', name='FURNITURE', is_active=True)]
+    db.add(group)
+    db.add(ChartOfAccount(id=2, account_number='100-900-100', account_name='Linen', account_type='ASSET',
+                          normal_balance='DEBIT', is_active=True, is_posting=True))
+    db.commit()
+    data = source('LINEN - Synthetic Bath Towel')
+    data['items'][0].update(section_code='13', section_name='LINEN HK SUPPLIES', unit='PCS')
+    rows = plan(db, data)
+    assert rows[0]['seed_status'] == 'CREATE'
+    apply_rows(db, data, rows); db.commit()
+    product = db.query(Product).one()
+    asset = db.query(FixedAsset).one()
+    assert product.group_name == 'ASSET' and product.inventory_treatment == 'FIXED_ASSET'
+    assert product.inventory_account_id is None and product.asset_account_id == 2
+    assert asset.product_id == product.id and asset.asset_account_id == 2
+    assert asset.acquisition_cost is None and asset.acquisition_date is None
+    assert db.query(JournalEntry).count() == db.query(Inventory).count() == 0

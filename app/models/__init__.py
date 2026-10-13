@@ -71,3 +71,6 @@ __all__ = ["Base"]
 
 from app.models.financial_report_setting import FinancialReportSetting
 from app.models.ar_invoice_layout import ARInvoiceLayout
+
+# Keep classified BUY assets linked to an unvalued Fixed Asset registration.
+from app.services import asset_master_registration as _asset_master_registration

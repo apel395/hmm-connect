@@ -65,7 +65,7 @@ def test_posted_invoice_reclassification_registers_once_without_new_journal(monk
     )
     line = SimpleNamespace(
         id=900, goods_receipt_item_id=None, line_amount=Decimal("5500000.00"),
-        product=None, description="Computer", department_id=None,
+        product=None, product_id=None, description="Computer", department_id=None,
     )
     journal = SimpleNamespace(id=1349, status="POSTED", location_id=1, business_unit_id=1)
     db = Db(invoice)

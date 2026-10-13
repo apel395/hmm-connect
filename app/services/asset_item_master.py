@@ -16,7 +16,7 @@ from app.services.audit import record_audit
 def ensure_asset_item(db, *, name, account_id, user, product_id=None, uom="SET", subgroup_code=None):
     lock_item_creation(db)
     account = db.get(ChartOfAccount, account_id)
-    if not account or not account.is_active or not account.is_posting or not account.account_number.startswith("100-600-"):
+    if not account or not account.is_active or not account.is_posting or not account.account_number.startswith(("100-600-", "100-900-")) or account.account_type != "ASSET" or account.normal_balance != "DEBIT":
         raise HTTPException(422, "Asset item requires an active posting fixed asset account")
     if product_id:
         item = db.get(Product, product_id)
@@ -35,7 +35,8 @@ def ensure_asset_item(db, *, name, account_id, user, product_id=None, uom="SET",
         return eligible[0]
     # Use existing catalog only. Computers belong to KOMPUTER, other FF&E to FURNITURE.
     if not subgroup_code:
-        subgroup_code = {"100-600-101": "4-1", "100-600-102": "4-3", "100-600-103": "4-5", "100-600-104": "4-2"}.get(account.account_number)
+        if account.account_number.startswith("100-900-"): subgroup_code = "4-2"
+        subgroup_code = subgroup_code or {"100-600-101": "4-1", "100-600-102": "4-3", "100-600-103": "4-5", "100-600-104": "4-2"}.get(account.account_number)
         if account.account_number == "100-600-104" and re.search(r"\b(computer|komputer|intel|laptop|desktop|pc)\b", name, re.I):
             subgroup_code = "4-4"
     group = db.query(ItemGroup).filter(ItemGroup.code == "4", ItemGroup.is_active.is_(True), ItemGroup.item_type.in_(["BUY", "ITEM"])).one_or_none()
@@ -47,6 +48,7 @@ def ensure_asset_item(db, *, name, account_id, user, product_id=None, uom="SET",
         uom=uom, usage_uom=uom, conversion=Decimal("1"), item_type="BUY", inventory_treatment="FIXED_ASSET",
         asset_account_id=account_id, inventory_account_id=None, purchase_account_id=None, cogs_account_id=None,
         is_active=True, tax_category="REVIEW_REQUIRED", is_taxable=False, tax_rate=Decimal("0"))
+    item._asset_intake_item = True  # The existing source asset is linked immediately below.
     db.add(item); db.flush()
     record_audit(db, user, "ASSET_ITEM_REGISTERED", "PRODUCT", f"Registered BUY asset item {item.code}", entity_id=item.id,
         after_data={"code": item.code, "asset_account_id": account_id, "inventory_treatment": "FIXED_ASSET"})
