@@ -10,6 +10,7 @@ import PermissionGuard from "@/components/guard/PermissionGuard";
 import LoginPage from "@/modules/auth/pages/LoginPage";
 import SignupPage from "@/modules/auth/pages/SignupPage";
 import DashboardPage from "@/modules/dashboard/DashboardPage";
+import ExecutiveViewPage from "@/modules/dashboard/ExecutiveViewPage";
 import PurchaseRequisitionListPage from "@/modules/purchasing/requisition/pages/PurchaseRequisitionListPage";
 import PurchaseRequisitionDetailPage from "@/modules/purchasing/requisition/pages/PurchaseRequisitionDetailPage";
 import MarketListPage from "@/modules/purchasing/market-list/MarketListPage";
@@ -154,6 +155,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <RoleLanding /> },
       { path: "dashboard", element: <DashboardPage /> },
+      { path: "executive-view", element: <ExecutiveViewPage /> },
       { path: "approval-center", element: <ApprovalCenterPage /> },
       { path: "approval-configuration", element: <ApprovalConfigurationPage /> },
       { path: "purchase-requisitions", element: <PurchaseRequisitionListPage /> },
