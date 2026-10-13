@@ -15,6 +15,8 @@ export const getDepreciationReport = async (params: any) => (await api.get("/rep
 export const listAmortizations = async () => (await api.get("/amortizations")).data;
 export const createAmortization = async (data: any) => (await api.post("/amortizations", data)).data;
 export const updateAmortization = async (id: number, data: any) => (await api.patch(`/amortizations/${id}`, data)).data;
-export const postNextAmortization = async (id: number) => (await api.post(`/amortizations/${id}/post-next`)).data;
+export const postNextAmortization = async (item: {id:number;months_posted:number}) => (await api.post(`/amortizations/${item.id}/post-next`,null,{params:{expected_months_posted:item.months_posted}})).data;
+export const unpostLastAmortization = async (item: {id:number;months_posted:number}) => (await api.post(`/amortizations/${item.id}/unpost-last`,null,{params:{expected_months_posted:item.months_posted}})).data;
+export const getAmortizationSchedule = async (id:number) => (await api.get(`/amortizations/${id}/schedule`)).data;
 
 export const syncInvoiceAssets = async () => (await api.post<{ registered: number }>("/fixed-assets/sync-invoice-assets")).data;
