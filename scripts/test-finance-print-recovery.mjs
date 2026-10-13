@@ -54,7 +54,23 @@ assert.match(balance, /-4\.025\.000,00/); assert.match(balance, /-25\.000,00/);
 assert.match(balance, /Saldo per 2026-10-06/); assert.doesNotMatch(balance, /<button/);
 const kap = renderToStaticMarkup(createElement(FinancialStatementPrint, { kind: "BALANCE_SHEET", data: { ...data, header_only: true }, asOf: "2026-10-06" }));
 assert.match(kap, /NERACA — KAP/);
+assert.match(kap, /A4 portrait/);
+assert.equal((kap.match(/<section class="comparison-page"/g) ?? []).length, 0);
 console.log("Print rendering: grouped comparisons, signed totals, unavailable values, escaped full names, T layout, separate comparisons and KAP heading passed.");
+
+const reportState = await compile("src/modules/finance/financial-statements/reportState.ts");
+const defaults = { as_of_date: "2026-10-13", business_unit_id: "", location_id: "", department_id: "", budget_id: "", kap: false, include_zero: false, report_scope: "CONSOLIDATED" };
+const selected = { filters: { ...defaults, as_of_date: "2026-01-31", location_id: "8", department_id: "7", budget_id: "2", kap: true }, period: "YTD", view: "EXECUTIVE" };
+reportState.saveReportPreferences("45", "BALANCE_SHEET", selected, browser);
+assert.deepEqual(reportState.loadReportPreferences("45", "BALANCE_SHEET", "", defaults, browser), selected);
+assert.equal(reportState.loadReportPreferences("46", "BALANCE_SHEET", "", defaults, browser).filters.as_of_date, defaults.as_of_date);
+assert.equal(reportState.loadReportPreferences("45", "PROFIT_LOSS", "", defaults, browser).filters.as_of_date, defaults.as_of_date);
+const explicit = reportState.loadReportPreferences("45", "BALANCE_SHEET", "?as_of_date=2026-02-28&location_id=1", defaults, browser);
+assert.equal(explicit.filters.as_of_date, "2026-02-28");
+assert.equal(explicit.filters.location_id, "1");
+assert.equal(explicit.filters.department_id, "");
+assert.equal(explicit.filters.budget_id, "");
+console.log("Report preferences: retained date/scope/view, explicit link precedence and user/report isolation passed.");
 
 const api = (await compile("src/api/client.ts")).default;
 let redirected = "";
