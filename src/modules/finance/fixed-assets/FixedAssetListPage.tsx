@@ -11,7 +11,7 @@ import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui
 import { TABLE_UI } from "@/config/tableUi";
 import { listAssets, syncInvoiceAssets } from "./api";
 
-const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value: unknown) => value === null || value === undefined ? "—" : Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const PAGE_SIZE = 20;
 
 export default function FixedAssetListPage() {
@@ -49,7 +49,7 @@ export default function FixedAssetListPage() {
       <div className="border-b px-4 py-3 font-semibold">Asset Register</div>
       <Table className={`min-w-[900px] ${assets.isFetching ? "opacity-70" : ""}`} containerClassName="rounded-none border-0 shadow-none">
         <THead><TR className="whitespace-nowrap"><TH>Asset</TH><TH>Acquired</TH><TH numeric>Cost</TH><TH numeric>Accumulated Depreciation</TH><TH numeric>Net Book Value</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead>
-        <TBody>{rows.map((asset: any) => <TR key={asset.id} className="whitespace-nowrap"><TD><TableCellStack primary={asset.asset_name} secondary={`${asset.asset_number} · ${asset.category || "Category setup required"}`}/></TD><TD>{asset.acquisition_date}</TD><TD numeric>{money(asset.acquisition_cost)}</TD><TD numeric>{money(asset.accumulated_depreciation)}</TD><TD numeric className="font-semibold">{money(asset.net_book_value)}</TD><TD><Badge>{asset.status}</Badge></TD><TD><div className="flex justify-end"><Link className={TABLE_UI.documentLink} to={`/fixed-assets/${asset.id}`}>View</Link></div></TD></TR>)}</TBody>
+        <TBody>{rows.map((asset: any) => <TR key={asset.id} className="whitespace-nowrap"><TD><TableCellStack primary={asset.asset_name} secondary={`${asset.asset_number} · ${asset.category || "Category setup required"}`}/></TD><TD>{asset.acquisition_date || "—"}</TD><TD numeric>{money(asset.acquisition_cost)}</TD><TD numeric>{money(asset.accumulated_depreciation)}</TD><TD numeric className="font-semibold">{money(asset.net_book_value)}</TD><TD><Badge>{asset.status}</Badge></TD><TD><div className="flex justify-end"><Link className={TABLE_UI.documentLink} to={asset.status === "PENDING_REGISTRATION" ? `/fixed-assets/new?registration_id=${asset.id}` : `/fixed-assets/${asset.id}`}>{asset.status === "PENDING_REGISTRATION" ? "Complete" : "View"}</Link></div></TD></TR>)}</TBody>
       </Table>
       {!assets.isLoading && !rows.length && <div className="p-10 text-center text-sm text-slate-500">No fixed assets registered.</div>}
       {!assets.isLoading && total > 0 && <div className="border-t px-4 py-3"><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="assets" onChange={setPage}/></div>}
