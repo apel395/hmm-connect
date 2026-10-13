@@ -209,6 +209,8 @@ class FinancialReportingService:
                 display_key, code, name, section = key, original["account_code"], original["account_name"], original["section"]
             row = display.setdefault(display_key, {"account_code": code, "account_name": name, "section": section,
                 "account_ids": [], "periods": {p: {metric: ZERO for metric in metrics} for p in calendar}})
+            if original.get("includes_unclosed_earnings"):
+                row["includes_unclosed_earnings"] = True
             if original["account_id"] is not None:
                 row["account_ids"].append(original["account_id"])
             for period_name in calendar:
@@ -227,6 +229,28 @@ class FinancialReportingService:
         if not include_zero:
             rows = [row for row in rows if any(amount not in (None, ZERO) for totals in row["periods"].values() for amount in totals.values())]
         rows.sort(key=lambda row: (row["section"], row["account_code"], row["account_name"]))
+        executive_rows = []
+        if report_type == "BALANCE_SHEET":
+            from app.services.financial_statement_service import GROUP_LABELS
+            buckets = {}
+            for key, original in originals.items():
+                group = original.get("financial_statement_group") or original["section"]
+                bucket = buckets.setdefault((original["section"], group), {
+                    "account_code": "", "account_name": GROUP_LABELS.get(group, group.replace("_", " ").title()),
+                    "section": original["section"], "account_ids": [],
+                    "periods": {p: {metric: ZERO for metric in metrics} for p in calendar}})
+                if original["account_id"] is not None: bucket["account_ids"].append(original["account_id"])
+                for p in calendar:
+                    for metric in metrics: bucket["periods"][p][metric] += values[p][metric].get(key, ZERO)
+            for bucket in buckets.values():
+                for p in calendar:
+                    amounts = bucket["periods"][p]
+                    if not budget_available[p]: amounts["budget"] = None
+                    for metric in ("last_month", "last_year"):
+                        if not comparison_available[p][metric]: amounts[metric] = None
+                    amounts["variance"] = amounts["current"] - amounts["budget"] if amounts["budget"] is not None else None
+                if include_zero or any(v not in (ZERO, None) for amounts in bucket["periods"].values() for v in amounts.values()):
+                    executive_rows.append(bucket)
         sections = ["REVENUE", "COST_OF_REVENUE", "EXPENSES"] if report_type == "PROFIT_LOSS" else ["ASSETS", "LIABILITIES", "EQUITY"]
         # Full-ledger totals remain intact when display setup hides detail rows.
         totals = {}
@@ -246,7 +270,7 @@ class FinancialReportingService:
             record = self.db.get(model, scope[dimension]) if scope[dimension] is not None else None
             scope_labels[dimension] = "Unassigned department" if dimension == "department_id" and scope[dimension] == 0 else record.name if record else default
         report = {"report_type": report_type, "as_of_date": as_of_date, "scope": scope, "scope_labels": scope_labels,
-                "periods": calendar, "rows": rows, "section_totals": totals, "summary": summaries,
+                "periods": calendar, "rows": rows, "executive_rows": executive_rows, "section_totals": totals, "summary": summaries,
                 "header_only": header_only, "budget_available": budget_available, "comparison_available": comparison_available,
                 "metadata": {"opening_source": "MANUAL_OPENING_BALANCES", "actual_source": "POSTED_JOURNAL_LINES",
                     "report_setup_available": self.report_setup_available, "budget_setup_available": self.budget_setup_available,

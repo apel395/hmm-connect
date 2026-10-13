@@ -19,7 +19,7 @@ from app.models.financial_report_setting import FinancialReportSetting
 from app.services.period_closing_service import PeriodClosingService
 from app.services.financial_reporting_service import FinancialReportingService, periods
 from app.services.financial_statement_service import FinancialStatementService
-from app.services.trial_balance_service import TrialBalanceService
+from app.services.trial_balance_service import TrialBalanceService, ZERO
 from app.api.v1 import journals
 
 USER = SimpleNamespace(id=1, default_location_id=None, location_id=None, roles=[])
@@ -91,6 +91,45 @@ def test_close_reopen_and_reclose_are_balanced_and_preserve_pnl_and_opening(db):
     assert all(session.get(JournalEntry, jid).status == "VOID" for jid in result["closing_journal_ids"])
     result2 = PeriodClosingService.close(session, 1, USER)
     assert set(result2["closing_journal_ids"]).isdisjoint(result["closing_journal_ids"])
+
+
+def test_current_year_equity_is_one_account_with_opening_and_unclosed_evidence(db):
+    session, a = db
+    a[3].account_name = "Laba/Rugi Ditahan Tahun Berjalan"
+    opening = OpeningBalance(fiscal_year=2026, account_id=a[3].id, location_id=1,
+                             amount=Decimal("500"), balance_type="CREDIT")
+    session.add(opening); session.commit()
+    activity(session, a, date(2026, 1, 10), "100", "30")
+    report = FinancialStatementService(session).balance_sheet(as_of_date=date(2026, 1, 31))
+    equity = [r for s in report["sections"] if s["code"] == "EQUITY" for g in s["groups"] for r in g["accounts"]]
+    assert len(equity) == 1
+    assert equity[0]["account_id"] == a[3].id
+    assert equity[0]["closing_amount"] == Decimal("570")
+    evidence = report["summary"]["earnings_reconciliation"]
+    assert evidence["opening_balance"] == Decimal("500")
+    assert evidence["posted_movement"] == ZERO
+    assert evidence["unclosed_profit_loss"] == Decimal("70")
+    PeriodClosingService.close(session, 1, USER); session.commit()
+    after = FinancialStatementService(session).balance_sheet(as_of_date=date(2026, 1, 31))
+    assert after["summary"]["total_equity"] == report["summary"]["total_equity"]
+    assert after["summary"]["earnings_reconciliation"]["posted_movement"] == Decimal("70")
+    assert after["summary"]["earnings_reconciliation"]["unclosed_profit_loss"] == ZERO
+    assert session.get(OpeningBalance, opening.id).amount == Decimal("500")
+
+
+def test_executive_equity_detail_and_kap_share_totals_and_actual_account_ids(db):
+    session, a = db
+    activity(session, a, date(2026, 1, 10), "100", "30")
+    statements = FinancialReportingService(session)
+    report = statements.build(report_type="BALANCE_SHEET", as_of_date=date(2026, 1, 31))
+    kap = statements.build(report_type="BALANCE_SHEET", as_of_date=date(2026, 1, 31), kap=True)
+    assert kap["section_totals"] == report["section_totals"]
+    row = next(r for r in report["rows"] if r["section"] == "EQUITY")
+    assert row["account_ids"] == [a[3].id]
+    assert row["includes_unclosed_earnings"]
+    for section in ("ASSETS", "LIABILITIES", "EQUITY"):
+        total = sum(r["periods"]["YTD"]["current"] for r in report["executive_rows"] if r["section"] == section)
+        assert total == report["section_totals"][section]["YTD"]["current"]
 
 
 def test_mtd_ytd_scoped_comparisons_and_budget(db):
