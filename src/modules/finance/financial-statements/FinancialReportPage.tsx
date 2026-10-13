@@ -37,10 +37,9 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const [filters, setFilters] = useState(saved.filters);
   const [showFilters, setShowFilters] = useState(false);
   const [period, setPeriod] = useState<Period>(saved.period);
-  const [view, setView] = useState<"DETAIL" | "EXECUTIVE">(saved.view);
-  const [showEquity, setShowEquity] = useState(false);
+  const view = "DETAIL" as const;
   useEffect(() => saveReportPreferences(owner, kind, { filters, period, view }), [owner, kind, filters, period, view]);
-  const params = Object.fromEntries(Object.entries({ ...filters, report_type: kind, department_tables: false, report_scope: kind === "PROFIT_LOSS" ? filters.report_scope : "" }).filter(([, value]) => value !== ""));
+  const params = Object.fromEntries(Object.entries({ ...filters, ...(kind === "BALANCE_SHEET" ? { detail: !filters.kap } : {}), report_type: kind, department_tables: false, report_scope: kind === "PROFIT_LOSS" ? filters.report_scope : "" }).filter(([, value]) => value !== ""));
   const report = useQuery({ queryKey: ["financial-report-comparison", kind, filters], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params })).data });
   const units = useQuery({ queryKey: ["report-units"], queryFn: listBusinessUnits });
   const locations = useQuery({ queryKey: ["report-locations", draft.business_unit_id], queryFn: () => listLocations({ is_active: true, business_unit_id: Number(draft.business_unit_id) || undefined }), enabled: showFilters });
@@ -72,7 +71,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const columns = kind === "BALANCE_SHEET" ? [...metrics, "movement" as const] : [...metrics];
   const headings = kind === "BALANCE_SHEET" ? [...metricNames, "Movement"] : metricNames;
   const table = (sections: string[]) => <div className="overflow-x-auto rounded border bg-white"><table className="w-full text-xs whitespace-nowrap"><thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">Account</th>{headings.map((name, index) => <th title={data?.comparison_available?.[period][columns[index]] === false ? "Comparison data unavailable for this year and scope" : data?.periods[period][columns[index]]?.join(" to ")} key={name} className="px-2 py-1.5 text-right">{name}</th>)}</tr></thead><tbody>
-    {sections.map(section => <ReportSection key={section} section={section} rows={(view === "EXECUTIVE" ? data?.executive_rows ?? data?.rows : data?.rows)?.filter(row => row.section === section) ?? []} totals={totals(section)} period={period} ledgerLink={ledgerLink} columns={columns} />)}
+    {sections.map(section => <ReportSection key={section} section={section} rows={data?.rows?.filter(row => row.section === section) ?? []} totals={totals(section)} period={period} ledgerLink={ledgerLink} columns={columns} />)}
     {kind === "BALANCE_SHEET" && sections.includes("LIABILITIES") && <tr className="border-t-2 bg-slate-100 font-bold"><td className="px-2 py-2">Liabilitas + Ekuitas</td>{columns.map(metric => {
       const l = totals("LIABILITIES")?.[metric], e = totals("EQUITY")?.[metric];
       return <td key={metric} className="px-2 py-2 text-right tabular-nums">{money(l == null || e == null ? null : Number(l) + Number(e))}</td>;
@@ -101,11 +100,6 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     <div className="flex items-center gap-1 print:hidden">{(["MTD", "YTD"] as const).map(value => <Button key={value} size="sm" variant={period === value ? "primary" : "outline"} onClick={() => setPeriod(value)}>{value}</Button>)}</div>
     {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
       <div className="flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}</div>
-      {kind === "BALANCE_SHEET" && <div className="flex gap-1 print:hidden">
-        {(["DETAIL", "EXECUTIVE"] as const).map(value => <Button key={value} size="sm" variant={view === value ? "primary" : "outline"} onClick={() => setView(value)}>{value === "DETAIL" ? "Detail" : "Summary"}</Button>)}
-        <Button size="sm" variant="outline" onClick={() => setShowEquity(!showEquity)}>Equity detail</Button>
-      </div>}
-      {kind === "BALANCE_SHEET" && showEquity && data.summary?.[period]?.current?.earnings_reconciliation && <EquityEvidence evidence={data.summary[period].current.earnings_reconciliation} />}
       {kind === "BALANCE_SHEET" ? <div className="grid items-start gap-2 xl:grid-cols-2">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : <ProfitLossTable data={data} periods={[period]} asOf={filters.as_of_date} />}
       <div className="hidden print:block text-xs">{user?.full_name || user?.username} · {new Date().toLocaleString()}</div>
     </>}
@@ -117,8 +111,3 @@ function ReportSection({ section, rows, totals, period, ledgerLink, columns }: {
     {rows.map(row => <tr key={`${row.account_code}-${row.account_name}`} className="border-b hover:bg-blue-50/40"><td className="max-w-[22rem] truncate px-2 py-1" title={row.account_name}>{row.account_ids.length > 0 ? <Link className="text-blue-700 hover:underline" to={ledgerLink(row)}>{row.account_name}</Link> : <span>{row.account_name}</span>}</td>{columns.map(metric => <td key={metric} className={`px-2 py-1 text-right tabular-nums ${Number(row.periods[period][metric]) < 0 ? "text-red-600" : ""}`}>{money(row.periods[period][metric])}</td>)}</tr>)}</>;
 }
 
-function EquityEvidence({ evidence }: { evidence: EarningsEvidence }) {
-  return <Card className="p-2"><div className="mb-1 text-xs font-semibold">{evidence.account_name || "Laba/Rugi Tahun Berjalan (Belum Ditutup)"}</div>
-    <table className="w-full text-xs"><tbody>{[["Opening balance", evidence.opening_balance], ["Posted equity movement", evidence.posted_movement], ["Profit/loss awaiting closing", evidence.unclosed_profit_loss], ["Balance sheet amount", evidence.displayed_balance]].map(([label, value]) => <tr key={label} className="border-b"><td className="py-1">{label}</td><td className="text-right tabular-nums">{money(value)}</td></tr>)}</tbody></table>
-  </Card>;
-}
