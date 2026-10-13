@@ -9,10 +9,15 @@ interface PrintPreviewButtonProps {
   title: string;
   ariaLabel?: string;
   label?: string;
+  layouts?: { label: string; src: string; title: string }[];
 }
 
-export default function PrintPreviewButton({ src, title, ariaLabel = "Print preview", label }: PrintPreviewButtonProps) {
+export default function PrintPreviewButton({ src, title, ariaLabel = "Print preview", label, layouts }: PrintPreviewButtonProps) {
   const [open, setOpen] = useState(false);
+  const [layoutIndex, setLayoutIndex] = useState(0);
+  const selected = layouts?.[layoutIndex];
+  const previewSrc = selected?.src ?? src;
+  const previewTitle = selected?.title ?? title;
   const [frameLoaded, setFrameLoaded] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
 
@@ -39,14 +44,23 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-6xl">
           <DialogHeader>
-            <DialogTitle className="font-semibold">{title}</DialogTitle>
+            <div className="flex flex-wrap items-center gap-3">
+              <DialogTitle className="font-semibold">{previewTitle}</DialogTitle>
+              {layouts && layouts.length > 1 && <label className="flex items-center gap-2 text-xs">Layout
+                <select aria-label="Print layout" className="h-8 rounded border bg-white px-2" value={layoutIndex}
+                  disabled={printing} onChange={event => { setFrameLoaded(false); setLayoutIndex(Number(event.target.value)); }}>
+                  {layouts.map((layout, index) => <option key={layout.label} value={index}>{layout.label}</option>)}
+                </select>
+              </label>}
+            </div>
           </DialogHeader>
           <DialogBody className="bg-slate-100 p-3">
             <iframe
               ref={frameRef}
+              key={previewSrc}
               onLoad={() => setFrameLoaded(true)}
-              src={src}
-              title={title}
+              src={previewSrc}
+              title={previewTitle}
               className="h-[72vh] w-full rounded-lg border border-slate-200 bg-white"
             />
           </DialogBody>

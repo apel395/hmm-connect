@@ -49,7 +49,9 @@ assert.match(pnl, /MTD/); assert.match(pnl, /YTD/); assert.match(pnl, /Pekanbaru
 assert.match(pnl, /-50,00/); assert.match(pnl, /—/); assert.match(pnl, /&lt;script&gt;/); assert.doesNotMatch(pnl, /<script>/);
 assert.match(pnl, /table-header-group/); assert.match(pnl, /break-inside:avoid/);
 const balance = renderToStaticMarkup(createElement(FinancialStatementPrint, { kind: "BALANCE_SHEET", data, asOf: "2026-10-06" }));
-assert.match(balance, /statement-t/); assert.equal((balance.match(/<section class="comparison-page"/g) ?? []).length, 2);
+assert.match(balance, /statement-t/);
+assert.match(balance, /<tr class="grand-total paired-totals">[^]*?Total Aset[^]*?Total Liabilitas \+ Ekuitas[^]*?<\/tr>/);
+assert.equal((balance.match(/class="grand-total paired-totals"/g) ?? []).length, 1); assert.equal((balance.match(/<section class="comparison-page"/g) ?? []).length, 2);
 assert.match(balance, /-4\.025\.000,00/); assert.match(balance, /-25\.000,00/);
 assert.match(balance, /Saldo per 2026-10-06/); assert.doesNotMatch(balance, /<button/);
 const kap = renderToStaticMarkup(createElement(FinancialStatementPrint, { kind: "BALANCE_SHEET", data: { ...data, header_only: true }, asOf: "2026-10-06" }));
