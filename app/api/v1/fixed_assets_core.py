@@ -49,6 +49,8 @@ def update_category(category_id: int, data: CategoryInput, db: Session = Depends
     data=data.model_copy(update={"code":data.code.strip().upper(),"name":data.name.strip()})
     if db.query(FixedAssetCategory).filter(FixedAssetCategory.code==data.code,FixedAssetCategory.id!=category_id).first(): raise HTTPException(409,"Asset category code already exists")
     FixedAssetService(db).validate_accounts(data)
+    if (item.asset_account_id != data.asset_account_id or item.is_depreciable != data.is_depreciable) and db.query(FixedAsset.id).filter(FixedAsset.asset_category_id == item.id).first():
+        raise HTTPException(409,"Category is in use; create a new category for another asset account or depreciation policy")
     for key, value in data.model_dump().items(): setattr(item, key, value)
     db.commit(); db.refresh(item)
     return item
@@ -107,7 +109,7 @@ def create_run(data: RunInput, db: Session = Depends(get_db), user=Depends(get_c
 
 
 def get_run(run_id: int, db: Session, user=None):
-    run = db.get(FixedAssetDepreciationRun, run_id)
+    run = db.query(FixedAssetDepreciationRun).filter(FixedAssetDepreciationRun.id == run_id).with_for_update().one_or_none()
     if not run: raise HTTPException(404, "Depreciation run not found")
     if user is not None:
         scope=resolve_organization_access(db,user,location_id=run.location_id,business_unit_id=run.business_unit_id)
@@ -125,8 +127,14 @@ def post_run(run_id: int, db: Session = Depends(get_db), user=Depends(get_curren
     access(user); run = get_run(run_id, db, user); DepreciationRunService(db).post(run, user); db.commit(); db.refresh(run); return run
 
 
-def scoped_asset(service, asset_id, user):
-    asset=service.get(asset_id)
+@router.post("/depreciation-runs/{run_id}/unpost")
+def unpost_run(run_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user); run = get_run(run_id,db,user)
+    DepreciationRunService(db).unpost(run,user); db.commit(); db.refresh(run); return run
+
+
+def scoped_asset(service, asset_id, user, lock=False):
+    asset=service.get(asset_id,lock=lock)
     scope = resolve_organization_access(service.db,user,location_id=asset.location_id,business_unit_id=asset.business_unit_id,department_id=asset.department_id)
     if asset.status == "PENDING_REGISTRATION" and asset.business_unit_id is None and any(value is not None for value in scope.values()):
         raise HTTPException(403, "Unassigned asset registration requires global finance access")
@@ -140,7 +148,7 @@ def detail(asset_id: int, db: Session = Depends(get_db), user=Depends(get_curren
 
 @router.patch("/{asset_id}")
 def update(asset_id: int, data: AssetUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); service = FixedAssetService(db); item = scoped_asset(service,asset_id,user)
+    access(user); service = FixedAssetService(db); item = scoped_asset(service,asset_id,user,lock=True)
     if item.status != "DRAFT": raise HTTPException(409, "Only draft assets can be edited")
     values = data.model_dump(exclude_unset=True)
     if "product_id" in values:
@@ -152,14 +160,14 @@ def update(asset_id: int, data: AssetUpdate, db: Session = Depends(get_db), user
     from app.services.organization_dimensions import validate_dimensions
     validate_dimensions(db, values.get("business_unit_id", item.business_unit_id), values.get("location_id", item.location_id), values.get("department_id", item.department_id), required=True)
     for key, value in values.items(): setattr(item, key, value)
-    db.commit(); return service.serialize(scoped_asset(service,asset_id,user))
+    db.commit(); return service.serialize(scoped_asset(service,asset_id,user,lock=True))
 
 
 @router.post("/{asset_id}/complete-registration")
 def complete_registration(asset_id: int, data: AssetInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
     service = FixedAssetService(db)
-    asset = scoped_asset(service, asset_id, user)
+    asset = scoped_asset(service, asset_id, user, lock=True)
     values = resolve_organization_access(db, user, location_id=data.location_id, business_unit_id=data.business_unit_id, department_id=data.department_id)
     asset = service.complete_registration(asset, data.model_copy(update=values), user)
     db.commit()
@@ -170,34 +178,34 @@ def complete_registration(asset_id: int, data: AssetInput, db: Session = Depends
 def assign_category(asset_id: int, data: CategoryAssignmentInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
     service = FixedAssetService(db)
-    asset = service.assign_category(scoped_asset(service,asset_id,user), data.asset_category_id)
+    asset = service.assign_category(scoped_asset(service,asset_id,user,lock=True), data.asset_category_id)
     db.commit()
     return service.serialize(service.get(asset.id))
 
 
 @router.post("/{asset_id}/capitalize")
 def capitalize(asset_id: int, data: CapitalizeInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); service = FixedAssetService(db); item = service.capitalize(scoped_asset(service,asset_id,user), data, user); db.commit(); return service.serialize(service.get(item.id))
+    access(user); service = FixedAssetService(db); item = service.capitalize(scoped_asset(service,asset_id,user,lock=True), data, user); db.commit(); return service.serialize(service.get(item.id))
 
 
 @router.post("/{asset_id}/generate-schedule")
 def generate_schedule(asset_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); service = FixedAssetService(db); item = scoped_asset(service,asset_id,user); rows = service.generate_schedule(item); db.commit(); return {"asset_id": item.id, "periods": len(rows)}
+    access(user); service = FixedAssetService(db); item = scoped_asset(service,asset_id,user,lock=True); rows = service.generate_schedule(item); db.commit(); return {"asset_id": item.id, "periods": len(rows)}
 
 
 @router.post("/{asset_id}/transfer")
 def transfer(asset_id: int, data: TransferInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); resolve_organization_access(db,user,location_id=data.location_id,business_unit_id=data.business_unit_id,department_id=data.department_id); service = FixedAssetService(db); item = service.transfer(scoped_asset(service,asset_id,user), data, user); db.commit(); return service.serialize(service.get(item.id))
+    access(user); resolve_organization_access(db,user,location_id=data.location_id,business_unit_id=data.business_unit_id,department_id=data.department_id); service = FixedAssetService(db); item = service.transfer(scoped_asset(service,asset_id,user,lock=True), data, user); db.commit(); return service.serialize(service.get(item.id))
 
 
 @router.post("/{asset_id}/dispose")
 def dispose(asset_id: int, data: DisposalInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); service = FixedAssetService(db); result = service.dispose(scoped_asset(service,asset_id,user), data, user); db.commit(); return {"asset": service.serialize(scoped_asset(service,asset_id,user)), "journal_entry_id": result["journal"].id, "gain_loss": result["gain_loss"]}
+    access(user); service = FixedAssetService(db); result = service.dispose(scoped_asset(service,asset_id,user,lock=True), data, user); db.commit(); return {"asset": service.serialize(scoped_asset(service,asset_id,user,lock=True)), "journal_entry_id": result["journal"].id, "gain_loss": result["gain_loss"]}
 
 
 @router.post("/{asset_id}/write-off")
 def write_off(asset_id: int, data: WriteOffInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); service = FixedAssetService(db); result = service.dispose(scoped_asset(service,asset_id,user), data, user, True); db.commit(); return {"asset": service.serialize(scoped_asset(service,asset_id,user)), "journal_entry_id": result["journal"].id}
+    access(user); service = FixedAssetService(db); result = service.dispose(scoped_asset(service,asset_id,user,lock=True), data, user, True); db.commit(); return {"asset": service.serialize(scoped_asset(service,asset_id,user,lock=True)), "journal_entry_id": result["journal"].id}
 
 
 def scoped_asset_query(db, user, query):
@@ -214,7 +222,7 @@ def asset_report(db: Session, user):
 
 @reports_router.get("/fixed-assets")
 def fixed_asset_report(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); items = asset_report(db,user); return {"items": items, "totals": {"acquisition_cost": sum((item["acquisition_cost"] for item in items), ZERO), "accumulated_depreciation": sum((item["accumulated_depreciation"] for item in items), ZERO), "net_book_value": sum((item["net_book_value"] for item in items), ZERO)}}
+    access(user); items = asset_report(db,user); return {"items": items, "totals": {"acquisition_cost": sum((item["acquisition_cost"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO), "accumulated_depreciation": sum((item["accumulated_depreciation"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO), "net_book_value": sum((item["net_book_value"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO)}}
 
 
 @reports_router.get("/depreciation")
