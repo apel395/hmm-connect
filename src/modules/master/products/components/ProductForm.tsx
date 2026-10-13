@@ -233,6 +233,10 @@ export default function ProductForm({ catalogType = "CATERING", open, product, g
       group_name: group?.name ?? "",
       subgroup_code: "",
       subgroup_name: "",
+      ...(form.item_type === "BUY" && group?.name.toUpperCase() === "ASSET" ? {
+        inventory_treatment: "FIXED_ASSET" as InventoryTreatment,
+        inventory_account_id: null, purchase_account_id: null, cogs_account_id: null,
+      } : {}),
     }));
   };
 
