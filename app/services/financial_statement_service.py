@@ -2,6 +2,8 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
+from app.models.accounting_setting import AccountingSetting
+from app.models.chart_of_account import ChartOfAccount
 
 from app.services.trial_balance_service import TrialBalanceService, ZERO
 
@@ -84,10 +86,9 @@ class FinancialStatementService:
 
         Reflects a running, carried-forward balance: each balance-sheet account shows its
         current balance as of `as_of_date` (which includes balances carried from prior periods).
-        Retained-earnings accounts are folded into a synthetic carried line, and current-year
-        earnings are reported separately, mirroring the Neraca convention that splits
-        carried retained earnings (Laba Ditahan) from current-year retained earnings
-        (Laba Ditahan Tahun Berjalan).
+        Actual equity accounts retain their identifiers. Residual current-year
+        earnings are displayed with the configured closing equity account and
+        traced separately from saved opening balances and posted movements.
         """
         if fiscal_year is not None:
             as_of_date = as_of_date or date(fiscal_year, 12, 31)
@@ -118,33 +119,40 @@ class FinancialStatementService:
                 unclassified += 1
             groups[group].append({**row, "opening_amount": opening, "closing_amount": closing})
 
-        def is_retained(row: dict) -> bool:
-            name = (row.get("account_name") or "").lower()
-            code = (row.get("account_code") or "").strip()
-            return code.startswith("3200") or "laba ditahan" in name or "retained earnings" in name
-
-        retained_rows = [row for row in groups["EQUITY"] if is_retained(row)]
-        retained_opening = sum((row["opening_amount"] for row in retained_rows), ZERO)
-        retained_closing = sum((row["closing_amount"] for row in retained_rows), ZERO)
-        if retained_rows:
-            groups["EQUITY"] = [row for row in groups["EQUITY"] if not is_retained(row)]
-            groups["EQUITY"].append({
-                "account_id": None, "account_code": "", "account_name": "Laba Ditahan (Retained Earnings)",
-                "account_type": "EQUITY", "parent_account_id": None,
-                "financial_statement_group": "RETAINED_EARNINGS",
-                "opening_amount": retained_opening, "closing_amount": retained_closing,
-                "is_synthetic": True,
-            })
-
         current_earnings = self.earnings(as_of_date, **filters)
         opening_earnings = ZERO
-        groups["EQUITY"].append({
-            "account_id": None, "account_code": "", "account_name": "Laba Ditahan Tahun Berjalan (Current Year Retained Earnings)",
-            "account_type": "EQUITY", "parent_account_id": None,
-            "financial_statement_group": "CURRENT_PERIOD_EARNINGS",
-            "opening_amount": opening_earnings, "closing_amount": current_earnings,
-            "is_synthetic": True,
-        })
+        setting = self.db.query(AccountingSetting).filter_by(setting_key="CURRENT_YEAR_EARNINGS_ACCOUNT").first()
+        earnings_account = self.db.get(ChartOfAccount, setting.account_id) if setting and setting.account_id else None
+        if not earnings_account or earnings_account.account_type != "EQUITY" or not earnings_account.is_posting or earnings_account.normal_balance != "CREDIT":
+            earnings_account = None
+        equity_rows = groups["EQUITY"] + groups["UNCLASSIFIED_EQUITY"]
+        target = next((row for row in equity_rows if earnings_account and row["account_id"] == earnings_account.id), None)
+        # Only aggregate for presentation. Saved opening and journal evidence
+        # remain separate; closing entries already included in the ledger reduce
+        # the residual P&L, so they must never be counted a second time.
+        if target is None and earnings_account and not account_id and not parent_account_id:
+            target = {"account_id": earnings_account.id, "account_code": earnings_account.account_number,
+                      "account_name": earnings_account.account_name, "account_type": "EQUITY",
+                      "parent_account_id": earnings_account.parent_account_id,
+                      "financial_statement_group": "EQUITY", "opening_amount": ZERO, "closing_amount": ZERO}
+            if current_earnings != ZERO or include_zero_balance: groups["EQUITY"].append(target)
+        equity_evidence = {"account_id": target["account_id"] if target else None,
+                           "account_name": target["account_name"] if target else None,
+                           "opening_balance": target["opening_amount"] if target else ZERO,
+                           "posted_movement": target["closing_amount"] - target["opening_amount"] if target else ZERO,
+                           "unclosed_profit_loss": current_earnings}
+        if target is not None:
+            target["closing_amount"] += current_earnings
+            target["includes_unclosed_earnings"] = True
+        elif current_earnings != ZERO or include_zero_balance:
+            groups["EQUITY"].append({
+                "account_id": None, "account_code": "", "account_name": "Laba/Rugi Tahun Berjalan (Belum Ditutup)",
+                "account_type": "EQUITY", "parent_account_id": None,
+                "financial_statement_group": "CURRENT_PERIOD_EARNINGS",
+                "opening_amount": ZERO, "closing_amount": current_earnings,
+                "is_synthetic": True, "includes_unclosed_earnings": True,
+            })
+        equity_evidence["displayed_balance"] = equity_evidence["opening_balance"] + equity_evidence["posted_movement"] + current_earnings
         section_specs = [("ASSETS", "Assets", "ASSET"), ("LIABILITIES", "Liabilities", "LIABILITY"), ("EQUITY", "Equity", "EQUITY")]
         sections = []
         for section_code, section_label, account_type in section_specs:
@@ -179,6 +187,7 @@ class FinancialStatementService:
                 "opening_is_balanced": opening_difference == ZERO,
                 "total_assets": totals["ASSETS"], "total_liabilities": totals["LIABILITIES"], "total_equity": totals["EQUITY"],
                 "current_period_earnings": current_earnings, "total_liabilities_and_equity": liabilities_equity,
+                "earnings_reconciliation": equity_evidence,
                 "difference": difference, "is_balanced": difference == ZERO, "unclassified_account_count": unclassified,
             },
             "metadata": {"canonical_source": "OPENING_BALANCES_AND_POSTED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "PERIOD_CLOSE_AND_YEAR_END", "earnings_reconciled": True, "is_yearly": True, "year_start": year_start, "year_end": year_end},
