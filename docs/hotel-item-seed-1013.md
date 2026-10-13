@@ -49,3 +49,37 @@ The script adds the repository root to its import path automatically.
 so it does not by itself move FOOD ingredients into BEVERAGE. Explicit syrup
 is proposed under BEVERAGE / SYRUP. GROCERIES also recognizes the existing
 legacy spelling GRESORIS without creating another subgroup.
+
+## Classified first batch
+
+`seed_hotel_items.py` consumes the original local `.xls` workbook and pins the
+reviewed source checksum. Dry run is the default; `--apply` inserts the eligible
+subset in one transaction with source-row audit records. It never creates a
+new group/subgroup, updates an existing Hotel item or reuses a Catering item.
+
+The first batch covers STOCK food ingredients and packaged beverages with a
+complete existing subgroup, valid unit and a unique active posting inventory
+COA: FOOD `100-300-100`, BEVERAGE `100-300-500`. Other treatments remain in the
+review report. Duplicate source names, invalid units, incomplete categories
+and invalid purchase references defer. This is a partial seed, not completion
+of the full catalogue. Actual equipment and direct-use classifications require
+further source review and operational decisions.
+
+Codes use the existing shared Item Master generator and transaction lock.
+Purchase becomes an editable reference cost; the old Expense column is stored
+only in audit evidence, so its negative values do not block a valid master.
+Tax stays REVIEW_REQUIRED. No mandatory COGS/contra mapping is added.
+The script inserts only products and audit records: no inventory, movements,
+fixed asset register, receipts, invoices, journal, GL, tax transaction or opening.
+
+```bash
+.venv/bin/python scripts/seed_hotel_items.py --source scripts/invlistofgoods.xls \
+  --output /tmp/hotel-item-seed-dry-run.json
+.venv/bin/python scripts/seed_hotel_items.py --source scripts/invlistofgoods.xls \
+  --apply --output /tmp/hotel-item-seed-applied.json
+```
+
+An exact existing HOTEL/BUY name is skipped on every run, including after a
+previous successful seed; existing values are preserved. An optional
+`--actor-id` attributes audit records to that operator. All inserts roll back
+if creating a product, auditing, writing the report or committing fails.
