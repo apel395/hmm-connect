@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { loadReportPreferences, saveReportPreferences } from "./reportState";
 import { useQuery } from "@tanstack/react-query";
 import { Download, ListFilter, RefreshCw, Settings2 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -17,8 +18,9 @@ import useAuthStore from "@/store/auth";
 export type Kind = "PROFIT_LOSS" | "BALANCE_SHEET";
 export type Period = "MTD" | "YTD";
 export type Amounts = { current: string; budget: string | null; last_month: string | null; last_year: string | null; variance: string | null; movement?: string };
-export type Row = { account_code: string; account_name: string; account_ids: number[]; section: string; periods: Record<Period, Amounts> };
-export type Report = { related_accounts?: RelatedAccount[]; presentation_rows?: PresentationRow[]; report_scope?: string; balance_control?: {difference: string; is_balanced: boolean}; department_reports?: DepartmentStatement[]; departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
+export type Row = { account_code: string; account_name: string; account_ids: number[]; section: string; includes_unclosed_earnings?: boolean; periods: Record<Period, Amounts> };
+export type EarningsEvidence = { account_id: number | null; account_name: string | null; opening_balance: string; posted_movement: string; unclosed_profit_loss: string; displayed_balance: string };
+export type Report = { executive_rows?: Row[]; summary?: Record<Period, Record<string, { earnings_reconciliation?: EarningsEvidence }>>; related_accounts?: RelatedAccount[]; presentation_rows?: PresentationRow[]; report_scope?: string; balance_control?: {difference: string; is_balanced: boolean}; department_reports?: DepartmentStatement[]; departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
 const money = (value: string | number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { maximumFractionDigits: 2 });
 const input = "h-8 rounded border border-slate-300 bg-white px-2 text-xs";
 const labels: Record<string, string> = { REVENUE: "Pendapatan", COST_OF_REVENUE: "HPP", GOI: "GOI", GOP: "GOP / GOL", NOP: "NOP", EXPENSES: "Beban", ASSETS: "Aset", LIABILITIES: "Liabilitas", EQUITY: "Ekuitas" };
@@ -29,15 +31,15 @@ const initial = { as_of_date: new Date().toLocaleDateString("en-CA"), business_u
 export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const user = useAuthStore(state => state.user);
   const canManage = useAuthStore(state => state.hasPermission("finance.manage"));
-  const initialFilters = () => {
-    const query = new URLSearchParams(window.location.search);
-    return { ...initial, as_of_date: query.get("as_of_date") || initial.as_of_date,
-      report_scope: query.get("report_scope") || "CONSOLIDATED", location_id: query.get("location_id") || "", business_unit_id: query.get("business_unit_id") || "", department_id: query.get("department_id") || "" };
-  };
-  const [draft, setDraft] = useState(initialFilters);
-  const [filters, setFilters] = useState(initialFilters);
+  const owner = String(user?.id ?? "anonymous");
+  const [saved] = useState(() => loadReportPreferences(owner, kind, window.location.search, initial));
+  const [draft, setDraft] = useState(saved.filters);
+  const [filters, setFilters] = useState(saved.filters);
   const [showFilters, setShowFilters] = useState(false);
-  const [period, setPeriod] = useState<Period>("MTD");
+  const [period, setPeriod] = useState<Period>(saved.period);
+  const [view, setView] = useState<"DETAIL" | "EXECUTIVE">(saved.view);
+  const [showEquity, setShowEquity] = useState(false);
+  useEffect(() => saveReportPreferences(owner, kind, { filters, period, view }), [owner, kind, filters, period, view]);
   const params = Object.fromEntries(Object.entries({ ...filters, report_type: kind, department_tables: false, report_scope: kind === "PROFIT_LOSS" ? filters.report_scope : "" }).filter(([, value]) => value !== ""));
   const report = useQuery({ queryKey: ["financial-report-comparison", kind, filters], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params })).data });
   const units = useQuery({ queryKey: ["report-units"], queryFn: listBusinessUnits });
@@ -56,11 +58,6 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     } catch { toast.error("Export could not be completed"); }
   };
   const ledgerLink = (row: Row) => {
-    if (!row.account_ids.length) {
-      const query = new URLSearchParams({ as_of_date: filters.as_of_date });
-      for (const name of ["location_id", "business_unit_id", "department_id"] as const) if (data?.scope[name]) query.set(name, String(data.scope[name]));
-      return `/profit-loss?${query}`;
-    }
     const query = new URLSearchParams({ date_from: `${filters.as_of_date.slice(0, 4)}-${period === "YTD" ? "01" : filters.as_of_date.slice(5, 7)}-01`, date_to: filters.as_of_date });
     if (row.account_ids.length === 1) query.set("account_id", String(row.account_ids[0]));
     else query.set("account_ids", row.account_ids.join(","));
@@ -75,7 +72,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const columns = kind === "BALANCE_SHEET" ? [...metrics, "movement" as const] : [...metrics];
   const headings = kind === "BALANCE_SHEET" ? [...metricNames, "Movement"] : metricNames;
   const table = (sections: string[]) => <div className="overflow-x-auto rounded border bg-white"><table className="w-full text-xs whitespace-nowrap"><thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">Account</th>{headings.map((name, index) => <th title={data?.comparison_available?.[period][columns[index]] === false ? "Comparison data unavailable for this year and scope" : data?.periods[period][columns[index]]?.join(" to ")} key={name} className="px-2 py-1.5 text-right">{name}</th>)}</tr></thead><tbody>
-    {sections.map(section => <ReportSection key={section} section={section} rows={data?.rows.filter(row => row.section === section) ?? []} totals={totals(section)} period={period} ledgerLink={ledgerLink} columns={columns} />)}
+    {sections.map(section => <ReportSection key={section} section={section} rows={(view === "EXECUTIVE" ? data?.executive_rows ?? data?.rows : data?.rows)?.filter(row => row.section === section) ?? []} totals={totals(section)} period={period} ledgerLink={ledgerLink} columns={columns} />)}
     {kind === "BALANCE_SHEET" && sections.includes("LIABILITIES") && <tr className="border-t-2 bg-slate-100 font-bold"><td className="px-2 py-2">Liabilitas + Ekuitas</td>{columns.map(metric => {
       const l = totals("LIABILITIES")?.[metric], e = totals("EQUITY")?.[metric];
       return <td key={metric} className="px-2 py-2 text-right tabular-nums">{money(l == null || e == null ? null : Number(l) + Number(e))}</td>;
@@ -104,6 +101,11 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     <div className="flex items-center gap-1 print:hidden">{(["MTD", "YTD"] as const).map(value => <Button key={value} size="sm" variant={period === value ? "primary" : "outline"} onClick={() => setPeriod(value)}>{value}</Button>)}</div>
     {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
       <div className="flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}</div>
+      {kind === "BALANCE_SHEET" && <div className="flex gap-1 print:hidden">
+        {(["DETAIL", "EXECUTIVE"] as const).map(value => <Button key={value} size="sm" variant={view === value ? "primary" : "outline"} onClick={() => setView(value)}>{value === "DETAIL" ? "Detail" : "Executive view"}</Button>)}
+        <Button size="sm" variant="outline" onClick={() => setShowEquity(!showEquity)}>Equity detail</Button>
+      </div>}
+      {kind === "BALANCE_SHEET" && showEquity && data.summary?.[period]?.current?.earnings_reconciliation && <EquityEvidence evidence={data.summary[period].current.earnings_reconciliation} />}
       {kind === "BALANCE_SHEET" ? <div className="grid items-start gap-2 xl:grid-cols-2">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : <ProfitLossTable data={data} periods={[period]} asOf={filters.as_of_date} />}
       <div className="hidden print:block text-xs">{user?.full_name || user?.username} · {new Date().toLocaleString()}</div>
     </>}
@@ -112,5 +114,11 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
 
 function ReportSection({ section, rows, totals, period, ledgerLink, columns }: { section: string; rows: Row[]; totals?: Amounts; period: Period; ledgerLink: (row: Row) => string; columns: (keyof Amounts)[] }) {
   return <><tr className="border-y bg-slate-50 font-semibold"><td className="px-2 py-1.5">{labels[section]}</td>{columns.map(metric => <td key={metric} className="px-2 py-1.5 text-right tabular-nums">{money(totals?.[metric])}</td>)}</tr>
-    {rows.map(row => <tr key={`${row.account_code}-${row.account_name}`} className="border-b hover:bg-blue-50/40"><td className="max-w-[22rem] truncate px-2 py-1" title={row.account_name}>{row.account_code || !row.account_ids.length ? <Link className="text-blue-700 hover:underline" to={ledgerLink(row)}>{row.account_name}</Link> : <span>{row.account_name}</span>}</td>{columns.map(metric => <td key={metric} className={`px-2 py-1 text-right tabular-nums ${Number(row.periods[period][metric]) < 0 ? "text-red-600" : ""}`}>{money(row.periods[period][metric])}</td>)}</tr>)}</>;
+    {rows.map(row => <tr key={`${row.account_code}-${row.account_name}`} className="border-b hover:bg-blue-50/40"><td className="max-w-[22rem] truncate px-2 py-1" title={row.account_name}>{row.account_ids.length > 0 ? <Link className="text-blue-700 hover:underline" to={ledgerLink(row)}>{row.account_name}</Link> : <span>{row.account_name}</span>}</td>{columns.map(metric => <td key={metric} className={`px-2 py-1 text-right tabular-nums ${Number(row.periods[period][metric]) < 0 ? "text-red-600" : ""}`}>{money(row.periods[period][metric])}</td>)}</tr>)}</>;
+}
+
+function EquityEvidence({ evidence }: { evidence: EarningsEvidence }) {
+  return <Card className="p-2"><div className="mb-1 text-xs font-semibold">{evidence.account_name || "Laba/Rugi Tahun Berjalan (Belum Ditutup)"}</div>
+    <table className="w-full text-xs"><tbody>{[["Opening balance", evidence.opening_balance], ["Posted equity movement", evidence.posted_movement], ["Profit/loss awaiting closing", evidence.unclosed_profit_loss], ["Balance sheet amount", evidence.displayed_balance]].map(([label, value]) => <tr key={label} className="border-b"><td className="py-1">{label}</td><td className="text-right tabular-nums">{money(value)}</td></tr>)}</tbody></table>
+  </Card>;
 }
