@@ -125,3 +125,25 @@ def test_exact_summary_order_and_drilldown_includes_zero_accounts(records):
     assert row['periods']['MTD']['current']==0
     assert zero.id in next(r for r in report['presentation_rows'] if r['key']=='OPERATING_EXPENSE')['account_ids']
     assert zero.id in next(r for r in report['presentation_rows'] if r['key']=='NOP')['account_ids']
+
+
+def test_excel_export_ignores_hidden_accounts_and_includes_zero_department_accounts(records):
+    from app.models.financial_report_setting import FinancialReportSetting
+    from app.api.v1.financial_reports import export_comparison
+    from types import SimpleNamespace
+    import asyncio
+    from io import BytesIO
+    from openpyxl import load_workbook
+    db,h,*_=records
+    zero=ChartOfAccount(account_number='700-ZERO',account_name='Unused department expense',account_type='EXPENSE',normal_balance='DEBIT',is_posting=True,financial_statement_group='OPERATING_EXPENSE')
+    db.add(zero);db.add(FinancialReportSetting(report_type='PROFIT_LOSS',selected_account_ids=[],header_only=True));db.commit()
+    admin=SimpleNamespace(id=1,roles=[SimpleNamespace(name='SYSTEM_ADMINISTRATOR',permissions=[])])
+    response=export_comparison(report_type='PROFIT_LOSS',as_of_date=date(2026,10,10),report_scope='HOTEL',include_zero=False,kap=True,db=db,user=admin)
+    async def collect():return b''.join([chunk async for chunk in response.body_iterator])
+    workbook=load_workbook(BytesIO(asyncio.run(collect())))
+    rows=list(workbook[workbook.sheetnames[1]].values)
+    assert any(row[0]=='Unused department expense' and row[1]==0 and row[6]==0 for row in rows)
+    assert any(row[0]=='Cost' and row[1]==100 for row in rows)
+    assert any(row[0]=='Salary' and row[1]==50 for row in rows)
+    assert any(row[0]=='Revenue' and row[1]==1000 for row in rows)
+    assert workbook.sheetnames[0]=='Summary'

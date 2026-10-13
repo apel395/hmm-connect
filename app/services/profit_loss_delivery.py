@@ -100,7 +100,7 @@ def unit_kind(unit):
 
 
 def deliver(service, *, as_of_date, report_scope='CONSOLIDATED', location_id=None,
-            business_unit_id=None, department_id=None, budget_id=None, kap=False, include_zero=False, detail=False, include_breakdown=True):
+            business_unit_id=None, department_id=None, budget_id=None, kap=False, include_zero=False, detail=False, include_breakdown=True, all_accounts=False):
     if report_scope not in ("HOTEL", "CATERING", "CONSOLIDATED"):
         raise HTTPException(422, "Choose Hotel, Catering or Consolidated")
     units = service.db.query(BusinessUnit).all()
@@ -116,7 +116,7 @@ def deliver(service, *, as_of_date, report_scope='CONSOLIDATED', location_id=Non
         business_unit_id = candidates[0].id
     options = dict(report_type='PROFIT_LOSS', as_of_date=as_of_date, location_id=location_id,
                    business_unit_id=business_unit_id, department_id=department_id,
-                   budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
+                   budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail, all_accounts=all_accounts)
     report = service.build(**options)
     report['report_scope'] = report_scope
     report['unit_reports'], report['group_reports'] = [], []
@@ -133,7 +133,7 @@ def deliver(service, *, as_of_date, report_scope='CONSOLIDATED', location_id=Non
         child['report_scope'] = unit_kind(unit)
         report['unit_reports'].append(child)
         if unit_kind(unit) == 'HOTEL':
-            for department in service.department_reports(child, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail):
+            for department in service.department_reports(child, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail, all_accounts=all_accounts):
                 report['group_reports'].append({**department, 'title': f"{unit.name} · {department['department_name']}", 'scope': {**child['scope'], 'department_id': department['department_id'] or 0}})
         else:
             query = service.db.query(Location).filter(Location.business_unit_id == unit.id)
@@ -159,10 +159,15 @@ def deliver(service, *, as_of_date, report_scope='CONSOLIDATED', location_id=Non
 
 def workbook_sheets(report):
     columns = ['Name', *[f'{p} {m.replace("_", " ").title()}' for p in ('MTD', 'YTD') for m in METRICS]]
-    def rows(statement, title):
+    def rows(statement, title, full=False):
         result = [[title, str(report['as_of_date'])], columns]
         for row in statement['presentation_rows']:
+            if row['kind'] == 'detail': continue
             result.append([row['label'], *[row['periods'][p][m] for p in ('MTD', 'YTD') for m in METRICS]])
+            if full and row['kind'] == 'category' and row['key'] != 'BEBAN':
+                for account in statement.get('related_accounts',[]):
+                    if account['category'] == row['key']:
+                        result.append([account['account_name'],*[account['periods'][p][m] for p in ('MTD','YTD') for m in METRICS]])
         return result
     summary = rows(report, f"Profit & Loss · {report['report_scope']}")
     summary += [[], ['Balance control', report['balance_control']['difference']], [], ['Unit summary']]
@@ -183,5 +188,5 @@ def workbook_sheets(report):
             suffix = f' ({count})'
             name = base[:31-len(suffix)] + suffix
         used.add(name.casefold())
-        sheets.append((name, rows(group, group['title'])))
+        sheets.append((name, rows(group, group['title'],full=True)))
     return sheets

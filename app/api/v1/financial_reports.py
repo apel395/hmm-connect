@@ -124,7 +124,7 @@ def comparison(report_type: str = Query(pattern=TYPES), as_of_date: date = Query
         return serialize(report)
     report = service.build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
-        budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
+        budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail, all_accounts=report_type == "BALANCE_SHEET" and not kap)
     if report_type == "PROFIT_LOSS" and not department_tables:
         from app.services.management_dashboard import activity_rows, departments
         report["departments"] = departments(db, activity_rows(db, as_of_date, report["scope"]), as_of_date.month, report["scope"])
@@ -147,8 +147,8 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
     if report_type == "PROFIT_LOSS" and report_scope is not None:
         report = deliver(service, as_of_date=as_of_date, report_scope=report_scope, location_id=scope,
                          business_unit_id=business_unit_id, department_id=department_id, budget_id=budget_id,
-                         kap=False, include_zero=include_zero, detail=True)
-        output = BytesIO(build_xlsx(workbook_sheets(report)))
+                         kap=False, include_zero=True, detail=True, all_accounts=True)
+        output = BytesIO(build_xlsx(workbook_sheets(report),first_column_width=48))
         return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="profit_loss-{report_scope.lower()}-{as_of_date}.xlsx"'})
     report = service.build(report_type=report_type, as_of_date=as_of_date,
