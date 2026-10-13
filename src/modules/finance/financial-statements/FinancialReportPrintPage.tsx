@@ -28,9 +28,9 @@ const css = `
 .statement-print th { border-bottom:1px solid #222; }.statement-print thead { display:table-header-group; }.statement-print tr { break-inside:avoid; page-break-inside:avoid; }
 .statement-print .amount { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }.statement-print .account { text-align:left; overflow-wrap:anywhere; min-width:45mm; }
 .statement-print .group { font-weight:bold; border-top:1px solid #222; background:#f3f3f3; }.statement-print .total { font-weight:bold; border-top:1px solid #222; }.statement-print .grand-total { font-weight:bold; border-top:2px solid #222; border-bottom:3px double #222; }
-.statement-t { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:7mm; }.statement-t > table { align-self:start; }.statement-print .comparison-page { break-before:page; page-break-before:always; margin-top:10mm; }
+.statement-t { table-layout:fixed; }.statement-t .gutter { border:0; padding:0; }.statement-t .paired-totals td:not(.gutter) { white-space:nowrap; }.statement-print .comparison-page { break-before:page; page-break-before:always; margin-top:10mm; }
 .statement-print .print-meta { font-size:8pt; margin-top:4mm; }.statement-print .period-range { font-size:7pt; font-weight:normal; display:block; white-space:nowrap; }
-.statement-summary { display:flex; justify-content:space-between; gap:5mm; border-bottom:1px solid #aaa; padding:2mm 0; margin-bottom:3mm; font-size:8pt; }.statement-summary b { display:block; font-variant-numeric:tabular-nums; }
+.statement-summary { display:flex; justify-content:space-between; gap:5mm; border-bottom:1px solid #aaa; padding:2mm 0; margin-bottom:3mm; font-size:8pt; }.statement-summary > div { white-space:nowrap; }.statement-summary b { margin-left:2mm; font-variant-numeric:tabular-nums; }
 @media print { html,body,#root { background:white!important; margin:0!important; padding:0!important; overflow:visible!important; height:auto!important; }.statement-print { padding:0; }.statement-print .comparison-page { margin-top:0; } }
 `;
 
@@ -48,6 +48,23 @@ function SectionRows({ data, sections, periods, columns }: { data: Report; secti
   </Fragment>)}</>;
 }
 
+function BalancePositionTable({ data, asOf }: { data: Report; asOf: string }) {
+  type Line = { name: string; value?: string | number | null; style?: string };
+  const side = (sections: string[]): Line[] => sections.flatMap(section => [
+    { name: labels[section], style: "group" },
+    ...data.rows.filter(row => row.section === section).map(row => ({ name: row.account_name, value: row.periods.YTD.current })),
+    ...(section === "ASSETS" ? [] : [{ name: `Total ${labels[section]}`, value: data.section_totals[section]?.YTD.current, style: "total" }]),
+  ]);
+  const assets = side(["ASSETS"]), financing = side(["LIABILITIES", "EQUITY"]);
+  const cells = (line?: Line) => <><td className={`account ${line?.style ?? ""}`}>{line?.name ?? ""}</td><td className={`amount ${line?.style ?? ""}`}>{line?.value == null ? "" : money(line.value)}</td></>;
+  return <table className="statement-t"><colgroup><col style={{width:"31%"}}/><col style={{width:"17%"}}/><col style={{width:"4%"}}/><col style={{width:"31%"}}/><col style={{width:"17%"}}/></colgroup>
+    <thead><tr><th className="account">Akun</th><th className="amount">Saldo per {asOf}</th><th className="gutter"/><th className="account">Akun</th><th className="amount">Saldo per {asOf}</th></tr></thead>
+    <tbody>{Array.from({length:Math.max(assets.length,financing.length)}, (_, index) => <tr key={index}>{cells(assets[index])}<td className="gutter"/>{cells(financing[index])}</tr>)}
+      <tr className="grand-total paired-totals"><td>Total Aset</td><td className="amount">{money(sum(data,["ASSETS"],"YTD","current"))}</td><td className="gutter"/><td>Total Liabilitas + Ekuitas</td><td className="amount">{money(sum(data,["LIABILITIES","EQUITY"],"YTD","current"))}</td></tr>
+    </tbody>
+  </table>;
+}
+
 export function FinancialStatementPrint({ kind, data, asOf, printedBy }: { kind: Kind; data: Report; asOf: string; printedBy?: string }) {
   const comparisons = [...metrics, "movement" as const];
   const metadata = <div className="print-meta">{printedBy ? `Dicetak oleh ${printedBy} · ` : ""}{new Date().toLocaleString("id-ID")} · MMH-Connect</div>;
@@ -57,7 +74,7 @@ export function FinancialStatementPrint({ kind, data, asOf, printedBy }: { kind:
       <SectionRows data={data} sections={["REVENUE", "COST_OF_REVENUE", "EXPENSES"]} periods={["MTD", "YTD"]} columns={metrics} />
       <tr className="grand-total"><td>Laba / Rugi</td>{(["MTD", "YTD"] as const).flatMap(period => metrics.map(metric => <td className="amount" key={`${period}-${metric}`}>{money(profit(data, period, metric))}</td>))}</tr>
     </tbody></table> : <>
-      <div className="statement-t">{[["ASSETS"], ["LIABILITIES", "EQUITY"]].map(sections => <table key={sections[0]}><thead><tr><th className="account">Akun</th><th className="amount">Saldo per {asOf}</th></tr></thead><tbody><SectionRows data={data} sections={sections} periods={["YTD"]} columns={["current"]} />{sections.includes("LIABILITIES") ? <tr className="grand-total"><td>Total Liabilitas + Ekuitas</td><td className="amount">{money(sum(data, sections, "YTD", "current"))}</td></tr> : null}</tbody></table>)}</div>
+      <BalancePositionTable data={data} asOf={asOf} />
       {metadata}
       {!data.header_only && (["MTD", "YTD"] as const).map(period => <section className="comparison-page" key={period}><ReportHeader kind={kind} data={data} asOf={asOf} caption={`Perbandingan ${period}`} /><table><thead><tr><th className="account">Akun</th>{[...metricNames, "Movement"].map((name, i) => <th className="amount" key={name}>{name}{data.periods[period][comparisons[i]] ? <span className="period-range">{data.periods[period][comparisons[i]].join(" — ")}</span> : null}</th>)}</tr></thead><tbody><SectionRows data={data} sections={["ASSETS", "LIABILITIES", "EQUITY"]} periods={[period]} columns={comparisons} /><tr className="grand-total"><td>Total Liabilitas + Ekuitas</td>{comparisons.map(metric => <td key={metric} className="amount">{money(sum(data, ["LIABILITIES", "EQUITY"], period, metric))}</td>)}</tr></tbody></table>{metadata}</section>)}
     </>}{kind === "PROFIT_LOSS" ? metadata : null}
