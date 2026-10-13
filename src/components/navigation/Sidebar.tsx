@@ -1,20 +1,20 @@
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { BarChart3, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X, PanelLeftOpen, PanelLeftClose } from "lucide-react";
+import { BarChart3, Crown, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X, PanelLeftOpen, PanelLeftClose } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
 
 interface Props { open?: boolean; onClose?: () => void; collapsed: boolean; onToggle: () => void }
 interface Child { title: string; url?: string; roles?: string[]; permission?: string; disabled?: boolean; badge?: string; exact?: boolean }
-interface Group { title: string; icon: typeof LayoutDashboard; url?: string; roles?: string[]; permission?: string; children?: Child[] }
+interface Group { title: string; icon: typeof LayoutDashboard; url?: string; roles?: string[]; permission?: string; permissions?: string[]; children?: Child[] }
 
 const INVENTORY_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
 const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
 
 const groups: Group[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
-  { title: "Executive View", url: "/executive-view", icon: BarChart3, permission: "finance.view" },
+  { title: "Executive View", url: "/executive-view", icon: Crown, permissions: ["reports.view", "finance.view"] },
   { title: "Approval Center", url: "/approval-center", icon: CheckSquare2, permission: "approval.view", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
   { title: "Master Data", icon: Building2, roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Catering Items", url: "/products", permission: "products.view" },
@@ -97,7 +97,7 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
     return pathMatches && (!query || location.search === `?${query}`);
   };
   const visibleGroups = groups.filter(group => group.url
-    ? allowed(group.roles, group.permission)
+    ? (group.permissions ? group.permissions.some(permission => allowed(group.roles,permission)) : allowed(group.roles, group.permission))
     : group.children?.some(child => allowed(child.roles, child.permission)));
   const activeParent = visibleGroups.find(group => group.children?.some(childIsActive))?.title;
   const [expanded, setExpanded] = useState<string[]>(activeParent ? [activeParent] : []);
