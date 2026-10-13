@@ -33,9 +33,18 @@ def validate_account(db: Session, account_id: int, account_type: str, label: str
     account = db.get(ChartOfAccount, account_id)
     if not account or not account.is_active or not account.is_posting or account.account_type != account_type:
         raise HTTPException(422, f"{label} must be an active posting {account_type} account")
+    if not credit_normal and account.normal_balance != "DEBIT":
+        raise HTTPException(422, f"{label} must have DEBIT normal balance")
     if credit_normal and account.normal_balance != "CREDIT":
         raise HTTPException(422, f"{label} must have CREDIT normal balance")
     return account
+
+
+def monthly_amount(item):
+    remaining = Decimal(item.net_book_value)
+    if item.months_posted >= item.useful_life_months - 1: return remaining
+    standard = (Decimal(item.original_cost) / item.useful_life_months).quantize(CENT, rounding=ROUND_HALF_UP)
+    return min(standard, remaining)
 
 
 def serialize(item: Amortization):
@@ -62,6 +71,8 @@ def serialize(item: Amortization):
         "amortization_expense_account_id": item.amortization_expense_account_id,
         "notes": item.notes,
         "last_posted_at": item.last_posted_at,
+        "next_posting_date": posting_date(item) if item.months_posted < item.useful_life_months else None,
+        "next_posted_amount": monthly_amount(item) if item.status == "ACTIVE" else ZERO,
         "can_post_next": item.status == "ACTIVE" and item.months_posted < item.useful_life_months and Decimal(item.net_book_value) > ZERO,
     }
 
@@ -90,12 +101,14 @@ def create_amortization(data: AmortizationCreate, db: Session = Depends(get_db),
     data=data.model_copy(update=scope)
     validate_dimensions(db, data.business_unit_id, data.location_id, data.department_id, required=True)
     asset=validate_account(db, data.asset_account_id, "ASSET", "Amortizable asset account")
-    if asset.account_number.startswith("100-600"):
+    if asset.account_number.startswith(("100-600", "100-900")):
         raise HTTPException(422,"Use Fixed Assets for account 100-600")
     if data.accumulated_amortization_account_id==data.asset_account_id and not asset.account_number.startswith("100-400"):
         raise HTTPException(422,"Direct cost reduction requires account 100-400")
     validate_account(db, data.accumulated_amortization_account_id, "ASSET", "Amortization credit account", data.accumulated_amortization_account_id != data.asset_account_id)
     validate_account(db, data.amortization_expense_account_id, "EXPENSE", "Amortization expense account")
+    if (data.original_cost / data.useful_life_months).quantize(CENT, rounding=ROUND_HALF_UP) <= ZERO:
+        raise HTTPException(422, "Monthly amortization rounds to zero; review cost and useful life")
     item = Amortization(
         amortization_number=next_document_number(db, "AMR", digits=6),
         accumulated_amortization=ZERO,
@@ -114,7 +127,7 @@ def create_amortization(data: AmortizationCreate, db: Session = Depends(get_db),
 @router.patch("/{amortization_id}")
 def update_amortization(amortization_id: int, data: AmortizationUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     require_finance(user)
-    item = db.get(Amortization, amortization_id)
+    item = db.query(Amortization).filter(Amortization.id == amortization_id).with_for_update().first()
     if not item:
         raise HTTPException(404, "Amortization record not found")
     resolve_organization_access(db,user,location_id=item.location_id,business_unit_id=item.business_unit_id,department_id=item.department_id)
@@ -124,6 +137,9 @@ def update_amortization(amortization_id: int, data: AmortizationUpdate, db: Sess
     department_id = values.get("department_id", item.department_id)
     resolve_organization_access(db,user,location_id=location_id,business_unit_id=business_unit_id,department_id=department_id)
     validate_dimensions(db, business_unit_id, location_id, department_id, required=True)
+    if values.get("name", item.name) is None: raise HTTPException(422, "Name is required")
+    if item.months_posted and any(values.get(key, getattr(item,key)) != getattr(item,key) for key in ("business_unit_id","location_id","department_id")):
+        raise HTTPException(409, "Organization cannot change after amortization has posted")
     for key, value in values.items():
         setattr(item, key, value)
     db.commit()
@@ -132,7 +148,7 @@ def update_amortization(amortization_id: int, data: AmortizationUpdate, db: Sess
 
 
 @router.post("/{amortization_id}/post-next")
-def post_next_amortization(amortization_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def post_next_amortization(amortization_id: int, db: Session = Depends(get_db), user=Depends(get_current_user), expected_months_posted: int | None = None):
     require_finance(user)
     item = db.query(Amortization).filter(Amortization.id == amortization_id).with_for_update().first()
     if not item:
@@ -141,9 +157,16 @@ def post_next_amortization(amortization_id: int, db: Session = Depends(get_db), 
     if item.status != "ACTIVE" or item.months_posted >= item.useful_life_months or Decimal(item.net_book_value) <= ZERO:
         raise HTTPException(409, "No remaining amortization to post")
 
-    standard_monthly = (Decimal(item.original_cost) / item.useful_life_months).quantize(CENT, rounding=ROUND_HALF_UP)
-    amount = min(standard_monthly, Decimal(item.net_book_value))
+    if expected_months_posted is not None and expected_months_posted != item.months_posted:
+        raise HTTPException(409, "Amortization progress changed; refresh before posting")
+    amount = monthly_amount(item)
+    if amount <= ZERO: raise HTTPException(422, "No positive monthly amount to post")
     period_date = posting_date(item)
+    if db.query(JournalEntry.id).filter(JournalEntry.reference_type == "AMORTIZATION", JournalEntry.reference_id == item.id, JournalEntry.posting_date == period_date, JournalEntry.status == "POSTED").first():
+        raise HTTPException(409, "This amortization month already has a posted journal")
+    validate_account(db,item.asset_account_id,"ASSET","Amortizable asset")
+    validate_account(db,item.accumulated_amortization_account_id,"ASSET","Amortization credit",item.accumulated_amortization_account_id != item.asset_account_id)
+    validate_account(db,item.amortization_expense_account_id,"EXPENSE","Amortization expense")
     entry = JournalEntry(
         journal_number=next_document_number(db, "JV", digits=8),
         posting_date=period_date,
@@ -198,3 +221,54 @@ def post_next_amortization(amortization_id: int, db: Session = Depends(get_db), 
     db.commit()
     db.refresh(item)
     return {"amortization": serialize(item), "journal_entry_id": entry.id, "journal_number": entry.journal_number, "posted_amount": amount}
+
+
+@router.get("/{amortization_id}/schedule")
+def amortization_schedule(amortization_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    require_finance(user)
+    item = db.query(Amortization).filter(Amortization.id == amortization_id).with_for_update().first()
+    if not item: raise HTTPException(404, "Amortization record not found")
+    resolve_organization_access(db,user,location_id=item.location_id,business_unit_id=item.business_unit_id,department_id=item.department_id)
+    standard = (Decimal(item.original_cost)/item.useful_life_months).quantize(CENT,rounding=ROUND_HALF_UP)
+    opening = Decimal(item.original_cost)
+    rows = []
+    for index in range(item.useful_life_months):
+        year = item.start_date.year + (item.start_date.month-1+index)//12
+        month = (item.start_date.month-1+index)%12+1
+        amount = opening if index == item.useful_life_months-1 else min(opening,standard)
+        closing = max(ZERO,opening-amount)
+        rows.append({'period': f'{year}-{month:02d}', 'posting_date': date(year,month,calendar.monthrange(year,month)[1]),
+                     'opening':opening,'amount':amount,'closing':closing,
+                     'status':'POSTED' if index < item.months_posted else 'PLANNED' if amount > ZERO else 'SKIPPED'})
+        opening = closing
+    entries = db.query(JournalEntry).filter(JournalEntry.reference_type=='AMORTIZATION',JournalEntry.reference_id==item.id).order_by(JournalEntry.posting_date,JournalEntry.id).all()
+    return {'amortization':serialize(item),'schedule':rows,'journals':[{'id':j.id,'journal_number':j.journal_number,'posting_date':j.posting_date,'status':j.status} for j in entries]}
+
+
+@router.post("/{amortization_id}/unpost-last")
+def unpost_last_amortization(amortization_id: int, db: Session = Depends(get_db), user=Depends(get_current_user), expected_months_posted: int | None = None):
+    require_finance(user)
+    item = db.query(Amortization).filter(Amortization.id==amortization_id).with_for_update().one_or_none()
+    if not item: raise HTTPException(404,'Amortization record not found')
+    resolve_organization_access(db,user,location_id=item.location_id,business_unit_id=item.business_unit_id,department_id=item.department_id)
+    if not item.months_posted: raise HTTPException(409,'No posted month to unpost')
+    if expected_months_posted is not None and expected_months_posted != item.months_posted: raise HTTPException(409,'Progress changed; refresh before unposting')
+    from types import SimpleNamespace
+    when = posting_date(SimpleNamespace(start_date=item.start_date,months_posted=item.months_posted-1))
+    journals = db.query(JournalEntry).filter(JournalEntry.reference_type=='AMORTIZATION',JournalEntry.reference_id==item.id,
+        JournalEntry.posting_date==when,JournalEntry.status=='POSTED').with_for_update().all()
+    if len(journals)!=1: raise HTTPException(409,'Last monthly journal is missing or ambiguous')
+    entry = journals[0]
+    amount = sum((Decimal(x.debit) for x in db.query(JournalLine).filter(JournalLine.journal_entry_id==entry.id)),ZERO)
+    from app.services.asset_posting import unpost_asset_ledger
+    unpost_asset_ledger(db,entry)
+    item.months_posted -= 1
+    item.accumulated_amortization = max(ZERO,Decimal(item.accumulated_amortization)-amount)
+    item.net_book_value = Decimal(item.original_cost)-item.accumulated_amortization
+    item.status = 'ACTIVE'
+    item.last_posted_at = None
+    from app.services.audit import record_audit
+    record_audit(db,user,'AMORTIZATION_MONTH_UNPOSTED','AMORTIZATION',f'Unpost {entry.journal_number}',entity_id=item.id,
+        details={'journal_id':entry.id,'period':str(when),'amount':str(amount)})
+    db.commit(); db.refresh(item)
+    return {'amortization':serialize(item),'journal_entry_id':entry.id}

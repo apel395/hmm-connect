@@ -5,11 +5,12 @@ from pydantic import BaseModel, Field
 class CategoryInput(BaseModel):
     code: str = Field(min_length=1, max_length=30)
     name: str = Field(min_length=1, max_length=120)
-    default_useful_life_months: int = Field(gt=0)
+    is_depreciable: bool = True
+    default_useful_life_months: int | None = Field(default=None, gt=0)
     default_residual_percentage: Decimal = Field(default=Decimal("0"), ge=0, lt=100)
     asset_account_id: int
-    accumulated_depreciation_account_id: int
-    depreciation_expense_account_id: int
+    accumulated_depreciation_account_id: int | None = None
+    depreciation_expense_account_id: int | None = None
     disposal_gain_account_id: int | None = None
     disposal_loss_account_id: int | None = None
     is_active: bool = True
@@ -24,9 +25,11 @@ class AssetInput(BaseModel):
     barcode: str | None = None
     acquisition_date: date
     capitalization_date: date | None = None
+    accumulated_depreciation: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=4)
     acquisition_cost: Decimal = Field(gt=0)
     residual_value: Decimal = Field(default=Decimal("0"), ge=0)
-    useful_life_months: int = Field(gt=0)
+    useful_life_months: int | None = Field(default=None, gt=0)
     depreciation_method: str = "STRAIGHT_LINE"
     depreciation_start_date: date | None = None
     business_unit_id: int
@@ -38,8 +41,8 @@ class AssetInput(BaseModel):
     purchase_order_id: int | None = None
     goods_receipt_id: int | None = None
     asset_account_id: int
-    accumulated_depreciation_account_id: int
-    depreciation_expense_account_id: int
+    accumulated_depreciation_account_id: int | None = None
+    depreciation_expense_account_id: int | None = None
     disposal_gain_account_id: int | None = None
     disposal_loss_account_id: int | None = None
     source_type: str = "MANUAL"
@@ -60,11 +63,12 @@ class AssetUpdate(BaseModel):
 
 class CapitalizeInput(BaseModel):
     capitalization_date: date
-    depreciation_start_date: date
+    depreciation_start_date: date | None = None
     offset_account_id: int | None = None
     create_journal: bool = False
 
 class TransferInput(BaseModel):
+    create_journal: bool = True
     movement_date: date
     business_unit_id: int
     location_id: int | None = None
