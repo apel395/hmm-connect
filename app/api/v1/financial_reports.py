@@ -11,6 +11,7 @@ from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import require_permission
 from app.models.accounting_setting import AccountingSetting
 from app.models.chart_of_account import ChartOfAccount
@@ -198,3 +199,23 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
     output = BytesIO(build_xlsx(sheets))
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{report_type.lower()}-{as_of_date}.xlsx"'})
+
+
+@router.get("/executive")
+def executive_overview(as_of_date: date = Query(), location_id: int | None = None,
+                       business_unit_id: int | None = None, department_id: int | None = None,
+                       budget_id: int | None = None, db: Session = Depends(get_db),
+                       user=Depends(get_current_user)):
+    """Read-only owner overview. Never return account or transaction detail."""
+    from app.dependencies.authorization import has_permission
+    if not (has_permission(user,'reports.view') or has_permission(user,'finance.view')):
+        raise HTTPException(403,'Report view access required')
+    scope=resolve_organization_access(db,user,location_id=location_id,business_unit_id=business_unit_id,department_id=department_id)
+    service=FinancialReportingService(db)
+    pnl=deliver(service,as_of_date=as_of_date,report_scope='CONSOLIDATED',**scope,
+                budget_id=budget_id,include_zero=False,detail=False,include_breakdown=False)
+    balance=service.build(report_type='BALANCE_SHEET',as_of_date=as_of_date,**scope,budget_id=budget_id,kap=True)
+    return serialize({'as_of_date':as_of_date,'scope':scope,'scope_labels':balance['scope_labels'],
+                      'profit_loss':{'presentation_rows':[{key:row[key] for key in ('key','label','periods')} for row in pnl['presentation_rows'] if row['key'] in ('REVENUE','BEBAN','GOP','NOP')],
+                                     'section_totals':pnl['section_totals']},
+                      'balance_sheet':{'section_totals':balance['section_totals']}})
