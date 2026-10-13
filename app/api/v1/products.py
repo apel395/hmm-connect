@@ -95,6 +95,8 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
 def _validate_treatment(payload: dict, product: Product | None = None) -> None:
     treatment = payload.get("inventory_treatment", getattr(product, "inventory_treatment", "REVIEW_REQUIRED") if product else "REVIEW_REQUIRED")
     item_type = payload.get("item_type", getattr(product, "item_type", "BUY") if product else "BUY")
+    if item_type == "BUY" and str(payload.get("group_name", getattr(product, "group_name", ""))).strip().upper() == "ASSET" and treatment != "FIXED_ASSET":
+        raise HTTPException(422, "ASSET group items must use Fixed Asset treatment")
     inventory_account_id = payload.get("inventory_account_id", product.inventory_account_id if product else None)
     purchase_account_id = payload.get("purchase_account_id", product.purchase_account_id if product else None)
     asset_account_id = payload.get("asset_account_id", getattr(product, "asset_account_id", None) if product else None)

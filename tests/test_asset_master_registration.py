@@ -111,3 +111,11 @@ def test_complete_registration_retains_identity_without_journal(db):
     assert asset.id == original_id and asset.status == 'DRAFT' and asset.acquisition_cost == Decimal('500')
     assert db.query(FixedAsset).count() == 1
     assert db.query(JournalEntry).count() == db.query(GeneralLedger).count() == 0
+
+
+def test_asset_group_requires_fixed_asset_treatment():
+    from app.api.v1.products import _validate_treatment
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException, match='ASSET group'):
+        _validate_treatment({'group_name': 'ASSET', 'item_type': 'BUY', 'inventory_treatment': 'STOCK', 'inventory_account_id': 1})
+    _validate_treatment({'group_name': 'ASSET', 'item_type': 'BUY', 'inventory_treatment': 'FIXED_ASSET', 'asset_account_id': 1})
