@@ -31,3 +31,25 @@ def test_prepared_portion_does_not_become_warehouse_stock():
     result = proposal(row)
     assert result['inventory_treatment'] is None
     assert 'BUY_SELL_AND_READY_MEAL_USAGE_REVIEW' in result['issues']
+
+
+def test_coffee_prefix_does_not_move_food_ingredients_to_beverage():
+    row = {**source()['items'][0], 'name': 'COFFEE - Chocolate Sprinkles', 'unit': 'PACK'}
+    assert proposal(row)['group'] == 'FOOD'
+    row['name'] = 'COFFEE - Sirup Orange'
+    assert proposal(row)['group'] == 'BEVERAGE'
+    assert proposal(row)['subgroup'] == 'SYRUP'
+
+
+def test_legacy_groceries_spelling_maps_without_new_subgroup():
+    row = {**source()['items'][0], 'name': 'GRO - Flour', 'unit': 'KG'}
+    result = build_plan({'items': [row]}, groups=[dict(id=1, name='FOOD')],
+                        subgroups=[dict(id=2, group_id=1, name='GRESORIS')], database_checked=True)[0]
+    assert result['subgroup_id'] == 2
+    assert 'SUBGROUP_NOT_UNIQUE' not in result['issues']
+
+
+def test_checked_empty_taxonomy_is_flagged():
+    row = source()['items'][0]
+    result = build_plan({'items': [row]}, database_checked=True)[0]
+    assert 'GROUP_NOT_UNIQUE' in result['issues']

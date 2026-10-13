@@ -9,10 +9,13 @@ import gzip
 import hashlib
 import json
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
-SOURCE = Path(__file__).with_name('hotel-item-source.xls')
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+SOURCE = Path(__file__).with_name('invlistofgoods.xls')
 
 
 def read_source(path):
@@ -50,8 +53,12 @@ def proposal(row):
     food = {'MEAT': 'MEAT', 'POU': 'POULTRY', 'FISH': 'FISH',
             'SEA': 'SEAFOOD', 'SEAFOOD': 'SEAFOOD', 'VEG': 'VEGETABLES',
             'FRU': 'FRUIT', 'HERBS': 'HERB', 'HERB': 'HERB',
-            'GRO': 'GROCERIES', 'CAN': 'GROCERIES', 'FROZEN': 'GROCERIES'}
-    beverage = prefix in {'BEV', 'COFFEE', 'TEA'} or section == '02'
+            'GRO': 'GROCERIES', 'CAN': 'GROCERIES', 'FROZEN': 'GROCERIES',
+            'DAIRY GOODS': 'GROCERIES', 'SAUCES': 'GROCERIES',
+            'COFFEE': 'GROCERIES', 'TEA': 'GROCERIES'}
+    # COFFEE also labels milk powder, chocolate sprinkles and jam in
+    # this source. Keep food ingredients in FOOD; syrup is explicit.
+    beverage = prefix == 'BEV' or section == '02' or bool(re.search(r'\b(?:SYRUP|SIRUP)\b', name))
     group = 'BEVERAGE' if beverage else 'FOOD' if section == '01' else 'MATERIAL'
     subgroup = food.get(prefix) if group == 'FOOD' else None
     if group == 'BEVERAGE':
@@ -81,7 +88,7 @@ def proposal(row):
             'inventory_treatment': treatment, 'issues': flags}
 
 
-def build_plan(source, products=(), groups=(), subgroups=()):
+def build_plan(source, products=(), groups=(), subgroups=(), database_checked=False):
     names = Counter(normalize(row['name']) for row in source['items'])
     rows = []
     for source_row in source['items']:
@@ -99,13 +106,14 @@ def build_plan(source, products=(), groups=(), subgroups=()):
         row['action'] = ('EXISTING_HOTEL_ITEM' if len(hotel) == 1 else 'NEW_HOTEL_ITEM') if products else 'DATABASE_CHECK_REQUIRED'
         if len(hotel) > 1: row['issues'].append('MULTIPLE_HOTEL_MATCHES')
         if hotel and normalize(hotel[0]['uom']) != normalize(row['unit']): row['issues'].append('EXISTING_UNIT_DIFFERS')
-        if groups:
+        if groups or database_checked:
             matched = [g for g in groups if normalize(g['name']) == row['group']]
             if len(matched) != 1: row['issues'].append('GROUP_NOT_UNIQUE')
             else:
                 row['group_id'] = matched[0]['id']
                 matched_sub = [s for s in subgroups if s['group_id'] == matched[0]['id']
-                               and normalize(s['name']) == row['subgroup']]
+                               and normalize(s['name']) in ({'GROCERIES', 'GRESORIS'}
+                                   if row['subgroup'] == 'GROCERIES' else {row['subgroup']})]
                 if len(matched_sub) == 1: row['subgroup_id'] = matched_sub[0]['id']
                 else: row['issues'].append('SUBGROUP_NOT_UNIQUE')
         rows.append(row)
@@ -119,7 +127,7 @@ def main():
     parser.add_argument('--output', type=Path, default=Path('/tmp/hotel-item-seed-plan.json'))
     args = parser.parse_args()
     source = read_source(args.source)
-    products, groups, subgroups = [], [], []
+    products, groups, subgroups, accounts = [], [], [], []
     if args.check_db:
         from sqlalchemy import text
         from app.core.database import SessionLocal
@@ -128,8 +136,9 @@ def main():
             products = [dict(r) for r in db.execute(text('SELECT id,name,uom,catalog_type,item_type FROM products')).mappings()]
             groups = [dict(r) for r in db.execute(text("SELECT id,name,code FROM item_groups WHERE is_active AND item_type IN ('BUY','ITEM')")).mappings()]
             subgroups = [dict(r) for r in db.execute(text('SELECT id,name,code,group_id FROM item_subgroups WHERE is_active')).mappings()]
+            accounts = [dict(r) for r in db.execute(text("SELECT id,account_number,account_name,account_type,normal_balance,is_posting FROM chart_of_accounts WHERE is_active AND (account_number LIKE '100-300%' OR account_number LIKE '100-600%' OR account_type = 'EXPENSE') ORDER BY account_number")).mappings()]
             db.rollback()
-    rows = build_plan(source, products, groups, subgroups)
+    rows = build_plan(source, products, groups, subgroups, database_checked=args.check_db)
     if args.check_db and not products:
         for row in rows: row['action'] = 'NEW_HOTEL_ITEM'
     summary = {'mode': 'READ_ONLY_PREPARATION', 'source_sha256': source['source_sha256'],
@@ -139,6 +148,8 @@ def main():
                'proposed_groups': dict(Counter(r['group'] for r in rows)),
                'issues': dict(Counter(issue for r in rows for issue in r['issues'])),
                'actions': dict(Counter(r['action'] for r in rows)),
+               'active_buy_groups': groups, 'active_subgroups': subgroups,
+               'candidate_accounts': accounts,
                'reason': 'Preparation only. Confirm subgroup/treatment and price meaning before seeding; no stock or opening balances imported.'}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps({'summary': summary, 'items': rows}, indent=2), encoding='utf-8')

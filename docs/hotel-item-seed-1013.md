@@ -8,7 +8,7 @@ are not unique identifiers. Preserve source row, sequence, category and legacy
 code in the import audit. Generate final MMH product codes with the existing
 group/subgroup numbering service after classification.
 
-Keep the source workbook on EC2 as `scripts/hotel-item-source.xls`.
+Keep the source workbook on EC2 as `scripts/invlistofgoods.xls`.
 The checker preserves all source item rows, including blank units, repeated
 names and negative legacy Expense values. The report columns Purchase and
 Expense remain source references. Expense is never used as an opening balance,
@@ -39,3 +39,13 @@ in a PostgreSQL READ ONLY transaction, rolls back and writes a JSON plan and
 CSV review on disk. Review source duplicates, missing/invalid units, catalogue
 matches, subgroup mappings, treatment and reference cost before constructing
 the final seed manifest. Existing items and transaction history are untouched.
+
+The checker includes active BUY/legacy ITEM groups, subgroups and candidate
+posting accounts in its printed summary. This is the database evidence needed
+for final mappings; it does not create taxonomy or assign expense accounts.
+The script adds the repository root to its import path automatically.
+
+`COFFEE` is a mixed legacy prefix (including milk powder, sprinkles and jam),
+so it does not by itself move FOOD ingredients into BEVERAGE. Explicit syrup
+is proposed under BEVERAGE / SYRUP. GROCERIES also recognizes the existing
+legacy spelling GRESORIS without creating another subgroup.
