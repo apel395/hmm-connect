@@ -153,6 +153,11 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
     report = service.build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
         budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
+    if report_type == "BALANCE_SHEET":
+        from app.services.balance_sheet_workbook import workbook_sheets as balance_sheet_sheets
+        output=BytesIO(build_xlsx(balance_sheet_sheets(service,report,budget_id=budget_id),first_column_width=48))
+        return StreamingResponse(output,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition":f'attachment; filename="balance_sheet-{as_of_date}.xlsx"'})
     sheets = []
     for period in ("MTD", "YTD"):
         rows = []

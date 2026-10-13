@@ -23,7 +23,7 @@ def column_name(index):
     return result
 
 
-def worksheet(rows):
+def worksheet(rows, first_column_width=None):
     output = []
     for row_index, row in enumerate(rows, 1):
         cells = []
@@ -40,14 +40,14 @@ def worksheet(rows):
                 cells.append(f'<c r="{ref}"{style} t="inlineStr"><is><t xml:space="preserve">{text}</t></is></c>')
         output.append(f'<row r="{row_index}">{"".join(cells)}</row>')
     count = max((len(row) for row in rows), default=2)
-    columns = "".join(f'<col min="{i}" max="{i}" width="{48 if i == 2 else 24}" customWidth="1"/>' for i in range(1, count+1))
+    columns = "".join(f'<col min="{i}" max="{i}" width="{(first_column_width if i == 1 else 26) if first_column_width else (48 if i == 2 else 24)}" customWidth="1"/>' for i in range(1, count+1))
     return (XML + f'<worksheet xmlns="{NS}">' +
         '<sheetViews><sheetView workbookViewId="0"><pane xSplit="2" ySplit="2" topLeftCell="C3" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>' +
         f'<cols>{columns}</cols><sheetData>{"".join(output)}</sheetData>' +
         f'<autoFilter ref="A2:{column_name(count)}{len(rows)}"/></worksheet>')
 
 
-def build_xlsx(sheets):
+def build_xlsx(sheets, *, first_column_width=None):
     """Sheets are (title, rows); return a workbook with numeric money cells."""
     content = XML + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +\
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +\
@@ -75,5 +75,5 @@ def build_xlsx(sheets):
         archive.writestr("xl/_rels/workbook.xml.rels", relationships)
         archive.writestr("xl/styles.xml", styles)
         for i,(_,rows) in enumerate(sheets,1):
-            archive.writestr(f"xl/worksheets/sheet{i}.xml", worksheet(rows))
+            archive.writestr(f"xl/worksheets/sheet{i}.xml", worksheet(rows,first_column_width=first_column_width))
     return output.getvalue()

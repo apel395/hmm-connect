@@ -4,6 +4,7 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
+from app.models.product import Product
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -65,13 +66,19 @@ def sync_invoice_assets(db: Session = Depends(get_db), user=Depends(get_current_
 
 
 @router.get("")
-def listing(page: int = 1, page_size: int = 20, search: str | None = None, status: str | None = None, business_unit_id: int | None = None, location_id: int | None = None, department_id: int | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def listing(page: int = 1, page_size: int = 20, category_id: int | None = None, date_from: date | None = None, date_to: date | None = None, search: str | None = None, status: str | None = None, business_unit_id: int | None = None, location_id: int | None = None, department_id: int | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
     scope=resolve_organization_access(db,user,location_id=location_id,business_unit_id=business_unit_id,department_id=department_id)
     location_id,business_unit_id,department_id=scope["location_id"],scope["business_unit_id"],scope["department_id"]
+    if page < 1 or not 1 <= page_size <= 500: raise HTTPException(422,"Invalid asset page or page size")
+    if date_from and date_to and date_from > date_to: raise HTTPException(422,"From date must be before To date")
     query = db.query(FixedAsset)
+    if category_id is not None: query = query.filter(FixedAsset.asset_category_id == category_id)
+    if date_from: query = query.filter(FixedAsset.acquisition_date >= date_from)
+    if date_to: query = query.filter(FixedAsset.acquisition_date <= date_to)
     if search:
-        query = query.filter(or_(FixedAsset.asset_number.ilike(f"%{search}%"), FixedAsset.asset_name.ilike(f"%{search}%"), FixedAsset.serial_number.ilike(f"%{search}%")))
+        term=f"%{search.strip()}%"
+        query = query.outerjoin(Product,Product.id==FixedAsset.product_id).filter(or_(FixedAsset.asset_number.ilike(term),FixedAsset.asset_name.ilike(term),FixedAsset.serial_number.ilike(term),FixedAsset.barcode.ilike(term),Product.code.ilike(term)))
     for column, value in ((FixedAsset.status, status), (FixedAsset.business_unit_id, business_unit_id), (FixedAsset.location_id, location_id), (FixedAsset.department_id, department_id)):
         if value is not None: query = query.filter(column == value)
     total = query.count(); service = FixedAssetService(db)

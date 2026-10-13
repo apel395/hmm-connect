@@ -133,7 +133,7 @@ class FinancialReportingService:
         return available
 
     def build(self, *, report_type, as_of_date, location_id=None, business_unit_id=None,
-              department_id=None, budget_id=None, kap=False, include_zero=False, detail=False):
+              department_id=None, budget_id=None, kap=False, include_zero=False, detail=False, all_accounts=False):
         scope = dict(location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
         calendar = periods(as_of_date)
         values, originals, summaries, budget_available, comparison_available = {}, {}, {}, {}, {}
@@ -176,7 +176,7 @@ class FinancialReportingService:
         if report_type not in self._report_settings:
             self._report_settings[report_type] = self.db.query(FinancialReportSetting).filter_by(report_type=report_type).first() if self.report_setup_available else None
         settings = self._report_settings[report_type]
-        selected = set(settings.selected_account_ids) if settings and settings.selected_account_ids is not None else None
+        selected = set(settings.selected_account_ids) if not all_accounts and settings and settings.selected_account_ids is not None else None
         if self._accounts is None:
             self._accounts = {a.id: a for a in self.db.query(ChartOfAccount).all()}
         all_accounts = self._accounts
@@ -288,7 +288,7 @@ class FinancialReportingService:
 
 
 
-    def department_reports(self, report, *, budget_id=None, kap=False, include_zero=False, detail=False):
+    def department_reports(self, report, *, budget_id=None, kap=False, include_zero=False, detail=False, all_accounts=False):
         """One full statement per configured or historically used department.
 
         Null departmental activity is queried explicitly, never redistributed.
@@ -296,7 +296,8 @@ class FinancialReportingService:
         """
         from app.models.location_department import LocationDepartment
         scope = report["scope"]
-        ids = set()
+        kind = report["report_type"]
+        ids = {0} if kind == "BALANCE_SHEET" and scope["department_id"] is None else set()
         if scope["department_id"] is not None:
             ids.add(scope["department_id"])
         else:
@@ -309,7 +310,7 @@ class FinancialReportingService:
             activity = self.db.query(func.coalesce(JournalLine.department_id, JournalEntry.department_id)).join(
                 JournalEntry, JournalEntry.id == JournalLine.journal_entry_id).join(
                 ChartOfAccount, ChartOfAccount.id == JournalLine.account_id).filter(
-                JournalEntry.status == "POSTED", ChartOfAccount.account_type.in_(("REVENUE", "INCOME", "EXPENSE")),
+                JournalEntry.status == "POSTED", ChartOfAccount.account_type.in_(("REVENUE", "INCOME", "EXPENSE") if kind == "PROFIT_LOSS" else ("ASSET","LIABILITY","EQUITY","REVENUE","INCOME","EXPENSE")),
                 JournalEntry.posting_date.between(date(report["as_of_date"].year - 1, 1, 1), report["as_of_date"]))
             for name in ("location_id", "business_unit_id"):
                 if scope[name] is not None:
@@ -331,10 +332,10 @@ class FinancialReportingService:
         names = {row.id: row.name for row in self.db.query(Department).filter(Department.id.in_(ids)).all()}
         result = []
         for dept_id in sorted(ids, key=lambda value: (value == 0, names.get(value, ""))):
-            child = self.build(report_type="PROFIT_LOSS", as_of_date=report["as_of_date"],
+            child = self.build(report_type=kind, as_of_date=report["as_of_date"],
                 location_id=scope["location_id"], business_unit_id=scope["business_unit_id"],
-                department_id=dept_id, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
+                department_id=dept_id, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail, all_accounts=all_accounts)
             result.append({"department_id": dept_id or None, "department_name": names.get(dept_id, "Unassigned department"),
                            "rows": child["rows"], "section_totals": child["section_totals"],
-                           "periods": child["periods"], "presentation_rows": child["presentation_rows"], "comparison_available": child["comparison_available"]})
+                           "periods": child["periods"], "presentation_rows": child.get("presentation_rows",[]), "comparison_available": child["comparison_available"]})
         return result
