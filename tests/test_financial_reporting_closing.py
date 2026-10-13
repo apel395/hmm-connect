@@ -387,11 +387,11 @@ def test_unit_opening_uses_only_explicitly_mapped_locations_and_named_exports(db
         return b"".join([chunk async for chunk in response.body_iterator])
     import asyncio
     workbook = load_workbook(BytesIO(asyncio.run(body())))
-    rows = list(workbook["MTD"].values)
-    assert rows[0][3] == "Pekanbaru"
-    assert rows[0][5] == "Hotel"
-    assets = next(row for row in rows if row[0] == "ASSETS")
-    assert assets[5] is None  # unavailable prior-year data stays blank in Excel
+    rows = list(workbook["Summary"].values)
+    assert rows[0][2] == "Pekanbaru"
+    assert rows[0][3] == "Hotel"
+    assets = next(row for row in rows if row[0] == "Assets")
+    assert assets[4] is None  # unavailable prior-year data stays blank in Excel
     assert session.query(OpeningBalance).count() == 3
 
 
