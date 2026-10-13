@@ -739,6 +739,13 @@ When fixing or extending MMH Connect:
 6. Update this README when a module, role, accounting rule, or workflow changes.
 
 
+
+## Financial report organization
+
+- **Hotel:** separate reports by department.
+- **Project Catering:** separate reports by work location.
+- Profit & Loss Excel starts with a Summary sheet, followed by full account details, including zero balances, on each Hotel department or Catering location sheet.
+
 ## Financial report printing and input recovery (2026-10-06)
 
 - Profit & Loss and Balance Sheet use dedicated `/profit-loss/print` and `/balance-sheet/print` previews, with applied date, budget, organization scope, zero-value and KAP settings sent to the same reporting API. The application shell and interactive controls are excluded.
