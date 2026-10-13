@@ -336,6 +336,6 @@ class FinancialReportingService:
                 location_id=scope["location_id"], business_unit_id=scope["business_unit_id"],
                 department_id=dept_id, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail, all_accounts=all_accounts)
             result.append({"department_id": dept_id or None, "department_name": names.get(dept_id, "Unassigned department"),
-                           "rows": child["rows"], "section_totals": child["section_totals"],
+                           "rows": child["rows"], "related_accounts": child.get("related_accounts",[]), "section_totals": child["section_totals"],
                            "periods": child["periods"], "presentation_rows": child.get("presentation_rows",[]), "comparison_available": child["comparison_available"]})
         return result

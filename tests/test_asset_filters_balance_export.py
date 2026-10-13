@@ -84,3 +84,12 @@ def test_asset_search_category_dates_pagination_and_access(db):
     assert report['total_items']==2 and report['total_pages']==2
     with pytest.raises(HTTPException):listing(location_id=2,db=db,user=user)
     with pytest.raises(HTTPException):listing(date_from=date(2026,3,1),date_to=date(2026,1,1),db=db,user=ADMIN)
+
+
+def test_balance_comparison_detail_includes_all_zero_accounts_despite_setup(db):
+    from app.api.v1.financial_reports import comparison
+    setup_accounts(db)
+    db.add(FinancialReportSetting(report_type='BALANCE_SHEET',selected_account_ids=[],header_only=True));db.commit()
+    result=comparison(report_type='BALANCE_SHEET',as_of_date=date(2026,10,14),include_zero=True,detail=True,kap=False,location_id=1,db=db,user=ADMIN)
+    assert {'Equipment','Prepaid rent','Equity'} <= {row['account_name'] for row in result['rows']}
+    assert all(row['periods']['MTD']['current']=='0.00' for row in result['rows'])
