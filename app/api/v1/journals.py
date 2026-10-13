@@ -343,7 +343,10 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(jour
     location_id = resolve_location_id(user, data.location_id)
     if location_id is None:
         raise HTTPException(422, "Select a work location before creating a journal")
-    validate_dimensions(db, data.business_unit_id, location_id, data.department_id)
+    line_departments = [line.department_id if "department_id" in line.model_fields_set else data.department_id for line in data.lines]
+    departments = set(line_departments)
+    header_department = next(iter(departments)) if len(departments) == 1 else None
+    validate_dimensions(db, data.business_unit_id, location_id, header_department)
     x = JournalEntry(
         journal_number=next_document_number(db, "MAN", digits=6),
         posting_date=data.posting_date,
@@ -356,10 +359,11 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(jour
         created_by_id=user.id,
         business_unit_id=data.business_unit_id,
         location_id=location_id,
-        department_id=data.department_id,
+        department_id=header_department,
     )
     for i, line in enumerate(data.lines, 1):
         line_data = line.model_dump()
+        line_data["department_id"] = line_departments[i - 1]
         line_data["location_id"] = location_id
         line_data["business_unit_id"] = x.business_unit_id
         validate_dimensions(db, x.business_unit_id, location_id, line_data.get("department_id"))
@@ -516,6 +520,11 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
         raise HTTPException(409, "Unpost the journal before editing it")
     if x.reference_type in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE", "GENERAL_CASHIER"}:
         raise HTTPException(409, "Edit the source document; cashier drafts can be voided and entered again")
+    line_departments = None
+    if data.lines is not None and (x.reference_type or "").upper() == "MANUAL":
+        line_departments = [line.department_id if "department_id" in line.model_fields_set else x.department_id for line in data.lines]
+        departments = set(line_departments)
+        x.department_id = next(iter(departments)) if len(departments) == 1 else None
     location_changed = "location_id" in data.model_fields_set
     if location_changed:
         if (x.reference_type or "").upper() != "MANUAL":
@@ -536,8 +545,10 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
         x.lines.clear()
         for i, l in enumerate(data.lines, 1):
             line_data = l.model_dump()
+            if line_departments is not None: line_data["department_id"] = line_departments[i - 1]
             line_data["location_id"] = x.location_id
             line_data["business_unit_id"] = x.business_unit_id
+            validate_dimensions(db, x.business_unit_id, x.location_id, line_data.get("department_id"))
             x.lines.append(JournalLine(line_number=i, **line_data))
     elif location_changed:
         for line in x.lines:

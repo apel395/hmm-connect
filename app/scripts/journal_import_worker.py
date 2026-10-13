@@ -209,6 +209,8 @@ def normalize(raw: dict) -> dict:
         "business_unit_code": text(raw.get("business_unit_code")).upper(),
         "department": text(raw.get("department")),
         "department_code": text(raw.get("department_code")).upper(),
+        "line_department_code": text(raw.get("line_department_code")).upper(),
+        "_line_department_supplied": "line_department_code" in raw,
         "location": text(raw.get("location")),
         "location_code": text(raw.get("location_code")).upper(),
         "account_code": text(raw.get("account_code")).upper(),
@@ -250,6 +252,10 @@ def resolve_department(db: Session, data: dict) -> Department | None:
     if name:
         return db.query(Department).filter(func.lower(Department.name) == name.lower()).first()
     return None
+
+
+def resolve_line_department(db: Session, data: dict) -> Department | None:
+    return resolve_department(db, {"department_code": data.get("line_department_code")}) if data.get("_line_department_supplied") else resolve_department(db, data)
 
 
 def resolve_supplier(db: Session, data: dict) -> tuple[Supplier | None, str | None]:
@@ -333,6 +339,19 @@ def validate_group(db: Session, user: User, batch: ImportBatch, rows: list[Impor
     credit_total = ZERO
     for row in rows:
         data = row.normalized_data_json or {}
+        if data.get("_line_department_supplied"):
+            line_department = resolve_line_department(db, data)
+            if text(data.get("line_department_code")) and not line_department:
+                errors.append(f"Row {row.row_number}: unknown line department {data['line_department_code']}")
+            elif line_department:
+                if not line_department.is_active:
+                    errors.append(f"Row {row.row_number}: department {line_department.code} is inactive")
+                if location and business_unit:
+                    from app.services.organization_dimensions import validate_dimensions
+                    try:
+                        validate_dimensions(db, business_unit.id, location.id, line_department.id)
+                    except Exception as exc:
+                        errors.append(f"Row {row.row_number}: {getattr(exc, 'detail', str(exc))}")
         try:
             debit = money(data.get("debit"), "debit")
             credit = money(data.get("credit"), "credit")
@@ -505,7 +524,9 @@ def import_valid_groups(db: Session, batch: ImportBatch, user: User, post_valid:
             first = group_rows[0].normalized_data_json or {}
             location = resolve_location(db, first)
             business_unit = resolve_business_unit(db, first, location)
-            department = resolve_department(db, first)
+            line_departments = [resolve_line_department(db, row.normalized_data_json or {}) for row in group_rows]
+            department_ids = {item.id if item else None for item in line_departments}
+            header_department_id = next(iter(department_ids)) if len(department_ids) == 1 else None
             if not location or not business_unit:
                 raise ValueError("Location or business unit no longer exists")
 
@@ -526,11 +547,12 @@ def import_valid_groups(db: Session, batch: ImportBatch, user: User, post_valid:
                 imported_by_id=user.id,
                 imported_at=datetime.now(timezone.utc),
                 business_unit_id=business_unit.id,
-                department_id=department.id if department else None,
+                department_id=header_department_id,
                 location_id=location.id,
             )
             for line_number, row in enumerate(group_rows, 1):
                 data = row.normalized_data_json or {}
+                department = line_departments[line_number - 1]
                 account = db.query(ChartOfAccount).filter(
                     ChartOfAccount.account_number == text(data.get("account_code")).upper()
                 ).one()

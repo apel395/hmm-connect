@@ -108,6 +108,57 @@ def test_document_numbers_group_nonadjacent_lines_without_group_column(db):
     assert groups["DOCUMENT:RENT-01"][2].normalized_data_json["description"] == "Rent"
 
 
+def test_eight_lines_four_departments_import_as_one_journal(db, monkeypatch):
+    from datetime import date
+    from app.models.business_unit import BusinessUnit
+    from app.models.location import Location
+    from app.models.department import Department
+    from app.models.location_department import LocationDepartment
+    from app.models.chart_of_account import ChartOfAccount
+    from app.models.user import User
+    from app.models.role import Role
+    from app.models.journal_entry import JournalEntry
+    from app.scripts.journal_import_worker import validate_group, import_valid_groups
+    unit = BusinessUnit(code="TEST-UNIT", name="Test unit", is_active=True)
+    db.add(unit); db.flush()
+    location = Location(code="TEST-LOC", name="Test location", business_unit_id=unit.id, is_active=True)
+    depts = [Department(code=f"TEST-D{i}", name=f"Department {i}", business_unit_id=unit.id, is_active=True) for i in range(4)]
+    user = User(username="test-journal", email="journal@example.test", full_name="Test user", password_hash="x", roles=[Role(name="SYSTEM_ADMINISTRATOR")])
+    accounts = [ChartOfAccount(account_number=code, account_name=code, account_type=kind, normal_balance=normal, is_active=True, is_posting=True) for code, kind, normal in [("TEST-EXP", "EXPENSE", "DEBIT"), ("TEST-AP", "LIABILITY", "CREDIT")]]
+    db.add_all([location,user,*depts,*accounts]);db.flush()
+    db.add_all([LocationDepartment(location_id=location.id,department_id=dept.id) for dept in depts])
+    monkeypatch.setattr("app.scripts.journal_import_worker.ActivityService.log", lambda **kwargs: None)
+    batch = ImportBatch(id=8,batch_number="TEST-8LINES",batch_name="Test",source="JOURNAL_BULK_IMPORT",import_type="JOURNAL_ENTRY",source_type="JOURNAL_BULK_IMPORT",status="VALIDATED")
+    db.add(batch);db.flush()
+    raw = []
+    # Four debit lines followed by four credits. Adjacency is not a pairing rule.
+    for i in range(8):
+        raw.append((i+2,"Journal Import",dict(document_number="TEST-REGISTER",posting_date="2026-01-31",description="Test multi-line journal",location_code=location.code,line_department_code=depts[i%4].code,account_code=accounts[0 if i<4 else 1].account_number,debit="25" if i<4 else "0",credit="0" if i<4 else "25")))
+    grouped = build_groups(db,batch,raw)
+    assert len(grouped) == 1
+    lines = next(iter(grouped.values()))
+    for index, row in enumerate(lines, 1): row.id = index
+    assert validate_group(db,user,batch,lines) == []
+    for row in lines: row.status="VALID"
+    db.flush()
+    import_valid_groups(db,batch,user,False)
+    journal = db.query(JournalEntry).one()
+    assert journal.posting_date == date(2026,1,31)
+    assert journal.department_id is None
+    assert len(journal.lines) == 8
+    assert [line.department_id for line in journal.lines] == [depts[i%4].id for i in range(8)]
+    assert sum(line.debit for line in journal.lines) == sum(line.credit for line in journal.lines) == Decimal("100")
+
+
+def test_new_line_department_blank_is_not_inherited(db):
+    batch = ImportBatch(id=9,batch_number="TEST-BLANK",batch_name="Test",source="JOURNAL_BULK_IMPORT",import_type="JOURNAL_ENTRY",source_type="JOURNAL_BULK_IMPORT",status="PROCESSING")
+    db.add(batch);db.flush()
+    rows = build_groups(db,batch,[(2,"Journal Import",dict(document_number="TEST-REGISTER",posting_date="2026-01-31",line_department_code="FIRST",account_code="EXP",debit=10)),(3,"Journal Import",dict(line_department_code="",account_code="AP",credit=10))])
+    lines=next(iter(rows.values()))
+    assert lines[1].normalized_data_json["line_department_code"] == ""
+    assert lines[1].normalized_data_json["_line_department_supplied"] is True
+
+
 def test_template_matches_form_columns_and_dropdown_positions(db):
     from io import BytesIO
     from zipfile import ZipFile
@@ -115,7 +166,7 @@ def test_template_matches_form_columns_and_dropdown_positions(db):
     from types import SimpleNamespace
     from app.api.v1.journal_imports import _build_template, TEMPLATE_HEADERS, TEMPLATE_KEYS
 
-    assert TEMPLATE_KEYS == ["posting_date", "document_number", "description", "business_unit_code", "location_code", "department_code", "account_code", "line_description", "debit", "credit"]
+    assert TEMPLATE_KEYS == ["posting_date", "document_number", "description", "business_unit_code", "location_code", "line_department_code", "account_code", "line_description", "debit", "credit"]
     assert not any("journal_group" in header for header in TEMPLATE_HEADERS)
     from app.models.business_unit import BusinessUnit
     from app.models.location import Location
