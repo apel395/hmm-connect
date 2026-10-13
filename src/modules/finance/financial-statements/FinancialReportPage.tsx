@@ -102,7 +102,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
       <div className="flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}</div>
       {kind === "BALANCE_SHEET" && <div className="flex gap-1 print:hidden">
-        {(["DETAIL", "EXECUTIVE"] as const).map(value => <Button key={value} size="sm" variant={view === value ? "primary" : "outline"} onClick={() => setView(value)}>{value === "DETAIL" ? "Detail" : "Executive view"}</Button>)}
+        {(["DETAIL", "EXECUTIVE"] as const).map(value => <Button key={value} size="sm" variant={view === value ? "primary" : "outline"} onClick={() => setView(value)}>{value === "DETAIL" ? "Detail" : "Summary"}</Button>)}
         <Button size="sm" variant="outline" onClick={() => setShowEquity(!showEquity)}>Equity detail</Button>
       </div>}
       {kind === "BALANCE_SHEET" && showEquity && data.summary?.[period]?.current?.earnings_reconciliation && <EquityEvidence evidence={data.summary[period].current.earnings_reconciliation} />}

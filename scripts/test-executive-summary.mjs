@@ -18,14 +18,10 @@ const pnl={scope:{location_id:8,business_unit_id:2,department_id:7},presentation
 const balance={section_totals:Object.fromEntries(["ASSETS","LIABILITIES","EQUITY"].map(section=>[section,{YTD:amount(section==="EQUITY"?-40:100)}]))};
 const markup=renderToStaticMarkup(createElement(module.exports.ExecutiveSummary,{pnl,balance,period:"YTD",asOf:"2026-01-31"}));
 assert.match(markup,/-20\.0%/);
-assert.match(markup,/location_id=8/);
-assert.match(markup,/business_unit_id=2/);
-assert.match(markup,/department_id=7/);
-assert.match(markup,/period=YTD/);
-assert.match(markup,/as_of_date=2026-01-31/);
+assert.doesNotMatch(markup,/<a\b|href=|account_ids/);
 assert.match(markup,/Last year/);
 assert.match(markup,/Budget —/);
 pnl.presentation_rows[0].periods.YTD=amount(0);
 const empty=renderToStaticMarkup(createElement(module.exports.ExecutiveSummary,{pnl,balance,period:"YTD",asOf:"2026-01-31"}));
 assert.doesNotMatch(empty,/NaN|Infinity/);
-console.log("Executive summary: period/scope drilldown, negative margin, absent budget and zero revenue passed.");
+console.log("Executive summary: summary-only output, negative margin, absent budget and zero revenue passed.");
