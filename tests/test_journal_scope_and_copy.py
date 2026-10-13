@@ -47,6 +47,30 @@ def test_unit_filter_includes_legacy_null_header_and_totals(data):
     assert result['summary']['total_debit']==Decimal('100')
     assert [j['journal_number'] for j in listing(db,ADMIN,project.id)['items']]==['PRJ']
 
+
+def test_manual_form_keeps_one_header_with_mixed_line_departments(data):
+    from app.models.department import Department
+    from app.models.location_department import LocationDepartment
+    from app.schemas.journal import JournalUpdate, JournalLineCreate
+    db, hotel, _, hloc, _ = data
+    departments = [Department(code=f'TEST-D{i}',name=f'Department {i}',business_unit_id=hotel.id) for i in range(4)]
+    db.add_all(departments);db.flush()
+    db.add_all([LocationDepartment(location_id=hloc.id,department_id=d.id) for d in departments]);db.commit()
+    aid = db.query(ChartOfAccount).first().id
+    before = db.query(JournalEntry).count()
+    payload = JournalCreate(posting_date=date(2026,1,31),document_type='MANUAL_JOURNAL',document_number='TEST-MULTILINE',reference_type='MANUAL',reference_id=0,business_unit_id=hotel.id,location_id=hloc.id,department_id=departments[0].id,
+        lines=[dict(account_id=aid,debit=25 if i<4 else 0,credit=0 if i<4 else 25,department_id=departments[i].id if i<4 else None) for i in range(8)])
+    result = journals.create(data=payload,db=db,user=ADMIN)
+    entry = db.get(JournalEntry,result['id'])
+    assert db.query(JournalEntry).count() == before+1
+    assert entry.department_id is None
+    assert len(entry.lines) == 8
+    assert [line.department_id for line in entry.lines] == [d.id for d in departments]+[None]*4
+    edited = JournalUpdate(lines=[JournalLineCreate(account_id=aid,debit=25 if i<4 else 0,credit=0 if i<4 else 25,department_id=departments[2].id) for i in range(8)])
+    journals.update(entry.id,edited,db=db,user=ADMIN)
+    assert entry.department_id == departments[2].id
+    assert db.query(JournalEntry).count() == before+1
+
 def test_assigned_user_scope_cannot_read_or_copy_other_location(data):
     db,hotel,project,hloc,ploc=data
     user=SimpleNamespace(id=2,roles=[],default_location_id=hloc.id,location_id=hloc.id)

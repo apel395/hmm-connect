@@ -1,9 +1,9 @@
 # Bulk journal template
 
 The template follows Create Journal Entry: Posting Date, Document Number,
-Description, Business Unit, Work Location, Department, Account, Line Description,
+Description, Business Unit, Work Location, Line Department, Account, Line Description,
 Debit and Credit. Select organization and account codes from the workbook lists.
-Business Unit can be inferred from Work Location; Department is optional.
+Business Unit can be inferred from Work Location; Department is optional and belongs to each account line. Blank line departments stay unassigned; they do not inherit the preceding department. Older templates with department_code retain their original header-default behavior.
 
 Document Number identifies one journal. Repeat it on separated lines belonging
 to that journal. Blank document and header cells continue the preceding journal.

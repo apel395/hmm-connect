@@ -41,11 +41,11 @@ ALLOWED_TYPES = {
 
 TEMPLATE_KEYS = [
     "posting_date", "document_number", "description", "business_unit_code",
-    "location_code", "department_code", "account_code", "line_description", "debit", "credit",
+    "location_code", "line_department_code", "account_code", "line_description", "debit", "credit",
 ]
 TEMPLATE_HEADERS = [
     "posting_date", "document_number", "description", "business_unit_code (optional)",
-    "location_code", "department_code (optional)", "account_code", "line_description", "debit", "credit",
+    "location_code", "line_department_code (optional)", "account_code", "line_description", "debit", "credit",
 ]
 
 
@@ -282,7 +282,7 @@ def _build_template(db: Session, user: User) -> bytes:
     instructions = [
         ["Easy Bulk Journal Import"],
         ["1", "Use Document Number to identify each journal, as in Create Journal Entry. Repeat it on separated lines of the same journal; blank cells continue the preceding journal."],
-        ["2", "Enter Posting Date, Description, Business Unit, Work Location and Department on the first line; blank header cells inherit them. Business Unit may be inferred from Work Location."],
+        ["2", "Enter Posting Date, Description, Business Unit and Work Location on the first line; blank header cells inherit them. Department belongs to each line: fill it independently or leave it unassigned. Business Unit may be inferred from Work Location."],
         ["3", "Enter one account line per row. Each row must contain either debit or credit. Total debit and credit must balance per document."],
         ["4", "Upload first validates only. Review the preview, then import valid journals as Draft or Post them."],
         ["5", "One invalid journal does not block other valid journals. If Document Number is blank throughout, the file is one journal with a generated document number."],
@@ -564,9 +564,11 @@ def correction_file(
                   if any((row.normalized_data_json or {}).get(key) for row in rows)]
     headers = [*TEMPLATE_HEADERS, *extra_keys, "validation_errors"]
     output_rows = [headers]
+    department_codes = {value.name.casefold(): value.code for value in db.query(Department).all()}
     for row in rows:
         data = row.normalized_data_json or {}
-        values = [data.get(key, "") for key in [*TEMPLATE_KEYS, *extra_keys]]
+        legacy_department = data.get("department_code") or department_codes.get(str(data.get("department") or "").casefold()) or data.get("department", "")
+        values = [legacy_department if key == "line_department_code" and not data.get("_line_department_supplied") else data.get(key, "") for key in [*TEMPLATE_KEYS, *extra_keys]]
         values.append(" | ".join(row.error_messages_json or []))
         output_rows.append(values)
     payload = _build_xlsx([{
