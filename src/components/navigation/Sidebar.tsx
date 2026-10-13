@@ -14,6 +14,7 @@ const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANA
 
 const groups: Group[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
+  { title: "Executive View", url: "/executive-view", icon: BarChart3, permission: "finance.view" },
   { title: "Approval Center", url: "/approval-center", icon: CheckSquare2, permission: "approval.view", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
   { title: "Master Data", icon: Building2, roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
     { title: "Catering Items", url: "/products", permission: "products.view" },

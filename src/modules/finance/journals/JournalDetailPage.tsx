@@ -11,7 +11,7 @@ import Loading from "@/components/ui/Loading";
 import { Table,TableCellStack,TBody,TD,TH,THead,TR } from "@/components/ui/Table";
 import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useFormRecovery from "@/hooks/useFormRecovery";
-import { listLocations } from "@/modules/admin/organization/api";
+import { listLocations, listDepartments } from "@/modules/admin/organization/api";
 import { paymentAction } from "@/modules/finance/payments/api";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
@@ -58,6 +58,8 @@ export default function JournalDetailPage() {
     queryFn: () => listLocations({ business_unit_id: q.data?.business_unit_id ?? undefined, is_active: true }),
     enabled: editOpen,
   });
+
+  const departments = useQuery({ queryKey: ["journal-edit-departments", q.data?.business_unit_id, locationId], queryFn: () => listDepartments({ business_unit_id: q.data?.business_unit_id ?? undefined, location_id: locationId, is_active: true }), enabled: editOpen && !!locationId });
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["journal-entry", id] });
@@ -139,7 +141,7 @@ export default function JournalDetailPage() {
       debit: Number(line.debit || 0),
       credit: Number(line.credit || 0),
       description: line.description || "",
-      department_id: line.department_id ?? null,
+      department_id: line.department_id ?? x.department_id ?? null,
       location_id: line.location_id ?? null,
     })));
     setEditOpen(true);
@@ -183,11 +185,11 @@ export default function JournalDetailPage() {
             <SearchableSelect label="Work Location" required value={locationId} disabled={locations.isLoading} placeholder="Select work location..." options={(locations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}))} onChange={setLocationId} />
           </div>
           <div className="max-h-[42vh] overflow-auto rounded-lg border">
-            <table className="table-standard table-sticky-header min-w-[850px] w-full text-sm">
-              <thead className="bg-slate-50"><tr><th className="p-3 text-left">Account</th><th className="p-3 text-left">Description</th><th className="w-44 p-3 text-right">Debit</th><th className="w-44 p-3 text-right">Credit</th><th /></tr></thead>
+            <table className="table-standard table-sticky-header min-w-[1050px] w-full text-sm">
+              <thead className="bg-slate-50"><tr><th className="p-3 text-left">Account</th><th className="p-3 text-left">Department</th><th className="p-3 text-left">Description</th><th className="w-44 p-3 text-right">Debit</th><th className="w-44 p-3 text-right">Credit</th><th /></tr></thead>
               <tbody>{lines.map((line, index) => <tr key={index} className="border-t">
                 <td className="p-2"><SearchableSelect value={line.account_id || undefined} disabled={accounts.isLoading || accounts.isError} placeholder={accounts.isLoading ? "Loading accounts..." : accounts.isError ? "Could not load accounts" : "Type account code or name..."} options={(accounts.data ?? []).filter(account=>!["REVENUE","INCOME"].includes(account.account_type)||account.account_code==="400"||account.id===line.account_id).map((account) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}`, keywords: [account.account_code, account.account_name, account.account_type, account.account_subtype] }))} maxOptions={1000} onChange={(value) => updateLine(index, { account_id: value ?? 0 })} /></td>
-                <td className="p-2"><Input value={line.description} onChange={(e) => updateLine(index, { description: e.target.value })} /></td>
+                <td className="p-2"><SearchableSelect value={line.department_id ?? undefined} placeholder="Department (optional)" disabled={departments.isLoading} options={(departments.data ?? []).map(item => ({id:item.id,label:`${item.code} — ${item.name}`}))} onChange={value => updateLine(index,{department_id:value ?? null})}/></td><td className="p-2"><Input value={line.description} onChange={(e) => updateLine(index, { description: e.target.value })} /></td>
                 <td className="w-44 p-2"><CurrencyInput value={line.debit} onValueChange={(value) => updateLine(index, { debit: value, credit: value > 0 ? 0 : line.credit })} /></td>
                 <td className="w-44 p-2"><CurrencyInput value={line.credit} onValueChange={(value) => updateLine(index, { credit: value, debit: value > 0 ? 0 : line.debit })} /></td>
                 <td className="p-2"><Button type="button" size="xs" variant="danger" disabled={lines.length <= 2} onClick={() => setLines(lines.filter((_, i) => i !== index))}>Remove</Button></td>
@@ -197,7 +199,7 @@ export default function JournalDetailPage() {
           <div className="flex items-center justify-between gap-4">
             <Button type="button" variant="outline" onClick={() => setLines([...lines, blankLine()])}>Add Line</Button>
             <div className={`rounded-lg border px-5 py-3 text-sm ${balanced ? "bg-emerald-50" : "bg-amber-50"}`}>
-              <div>Debit: <strong className="tabular-nums">{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
+              <div>1 journal · {validLines.length} lines</div><div>Debit: <strong className="tabular-nums">{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
               <div>Credit: <strong className="tabular-nums">{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
               <div>Difference: <strong className="tabular-nums">{Math.abs(totals.debit - totals.credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
             </div>

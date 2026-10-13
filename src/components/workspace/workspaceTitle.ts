@@ -1,5 +1,6 @@
 const exactTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
+  "/executive-view": "Executive View",
   "/approval-center": "Approval Center",
   "/approval-configuration": "Approval Configuration",
   "/finance-dashboard": "Finance Dashboard",
