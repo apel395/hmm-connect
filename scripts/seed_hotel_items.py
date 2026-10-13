@@ -1,7 +1,7 @@
 """Seed the fully classified HOTEL BUY subset of invlistofgoods.xls.
 
 Dry run by default. Unresolved rows remain in the report, not in a pending group.
-Only Product and audit records are inserted. No existing master is updated.
+Only Item Master, unvalued asset registrations and audit records are inserted. No existing master is updated.
 """
 import argparse
 from collections import Counter
@@ -27,9 +27,10 @@ def seed_plan(source, products, groups, subgroups, accounts):
         if not normalize(row['unit']): row['issues'].append('UNIT_MISSING')
         if len(row['name'].strip()) > 150 or len(row['unit'].strip()) > 20:
             row['issues'].append('FIELD_LENGTH_REVIEW')
-        if row['inventory_treatment'] != 'STOCK' or row['group'] not in INVENTORY_COA:
+        fixed_asset = row['inventory_treatment'] == 'FIXED_ASSET' and row['group'] == 'ASSET' and row.get('asset_coa') in {'100-900-100','100-900-101','100-900-102','100-900-103'}
+        if not fixed_asset and (row['inventory_treatment'] != 'STOCK' or row['group'] not in INVENTORY_COA):
             row['issues'].append('CLASSIFICATION_NOT_FINAL')
-        account_number = INVENTORY_COA.get(row['group'])
+        account_number = row['asset_coa'] if fixed_asset else INVENTORY_COA.get(row['group'])
         matched = [a for a in accounts if a['account_number'] == account_number
                    and a['is_active'] and a['is_posting'] and a['account_type'] == 'ASSET'
                    and a['normal_balance'] == 'DEBIT']
@@ -58,8 +59,8 @@ def seed_plan(source, products, groups, subgroups, accounts):
                 'group_code': group['code'], 'group_name': group['name'],
                 'subgroup_code': subgroup['code'], 'subgroup_name': subgroup['name'],
                 'uom': row['unit'].strip(), 'usage_uom': row['unit'].strip(), 'conversion': 1,
-                'inventory_treatment': 'STOCK', 'inventory_account_id': matched[0]['id'],
-                'purchase_account_id': None, 'cogs_account_id': None, 'asset_account_id': None,
+                'inventory_treatment': 'FIXED_ASSET' if fixed_asset else 'STOCK', 'inventory_account_id': None if fixed_asset else matched[0]['id'],
+                'purchase_account_id': None, 'cogs_account_id': None, 'asset_account_id': matched[0]['id'] if fixed_asset else None,
                 'cost_price': str(cost), 'reference_cost_method': 'LAST_PURCHASE',
                 'selling_price': '0', 'tax_category': 'REVIEW_REQUIRED',
                 'is_taxable': False, 'tax_rate': '0',
@@ -143,7 +144,7 @@ def main():
             else: db.rollback()
             print(json.dumps(summary, indent=2))
             print(f'Full report: {args.output}')
-            print('COMMITTED Hotel Item Master and audit records only.' if args.apply else 'DRY RUN: no writes. Use --apply to create the classified subset.')
+            print('COMMITTED Hotel Item Master, unvalued asset registrations and audit records.' if args.apply else 'DRY RUN: no writes. Use --apply to create the classified subset.')
         except Exception:
             db.rollback()
             raise

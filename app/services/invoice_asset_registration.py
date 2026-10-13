@@ -57,7 +57,7 @@ def register_invoice_asset(
         (cost * Decimal(category.default_residual_percentage or 0) / Decimal("100")).quantize(Decimal("0.01"))
         if category else Decimal("0")
     )
-    asset = FixedAsset(
+    values = dict(
         asset_number=next_document_number(db, "FA"),
         asset_name=(line.product.name if line.product else line.description or f"Invoice line {line.id}")[:180],
         asset_category_id=category.id if category else None,
@@ -86,6 +86,14 @@ def register_invoice_asset(
         notes=f"Registered from posted invoice line {line.id}; no extra acquisition journal.",
         created_by_id=user.id,
     )
+    pending = db.query(FixedAsset).filter(FixedAsset.product_id == line.product_id,
+        FixedAsset.source_type == "ITEM_MASTER", FixedAsset.status == "PENDING_REGISTRATION").with_for_update().one_or_none() if line.product_id else None
+    if pending:
+        values.pop("asset_number")
+        asset = pending
+        for key, value in values.items(): setattr(asset, key, value)
+    else:
+        asset = FixedAsset(**values)
     db.add(asset)
     db.flush()
     link_asset_item(db, asset, user=user)
@@ -121,7 +129,7 @@ def sync_posted_invoice_assets(db: Session, *, user) -> int:
             continue
         debit = next((item for item in journal.lines if Decimal(item.debit or 0) > 0), None)
         account = db.get(ChartOfAccount, debit.account_id) if debit else None
-        if not account or not account.account_number.startswith("100-600-"):
+        if not account or not account.account_number.startswith(("100-600-", "100-900-")):
             continue
         if not db.query(FixedAsset.id).filter(FixedAsset.source_invoice_line_id == line.id, FixedAsset.product_id.is_not(None)).first():
             register_invoice_asset(db, invoice=invoice, line=line, account_id=account.id, journal=journal, user=user)
@@ -142,7 +150,7 @@ def sync_posted_invoice_assets(db: Session, *, user) -> int:
             if line.goods_receipt_item_id or not line.account_id:
                 continue
             account = db.get(ChartOfAccount, line.account_id)
-            if not account or not account.account_number.startswith("100-600-"):
+            if not account or not account.account_number.startswith(("100-600-", "100-900-")):
                 continue
             if not db.query(FixedAsset.id).filter(FixedAsset.source_invoice_line_id == line.id, FixedAsset.product_id.is_not(None)).first():
                 register_invoice_asset(db, invoice=invoice, line=line, account_id=account.id, journal=source, user=user)

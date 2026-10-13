@@ -52,6 +52,8 @@ class FixedAssetService:
         if value.depreciation_method != "STRAIGHT_LINE": raise HTTPException(422, "Only STRAIGHT_LINE depreciation is supported")
         if value.residual_value >= value.acquisition_cost: raise HTTPException(422, "Residual value must be below acquisition cost")
         validate_dimensions(self.db, value.business_unit_id, value.location_id, value.department_id, required=True)
+        if category.asset_account_id != value.asset_account_id:
+            raise HTTPException(422, "Category must match the asset account")
         self.validate_accounts(value)
 
     def create_category(self, value):
@@ -70,6 +72,25 @@ class FixedAssetService:
             if duplicate: raise HTTPException(409, "This invoice source has already been capitalized or registered")
         asset = FixedAsset(asset_number=next_document_number(self.db, "FA"), accumulated_depreciation=ZERO, net_book_value=value.acquisition_cost, created_by_id=user.id, **value.model_dump())
         self.db.add(asset); self.db.flush()
+        link_asset_item(self.db, asset, user=user)
+        self.db.add(FixedAssetMovement(fixed_asset_id=asset.id, movement_type="ACQUISITION", to_business_unit_id=asset.business_unit_id, to_location_id=asset.location_id, to_department_id=asset.department_id, movement_date=asset.acquisition_date, reference_number=asset.external_reference, created_by_id=user.id))
+        return asset
+
+    def complete_registration(self, asset, value, user):
+        if asset.status != "PENDING_REGISTRATION" or asset.source_type != "ITEM_MASTER":
+            raise HTTPException(409, "Only Item Master registrations can be completed here")
+        if asset.business_unit_id and value.business_unit_id != asset.business_unit_id:
+            raise HTTPException(422, "Keep the registered catalogue business unit")
+        if value.asset_account_id != asset.asset_account_id or value.product_id != asset.product_id:
+            raise HTTPException(422, "Keep the registered Item Master and asset account")
+        if value.purchase_invoice_id or value.goods_receipt_id:
+            raise HTTPException(422, "Use the source document registration flow for a purchase")
+        self.validate_asset(value)
+        for key, entry in value.model_dump().items(): setattr(asset, key, entry)
+        asset.status = "DRAFT"
+        asset.source_type = "ITEM_MASTER"
+        asset.created_by_id = user.id
+        asset.net_book_value = value.acquisition_cost
         link_asset_item(self.db, asset, user=user)
         self.db.add(FixedAssetMovement(fixed_asset_id=asset.id, movement_type="ACQUISITION", to_business_unit_id=asset.business_unit_id, to_location_id=asset.location_id, to_department_id=asset.department_id, movement_date=asset.acquisition_date, reference_number=asset.external_reference, created_by_id=user.id))
         return asset
@@ -103,7 +124,7 @@ class FixedAssetService:
 
     @staticmethod
     def actions(asset):
-        return {"can_edit": asset.status in ("DRAFT", "PENDING_SETUP"), "can_capitalize": asset.status == "DRAFT" and bool(asset.asset_category_id and asset.useful_life_months and asset.accumulated_depreciation_account_id and asset.depreciation_expense_account_id), "can_generate_schedule": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_transfer": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_dispose": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_write_off": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_print": True}
+        return {"can_complete_registration": asset.status == "PENDING_REGISTRATION", "can_edit": asset.status in ("DRAFT", "PENDING_SETUP"), "can_capitalize": asset.status == "DRAFT" and bool(asset.asset_category_id and asset.useful_life_months and asset.accumulated_depreciation_account_id and asset.depreciation_expense_account_id), "can_generate_schedule": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_transfer": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_dispose": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_write_off": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_print": True}
 
     def serialize(self, asset):
         return {"id":asset.id,"asset_number":asset.asset_number,"asset_name":asset.asset_name,"product_id":asset.product_id,"product_code":asset.product.code if asset.product else None,"product_name":asset.product.name if asset.product else None,"category_id":asset.asset_category_id,"category":asset.category.name if asset.category else None,"source_invoice_line_id":asset.source_invoice_line_id,"purchase_invoice_id":asset.purchase_invoice_id,"asset_account_id":asset.asset_account_id,"description":asset.description,"serial_number":asset.serial_number,"barcode":asset.barcode,"acquisition_date":asset.acquisition_date,"capitalization_date":asset.capitalization_date,"acquisition_cost":asset.acquisition_cost,"residual_value":asset.residual_value,"useful_life_months":asset.useful_life_months,"depreciation_method":asset.depreciation_method,"depreciation_start_date":asset.depreciation_start_date,"accumulated_depreciation":asset.accumulated_depreciation,"net_book_value":asset.net_book_value,"status":asset.status,"business_unit_id":asset.business_unit_id,"location_id":asset.location_id,"department_id":asset.department_id,"source_type":asset.source_type,"external_reference":asset.external_reference,"notes":asset.notes,"allowed_actions":self.actions(asset),"schedules":[{"id":s.id,"period":f"{s.period_year}-{s.period_month:02d}","opening_book_value":s.opening_book_value,"depreciation_amount":s.depreciation_amount,"accumulated_depreciation":s.accumulated_depreciation,"closing_book_value":s.closing_book_value,"status":s.status,"journal_entry_id":s.journal_entry_id} for s in sorted(asset.schedules,key=lambda x:(x.period_year,x.period_month))],"movements":[{"id":m.id,"movement_type":m.movement_type,"movement_date":m.movement_date,"from_business_unit_id":m.from_business_unit_id,"to_business_unit_id":m.to_business_unit_id,"from_location_id":m.from_location_id,"to_location_id":m.to_location_id,"notes":m.notes} for m in asset.movements]}

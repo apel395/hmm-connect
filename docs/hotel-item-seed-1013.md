@@ -50,7 +50,7 @@ so it does not by itself move FOOD ingredients into BEVERAGE. Explicit syrup
 is proposed under BEVERAGE / SYRUP. GROCERIES also recognizes the existing
 legacy spelling GRESORIS without creating another subgroup.
 
-## Classified first batch
+## Classified seed batches
 
 `seed_hotel_items.py` consumes the original local `.xls` workbook and pins the
 reviewed source checksum. Dry run is the default; `--apply` inserts the eligible
@@ -69,8 +69,10 @@ Codes use the existing shared Item Master generator and transaction lock.
 Purchase becomes an editable reference cost; the old Expense column is stored
 only in audit evidence, so its negative values do not block a valid master.
 Tax stays REVIEW_REQUIRED. No mandatory COGS/contra mapping is added.
-The script inserts only products and audit records: no inventory, movements,
-fixed asset register, receipts, invoices, journal, GL, tax transaction or opening.
+Stock batches insert products and audit records. The operating-equipment batch
+also creates linked unvalued PENDING_REGISTRATION asset records after migration
+20261013_asset_master_intake. No inventory, movements, valued acquisition,
+receipts, invoices, journal, GL, tax transaction or opening is created.
 
 ```bash
 .venv/bin/python scripts/seed_hotel_items.py --source scripts/invlistofgoods.xls \
@@ -83,3 +85,8 @@ An exact existing HOTEL/BUY name is skipped on every run, including after a
 previous successful seed; existing values are preserved. An optional
 `--actor-id` attributes audit records to that operator. All inserts roll back
 if creating a product, auditing, writing the report or committing fails.
+
+Identifiable hotel linen and tableware now use ASSET / FURNITURE (the existing
+FF&E subgroup), FIXED_ASSET treatment and operating-equipment COA 100-900-*;
+see `asset-master-intake-1013.md`. Unknown quantities, dates and ownership costs
+remain blank in their automatically created register records.

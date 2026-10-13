@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
@@ -23,6 +23,7 @@ class FixedAssetCategory(Base):
 
 class FixedAsset(Base):
     __tablename__ = "fixed_assets"
+    __table_args__ = (CheckConstraint("status = 'PENDING_REGISTRATION' OR (acquisition_date IS NOT NULL AND acquisition_cost IS NOT NULL AND business_unit_id IS NOT NULL AND created_by_id IS NOT NULL)", name="ck_fixed_asset_registered_details"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     asset_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     asset_name: Mapped[str] = mapped_column(String(180), index=True)
@@ -30,17 +31,17 @@ class FixedAsset(Base):
     description: Mapped[str | None] = mapped_column(Text)
     serial_number: Mapped[str | None] = mapped_column(String(100))
     barcode: Mapped[str | None] = mapped_column(String(100), unique=True)
-    acquisition_date: Mapped[date] = mapped_column(Date, index=True)
+    acquisition_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     capitalization_date: Mapped[date | None] = mapped_column(Date)
-    acquisition_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    acquisition_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     residual_value: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
     useful_life_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     depreciation_method: Mapped[str] = mapped_column(String(30), default="STRAIGHT_LINE")
     depreciation_start_date: Mapped[date | None] = mapped_column(Date)
     accumulated_depreciation: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
-    net_book_value: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    net_book_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True, default=0)
     status: Mapped[str] = mapped_column(String(30), default="DRAFT", index=True)
-    business_unit_id: Mapped[int] = mapped_column(ForeignKey("business_units.id"), index=True)
+    business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id"), nullable=True, index=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), index=True)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), index=True)
     custodian_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
@@ -59,7 +60,7 @@ class FixedAsset(Base):
     source_type: Mapped[str] = mapped_column(String(30), default="MANUAL")
     external_reference: Mapped[str | None] = mapped_column(String(120))
     notes: Mapped[str | None] = mapped_column(Text)
-    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     disposed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
