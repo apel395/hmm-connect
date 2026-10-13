@@ -33,8 +33,9 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const canManage = useAuthStore(state => state.hasPermission("finance.manage"));
   const owner = String(user?.id ?? "anonymous");
   const [saved] = useState(() => loadReportPreferences(owner, kind, window.location.search, initial));
-  const [draft, setDraft] = useState(saved.filters);
-  const [filters, setFilters] = useState(saved.filters);
+  const restoredFilters = kind === "BALANCE_SHEET" ? { ...saved.filters, include_zero: true, kap: false } : saved.filters;
+  const [draft, setDraft] = useState(restoredFilters);
+  const [filters, setFilters] = useState(restoredFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [period, setPeriod] = useState<Period>(saved.period);
   const view = "DETAIL" as const;
