@@ -4,9 +4,9 @@ export const TABLE_UI = {
   defaultDensity: "compact" as TableDensity,
   density: {
     compact: {
-      table: "text-[13px] leading-4",
-      headerCell: "h-7 px-2 py-1",
-      bodyCell: "px-2 py-1",
+      table: "text-xs leading-4",
+      headerCell: "h-6 px-2 py-0.5",
+      bodyCell: "px-2 py-0.5",
     },
     standard: {
       table: "text-[13px]",

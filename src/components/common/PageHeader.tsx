@@ -19,17 +19,17 @@ export default function PageHeader({
   return (
     <header
       className={clsx(
-        "mb-4 flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between",
+        "mb-2 flex flex-col gap-2 border-b border-slate-200 pb-2 sm:flex-row sm:items-center sm:justify-between",
         className
       )}
     >
       <div className="min-w-0 flex-1">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-[22px]">
+        <h1 className="text-lg font-semibold tracking-tight text-slate-900">
           {title}
         </h1>
 
         {description && (
-          <p className="mt-0.5 text-[13px] leading-5 text-slate-500">
+          <p className="mt-0.5 text-xs leading-4 text-slate-500">
             {description}
           </p>
         )}

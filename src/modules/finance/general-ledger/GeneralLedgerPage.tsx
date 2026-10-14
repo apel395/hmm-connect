@@ -31,11 +31,11 @@ export default function GeneralLedgerPage() {
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: pageSize }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
   const locations = useQuery({ queryKey: ["ledger-filter-locations", filters.business_unit_id], queryFn: () => listLocations({ is_active: true, business_unit_id:Number(filters.business_unit_id)||undefined }) });
-  const accounts = useQuery({ queryKey: ["ledger-accounts", "all-active"], queryFn: () => getAllAccountLookup({ is_active: true }) });
+  const accounts = useQuery({ queryKey: ["ledger-accounts", "all"], queryFn: () => getAllAccountLookup() });
   const summary = useQuery({ queryKey: ["ledger-summary", filters.account_id, filters.date_from, filters.date_to, filters.business_unit_id, filters.location_id, filters.department_id], queryFn: () => getAccountSummary(Number(filters.account_id), { business_unit_id:Number(filters.business_unit_id)||undefined, location_id:Number(filters.location_id)||undefined, department_id:Number(filters.department_id)||undefined, date_from: filters.date_from || undefined, date_to: filters.date_to || undefined }), enabled: !!filters.account_id });
   const change = (key: string, value: string) => { setFilters({ ...filters, [key]: value }); setPage(1); };
   useEffect(() => window.localStorage.setItem("ledger-page-size", String(pageSize)), [pageSize]);
-  const input = "h-10 rounded border px-3";
+  const input = "h-8 rounded border px-2 text-xs";
 
   useEffect(() => {
     if (!exportJobId) return;
@@ -138,29 +138,30 @@ export default function GeneralLedgerPage() {
       ? "Preparing XLS..."
       : "Download XLS";
 
-  return <div className="print-document space-y-6"><style>{`@page{size:landscape;margin:10mm}`}</style><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
-    <div className="print:hidden space-y-6">
+  return <div className="print-document space-y-2"><style>{`@page{size:landscape;margin:10mm}`}</style><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
+    <div className="print:hidden space-y-2">
     <PageHeader actions={<div className="flex items-center gap-2">
-    <Button onClick={handleExport} disabled={exportBusy}><Download size={16} /> {exportLabel}</Button>
+    <Button size="sm" variant="outline" title={exportLabel} aria-label={exportLabel} onClick={handleExport} disabled={exportBusy}><Download size={15} />{exportBusy && <span>{exportLabel}</span>}</Button>
     <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" />
-  </div>} title="General Ledger" description="Read-only posted journal activity with server-calculated balances."/>
+  </div>} title="General Ledger"/>
     <ReportUnitButtons value={filters.business_unit_id} onChange={id=>{setFilters({...filters,business_unit_id:id,location_id:"",department_id:""});setPage(1);}}/>
     {exportError && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div>}
-    <Card className="space-y-2 p-3">
-      <div className="grid gap-2 md:grid-cols-[160px_minmax(260px,1fr)_170px_170px]">
-        <label className="text-sm">Search Type<select className={`${input} mt-1 w-full`} value={filters.search_type} onChange={event=>change("search_type",event.target.value)}><option value="ALL">All fields</option><option value="JOURNAL">Journal No.</option><option value="DOCUMENT">Document No.</option><option value="DESCRIPTION">Description</option><option value="ACCOUNT">Account</option><option value="SUPPLIER">Supplier</option></select></label>
-        <label className="text-sm">Search<input className={`${input} mt-1 w-full`} placeholder="Type exact or partial value..." value={filters.search} onChange={event => change("search", event.target.value)}/></label>
-        <label className="text-sm">From Date<input className={`${input} mt-1 w-full`} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/></label>
-        <label className="text-sm">To Date<input className={`${input} mt-1 w-full`} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/></label>
+    <Card className="space-y-1.5 p-2">
+      <div className="grid gap-2 md:grid-cols-[130px_minmax(220px,1fr)_145px_145px_auto]">
+        <label className="text-xs">Search Type<select className={`${input} mt-0.5 w-full`} value={filters.search_type} onChange={event=>change("search_type",event.target.value)}><option value="ALL">All fields</option><option value="JOURNAL">Journal No.</option><option value="DOCUMENT">Document No.</option><option value="DESCRIPTION">Description</option><option value="ACCOUNT">Account</option><option value="SUPPLIER">Supplier</option></select></label>
+        <label className="text-xs">Search<input className={`${input} mt-0.5 w-full`} placeholder="Type exact or partial value..." value={filters.search} onChange={event => change("search", event.target.value)}/></label>
+        <label className="text-xs">From Date<input className={`${input} mt-0.5 w-full`} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/></label>
+        <label className="text-xs">To Date<input className={`${input} mt-0.5 w-full`} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/></label>
+      <div className="flex items-end justify-end"><Button type="button" size="sm" variant="outline" title="Filters" aria-label="General ledger filters" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}><SlidersHorizontal size={15}/><span className="sr-only">Filters</span>{["account_id","account_from_id","account_to_id","reference_type","supplier_id","department_id","location_id","business_unit_id"].filter(key => filters[key]).length ? ` (${["account_id","account_from_id","account_to_id","reference_type","supplier_id","department_id","location_id","business_unit_id"].filter(key => filters[key]).length})` : ""}</Button></div>
       </div>
-      <div className="flex justify-end"><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}><SlidersHorizontal size={15}/> Filters{["account_id","account_from_id","account_to_id","reference_type","supplier_id","department_id","location_id","business_unit_id"].filter(key => filters[key]).length ? ` (${["account_id","account_from_id","account_to_id","reference_type","supplier_id","department_id","location_id","business_unit_id"].filter(key => filters[key]).length})` : ""}</Button></div>
-      {showFilters && <div className="space-y-3 border-t border-slate-100 pt-3">
-      <div className="grid gap-3 md:grid-cols-3">
-        <SearchableSelect label="Single Account" value={filters.account_id ? Number(filters.account_id) : undefined} disabled={accounts.isLoading} placeholder="Exact account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_id", id ? String(id) : "")} />
-        <SearchableSelect label="From Account" value={filters.account_from_id ? Number(filters.account_from_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="Start account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_from_id", id ? String(id) : "")} />
-        <SearchableSelect label="To Account" value={filters.account_to_id ? Number(filters.account_to_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="End account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_to_id", id ? String(id) : "")} />
+
+      {showFilters && <div className="space-y-2 border-t border-slate-100 pt-2">
+      <div className="grid gap-2 md:grid-cols-3">
+        <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="Single Account" value={filters.account_id ? Number(filters.account_id) : undefined} disabled={accounts.isLoading} placeholder="Exact account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_id", id ? String(id) : "")} />
+        <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="From Account" value={filters.account_from_id ? Number(filters.account_from_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="Start account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_from_id", id ? String(id) : "")} />
+        <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="To Account" value={filters.account_to_id ? Number(filters.account_to_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="End account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_to_id", id ? String(id) : "")} />
       </div>
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-4">
         <select className={input} value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select>
         <input className={input} placeholder="Supplier ID" value={filters.supplier_id} onChange={event => change("supplier_id", event.target.value)}/>
         <input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/>
@@ -168,11 +169,11 @@ export default function GeneralLedgerPage() {
       </div>
       </div>}
     </Card>
-    <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit)}</small></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.credit)}</small></div><div><small>Difference</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit-filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit-pageTotals.credit)}</small></div></div></Card>
-    {summary.data && <Card><div className="grid gap-4 text-right md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
+    <Card className="p-2"><div className="grid gap-2 text-right text-xs md:grid-cols-4"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit)}</small></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.credit)}</small></div><div><small>Difference</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit-filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit-pageTotals.credit)}</small></div></div></Card>
+    {summary.data && <Card className="p-2"><div className="grid gap-2 text-right text-xs md:grid-cols-4"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
     </div>
     <Card>
-      <Table variant="grid" stickyHeader className="min-w-[980px]" containerClassName="max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible">
+      <Table variant="grid" stickyHeader className="min-w-[980px]" containerClassName="max-h-[70vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible">
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
         <TBody>{ledger.data?.items.map((row: any) => {
           const contextPrimary = row.supplier_name || row.business_unit_name;

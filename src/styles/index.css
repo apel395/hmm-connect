@@ -170,14 +170,14 @@ h6 {
      */
     :where(main, [role="dialog"]) :is(input, select, textarea):not([data-form-control]):not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
       max-width: 100%;
-      min-height: 2.25rem;
+      min-height: 2rem;
       border: 1px solid #cbd5e1;
       border-radius: 0.375rem;
       background: #fff;
-      padding: 0.5rem 0.75rem;
+      padding: 0.25rem 0.5rem;
       color: #0f172a;
-      font-size: 13px;
-      line-height: 1.25rem;
+      font-size: 12px;
+      line-height: 1rem;
       box-shadow: 0 1px 2px rgb(15 23 42 / 0.03);
       transition: border-color 150ms ease, box-shadow 150ms ease;
     }
