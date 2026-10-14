@@ -152,8 +152,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         creator_name = creator.full_name if creator else None
     created_at = getattr(entity, "created_at", None) or (creation.created_at if creation else None)
     result = {
-        "created_by_name": creator_name,
-        "created_at": created_at,
+        **({"created_by_name": creator_name, "created_at": created_at} if entity is not None else {}),
         "is_admin": admin,
         "location_name": _entity_location_name(db, entity_type, entity_id),
         "allowed_actions": {
