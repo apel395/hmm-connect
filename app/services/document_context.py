@@ -43,7 +43,7 @@ def _can(user, entity_type: str, action: str) -> bool:
     return bool(code and has_permission(user, code))
 
 
-def _entity_location_name(db: Session, entity_type: str, entity_id: int) -> str | None:
+def _entity_document(db: Session, entity_type: str, entity_id: int):
     if entity_type == "PURCHASE_REQUISITION":
         from app.models.purchase_requisition import PurchaseRequisition
         entity = db.get(PurchaseRequisition, entity_id)
@@ -64,6 +64,11 @@ def _entity_location_name(db: Session, entity_type: str, entity_id: int) -> str 
         entity = db.get(StockOpname, entity_id)
     else:
         entity = None
+    return entity
+
+
+def _entity_location_name(db: Session, entity_type: str, entity_id: int) -> str | None:
+    entity = _entity_document(db, entity_type, entity_id)
     location = getattr(entity, "location", None) if entity else None
     return location.name if location else None
 
@@ -137,7 +142,18 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
         AuditLog.entity_type == entity_type,
         AuditLog.entity_id == entity_id,
     ).order_by(AuditLog.created_at.desc()).all()
+    entity = _entity_document(db, entity_type, entity_id)
+    creation = next((event for event in reversed(events) if event.action in ("CREATE", "CREATED") or event.action.endswith("_CREATED")), None)
+    creator_name = (creation.actor_name or (creation.user.full_name if creation.user else None)) if creation else None
+    if not creator_name and entity:
+        from app.models.user import User
+        creator_id = next((getattr(entity, field, None) for field in ("created_by_id", "requested_by_id", "received_by_id") if getattr(entity, field, None)), None)
+        creator = db.get(User, creator_id) if creator_id else None
+        creator_name = creator.full_name if creator else None
+    created_at = getattr(entity, "created_at", None) or (creation.created_at if creation else None)
     result = {
+        "created_by_name": creator_name,
+        "created_at": created_at,
         "is_admin": admin,
         "location_name": _entity_location_name(db, entity_type, entity_id),
         "allowed_actions": {
