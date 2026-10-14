@@ -435,7 +435,7 @@ class GoodsReceiptService:
                     raise HTTPException(status_code=409, detail=f"Receiving unit cost must be greater than zero for PO item {po_item.id}")
                 receipt.items.append(GoodsReceiptItem(
                     purchase_order_item_id=po_item.id, product_id=po_item.product_id, quantity=incoming.quantity, unit_cost=unit_cost, expense_account_id=incoming.expense_account_id,
-                    is_taxable=bool(po_item.is_taxable), tax_rate=Decimal(po_item.tax_rate or 0),
+                    is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
                 ))
             else:
                 if incoming.product_id in seen:
@@ -444,14 +444,12 @@ class GoodsReceiptService:
                 product = db.get(Product, incoming.product_id)
                 if not product:
                     raise HTTPException(status_code=404, detail=f"Product {incoming.product_id} not found")
-                if str(product.tax_category or "REVIEW_REQUIRED").upper() == "REVIEW_REQUIRED":
-                    raise HTTPException(status_code=409, detail=f"Product {product.code} requires Finance tax review before receiving")
                 unit_cost = Decimal(incoming.unit_cost or 0)
                 if unit_cost <= 0:
                     raise HTTPException(status_code=409, detail=f"Receiving unit cost must be greater than zero for product {product.id}")
                 receipt.items.append(GoodsReceiptItem(
                     purchase_order_item_id=None, market_list_item_id=incoming.market_list_item_id if market else None, product_id=product.id, quantity=incoming.quantity, unit_cost=unit_cost, expense_account_id=incoming.expense_account_id,
-                    is_taxable=bool(product.is_taxable), tax_rate=Decimal(product.tax_rate or 0),
+                    is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
                 ))
 
         resolver = DirectCoaService(db)

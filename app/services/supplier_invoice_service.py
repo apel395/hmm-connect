@@ -403,10 +403,8 @@ class SupplierInvoiceService:
 
             reference_taxable = po_item.is_taxable if po_item else (receipt_item.is_taxable if receipt_item else None)
             reference_rate = Decimal(po_item.tax_rate or 0) if po_item else (Decimal(receipt_item.tax_rate or 0) if receipt_item else None)
-            if reference_taxable is not None and bool(line.is_taxable) != bool(reference_taxable):
-                line_issues.append("Invoice PPN applicability differs from PO/receiving tax snapshot.")
-            if bool(line.is_taxable) and reference_rate is not None and Decimal(line.tax_rate or 0) != reference_rate:
-                line_issues.append("Invoice PPN rate differs from PO/receiving tax snapshot.")
+            # PO/receiving tax is provisional. AP confirms the supplier invoice;
+            # VAT differences alone must not become a quantity/cost mismatch.
 
             line_results.append({
                 "invoice_line_id": line.id,
