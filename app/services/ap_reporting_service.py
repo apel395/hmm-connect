@@ -11,6 +11,7 @@ from app.models.payment import Payment, PaymentAllocation
 from app.models.supplier import Supplier
 from app.models.supplier_adjustment import SupplierAdjustment
 from app.models.supplier_invoice import SupplierInvoice
+from app.services.organization_access import effective_business_unit
 
 ZERO = Decimal("0.00")
 BUCKETS = ("current", "1_30", "31_60", "61_90", "over_90")
@@ -59,7 +60,7 @@ class APReportingService:
         if supplier_id:
             query = query.filter(SupplierInvoice.supplier_id == supplier_id)
         if business_unit_id:
-            query = query.filter(SupplierInvoice.business_unit_id == business_unit_id)
+            query = query.filter(effective_business_unit(SupplierInvoice.business_unit_id, SupplierInvoice.location_id) == business_unit_id)
         if location_id:
             query = query.filter(SupplierInvoice.location_id == location_id)
         if department_id:

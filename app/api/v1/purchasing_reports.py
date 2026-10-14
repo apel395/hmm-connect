@@ -14,6 +14,7 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_requisition import PurchaseRequisition
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.services.organization_access import resolve_organization_access, effective_business_unit
 from app.services.location_access import apply_location_scope
 from app.services.purchasing_insights_service import PurchasingInsightsService
 
@@ -30,6 +31,7 @@ def _round(value) -> Decimal:
 def purchasing_summary(
     date_from: date | None = None,
     date_to: date | None = None,
+    business_unit_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -43,6 +45,16 @@ def purchasing_summary(
     po_query = apply_location_scope(db.query(PurchaseOrder), PurchaseOrder.location_id, user)
     gr_query = apply_location_scope(db.query(GoodsReceipt), GoodsReceipt.location_id, user)
 
+    scope=resolve_organization_access(db,user,business_unit_id=business_unit_id)
+    for model,name in ((PurchaseRequisition,"pr"),(PurchaseOrder,"po"),(GoodsReceipt,"gr")):
+        query={"pr":pr_query,"po":po_query,"gr":gr_query}[name]
+        for dimension,value in scope.items():
+            if value is not None:
+                column=effective_business_unit(model.business_unit_id,model.location_id) if dimension=="business_unit_id" else getattr(model,dimension)
+                query=query.filter(column==value)
+        if name=="pr":pr_query=query
+        elif name=="po":po_query=query
+        else:gr_query=query
     if date_from:
         pr_query = pr_query.filter(PurchaseRequisition.request_date >= date_from)
         po_query = po_query.filter(PurchaseOrder.order_date >= date_from)
@@ -145,6 +157,7 @@ def purchasing_summary(
 
 @router.get("/price-history")
 def price_history(
+    business_unit_id: int | None = None,
     product_id: int | None = None,
     supplier_id: int | None = None,
     search: str | None = Query(default=None, max_length=100),
@@ -161,7 +174,7 @@ def price_history(
         raise HTTPException(422, "From date must not exceed To date")
     return PurchasingInsightsService(db, user).price_history(
         product_id=product_id, supplier_id=supplier_id, search=search,
-        date_from=date_from, date_to=date_to, page=page, page_size=page_size,
+        date_from=date_from, date_to=date_to, page=page, page_size=page_size,business_unit_id=business_unit_id,
     )
 
 

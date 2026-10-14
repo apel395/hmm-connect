@@ -25,6 +25,7 @@ from app.services.general_ledger_report import (
     serialize_ledger_item,
 )
 from app.services.location_access import resolve_location_id
+from app.services.organization_access import resolve_organization_access
 
 router = APIRouter(prefix="/general-ledger", tags=["General Ledger"])
 ZERO = Decimal("0")
@@ -196,16 +197,16 @@ def printable(
 
 
 @router.get("/accounts/{account_id}/summary")
-def summary(account_id: int, date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def summary(account_id: int, date_from: date | None = None, date_to: date | None = None, business_unit_id: int | None = None, location_id: int | None = None, department_id: int | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
     account = db.get(ChartOfAccount, account_id)
     if not account:
         raise HTTPException(404, "Account not found")
-    location_id = resolve_location_id(user, None)
+    scope = resolve_organization_access(db,user,business_unit_id=business_unit_id,location_id=location_id,department_id=department_id)
     opening = opening_balances(
-        db, account_id=account_id, date_from=date_from, location_id=location_id,
+        db, account_id=account_id, date_from=date_from, **scope,
     ).get(account_id, ZERO)
-    q = build_ledger_query(db, account_id=account_id, date_from=date_from, date_to=date_to, location_id=location_id)
+    q = build_ledger_query(db, account_id=account_id, date_from=date_from, date_to=date_to, **scope)
     td, tc = q.with_entities(func.coalesce(func.sum(JournalLine.debit), 0), func.coalesce(func.sum(JournalLine.credit), 0)).one()
     movement = Decimal(td) - Decimal(tc) if account.normal_balance == "DEBIT" else Decimal(tc) - Decimal(td)
     return {"account_id": account.id, "account_code": account.account_number, "account_name": account.account_name, "normal_balance": account.normal_balance, "opening_balance": opening, "total_debit": td, "total_credit": tc, "closing_balance": opening + movement}

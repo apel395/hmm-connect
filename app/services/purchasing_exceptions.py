@@ -13,6 +13,7 @@ from app.services.approval import get_request
 from app.services.activity_service import ActivityService
 from app.services.location_access import apply_location_scope, enforce_location_access
 from app.dependencies.authorization import has_permission
+from app.services.organization_access import resolve_organization_access, effective_business_unit
 
 SOURCES = {
     'PURCHASE_REQUISITION':(PurchaseRequisition,'pr_number','request_date','pr.view','pr.manage','purchase-requisitions',{'ORDERED','CLOSED','COMPLETED'}),
@@ -22,12 +23,17 @@ SOURCES = {
 }
 
 
-def unfinished_documents(db,user,date_from=None,date_to=None,archived=False):
+def unfinished_documents(db,user,date_from=None,date_to=None,archived=False,business_unit_id=None):
+    scope=resolve_organization_access(db,user,business_unit_id=business_unit_id)
     result=[]
     for kind,(model,number,date_field,view,manage,path,complete) in SOURCES.items():
         if not has_permission(user, view):
             continue
         query=apply_location_scope(db.query(model), model, user)
+        if scope["business_unit_id"] is not None:
+            query=query.filter(effective_business_unit(model.business_unit_id,model.location_id)==scope["business_unit_id"])
+        if scope["department_id"] is not None and hasattr(model,"department_id"):
+            query=query.filter(model.department_id==scope["department_id"])
         query=query.filter(model.status=='ARCHIVED') if archived else query.filter(model.status.notin_([*complete,'ARCHIVED']))
         day=func.date(getattr(model,date_field))
         if date_from: query=query.filter(day>=date_from)

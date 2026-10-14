@@ -103,6 +103,7 @@ def list_inventory(
     warehouse_id: int | None = None,
     account_id: int | None = None,
     location_id: int | None = None,
+    business_unit_id: int | None = None,
     as_of: date | None = None,
     movement_class: str | None = None,
     health: str | None = Query(default=None, pattern="^(HEALTHY|LOW_STOCK|REORDER|BELOW_MINIMUM)$"),
@@ -114,7 +115,11 @@ def list_inventory(
 ):
     if movement_class not in (None, "FAST", "SLOW", "DEAD"):
         raise HTTPException(422, "Invalid stock movement class")
+    from app.services.organization_access import resolve_organization_access
+    scope=resolve_organization_access(db,user,location_id=location_id,business_unit_id=business_unit_id)
+    location_id,business_unit_id=scope["location_id"],scope["business_unit_id"]
     scoped = _inventory_base(db, user, warehouse_id)
+    if business_unit_id is not None: scoped=scoped.filter(Location.business_unit_id==business_unit_id)
     if account_id:
         scoped = scoped.filter(Product.inventory_account_id == account_id)
     if location_id:

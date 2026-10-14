@@ -215,26 +215,28 @@ def write_off(asset_id: int, data: WriteOffInput, db: Session = Depends(get_db),
     access(user); service = FixedAssetService(db); result = service.dispose(scoped_asset(service,asset_id,user,lock=True), data, user, True); db.commit(); return {"asset": service.serialize(scoped_asset(service,asset_id,user,lock=True)), "journal_entry_id": result["journal"].id}
 
 
-def scoped_asset_query(db, user, query):
-    scope = resolve_organization_access(db, user)
+def scoped_asset_query(db, user, query, business_unit_id=None):
+    from app.services.organization_access import effective_business_unit
+    scope = resolve_organization_access(db, user, business_unit_id=business_unit_id)
     for key, value in scope.items():
         if value is not None:
-            query = query.filter(getattr(FixedAsset, key) == value)
+            column = effective_business_unit(FixedAsset.business_unit_id, FixedAsset.location_id) if key == "business_unit_id" else getattr(FixedAsset, key)
+            query = query.filter(column == value)
     return query
 
 
-def asset_report(db: Session, user):
-    return [{"id": item.id, "asset_number": item.asset_number, "asset_name": item.asset_name, "category": item.category.name if item.category else "Category setup required", "acquisition_date": item.acquisition_date, "capitalization_date": item.capitalization_date, "acquisition_cost": item.acquisition_cost, "accumulated_depreciation": item.accumulated_depreciation, "net_book_value": item.net_book_value, "residual_value": item.residual_value, "status": item.status} for item in scoped_asset_query(db,user,db.query(FixedAsset).filter(FixedAsset.status != "PENDING_REGISTRATION")).all()]
+def asset_report(db: Session, user, business_unit_id=None):
+    return [{"id": item.id, "asset_number": item.asset_number, "asset_name": item.asset_name, "category": item.category.name if item.category else "Category setup required", "acquisition_date": item.acquisition_date, "capitalization_date": item.capitalization_date, "acquisition_cost": item.acquisition_cost, "accumulated_depreciation": item.accumulated_depreciation, "net_book_value": item.net_book_value, "residual_value": item.residual_value, "status": item.status} for item in scoped_asset_query(db,user,db.query(FixedAsset).filter(FixedAsset.status != "PENDING_REGISTRATION"),business_unit_id=business_unit_id).all()]
 
 
 @reports_router.get("/fixed-assets")
-def fixed_asset_report(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); items = asset_report(db,user); return {"items": items, "totals": {"acquisition_cost": sum((item["acquisition_cost"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO), "accumulated_depreciation": sum((item["accumulated_depreciation"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO), "net_book_value": sum((item["net_book_value"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO)}}
+def fixed_asset_report(db: Session = Depends(get_db), user=Depends(get_current_user), business_unit_id: int | None = None):
+    access(user); items = asset_report(db,user,business_unit_id); return {"items": items, "totals": {"acquisition_cost": sum((item["acquisition_cost"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO), "accumulated_depreciation": sum((item["accumulated_depreciation"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO), "net_book_value": sum((item["net_book_value"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO)}}
 
 
 @reports_router.get("/depreciation")
-def depreciation_report(date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); query = scoped_asset_query(db,user,db.query(FixedAssetDepreciationSchedule).join(FixedAsset))
+def depreciation_report(date_from: date | None = None, date_to: date | None = None, business_unit_id: int | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    access(user); query = scoped_asset_query(db,user,db.query(FixedAssetDepreciationSchedule).join(FixedAsset),business_unit_id=business_unit_id)
     if date_from: query = query.filter(FixedAssetDepreciationSchedule.period_end >= date_from)
     if date_to: query = query.filter(FixedAssetDepreciationSchedule.period_start <= date_to)
     items = [{"asset_id": row.fixed_asset_id, "asset_number": row.asset.asset_number, "asset_name": row.asset.asset_name, "period": f"{row.period_year}-{row.period_month:02d}", "opening_book_value": row.opening_book_value, "depreciation_amount": row.depreciation_amount, "accumulated_depreciation": row.accumulated_depreciation, "closing_book_value": row.closing_book_value, "journal_entry_id": row.journal_entry_id, "status": row.status} for row in query.all()]

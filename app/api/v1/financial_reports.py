@@ -215,7 +215,9 @@ def executive_overview(as_of_date: date = Query(), location_id: int | None = Non
     pnl=deliver(service,as_of_date=as_of_date,report_scope='CONSOLIDATED',**scope,
                 budget_id=budget_id,include_zero=False,detail=False,include_breakdown=False)
     balance=service.build(report_type='BALANCE_SHEET',as_of_date=as_of_date,**scope,budget_id=budget_id,kap=True)
-    return serialize({'as_of_date':as_of_date,'scope':scope,'scope_labels':balance['scope_labels'],
+    from app.services.executive_dashboard import dashboard_visuals
+    visuals=dashboard_visuals(db,service,pnl,balance,as_of_date,scope)
+    return serialize({'dashboard':visuals,'as_of_date':as_of_date,'scope':scope,'scope_labels':balance['scope_labels'],
                       'profit_loss':{'presentation_rows':[{key:row[key] for key in ('key','label','periods')} for row in pnl['presentation_rows'] if row['key'] in ('REVENUE','BEBAN','GOP','NOP')],
                                      'section_totals':pnl['section_totals']},
                       'balance_sheet':{'section_totals':balance['section_totals']}})
