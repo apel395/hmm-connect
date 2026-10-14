@@ -5,6 +5,8 @@ export interface GoodsReceiptItemPayload {
   expense_account_id?: number | null;
   quantity: number;
   unit_cost?: number | null;
+  is_taxable?: boolean;
+  tax_rate?: number;
 }
 
 export interface GoodsReceiptCreatePayload {
