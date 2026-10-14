@@ -34,3 +34,8 @@ def test_receiving_uses_creation_event_time_not_receiving_date(db):
     info=document_context(db,'GOODS_RECEIPT',1,'DRAFT',ADMIN)
     assert info['created_by_name']=='Inputter'
     assert info['created_at'].month==10 and info['created_at'].hour==3
+
+
+def test_other_document_context_does_not_overwrite_source_creation_time(db):
+    info=document_context(db,'SUPPLIER_INVOICE',99,'DRAFT',ADMIN)
+    assert 'created_at' not in info and 'created_by_name' not in info
