@@ -28,7 +28,7 @@ import useAuthorization from "@/hooks/useAuthorization";
 import { nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
 
-type Line = { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; expense_account_id?: number | null };
+type Line = { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; tax_rate?:number; expense_account_id?: number | null };
 const money = (value: unknown) =>
   Number(value ?? 0).toLocaleString("id-ID", {
     minimumFractionDigits: 2,
@@ -115,26 +115,7 @@ export default function DirectReceiveDialog({
       ),
     [lines],
   );
-  const tax = useMemo(
-    () =>
-      lines.reduce((sum, line) => {
-        const product = productRows.find((p) => p.id === line.product_id);
-        if (!product?.is_taxable) return sum;
-        return (
-          sum +
-          (Number(line.quantity || 0) *
-            Number(line.unit_cost || 0) *
-            Number(product.tax_rate || 0)) /
-            100
-        );
-      }, 0),
-    [lines, productRows],
-  );
-  const hasTaxReview = lines.some(
-    (line) =>
-      productRows.find((p) => p.id === line.product_id)?.tax_category ===
-      "REVIEW_REQUIRED",
-  );
+  const tax = useMemo(()=>lines.reduce((sum,line)=>sum+line.quantity*line.unit_cost*Number(line.tax_rate||0)/100,0),[lines]);
   const patch = (index: number, value: Partial<Line>) =>
     setLines((current) =>
       current.map((line, i) => (i === index ? { ...line, ...value } : line)),
@@ -157,6 +138,8 @@ export default function DirectReceiveDialog({
         expense_account_id: destinationType === "DIRECT_USE" ? line.expense_account_id ?? null : null,
         quantity: line.quantity,
         unit_cost: line.unit_cost,
+        is_taxable: Number(line.tax_rate||0)>0,
+        tax_rate: Number(line.tax_rate||0),
       }));
     if (!items.length) return alert("Add at least one valid item.");
     if (destinationType === "DIRECT_USE" && items.some(item => {
@@ -166,10 +149,6 @@ export default function DirectReceiveDialog({
     if (items.some((item) => Number(item.unit_cost) <= 0))
       return alert(
         "Unit cost must be greater than zero for every received item.",
-      );
-    if (hasTaxReview)
-      return alert(
-        "One or more items still require Finance tax review in Item Master before this receiving document can continue.",
       );
     try {
       await receive.mutateAsync({
@@ -291,12 +270,6 @@ export default function DirectReceiveDialog({
               />
             )}
           </div>
-          {hasTaxReview && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800">
-              Tax review required: Finance must classify all selected items in
-              Item Master before this RR can proceed.
-            </div>
-          )}
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <label className="mb-2 block text-xs">Item catalog<select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL")}><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>
             <table className="min-w-[940px] w-full text-xs">
@@ -306,7 +279,7 @@ export default function DirectReceiveDialog({
                   <th>UOM</th>
                   <th>Qty</th>
                   <th>Unit Cost</th>
-                  <th>Tax</th>
+                  <th>PPN estimate %</th>
                   <th>PPN</th>
                   <th>Line Total</th>
                   <th></th>
@@ -318,9 +291,7 @@ export default function DirectReceiveDialog({
                     (p) => p.id === line.product_id,
                   );
                   const base = line.quantity * line.unit_cost;
-                  const lineTax = product?.is_taxable
-                    ? (base * Number(product.tax_rate || 0)) / 100
-                    : 0;
+                  const lineTax = base * Number(line.tax_rate||0)/100;
                   return (
                     <tr key={index} className="border-t">
                       <td className="p-2">
@@ -335,11 +306,7 @@ export default function DirectReceiveDialog({
                           }
                           onSelect={product => { rememberProduct(product); patch(index, {product_id:product.id, unit_cost:Number(product.reference_cost ?? product.last_purchase_price ?? 0)}); }}
                         />
-                        {product?.tax_category === "REVIEW_REQUIRED" && (
-                          <div className="mt-1 text-xs font-medium text-red-700">
-                            Finance tax review required
-                          </div>
-                        )}
+
                       </td>
                       <td>{product?.uom ?? "—"}</td>
                       <td className="p-2">
@@ -360,9 +327,8 @@ export default function DirectReceiveDialog({
                         {destinationType === "DIRECT_USE" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" className="w-full rounded border p-1" value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}
                       </td>
                       <td>
-                        {product?.is_taxable
-                          ? `PPN ${Number(product.tax_rate || 0)}%`
-                          : (product?.tax_category ?? "—")}
+                        <input aria-label={`Provisional PPN rate for item ${index+1}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={line.tax_rate??0} onChange={event=>patch(index,{tax_rate:Number(event.target.value)})}/>
+
                       </td>
                       <td className="text-right">{money(lineTax)}</td>
                       <td className="text-right font-medium">
