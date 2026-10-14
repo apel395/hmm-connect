@@ -34,8 +34,8 @@ function approvalSignatures(data:PrintDocument):PrintSignature[]{
 export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"market-lists"|"purchase-orders"|"goods-receipts"}){
   const{id}=useParams();
   const query=useQuery({queryKey:[kind,id,"print"],queryFn:async()=>(await api.get<PrintDocument>(`/${kind}/${id}/print`)).data,enabled:Boolean(id)});
-  if(query.isLoading)return <Loading/>;
-  if(!query.data)return <p>Document could not be loaded.</p>;
+  if(query.isLoading)return <div data-print-ready="false"><Loading/></div>;
+  if(!query.data)return <p data-print-ready="false">Document could not be loaded.</p>;
   const data=query.data;
   const isReceipt=kind==="goods-receipts";
   const isPr=kind==="purchase-requisitions";
