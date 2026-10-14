@@ -1,14 +1,9 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FORM_UI } from "@/config/formUi";
+import {optionLabel,matchingSelectOptions,type SearchableSelectOption} from "./searchableSelectOptions";
+export type {SearchableSelectOption} from "./searchableSelectOptions";
 
-export interface SearchableSelectOption<T extends string | number = number> {
-  id: T;
-  label?: string;
-  code?: string;
-  name?: string;
-  keywords?: string[];
-}
 
 interface Props<T extends string | number = number> {
   label?: string;
@@ -23,21 +18,6 @@ interface Props<T extends string | number = number> {
 }
 
 type DropdownPosition = { left: number; top: number; width: number };
-
-function optionLabel<T extends string | number>(option: SearchableSelectOption<T>): string {
-  if (option.label?.trim()) return option.label.trim();
-  const code = option.code?.trim() ?? "";
-  const name = option.name?.trim() ?? "";
-  if (code && name) return `${code} - ${name}`;
-  return name || code || String(option.id);
-}
-
-function searchableText<T extends string | number>(option: SearchableSelectOption<T>): string {
-  return [optionLabel(option), option.code, option.name, ...(option.keywords ?? [])]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
 
 export default function SearchableSelect<T extends string | number = number>({
   label,
@@ -86,8 +66,7 @@ export default function SearchableSelect<T extends string | number = number>({
   const filteredOptions = useMemo(() => {
     const raw = query.trim().toLowerCase();
     const effective = selected && raw === selectedLabel.toLowerCase() ? "" : raw;
-    if (!effective) return options.slice(0, maxOptions);
-    return options.filter((option) => searchableText(option).includes(effective)).slice(0, maxOptions);
+    return matchingSelectOptions(options,effective,maxOptions);
   }, [options, query, selected, selectedLabel, maxOptions]);
 
   useEffect(() => {
@@ -146,7 +125,7 @@ export default function SearchableSelect<T extends string | number = number>({
     ? createPortal(
         <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-64 overflow-y-auto overscroll-contain will-change-transform rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
           {filteredOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching options.</div> : filteredOptions.map((option, index) => (
-            <button key={String(option.id)} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }}>
+            <button key={String(option.id)} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full border-b border-slate-100 px-2 py-1 text-left text-xs last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }}>
               {optionLabel(option)}
             </button>
           ))}

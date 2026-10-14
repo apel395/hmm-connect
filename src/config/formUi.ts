@@ -4,11 +4,11 @@ export const FORM_UI = {
   defaultDensity: "compact" as FormDensity,
   density: {
     compact: {
-      control: "h-9 px-3 py-2 text-[13px]",
+      control: "h-8 px-2 py-1 text-xs",
       textarea: "min-h-20 px-3 py-2 text-[13px]",
-      label: "mb-1.5 text-xs",
-      fieldGap: "gap-3",
-      sectionGap: "space-y-4",
+      label: "mb-1 text-[11px]",
+      fieldGap: "gap-2",
+      sectionGap: "space-y-3",
     },
     standard: {
       control: "h-10 px-3 py-2 text-[13px]",

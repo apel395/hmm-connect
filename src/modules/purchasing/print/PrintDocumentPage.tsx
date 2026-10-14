@@ -12,7 +12,7 @@ interface PrintDocument {
   supplier_name?:string;requester_name?:string;status?:string;destination_type?:string;warehouse_name?:string|null;
   delivery_note_number?:string|null;external_reference?:string|null;business_unit_name?:string|null;department_name?:string|null;location_name?:string|null;
   business_unit_id?:number|null;department_id?:number|null;location_id?:number|null;notes?:string|null;total_amount?:number;total_value?:number;
-  printed_by:string;generated_at:string;created_at?:string;received_by_name?:string|null;items:PrintItem[];approval_history?:ApprovalRecord[];activity_history?:Array<{action:string;actor_name?:string|null;occurred_at?:string|null}>;source_pr_number?:string|null;purchase_order_number?:string|null;is_partial_receipt?:boolean;remaining_items?:Array<{product_code?:string;product_name?:string;uom?:string;remaining_quantity?:number}>;
+  printed_by:string;generated_at:string;created_by_name?:string|null;created_at?:string;received_by_name?:string|null;items:PrintItem[];approval_history?:ApprovalRecord[];activity_history?:Array<{action:string;actor_name?:string|null;occurred_at?:string|null}>;source_pr_number?:string|null;purchase_order_number?:string|null;is_partial_receipt?:boolean;remaining_items?:Array<{product_code?:string;product_name?:string;uom?:string;remaining_quantity?:number}>;
 }
 const money=(value:unknown)=>Number(value??0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const displayDate=(value?:string)=>value?new Date(value).toLocaleDateString():"—";
@@ -24,18 +24,18 @@ function approvalSignatures(data:PrintDocument):PrintSignature[]{
     .filter(record=>record.status==="APPROVED")
     .map(record=>({
       label:record.signature_label||record.name||`Approval Level ${record.level}`,
-      name:record.signature_name||record.approver_name||"Approved",
+      name:record.signature_name||record.approver_name||"—",
       imageSrc:record.signature_image||undefined,
       signedAt:record.decided_at,
-      status:record.status,
+
     }));
 }
 
 export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"market-lists"|"purchase-orders"|"goods-receipts"}){
   const{id}=useParams();
   const query=useQuery({queryKey:[kind,id,"print"],queryFn:async()=>(await api.get<PrintDocument>(`/${kind}/${id}/print`)).data,enabled:Boolean(id)});
-  if(query.isLoading)return <Loading/>;
-  if(!query.data)return <p>Document could not be loaded.</p>;
+  if(query.isLoading)return <div data-print-ready="false"><Loading/></div>;
+  if(!query.data)return <p data-print-ready="false">Document could not be loaded.</p>;
   const data=query.data;
   const isReceipt=kind==="goods-receipts";
   const isPr=kind==="purchase-requisitions";
@@ -65,11 +65,11 @@ export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"
     {label:"PRICE",align:"right" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{money(isReceipt?item.unit_cost:item.unit_price??item.estimated_price??0)}</span>},
     {label:"AMOUNT",align:"right" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{money(isReceipt?(item.line_total??Number(item.quantity)*Number(item.unit_cost??0)):(item.total_price??Number(item.quantity)*Number(item.unit_price??item.estimated_price??0)))}</span>},
   ];
-  const signatures=approvalSignatures(data);
-  const createdEvent=(data.activity_history??[]).find(event=>event.action==="CREATE");
-  const creator=data.requester_name??data.received_by_name??createdEvent?.actor_name;
+  const createdEvent=(data.activity_history??[]).find(event=>event.action==="CREATE"||event.action==="CREATED"||event.action.endsWith("_CREATED"));
+  const creator=data.created_by_name??createdEvent?.actor_name??data.requester_name??data.received_by_name;
+  const signatures:PrintSignature[]=[{label:"Created by",name:creator??"—",signedAt:data.created_at??createdEvent?.occurred_at},...approvalSignatures(data)];
   const poTerms=isPo?<section className="avoid-break mt-7 text-[11px] leading-5"><div className="mb-1 font-bold">Syarat & Ketentuan</div><ol className="list-decimal space-y-0.5 pl-5"><li>Barang harus dikirim paling lambat {indonesianLongDate(deliveryDeadline)} ke lokasi yang tertera pada PO ini.</li><li>Pembayaran dilakukan melalui transfer bank setelah 60 hari sejak barang diterima dan diverifikasi.</li><li>Faktur asli dan dokumen pendukung harus dilampirkan bersama pengiriman barang.</li><li>Apabila terjadi keterlambatan pengiriman ataupun selisih, pihak pemasok wajib memberikan pemberitahuan tertulis.</li></ol></section>:undefined;
   const partialReceipt=isReceipt&&data.is_partial_receipt?<section className="avoid-break mt-5 border-2 border-black p-3 text-[11px]"><div className="font-bold">PARTIAL RECEIPT</div><div>Purchase Order ini belum diterima seluruhnya. Sisa item/qty tetap terbuka untuk Receiving berikutnya.</div>{Boolean(data.remaining_items?.length)&&<div className="mt-2">{data.remaining_items!.slice(0,8).map((item,index)=><div key={index}>• {item.product_code??""} {item.product_name??""}: sisa {item.remaining_quantity??0} {item.uom??""}</div>)}</div>}</section>:undefined;
   const extraAfterTable=<>{partialReceipt}{poTerms}</>;
-  return <DocumentPrintTemplate showLogo title={isReceipt?"Receiving Report":data.document_type} documentNumber={number} documentDate={displayDate(date)} status={data.status} fields={fields} columns={columns} rows={data.items} rowKey={(item)=>item.id} totals={[{label:"TOTAL",value:money(total),emphasis:true}]} notes={data.notes} extraAfterTable={extraAfterTable} signatures={signatures.length?signatures:[{label:isPr||isMl?"Requested By":isReceipt?"Received By":"Prepared By",name:creator}]} authenticity={[{label:"CREATOR / REQUESTER",value:creator},{label:"CREATED AT",value:data.created_at?new Date(data.created_at).toLocaleString("id-ID"):undefined},{label:"PRINTED BY",value:data.printed_by},{label:"PRINTED AT",value:data.generated_at?new Date(data.generated_at).toLocaleString("id-ID"):undefined},{label:"DOCUMENT #",value:number},{label:"STATUS",value:data.status}]} footer={<>System document · {number} · Printed by {data.printed_by} · {new Date(data.generated_at).toLocaleString("id-ID")}</>}/>
+  return <DocumentPrintTemplate showLogo title={isReceipt?"Receiving Report":data.document_type} documentNumber={number} documentDate={displayDate(date)} status={data.status} fields={fields} columns={columns} rows={data.items} rowKey={(item)=>item.id} totals={[{label:"TOTAL",value:money(total),emphasis:true}]} notes={data.notes} extraAfterTable={extraAfterTable} signatures={signatures} footer={<>System document · {number}</>}/>
 }
