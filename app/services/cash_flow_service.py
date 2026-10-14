@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 from math import ceil
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
@@ -51,9 +51,11 @@ class CashFlowService:
         if date_to:q=q.filter(JournalEntry.posting_date<=date_to)
         if account_id:q=q.filter(JournalEntry.lines.any(JournalLine.account_id==account_id))
         if subtypes:q=q.filter(JournalEntry.lines.any(JournalLine.account.has(ChartOfAccount.account_subtype.in_(subtypes))))
-        if location_id:q=q.filter(JournalEntry.lines.any(JournalLine.location_id==location_id))
-        if department_id:q=q.filter(JournalEntry.lines.any(JournalLine.department_id==department_id))
-        if business_unit_id:q=q.filter(JournalEntry.lines.any(JournalLine.business_unit_id==business_unit_id))
+        if location_id:q=q.filter(JournalEntry.lines.any(func.coalesce(JournalLine.location_id,JournalEntry.location_id)==location_id))
+        if department_id:q=q.filter(JournalEntry.lines.any(func.coalesce(JournalLine.department_id,JournalEntry.department_id)==department_id))
+        if business_unit_id:
+            from app.services.organization_access import effective_business_unit
+            q=q.filter(JournalEntry.lines.any(effective_business_unit(func.coalesce(JournalLine.business_unit_id,JournalEntry.business_unit_id),func.coalesce(JournalLine.location_id,JournalEntry.location_id))==business_unit_id))
         return q.order_by(JournalEntry.posting_date,JournalEntry.posted_at,JournalEntry.id).all()
     def cash_lines(self,journal):
         lines=[line for line in journal.lines if self.is_cash_account(line.account)]
@@ -74,6 +76,13 @@ class CashFlowService:
         for journal in self.journals(date_from,date_to,account_id,subtypes,location_id,department_id,business_unit_id):
             transfer=self.is_transfer(journal)
             for line in self.cash_lines(journal):
+                from app.models.location import Location
+                loc_id=line.location_id or journal.location_id
+                loc=self.db.get(Location,loc_id) if loc_id else None
+                uid=line.business_unit_id or journal.business_unit_id or (loc.business_unit_id if loc else None)
+                if location_id is not None and loc_id!=location_id:continue
+                if business_unit_id is not None and uid!=business_unit_id:continue
+                if department_id is not None and (line.department_id or journal.department_id)!=department_id:continue
                 if account_id and line.account_id!=account_id:continue
                 if subtypes and line.account.account_subtype not in subtypes:continue
                 debit=Decimal(line.debit);credit=Decimal(line.credit);delta=debit-credit

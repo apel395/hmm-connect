@@ -58,8 +58,24 @@ class FinancialReconciliationService:
     mistaken for a posting gap.
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, business_unit_id: int | None = None):
         self.db = db
+        self.business_unit_id = business_unit_id
+
+    def _unit_scope(self, query, model):
+        if self.business_unit_id is None:
+            return query
+        from sqlalchemy import select
+        from app.models.location import Location
+        from app.services.organization_access import effective_business_unit
+        if model is JournalLine:
+            location = func.coalesce(model.location_id, JournalEntry.location_id)
+            unit = func.coalesce(model.business_unit_id, JournalEntry.business_unit_id)
+            return query.filter(effective_business_unit(unit, location) == self.business_unit_id)
+        unit = getattr(model, "business_unit_id", None)
+        if unit is not None:
+            return query.filter(effective_business_unit(unit, model.location_id) == self.business_unit_id)
+        return query.filter(model.location_id.in_(select(Location.id).where(Location.business_unit_id == self.business_unit_id)))
 
     def _gl_balance(self, account_ids: list[int], location_id: int | None = None, as_of: date | None = None) -> Decimal:
         return sum(self._gl_by_account(account_ids, location_id, as_of).values(), ZERO)
@@ -69,7 +85,7 @@ class FinancialReconciliationService:
         if not account_ids:
             return {}
         snapshot_date, snapshot = opening_snapshot(
-            self.db, as_of=as_of or date.today(), location_id=location_id,
+            self.db, as_of=as_of or date.today(), location_id=location_id, business_unit_id=self.business_unit_id,
         )
         query = (
             self.db.query(
@@ -89,6 +105,7 @@ class FinancialReconciliationService:
         )
         if snapshot_date is not None:
             query = query.filter(JournalEntry.posting_date >= snapshot_date)
+        query = self._unit_scope(query, JournalLine)
         if location_id is not None:
             query = query.filter(JournalLine.location_id == location_id)
         if as_of is not None:
@@ -130,10 +147,11 @@ class FinancialReconciliationService:
         )
         if account_ids:
             query = query.filter(StockMovement.inventory_account_id.in_(account_ids))
-        if location_id is not None:
-            query = query.join(Warehouse, Warehouse.id == StockMovement.warehouse_id).filter(
-                Warehouse.location_id == location_id
-            )
+        if location_id is not None or self.business_unit_id is not None:
+            query = query.join(Warehouse, Warehouse.id == StockMovement.warehouse_id)
+            query = self._unit_scope(query, Warehouse)
+            if location_id is not None:
+                query = query.filter(Warehouse.location_id == location_id)
         if as_of is not None:
             query = query.filter(self._movement_date() <= as_of)
         return {account_id: Decimal(value) for account_id, value in query.all()}
@@ -144,6 +162,7 @@ class FinancialReconciliationService:
         query = (self.db.query(Inventory, Product)
                  .join(Product, Product.id == Inventory.product_id)
                  .join(Warehouse, Warehouse.id == Inventory.warehouse_id))
+        query = self._unit_scope(query, Warehouse)
         if location_id is not None:
             query = query.filter(Warehouse.location_id == location_id)
         later = {}
@@ -158,10 +177,11 @@ class FinancialReconciliationService:
                 func.coalesce(func.sum(signed_qty * StockMovement.unit_cost), 0),
             ).outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
              .filter(self._movement_date() > as_of))
-            if location_id is not None:
-                movements = movements.join(
-                    Warehouse, Warehouse.id == StockMovement.warehouse_id
-                ).filter(Warehouse.location_id == location_id)
+            if location_id is not None or self.business_unit_id is not None:
+                movements = movements.join(Warehouse, Warehouse.id == StockMovement.warehouse_id)
+                movements = self._unit_scope(movements, Warehouse)
+                if location_id is not None:
+                    movements = movements.filter(Warehouse.location_id == location_id)
             later = {(pid, wid): (Decimal(qty), Decimal(value))
                      for pid, wid, qty, value in movements.group_by(
                          StockMovement.product_id, StockMovement.warehouse_id
@@ -187,6 +207,7 @@ class FinancialReconciliationService:
                  .join(Product, Product.id == Inventory.product_id)
                  .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
                  .filter(Product.inventory_account_id.is_(None)))
+        query = self._unit_scope(query, Warehouse)
         if location_id is not None:
             query = query.filter(Warehouse.location_id == location_id)
         value = sum((Decimal(item.quantity or 0) * Decimal(item.average_cost or 0)
@@ -199,9 +220,11 @@ class FinancialReconciliationService:
                      .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
                      .filter(Product.inventory_account_id.is_(None),
                              self._movement_date() > as_of))
-            if location_id is not None:
-                later = (later.join(Warehouse, Warehouse.id == StockMovement.warehouse_id)
-                         .filter(Warehouse.location_id == location_id))
+            if location_id is not None or self.business_unit_id is not None:
+                later = later.join(Warehouse, Warehouse.id == StockMovement.warehouse_id)
+                later = self._unit_scope(later, Warehouse)
+                if location_id is not None:
+                    later = later.filter(Warehouse.location_id == location_id)
             value -= Decimal(later.scalar() or 0)
         return value.quantize(CENT)
 
@@ -312,6 +335,7 @@ class FinancialReconciliationService:
         query = (self.db.query(Payment, allocated.c.amount)
                  .outerjoin(allocated, allocated.c.payment_id == Payment.id)
                  .filter(Payment.status == "POSTED"))
+        query = self._unit_scope(query, Payment)
         if location_id is not None:
             query = query.filter(Payment.location_id == location_id)
         if as_of is not None:
@@ -335,6 +359,7 @@ class FinancialReconciliationService:
         query = (self.db.query(JournalEntry, JournalLine)
                  .join(JournalLine, JournalLine.journal_entry_id == JournalEntry.id)
                  .filter(JournalEntry.status == "POSTED", JournalLine.account_id.in_(account_ids)))
+        query = self._unit_scope(query, JournalLine)
         if location_id is not None:
             query = query.filter(JournalLine.location_id == location_id)
         if as_of is not None:
@@ -360,6 +385,7 @@ class FinancialReconciliationService:
         if not account_ids:
             return [], {}
         invoices = self.db.query(SupplierInvoice).filter(SupplierInvoice.status == "POSTED")
+        invoices = self._unit_scope(invoices, SupplierInvoice)
         if location_id is not None:
             invoices = invoices.filter(SupplierInvoice.location_id == location_id)
         if as_of is not None:
@@ -382,6 +408,7 @@ class FinancialReconciliationService:
                 )
 
         payments = self.db.query(Payment).filter(Payment.status == "POSTED")
+        payments = self._unit_scope(payments, Payment)
         if location_id is not None:
             payments = payments.filter(Payment.location_id == location_id)
         if as_of is not None:
@@ -395,7 +422,7 @@ class FinancialReconciliationService:
                 payment_by_id.setdefault(payment.id, payment)
 
         snapshot_date, snapshot = opening_snapshot(
-            self.db, as_of=as_of or date.today(), location_id=location_id,
+            self.db, as_of=as_of or date.today(), location_id=location_id, business_unit_id=self.business_unit_id,
         )
         normals = {row.id: row.normal_balance for row in self.db.query(ChartOfAccount)
                    .filter(ChartOfAccount.id.in_(account_ids)).all()}
@@ -408,6 +435,7 @@ class FinancialReconciliationService:
             journal_query = journal_query.filter(JournalEntry.posting_date >= snapshot_date)
         if as_of is not None:
             journal_query = journal_query.filter(JournalEntry.posting_date <= as_of)
+        journal_query = self._unit_scope(journal_query, JournalLine)
         if location_id is not None:
             journal_query = journal_query.filter(JournalLine.location_id == location_id)
         by_journal: dict[int, dict] = {}
@@ -506,6 +534,7 @@ class FinancialReconciliationService:
         source_query = self.db.query(func.coalesce(func.sum(SupplierInvoice.balance_amount), 0)).filter(
             SupplierInvoice.status == "POSTED"
         )
+        source_query = self._unit_scope(source_query, SupplierInvoice)
         if location_id is not None:
             source_query = source_query.filter(SupplierInvoice.location_id == location_id)
         if as_of is None:
@@ -515,6 +544,7 @@ class FinancialReconciliationService:
             invoices = self.db.query(SupplierInvoice).filter(
                 SupplierInvoice.status == "POSTED", SupplierInvoice.invoice_date <= as_of
             )
+            invoices = self._unit_scope(invoices, SupplierInvoice)
             if location_id is not None:
                 invoices = invoices.filter(SupplierInvoice.location_id == location_id)
             invoice_rows = invoices.all()
@@ -552,8 +582,10 @@ class FinancialReconciliationService:
 
     def accounts_receivable(self, location_id: int | None = None,
                             as_of: date | None = None) -> dict:
-        if location_id is not None:
-            return self._row("ACCOUNTS_RECEIVABLE", ZERO, ZERO, [], configured=False)
+        if location_id is not None or self.business_unit_id is not None:
+            row = self._row("ACCOUNTS_RECEIVABLE", ZERO, ZERO, [], configured=False)
+            row.update(source_balance=None, difference=None, variance=None, note="AR source records have no unit or location dimension.")
+            return row
         account_ids = self._rule_account_ids(
             debit=False, event_types=["CUSTOMER_PAYMENT"],
         )
@@ -591,6 +623,7 @@ class FinancialReconciliationService:
                             func.date(GoodsReceipt.received_at) >= date(2026, 1, 1)))
         if as_of is not None:
             receipts = receipts.filter(func.date(GoodsReceipt.received_at) <= as_of)
+        receipts = self._unit_scope(receipts, GoodsReceipt)
         if location_id is not None:
             receipts = receipts.filter(GoodsReceipt.location_id == location_id)
         receipt_rows = receipts.order_by(GoodsReceipt.received_at, GoodsReceipt.id).all()
@@ -622,6 +655,7 @@ class FinancialReconciliationService:
                                      GoodsReceiptItem.goods_receipt_id.in_(receipt_ids)))
             if as_of is not None:
                 invoice_lines = invoice_lines.filter(SupplierInvoice.invoice_date <= as_of)
+            invoice_lines = self._unit_scope(invoice_lines, SupplierInvoice)
             if location_id is not None:
                 invoice_lines = invoice_lines.filter(SupplierInvoice.location_id == location_id)
             for line, invoice, receipt_id in invoice_lines.all():
@@ -848,6 +882,9 @@ class FinancialReconciliationService:
                 _operational_journal(),
             )
         )
+        if self.business_unit_id is not None:
+            from app.services.organization_access import effective_business_unit
+            journals = journals.filter(effective_business_unit(func.coalesce(target.business_unit_id, JournalEntry.business_unit_id),func.coalesce(target.location_id,JournalEntry.location_id)) == self.business_unit_id)
         if location_id is not None:
             journals = journals.filter(target.location_id == location_id)
         if as_of is not None:
@@ -867,6 +904,11 @@ class FinancialReconciliationService:
             .join(ChartOfAccount, ChartOfAccount.id == other.account_id)
             .filter(other.account_id != journals.c.account_id)
         )
+        if self.business_unit_id is not None:
+            from sqlalchemy import select
+            header_unit = select(JournalEntry.business_unit_id).where(JournalEntry.id == other.journal_entry_id).scalar_subquery()
+            header_location = select(JournalEntry.location_id).where(JournalEntry.id == other.journal_entry_id).scalar_subquery()
+            matches = matches.filter(effective_business_unit(func.coalesce(other.business_unit_id,header_unit),func.coalesce(other.location_id,header_location)) == self.business_unit_id)
         if location_id is not None:
             matches = matches.filter(other.location_id == location_id)
         matches = matches.group_by(

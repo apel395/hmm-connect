@@ -105,7 +105,7 @@ class PurchasingInsightsService:
     def price_history(
         self, *, product_id: int | None = None, supplier_id: int | None = None,
         search: str | None = None, date_from: date | None = None,
-        date_to: date | None = None, page: int = 1, page_size: int = 50,
+        date_to: date | None = None, page: int = 1, page_size: int = 50,business_unit_id: int | None = None,
     ) -> dict:
         query = (
             self._lines()
@@ -113,6 +113,12 @@ class PurchasingInsightsService:
             .outerjoin(Supplier, Supplier.id == GoodsReceipt.supplier_id)
             .outerjoin(PurchaseOrder, PurchaseOrder.id == GoodsReceipt.purchase_order_id)
         )
+        from app.services.organization_access import resolve_organization_access, effective_business_unit
+        scope=resolve_organization_access(self.db,self.user,business_unit_id=business_unit_id)
+        for dimension,value in scope.items():
+            if value is not None:
+                column=effective_business_unit(GoodsReceipt.business_unit_id,GoodsReceipt.location_id) if dimension=="business_unit_id" else getattr(GoodsReceipt,dimension)
+                query=query.filter(column==value)
         if product_id:
             query = query.filter(GoodsReceiptItem.product_id == product_id)
         if supplier_id:

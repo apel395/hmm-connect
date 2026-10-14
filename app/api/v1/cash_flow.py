@@ -44,9 +44,12 @@ def timeline(date_from:date|None=None,date_to:date|None=None,interval:str=Query(
     return {"opening_balance":opening,"items":points}
 
 @router.get("/statement")
-def statement(date_from:date|None=None,date_to:date|None=None,account_id:int|None=None,location_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    access(user);location_id=resolve_location_id(user,location_id);svc=CashFlowService(db);summary_data=svc.summary(date_from,date_to,account_id,location_id=location_id);sections={key:defaultdict(lambda:{"inflow":ZERO,"outflow":ZERO}) for key in ("OPERATING","INVESTING","FINANCING","UNCLASSIFIED")}
-    for m in svc.movements(date_from,date_to,account_id,location_id=location_id):
+def statement(date_from:date|None=None,date_to:date|None=None,account_id:int|None=None,location_id:int|None=None,business_unit_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    access(user);
+    from app.services.organization_access import resolve_organization_access
+    scope=resolve_organization_access(db,user,location_id=location_id,business_unit_id=business_unit_id)
+    svc=CashFlowService(db);summary_data=svc.summary(date_from,date_to,account_id,**scope);sections={key:defaultdict(lambda:{"inflow":ZERO,"outflow":ZERO}) for key in ("OPERATING","INVESTING","FINANCING","UNCLASSIFIED")}
+    for m in svc.movements(date_from,date_to,account_id,**scope):
         if m["direction"]=="TRANSFER":continue
         key=m["category"] if m["category"] in sections else "UNCLASSIFIED";label=m["journal"].reference_type or "OTHER";sections[key][label]["inflow"]+=m["inflow"];sections[key][label]["outflow"]+=m["outflow"]
     result={}

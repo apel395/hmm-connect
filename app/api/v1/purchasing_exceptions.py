@@ -11,10 +11,10 @@ class Reason(BaseModel):
     reason:str=Field(min_length=3,max_length=500)
 
 @router.get('')
-def listing(date_from:date|None=None,date_to:date|None=None,archived:bool=False,db:Session=Depends(get_db),user=Depends(get_current_user)):
+def listing(date_from:date|None=None,date_to:date|None=None,archived:bool=False,business_unit_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
     if date_from and date_to and date_from>date_to:
         raise HTTPException(422,'From date must not exceed To date')
-    return {'items':unfinished_documents(db,user,date_from,date_to,archived)}
+    return {'items':unfinished_documents(db,user,date_from,date_to,archived,business_unit_id)}
 
 @router.post('/{kind}/{document_id}/archive')
 def archive(kind:str,document_id:int,data:Reason,db:Session=Depends(get_db),user=Depends(get_current_user)):

@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
 from app.services.ap_reporting_service import APReportingService
-from app.services.location_access import resolve_location_id
+from app.services.organization_access import resolve_organization_access
 
 router = APIRouter(prefix="/ap-reporting", tags=["Accounts Payable Reporting"])
 
@@ -44,11 +44,11 @@ def summary(
     current_user=Depends(get_current_user),
 ):
     _require_access(current_user)
-    location_id = resolve_location_id(current_user, location_id)
+    scope = resolve_organization_access(db, current_user, location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
     return APReportingService(db).summary(
         page=page,
         page_size=page_size,
-        **_filters(supplier_id, business_unit_id, location_id, department_id, search),
+        **_filters(supplier_id, scope["business_unit_id"], scope["location_id"], scope["department_id"], search),
     )
 
 
@@ -66,12 +66,12 @@ def detail(
     current_user=Depends(get_current_user),
 ):
     _require_access(current_user)
-    location_id = resolve_location_id(current_user, location_id)
+    scope = resolve_organization_access(db, current_user, location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
     return APReportingService(db).detail(
         page=page,
         page_size=page_size,
         status=status,
-        **_filters(supplier_id, business_unit_id, location_id, department_id, search),
+        **_filters(supplier_id, scope["business_unit_id"], scope["location_id"], scope["department_id"], search),
     )
 
 
@@ -88,9 +88,9 @@ def aging(
     current_user=Depends(get_current_user),
 ):
     _require_access(current_user)
-    location_id = resolve_location_id(current_user, location_id)
+    scope = resolve_organization_access(db, current_user, location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
     return APReportingService(db).aging(
         page=page,
         page_size=page_size,
-        **_filters(supplier_id, business_unit_id, location_id, department_id, search),
+        **_filters(supplier_id, scope["business_unit_id"], scope["location_id"], scope["department_id"], search),
     )
