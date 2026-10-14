@@ -1,3 +1,4 @@
+import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -7,7 +8,7 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { FinanceDashboardFilters, getFinanceDashboard } from "./api";
-import { listBusinessUnits, listLocations, listDepartments } from "@/modules/admin/organization/api";
+import { listLocations, listDepartments } from "@/modules/admin/organization/api";
 
 const today = new Date().toISOString().slice(0, 10);
 const monthStart = `${today.slice(0, 8)}01`;
@@ -19,7 +20,6 @@ export default function FinanceDashboardPage() {
   const [draft, setDraft] = useState(initial);
   const [filters, setFilters] = useState(initial);
   const query = useQuery({ queryKey: ["finance-dashboard", filters], queryFn: () => getFinanceDashboard(filters) });
-  const businessUnits = useQuery({ queryKey: ["business-units"], queryFn: listBusinessUnits });
   const locations = useQuery({ queryKey: ["organization-locations", draft.business_unit_id, "assigned"], queryFn: () => listLocations({ business_unit_id: draft.business_unit_id ? Number(draft.business_unit_id) : undefined, is_active: true, assigned_only: true }) });
   const departments = useQuery({ queryKey: ["organization-departments", draft.business_unit_id], queryFn: () => listDepartments(draft.business_unit_id ? Number(draft.business_unit_id) : undefined) });
   const data = query.data;
@@ -30,11 +30,11 @@ export default function FinanceDashboardPage() {
 <Button variant="outline" onClick={() => query.refetch()}><RefreshCw size={15}/> Refresh</Button>
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>} />
+    <ReportUnitButtons value={filters.business_unit_id} onChange={id=>{const next={...filters,business_unit_id:id,location_id:"",department_id:""};setDraft(next);setFilters(next);}}/>
     <Card><form className="grid gap-2 md:grid-cols-3 xl:grid-cols-7" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft }); }}>
       <label className="text-xs text-slate-600">From<input className={`${input} mt-1 w-full`} type="date" value={draft.date_from} onChange={(e) => set("date_from", e.target.value)}/></label>
       <label className="text-xs text-slate-600">To<input className={`${input} mt-1 w-full`} type="date" value={draft.date_to} onChange={(e) => set("date_to", e.target.value)}/></label>
       <label className="text-xs text-slate-600">As of<input className={`${input} mt-1 w-full`} type="date" value={draft.as_of_date} onChange={(e) => set("as_of_date", e.target.value)}/></label>
-      <label className="text-xs text-slate-600">Business Unit<select className={`${input} mt-1 w-full`} value={draft.business_unit_id} onChange={(e) => setDraft({...draft,business_unit_id:e.target.value,location_id:"",department_id:""})}><option value="">All</option>{businessUnits.data?.map((x:any)=><option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}</select></label>
       <label className="text-xs text-slate-600">Location<select className={`${input} mt-1 w-full`} value={draft.location_id} onChange={(e) => set("location_id", e.target.value)}><option value="">All</option>{locations.data?.map((x:any)=><option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}</select></label>
       <label className="text-xs text-slate-600">Department<select className={`${input} mt-1 w-full`} value={draft.department_id} onChange={(e) => set("department_id", e.target.value)}><option value="">All</option>{departments.data?.map((x:any)=><option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}</select></label>
       <div className="flex items-end gap-2"><Button type="submit">Apply</Button><Button type="button" variant="outline" onClick={() => { setDraft(initial); setFilters(initial); }}>Reset</Button></div>

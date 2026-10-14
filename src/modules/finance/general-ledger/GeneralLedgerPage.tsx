@@ -1,3 +1,4 @@
+import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -29,9 +30,9 @@ export default function GeneralLedgerPage() {
   const [exportError, setExportError] = useState<string | null>(null);
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: pageSize }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
-  const locations = useQuery({ queryKey: ["ledger-filter-locations", "active"], queryFn: () => listLocations({ is_active: true }) });
+  const locations = useQuery({ queryKey: ["ledger-filter-locations", filters.business_unit_id], queryFn: () => listLocations({ is_active: true, business_unit_id:Number(filters.business_unit_id)||undefined }) });
   const accounts = useQuery({ queryKey: ["ledger-accounts", "all-active"], queryFn: () => getAllAccountLookup({ is_active: true }) });
-  const summary = useQuery({ queryKey: ["ledger-summary", filters.account_id, filters.date_from, filters.date_to], queryFn: () => getAccountSummary(Number(filters.account_id), { date_from: filters.date_from || undefined, date_to: filters.date_to || undefined }), enabled: !!filters.account_id });
+  const summary = useQuery({ queryKey: ["ledger-summary", filters.account_id, filters.date_from, filters.date_to, filters.business_unit_id, filters.location_id, filters.department_id], queryFn: () => getAccountSummary(Number(filters.account_id), { business_unit_id:Number(filters.business_unit_id)||undefined, location_id:Number(filters.location_id)||undefined, department_id:Number(filters.department_id)||undefined, date_from: filters.date_from || undefined, date_to: filters.date_to || undefined }), enabled: !!filters.account_id });
   const change = (key: string, value: string) => { setFilters({ ...filters, [key]: value }); setPage(1); };
   useEffect(() => window.localStorage.setItem("ledger-page-size", String(pageSize)), [pageSize]);
   const input = "h-10 rounded border px-3";
@@ -143,6 +144,7 @@ export default function GeneralLedgerPage() {
     <Button onClick={handleExport} disabled={exportBusy}><Download size={16} /> {exportLabel}</Button>
     <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" />
   </div>} title="General Ledger" description="Read-only posted journal activity with server-calculated balances."/>
+    <ReportUnitButtons value={filters.business_unit_id} onChange={id=>{setFilters({...filters,business_unit_id:id,location_id:"",department_id:""});setPage(1);}}/>
     {exportError && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div>}
     <Card className="space-y-2 p-3">
       <div className="grid gap-2 md:grid-cols-[160px_minmax(260px,1fr)_170px_170px]">

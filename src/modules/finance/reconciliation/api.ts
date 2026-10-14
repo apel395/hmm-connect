@@ -139,7 +139,7 @@ export type ReconciliationReport = {
   read_only: true;
 };
 
-export type ReconciliationFilters = { date_from?: string; date_to?: string };
+export type ReconciliationFilters = { business_unit_id?: number; date_from?: string; date_to?: string };
 
 export const reconciliationApi = {
   report: async (filters: ReconciliationFilters = {}) =>

@@ -7,6 +7,7 @@ export type InventoryListParams = {
   warehouse_id?: number;
   account_id?: number;
   location_id?: number;
+  business_unit_id?:number;
   as_of?: string;
   health?: "HEALTHY" | "LOW_STOCK";
   movement_class?: "FAST" | "SLOW" | "DEAD";

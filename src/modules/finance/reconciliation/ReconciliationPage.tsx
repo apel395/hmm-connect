@@ -1,3 +1,4 @@
+import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -59,11 +60,13 @@ const statusClass: Record<ReconciliationRow["status"], string> = {
 const input = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
 export default function ReconciliationPage() {
+  const [unit,setUnit] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [expandedModule, setExpandedModule] = useState<Control | null>(null);
   const query = useQuery({
-    queryKey: ["financial-reconciliation", dateTo],
+    queryKey: ["financial-reconciliation", dateTo, unit],
     queryFn: () => reconciliationApi.report({
+      business_unit_id: Number(unit)||undefined,
       date_to: dateTo || undefined,
     }),
   });
@@ -72,6 +75,7 @@ export default function ReconciliationPage() {
   const ledgerPath = (accountId: number) => {
     const params = new URLSearchParams({ account_id: String(accountId) });
     if (dateTo) params.set("date_to", dateTo);
+    if (unit) params.set("business_unit_id",unit);
     return `/journal/general-ledger?${params.toString()}`;
   };
 
@@ -85,6 +89,7 @@ export default function ReconciliationPage() {
         <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
       </div>}
     />
+    <ReportUnitButtons value={unit} onChange={id=>{setUnit(id);setExpandedModule(null);}}/>
     <Card className="p-4">
       <label className="block max-w-sm text-xs font-medium text-slate-600">As of date
         <input className={input} type="date" value={dateTo}

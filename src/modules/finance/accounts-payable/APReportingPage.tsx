@@ -1,3 +1,4 @@
+import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "react-router-dom";
@@ -25,16 +26,17 @@ export default function APReportingPage() {
   const location = useLocation();
   const isDetail = location.pathname.endsWith("/detail");
   const [page, setPage] = useState(1);
+  const [unit,setUnit]=useState("");
   const pageSize = 20;
 
   const summary = useQuery({
-    queryKey: ["ap-reporting", "summary", page],
-    queryFn: () => apReportingApi.summary(page, pageSize),
+    queryKey: ["ap-reporting", "summary", page,unit],
+    queryFn: () => apReportingApi.summary(page, pageSize,Number(unit)||undefined),
     enabled: !isDetail,
   });
   const detail = useQuery({
-    queryKey: ["ap-reporting", "detail", page],
-    queryFn: () => apReportingApi.detail(page, pageSize),
+    queryKey: ["ap-reporting", "detail", page,unit],
+    queryFn: () => apReportingApi.detail(page, pageSize,Number(unit)||undefined),
     enabled: isDetail,
   });
 
@@ -47,6 +49,7 @@ export default function APReportingPage() {
   return (
     <div className="space-y-5">
       <APWorkspaceHeader />
+      <ReportUnitButtons value={unit} onChange={id=>{setUnit(id);setPage(1);}}/>
 
       {!isDetail && summary.data && (
         <>
