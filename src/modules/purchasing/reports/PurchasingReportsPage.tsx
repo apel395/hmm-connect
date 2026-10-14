@@ -1,3 +1,4 @@
+import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import PurchasingExceptionPanel from "./PurchasingExceptionPanel";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -38,6 +39,7 @@ function statusBadge(status: string): { label: string; variant: "default" | "war
 
 export default function PurchasingReportsPage() {
   const user = useAuthStore((state) => state.user);
+  const [unit,setUnit]=useState("");
   const [dateFrom, setDateFrom] = useState(monthStart());
   const [dateTo, setDateTo] = useState(today());
   const [historySearch, setHistorySearch] = useState("");
@@ -45,13 +47,13 @@ export default function PurchasingReportsPage() {
   const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
 
   const query = useQuery({
-    queryKey: ["purchasing-report", dateFrom, dateTo],
-    queryFn: async () => (await purchasingReportsApi.summary({ date_from: dateFrom, date_to: dateTo })).data,
+    queryKey: ["purchasing-report", dateFrom, dateTo,unit],
+    queryFn: async () => (await purchasingReportsApi.summary({ date_from: dateFrom, date_to: dateTo,business_unit_id:Number(unit)||undefined })).data,
     enabled: !invalidRange,
   });
   const history = useQuery({
-    queryKey: ["purchasing-price-history", dateFrom, dateTo, historySearch, historyPage],
-    queryFn: () => purchasingReportsApi.priceHistory({ date_from: dateFrom, date_to: dateTo,
+    queryKey: ["purchasing-price-history", dateFrom, dateTo,unit, historySearch, historyPage],
+    queryFn: () => purchasingReportsApi.priceHistory({ date_from: dateFrom, date_to: dateTo,business_unit_id:Number(unit)||undefined,
       search: historySearch.trim() || undefined, page: historyPage, page_size: 20 }),
     enabled: !invalidRange,
   });
@@ -69,7 +71,8 @@ export default function PurchasingReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PurchasingExceptionPanel dateFrom={dateFrom} dateTo={dateTo}/>
+      <ReportUnitButtons value={unit} onChange={id=>{setUnit(id);setHistoryPage(1);}}/>
+      <PurchasingExceptionPanel businessUnitId={Number(unit)||undefined} dateFrom={dateFrom} dateTo={dateTo}/>
       <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Purchasing Reports" description="Purchase requisition, purchase order and receiving activity summarized for the selected period." />
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">

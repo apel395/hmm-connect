@@ -1,3 +1,5 @@
+import { listLocations } from "@/modules/admin/organization/api";
+import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import InventoryPrintButton from "@/components/print/InventoryPrintButton";
 import { stockListReport, lowStockReport, warehouseValuationReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
@@ -18,6 +20,7 @@ type Section = "valuation" | "low-stock" | "by-warehouse";
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
 export default function InventoryReportsPage() {
+  const [unit,setUnit]=useState("");
   const [section, setSection] = useState<Section>("valuation");
   const [asOf, setAsOf] = useState("");
 
@@ -25,28 +28,29 @@ export default function InventoryReportsPage() {
     queryKey: ["inventory-report-warehouses"],
     queryFn: async () => (await warehouseApi.list()).data,
   });
-  const warehouses: any[] = warehousesQuery.data ?? [];
+  const availableLocations = useQuery({queryKey:["inventory-report-locations",unit],queryFn:()=>listLocations({business_unit_id:Number(unit)||undefined,is_active:true})});
+  const warehouses: any[] = (warehousesQuery.data ?? []).filter((w:any)=>!unit||(availableLocations.data??[]).some(loc=>loc.id===w.location_id));
 
   const overall = useQuery({
-    queryKey: ["inventory-report-overall", asOf],
-    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100, as_of: asOf || undefined })).data,
+    queryKey: ["inventory-report-overall", asOf,unit],
+    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100, as_of: asOf || undefined,business_unit_id:Number(unit)||undefined })).data,
   });
   const overallData: any = overall.data ?? {};
   const overallSummary = overallData.summary ?? {};
 
   const lowStock = useQuery({
-    queryKey: ["inventory-report-low-stock", asOf],
-    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100, as_of: asOf || undefined, health: "LOW_STOCK" })).data,
+    queryKey: ["inventory-report-low-stock", asOf,unit],
+    queryFn: async () => (await inventoryApi.list({ page: 1, page_size: 100, as_of: asOf || undefined,business_unit_id:Number(unit)||undefined, health: "LOW_STOCK" })).data,
   });
   const lowStockData: any = lowStock.data ?? {};
   const lowStockItems: any[] = lowStockData.items ?? [];
 
   const byWarehouse = useQuery({
-    queryKey: ["inventory-report-by-warehouse", warehouses.length, asOf],
+    queryKey: ["inventory-report-by-warehouse", warehouses.map(w=>w.id).join(","), asOf,unit],
     queryFn: async () => {
       const rows = await Promise.all(
         warehouses.map(async (w) => {
-          const data = await (await inventoryApi.list({ page: 1, page_size: 1, warehouse_id: w.id, as_of: asOf || undefined })).data;
+          const data = await (await inventoryApi.list({ page: 1, page_size: 1, warehouse_id: w.id, as_of: asOf || undefined,business_unit_id:Number(unit)||undefined })).data;
           const s = data.summary ?? {};
           return {
             id: w.id,
@@ -68,7 +72,8 @@ export default function InventoryReportsPage() {
   return (
     <div className="inventory-print-report space-y-6">
     <InventoryReportHeading title={"Inventory Reports"} context={`Report: ${section} · As of: ${asOf || "Current"}`} rows={section === "low-stock" ? lowStockItems.length : undefined} total={section === "low-stock" ? lowStockData.total_items : undefined}/>
-      <PageHeader  actions={<InventoryPrintButton loadReport={() => (section === "low-stock" ? lowStockReport : section === "by-warehouse" ? warehouseValuationReport : (params: Record<string,unknown>,context: string) => stockListReport(params,context,"Inventory Valuation"))({as_of:asOf || undefined}, `As of: ${asOf || "Current"}`)}/>} title="Inventory Reports" description="Stock valuation and movement insights computed from warehouse inventory on the selected date." />
+      <PageHeader  actions={<InventoryPrintButton loadReport={() => (section === "low-stock" ? lowStockReport : section === "by-warehouse" ? warehouseValuationReport : (params: Record<string,unknown>,context: string) => stockListReport(params,context,"Inventory Valuation"))({as_of:asOf || undefined,business_unit_id:Number(unit)||undefined}, `As of: ${asOf || "Current"}`)}/>} title="Inventory Reports" description="Stock valuation and movement insights computed from warehouse inventory on the selected date." />
+      <ReportUnitButtons value={unit} onChange={setUnit}/>
       <Card className="p-4 print:hidden">
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">

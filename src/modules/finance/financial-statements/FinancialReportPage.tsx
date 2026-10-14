@@ -1,3 +1,5 @@
+import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
+import { normalizeReportUnit, reportUnitKind } from "@/components/reports/unitScope";
 import { useEffect, useState } from "react";
 import { loadReportPreferences, saveReportPreferences } from "./reportState";
 import { useQuery } from "@tanstack/react-query";
@@ -40,9 +42,12 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const [period, setPeriod] = useState<Period>(saved.period);
   const view = "DETAIL" as const;
   useEffect(() => saveReportPreferences(owner, kind, { filters, period, view }), [owner, kind, filters, period, view]);
-  const params = Object.fromEntries(Object.entries({ ...filters, ...(kind === "BALANCE_SHEET" ? { detail: !filters.kap } : {}), report_type: kind, department_tables: false, report_scope: kind === "PROFIT_LOSS" ? filters.report_scope : "" }).filter(([, value]) => value !== ""));
-  const report = useQuery({ queryKey: ["financial-report-comparison", kind, filters], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params })).data });
   const units = useQuery({ queryKey: ["report-units"], queryFn: listBusinessUnits });
+  const applied = units.data ? normalizeReportUnit(filters, units.data) : filters;
+  useEffect(()=>{if(units.data){const next=normalizeReportUnit(filters,units.data);if(next.business_unit_id!==filters.business_unit_id||next.report_scope!==filters.report_scope){setFilters(next);setDraft(current=>({...current,business_unit_id:next.business_unit_id,report_scope:next.report_scope}));}}},[units.data,filters]);
+  const params = Object.fromEntries(Object.entries({ ...applied, ...(kind === "BALANCE_SHEET" ? { detail: !filters.kap } : {}), report_type: kind, department_tables: false, report_scope: kind === "PROFIT_LOSS" ? applied.report_scope : "" }).filter(([, value]) => value !== ""));
+  const report = useQuery({ queryKey: ["financial-report-comparison", kind, applied], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params })).data, enabled:units.isSuccess });
+
   const locations = useQuery({ queryKey: ["report-locations", draft.business_unit_id], queryFn: () => listLocations({ is_active: true, business_unit_id: Number(draft.business_unit_id) || undefined }), enabled: showFilters });
   const departments = useQuery({ queryKey: ["report-departments", draft.business_unit_id, draft.location_id], queryFn: () => listDepartments({ is_active: true, business_unit_id: Number(draft.business_unit_id) || undefined, location_id: Number(draft.location_id) || undefined }), enabled: showFilters });
   const budgets = useQuery({ queryKey: ["report-budgets", draft.as_of_date.slice(0, 4)], queryFn: async () => (await api.get("/budgets", { params: { fiscal_year: draft.as_of_date.slice(0, 4), page_size: 500 } })).data, enabled: showFilters });
@@ -54,7 +59,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     try {
       const response = await api.get("/financial-reports/comparison/export", { params, responseType: "blob" });
       const url = URL.createObjectURL(response.data);
-      const link = document.createElement("a"); link.href = url; link.download = `${kind.toLowerCase()}${kind === "PROFIT_LOSS" ? `-${filters.report_scope.toLowerCase()}` : ""}-${filters.as_of_date}.xlsx`; link.click(); URL.revokeObjectURL(url);
+      const link = document.createElement("a"); link.href = url; link.download = `${kind.toLowerCase()}${kind === "PROFIT_LOSS" ? `-${applied.report_scope.toLowerCase()}` : ""}-${filters.as_of_date}.xlsx`; link.click(); URL.revokeObjectURL(url);
     } catch { toast.error("Export could not be completed"); }
   };
   const ledgerLink = (row: Row) => {
@@ -89,7 +94,6 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     </div>} />
     {showFilters && <Card className="p-2 print:hidden"><form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); setFilters({ ...draft }); setShowFilters(false); }}>
       <label className="grid text-xs">As of<input className={input} type="date" required value={draft.as_of_date} onChange={event => setDraft({ ...draft, as_of_date: event.target.value })} /></label>
-      <label className="grid text-xs">Unit<select className={input} value={draft.business_unit_id} onChange={event => setDraft({ ...draft, business_unit_id: event.target.value, location_id: "", department_id: "" })}><option value="">All units</option>{units.data?.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label>
       <label className="grid text-xs">Location<select className={input} value={draft.location_id} onChange={event => setDraft({ ...draft, location_id: event.target.value, department_id: "" })}><option value="">{locations.data?.length === 1 ? locations.data[0].name : "Consolidated"}</option>{locations.data?.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
       <label className="grid text-xs">Department<select className={input} value={draft.department_id} onChange={event => setDraft({ ...draft, department_id: event.target.value })}><option value="">All departments</option>{departments.data?.map(department => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
       <label className="grid text-xs">Budget<select className={input} value={draft.budget_id} onChange={event => setDraft({ ...draft, budget_id: event.target.value })}><option value="">Approved budgets</option>{budgets.data?.items?.filter((budget: { status: string }) => ["APPROVED", "LOCKED"].includes(budget.status)).map((budget: { id: number; name: string }) => <option key={budget.id} value={budget.id}>{budget.name}</option>)}</select></label>
@@ -97,7 +101,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
       <label className="flex h-8 items-center gap-1 text-xs"><input type="checkbox" checked={draft.include_zero} onChange={event => setDraft({ ...draft, include_zero: event.target.checked })} />Zero values</label>
       <Button size="sm" type="submit">Apply</Button>
     </form></Card>}
-    {kind === "PROFIT_LOSS" && <div className="flex flex-wrap items-center gap-1 print:hidden" aria-label="P&L business scope">{["HOTEL", "CATERING", "CONSOLIDATED"].map(scope => <Button key={scope} size="sm" variant={filters.report_scope === scope ? "primary" : "outline"} disabled={scope !== "CONSOLIDATED" && !!units.data && !units.data.some(unit => `${unit.code} ${unit.name}`.toUpperCase().includes(scope === "HOTEL" ? "HOTEL" : "CATERING"))} onClick={() => { const next = { ...filters, report_scope: scope, business_unit_id: "", location_id: "", department_id: "" }; setDraft(next); setFilters(next); }}>{scope === "HOTEL" ? "Hotel" : scope === "CATERING" ? "Project Catering" : "Consolidated"}</Button>)}</div>}
+    <ReportUnitButtons value={applied.business_unit_id} onChange={id=>{const next={...filters,business_unit_id:id,report_scope:reportUnitKind(units.data?.find(unit=>String(unit.id)===id)),location_id:"",department_id:""};setFilters(next);setDraft(next);}}/>
     <div className="flex items-center gap-1 print:hidden">{(["MTD", "YTD"] as const).map(value => <Button key={value} size="sm" variant={period === value ? "primary" : "outline"} onClick={() => setPeriod(value)}>{value}</Button>)}</div>
     {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
       <div className="flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}</div>

@@ -18,7 +18,7 @@ const pnl={scope:{location_id:8,business_unit_id:2,department_id:7},presentation
 const balance={section_totals:Object.fromEntries(["ASSETS","LIABILITIES","EQUITY"].map(section=>[section,{YTD:amount(section==="EQUITY"?-40:100)}]))};
 const markup=renderToStaticMarkup(createElement(module.exports.ExecutiveSummary,{pnl,balance,period:"YTD",asOf:"2026-01-31"}));
 assert.match(markup,/-20\.0%/);
-assert.doesNotMatch(markup,/<a\b|href=|account_ids/);
+assert.doesNotMatch(markup,/<a\b|href=|account_ids|<table\b/);
 assert.match(markup,/Last year/);
 assert.match(markup,/Budget —/);
 pnl.presentation_rows[0].periods.YTD=amount(0);

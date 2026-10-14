@@ -1,6 +1,7 @@
 import api from "@/api/client";
 
 export type PurchasingSummaryParams = {
+  business_unit_id?:number;
   date_from?: string;
   date_to?: string;
 };

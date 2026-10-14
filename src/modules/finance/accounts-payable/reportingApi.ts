@@ -57,8 +57,8 @@ export type APSummaryResponse = Page<APSupplierSummary> & {
 };
 
 export const apReportingApi = {
-  summary: async (page = 1, pageSize = 20) =>
-    (await api.get<APSummaryResponse>("/ap-reporting/summary", { params: { page, page_size: pageSize } })).data,
-  detail: async (page = 1, pageSize = 20) =>
-    (await api.get<Page<APDetailRow>>("/ap-reporting/detail", { params: { page, page_size: pageSize } })).data,
+  summary: async (page = 1, pageSize = 20, business_unit_id?:number) =>
+    (await api.get<APSummaryResponse>("/ap-reporting/summary", { params: { page, page_size: pageSize,business_unit_id } })).data,
+  detail: async (page = 1, pageSize = 20, business_unit_id?:number) =>
+    (await api.get<Page<APDetailRow>>("/ap-reporting/detail", { params: { page, page_size: pageSize,business_unit_id } })).data,
 };

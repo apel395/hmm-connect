@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+const result=await build({entryPoints:['src/components/reports/unitScope.ts'],bundle:true,write:false,platform:'node',format:'cjs'});
+const module={exports:{}};
+new Function('module','exports',result.outputFiles[0].text)(module,module.exports);
+const {normalizeReportUnit}=module.exports;
+const units=[{id:1,code:'HOTEL',name:'Hotel'},{id:2,code:'CATERING',name:'Project Catering'}];
+assert.deepEqual(normalizeReportUnit({business_unit_id:'1',report_scope:'CONSOLIDATED'},units),{business_unit_id:'1',report_scope:'HOTEL'});
+assert.deepEqual(normalizeReportUnit({business_unit_id:'2',report_scope:'HOTEL'},units),{business_unit_id:'2',report_scope:'CATERING'});
+assert.deepEqual(normalizeReportUnit({business_unit_id:'',report_scope:'HOTEL'},units),{business_unit_id:'1',report_scope:'HOTEL'});
+assert.deepEqual(normalizeReportUnit({business_unit_id:'',report_scope:'CONSOLIDATED'},units),{business_unit_id:'',report_scope:'CONSOLIDATED'});
+console.log('Report unit: stale scope, legacy Hotel selection and Consolidated reset passed.');

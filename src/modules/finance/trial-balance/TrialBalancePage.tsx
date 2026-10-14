@@ -1,3 +1,4 @@
+import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { useEffect, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { todayLocal } from "@/utils/dateConstraints";
@@ -25,8 +26,8 @@ export default function TrialBalancePage() {
   const [exporting, setExporting] = useState(false);
   const availableYears = Array.from({ length: Math.max(1, Number(today.slice(0, 4)) - 2025) }, (_, i) => 2026 + i);
   const locations = useQuery({
-    queryKey: ["trial-balance-locations"],
-    queryFn: () => listLocations({ is_active: true }),
+    queryKey: ["trial-balance-locations",draft.business_unit_id],
+    queryFn: () => listLocations({ is_active: true,business_unit_id:draft.business_unit_id }),
   });
   useEffect(() => {
     if (locations.data?.length === 1 && !draft.location_id) {
@@ -58,6 +59,7 @@ export default function TrialBalancePage() {
 <Button variant="outline" disabled={!data || exporting} loading={exporting} onClick={downloadExcel}>Export Excel</Button>
 <PrintPreviewButton src={printSrc} title="Trial Balance" ariaLabel="Preview trial balance" label="Print" />
 </>} />
+    <ReportUnitButtons value={filters.business_unit_id} onChange={id=>{const next={...filters,business_unit_id:Number(id)||undefined,location_id:undefined,department_id:undefined,page:1};setDraft(next);setFilters(next);}}/>
     {showFilters && <Card className="p-2"><form className="grid gap-2 md:grid-cols-6" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft, page: 1 }); setShowFilters(false); }}>
       <label className="text-sm">Fiscal year<select className={`${input} mt-1 w-full`} value={draft.date_from.slice(0, 4)} onChange={(e) => {
         const year = e.target.value;
@@ -70,7 +72,7 @@ export default function TrialBalancePage() {
       <div className="flex items-end gap-2"><Button type="submit">Apply</Button><label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={Boolean(draft.include_zero_balance)} onChange={(e) => setDraft({ ...draft, include_zero_balance: e.target.checked })}/>Include zero balance</label></div>
     </form></Card>}
 
-    <Card className="overflow-x-auto p-0">{query.isLoading?<div className="p-10 text-center text-sm text-slate-500">Loading trial balance…</div>:query.isError?<div className="p-10 text-center text-sm text-red-600">Trial balance could not be loaded.</div>:<Table variant="grid" stickyHeader containerClassName="max-h-[60vh] overflow-auto print:max-h-none print:overflow-visible"><THead><TR><TH>Account</TH><TH className="text-right">Opening Balance</TH>{filters.date_from.slice(5) !== "01-01" && <><TH className="text-right">Prior Debit</TH><TH className="text-right">Prior Credit</TH></>}<TH className="text-right">Debit Movement</TH><TH className="text-right">Credit Movement</TH><TH className="text-right">Closing</TH><TH>Status</TH></TR></THead><TBody>{data?.items.map((row)=>{const glParams=new URLSearchParams({account_id:String(row.account_id),date_from:filters.date_from,date_to:filters.date_to,...(filters.location_id?{location_id:String(filters.location_id)}:{})}).toString();return <TR key={row.account_id}><TD className="font-medium"><Link className="text-emerald-700 hover:underline" to={`/general-ledger?${glParams}`}>{row.account_name}</Link></TD><TD className={`text-right ${Number(row.opening_balance) < 0 ? "text-rose-700" : ""}`}>{money(row.opening_balance)}</TD>{filters.date_from.slice(5) !== "01-01" && <><TD className="text-right">{money(row.prior_debit)}</TD><TD className="text-right">{money(row.prior_credit)}</TD></>}<TD className="text-right">{money(row.period_debit)}</TD><TD className="text-right">{money(row.period_credit)}</TD><TD className={`text-right font-medium ${Number(row.closing_balance) < 0 ? "text-rose-700" : ""}`}>{money(row.closing_balance)}</TD><TD><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${row.status === "ABNORMAL" ? "bg-rose-50 text-rose-700 ring-rose-200" : "bg-emerald-50 text-emerald-700 ring-emerald-200"}`}>{row.status === "ABNORMAL" ? "Abnormal" : "Normal"}</span></TD></TR>})}</TBody></Table>}</Card>
+    <Card className="overflow-x-auto p-0">{query.isLoading?<div className="p-10 text-center text-sm text-slate-500">Loading trial balance…</div>:query.isError?<div className="p-10 text-center text-sm text-red-600">Trial balance could not be loaded.</div>:<Table variant="grid" stickyHeader containerClassName="max-h-[60vh] overflow-auto print:max-h-none print:overflow-visible"><THead><TR><TH>Account</TH><TH className="text-right">Opening Balance</TH>{filters.date_from.slice(5) !== "01-01" && <><TH className="text-right">Prior Debit</TH><TH className="text-right">Prior Credit</TH></>}<TH className="text-right">Debit Movement</TH><TH className="text-right">Credit Movement</TH><TH className="text-right">Closing</TH><TH>Status</TH></TR></THead><TBody>{data?.items.map((row)=>{const glParams=new URLSearchParams({account_id:String(row.account_id),date_from:filters.date_from,date_to:filters.date_to,...(filters.location_id?{location_id:String(filters.location_id)}:{}),...(filters.business_unit_id?{business_unit_id:String(filters.business_unit_id)}:{})}).toString();return <TR key={row.account_id}><TD className="font-medium"><Link className="text-emerald-700 hover:underline" to={`/general-ledger?${glParams}`}>{row.account_name}</Link></TD><TD className={`text-right ${Number(row.opening_balance) < 0 ? "text-rose-700" : ""}`}>{money(row.opening_balance)}</TD>{filters.date_from.slice(5) !== "01-01" && <><TD className="text-right">{money(row.prior_debit)}</TD><TD className="text-right">{money(row.prior_credit)}</TD></>}<TD className="text-right">{money(row.period_debit)}</TD><TD className="text-right">{money(row.period_credit)}</TD><TD className={`text-right font-medium ${Number(row.closing_balance) < 0 ? "text-rose-700" : ""}`}>{money(row.closing_balance)}</TD><TD><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${row.status === "ABNORMAL" ? "bg-rose-50 text-rose-700 ring-rose-200" : "bg-emerald-50 text-emerald-700 ring-emerald-200"}`}>{row.status === "ABNORMAL" ? "Abnormal" : "Normal"}</span></TD></TR>})}</TBody></Table>}</Card>
 
     <div className="flex flex-wrap items-center justify-end gap-3">
       <label className="text-sm text-slate-600">Rows per page
