@@ -19,6 +19,20 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
 
   {
+    files: ["scripts/*.mjs"],
+    languageOptions: {
+      globals: { console: "readonly", process: "readonly", URL: "readonly", setTimeout: "readonly" },
+    },
+  },
+  {
+    files: ["scripts/test-*workspace*.mjs"],
+    // Browser callbacks are serialized into Playwright's page context.
+    languageOptions: {
+      globals: { document: "readonly", innerWidth: "readonly", getComputedStyle: "readonly" },
+    },
+  },
+
+  {
     files: ["**/*.{ts,tsx}"],
 
     languageOptions: {
