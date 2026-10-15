@@ -20,8 +20,7 @@ const money = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", {
 const quantity = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", {
   maximumFractionDigits: 4,
 });
-const input = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900";
-type MovementFilter = "ALL" | "FAST" | "SLOW" | "DEAD";
+const input = "mt-1 h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900";
 type HealthFilter = "ALL" | "HEALTHY" | "LOW_STOCK";
 type AccountTotal = {
   account_id: number | null;
@@ -44,8 +43,6 @@ export default function InventoryPage() {
     : params.get("health") === "HEALTHY" ? "HEALTHY" : "ALL";
   const [search, setSearch] = useState("");
   const [health, setHealth] = useState<HealthFilter>(initialHealth);
-  const initialClass = params.get("movement_class");
-  const [movementClass, setMovementClass] = useState<MovementFilter>(initialClass === "FAST" || initialClass === "SLOW" || initialClass === "DEAD" ? initialClass : "ALL");
   const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("inventory-page-size")) === 100 ? 100 : 50);
   const [showFilters, setShowFilters] = useState(false);
   const [accountId, setAccountId] = useState<number | undefined>();
@@ -61,7 +58,6 @@ export default function InventoryPage() {
     search: search.trim() || undefined,
     health: health === "ALL" ? undefined : health,
     account_id: accountId,
-    movement_class: movementClass === "ALL" ? undefined : movementClass,
   };
   const closing = useInventory({
     ...filters, page, page_size: pageSize, as_of: dateTo || undefined,
@@ -81,7 +77,7 @@ export default function InventoryPage() {
   const openingTotals: AccountTotal[] = openingData.totals_by_account ?? [];
   const pages = Math.max(data.total_pages ?? 0, 1);
   const total = data.total_items ?? 0;
-  const hasRange = Boolean(dateFrom && movementClass === "ALL");
+  const hasRange = Boolean(dateFrom);
   const loading = closing.isFetching || (hasRange && opening.isFetching);
   const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
 
@@ -102,7 +98,7 @@ export default function InventoryPage() {
     );
   })();
 
-  useEffect(() => setPage(1), [search, health, accountId, movementClass, dateFrom, dateTo, pageSize]);
+  useEffect(() => setPage(1), [search, health, accountId, dateFrom, dateTo, pageSize]);
   useEffect(() => window.localStorage.setItem("inventory-page-size", String(pageSize)), [pageSize]);
   useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
 
@@ -114,23 +110,13 @@ export default function InventoryPage() {
     setParams(next, { replace: true });
   };
 
-  const changeMovement = (value: MovementFilter) => {
-    setMovementClass(value);
-    if (value !== "ALL") setDateFrom("");
-    const next = new URLSearchParams(params);
-    if (value === "ALL") next.delete("movement_class");
-    else next.set("movement_class", value);
-    setParams(next, { replace: true });
-  };
-  const movementCounts: Record<"FAST" | "SLOW" | "DEAD", { stock_lines: number; stock_value: number }> = summary.movement_classes ?? {};
-  const movementDays = summary.movement_days ?? { fast: 30, dead: 90 };
 
-  return <div className="inventory-print-report space-y-6">
-    <InventoryReportHeading title={"Inventory"} context={`Period: ${dateFrom || "2026-01-01"} – ${dateTo || "Current"}${search ? ` · Search: ${search}` : ""}${accountId ? ` · Account ID: ${accountId}` : ""} · Health: ${health} · Age: ${movementClass}`} rows={rows.length} total={total}/>
+  return <div className="inventory-print-report space-y-2">
+    <InventoryReportHeading title={"Inventory"} context={`Period: ${dateFrom || "2026-01-01"} – ${dateTo || "Current"}${search ? ` · Search: ${search}` : ""}${accountId ? ` · Account ID: ${accountId}` : ""} · Health: ${health}`} rows={rows.length} total={total}/>
     <div className="print:hidden">
       <PageHeader title="Inventory"
         description="Check opening and closing warehouse stock by date and inventory account."
-        actions={<InventoryPrintButton loadReport={() => stockListReport({...filters,as_of:dateTo || undefined}, `As of: ${dateTo || "Current"}${dateFrom ? ` · From: ${dateFrom}` : ""} · Search: ${search || "All"} · Health: ${health} · Age: ${movementClass}${accountId ? ` · Account: ${accounts.data?.find(a => a.id === accountId)?.account_name || accountId}` : ""}`)}/>}
+        actions={<InventoryPrintButton loadReport={() => stockListReport({...filters,as_of:dateTo || undefined}, `As of: ${dateTo || "Current"}${dateFrom ? ` · From: ${dateFrom}` : ""} · Search: ${search || "All"} · Health: ${health}${accountId ? ` · Account: ${accounts.data?.find(a => a.id === accountId)?.account_name || accountId}` : ""}`)}/>}
       />
     </div>
 
@@ -148,8 +134,8 @@ export default function InventoryPage() {
             <option value="ALL">All stock</option><option value="HEALTHY">Healthy</option><option value="LOW_STOCK">Low stock</option>
           </select>
         </label>
-        <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
-          <SlidersHorizontal size={15}/> Filters{[accountId,movementClass !== "ALL" ? movementClass : "",dateFrom,dateTo].filter(Boolean).length ? ` (${[accountId,movementClass !== "ALL" ? movementClass : "",dateFrom,dateTo].filter(Boolean).length})` : ""}
+        <Button type="button" size="sm" variant="outline" title="Filters" aria-label="Filters" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
+          <SlidersHorizontal size={15}/>
         </Button>
       </div>
       {showFilters && <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -159,13 +145,8 @@ export default function InventoryPage() {
             {(accounts.data ?? []).map((account: any) => <option key={account.id} value={account.id}>{account.account_number} — {account.account_name}</option>)}
           </select>
         </label>
-        <label className="block min-w-0 text-xs font-medium text-slate-600">Movement class
-          <select className={input} value={movementClass} onChange={e => changeMovement(e.target.value as MovementFilter)}>
-            <option value="ALL">All movement</option><option value="FAST">Fast</option><option value="SLOW">Slow</option><option value="DEAD">Dead</option>
-          </select>
-        </label>
         <label className="block min-w-0 text-xs font-medium text-slate-600">From date
-          <input type="date" className={input} value={dateFrom} disabled={movementClass !== "ALL"} max={dateTo || undefined} onChange={e => setDateFrom(e.target.value)}/>
+          <input type="date" className={input} value={dateFrom} max={dateTo || undefined} onChange={e => setDateFrom(e.target.value)}/>
         </label>
         <label className="block min-w-0 text-xs font-medium text-slate-600">To date
           <input type="date" className={input} value={dateTo} min={dateFrom || undefined} onChange={e => setDateTo(e.target.value)}/>
@@ -174,29 +155,12 @@ export default function InventoryPage() {
       <p className="mt-3 text-xs text-slate-500">
         {hasRange
           ? `Opening: before ${dateFrom} · Closing: ${dateTo || "current stock"} · Change: closing minus opening.`
-          : `Showing stock ${dateTo ? `as of ${dateTo}` : "as of now"}. ${movementClass === "ALL" ? "Set From date to compare opening and closing balances." : "Select All movement to compare opening and closing balances."}`}
+          : `Showing stock ${dateTo ? `as of ${dateTo}` : "as of now"}. Set From date to compare opening and closing balances.`}
       </p>
       {invalidRange && <p className="mt-2 text-sm text-red-700">From date must be on or before To date.</p>}
     </Card>
 
     {!invalidRange && <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {(["FAST", "SLOW", "DEAD"] as const).map(status => {
-          const current = movementCounts[status];
-          const detail = status === "FAST"
-            ? `Oldest remaining stock is at most ${movementDays.fast} days old`
-            : status === "SLOW" ? `Remaining stock is over ${movementDays.fast} days and up to 6 months old`
-            : "Some stock has remained for over 6 months";
-          return <button type="button" key={status} onClick={() => changeMovement(movementClass === status ? "ALL" : status)}
-            className={`rounded-xl border p-4 text-left shadow-sm transition hover:border-emerald-400 ${movementClass === status ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white"}`}>
-            <div className="text-xs uppercase tracking-wide text-slate-500">{status} STOCK</div>
-            <div className="mt-2 text-2xl font-bold">{current?.stock_lines ?? 0} <span className="text-sm font-normal text-slate-500">lines</span></div>
-            <div className="mt-1 text-sm font-semibold">Rp {money(current?.stock_value)}</div>
-            <div className="mt-1 text-xs text-slate-500">{detail}</div>
-          </button>;
-        })}
-      </div>
-      <p className="text-xs text-slate-500">Age is estimated from remaining receipt layers using FIFO. Stock entered as the 2026 opening balance is dated January 1, 2026; this classification does not change inventory value.</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Closing Stock Lines</div><div className="mt-2 text-2xl font-bold">{summary.stock_lines ?? 0}</div></Card>
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Closing Stock Value</div><div className="mt-2 text-2xl font-bold">Rp {money(summary.stock_value)}</div>{hasRange && <div className="mt-1 text-xs text-slate-500">Opening: Rp {money(openingSummary.stock_value)} · Change: Rp {money(Number(summary.stock_value ?? 0) - Number(openingSummary.stock_value ?? 0))}</div>}</Card>
