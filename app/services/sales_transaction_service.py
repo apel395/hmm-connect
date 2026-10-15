@@ -256,8 +256,8 @@ class SalesTransactionService:
     def _revenue_account(db: Session, account: ChartOfAccount | None) -> ChartOfAccount:
         if account is None:
             raise HTTPException(409, "Sales revenue requires an active direct COA mapping")
-        if account.account_number != "400" or account.account_type not in {"REVENUE", "INCOME"} or account.normal_balance != "CREDIT":
-            raise HTTPException(409, "Sales revenue must use credit-balance account 400")
+        if not account.is_active or not account.is_posting or account.account_type not in {"REVENUE", "INCOME"} or account.normal_balance != "CREDIT":
+            raise HTTPException(409, "Sales revenue must use an active credit-balance revenue posting account")
         return account
 
     @staticmethod

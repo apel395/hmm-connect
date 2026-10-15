@@ -42,8 +42,6 @@ class GeneralLedgerService:
         account = db.get(ChartOfAccount, account_id)
         if account and account.account_type == "STATISTIC":
             raise HTTPException(422, "Statistical accounts use Actual/Budget entry, never financial GL")
-        if account and account.account_type in {"REVENUE", "INCOME"} and account.account_number != "400" and reference_type not in {"PERIOD_CLOSE", "YEAR_END"}:
-            raise HTTPException(422, "Revenue postings must use account 400")
 
         if posting_date is None:
             posting_date = date.today()

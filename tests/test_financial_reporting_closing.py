@@ -169,16 +169,48 @@ def test_kap_hides_leaf_accounts_without_changing_totals_and_contra_asset_sign(d
     assert selected["section_totals"]["EXPENSES"]["MTD"]["current"] == Decimal("30")
 
 
-def test_revenue_400_with_legacy_children_remains_visible_and_other_revenue_rejected(db):
+def test_renamed_revenue_with_legacy_children_remains_editable_and_visible(db):
+    from app.schemas.chart_of_account import ChartOfAccountUpdate
+    from app.services.chart_of_account_service import ChartOfAccountService
     session, a = db
-    child=ChartOfAccount(account_number="400-100", account_name="Legacy revenue", account_type="REVENUE", normal_balance="CREDIT", parent_account_id=a[0].id)
+    child = ChartOfAccount(account_number="400-100-100", account_name="Legacy revenue", account_type="REVENUE", normal_balance="CREDIT", parent_account_id=a[0].id, is_posting=True)
     session.add(child); session.commit()
-    activity(session,a,date(2026,2,10),"100","30")
-    report=TrialBalanceService(session).report(date_from=date(2026,1,1),date_to=date(2026,2,28),paginate=False)
-    assert any(r["account_code"] == "400" for r in report["items"])
-    with pytest.raises(HTTPException) as exc:
-        journals.validate(session,[SimpleNamespace(account_id=child.id,debit=0,credit=Decimal("1"))])
-    assert "400" in exc.value.detail
+    journal = activity(session, a, date(2026, 2, 10), "100", "30")
+    original_id = a[0].id
+    account = ChartOfAccountService(session).update(original_id, ChartOfAccountUpdate(account_code="400-100", is_posting=True))
+    session.commit()
+    assert account.id == original_id
+    assert journal.lines[0].account_id == original_id
+    assert journal.lines[0].credit == Decimal("100")
+    assert child.parent_account_id == original_id
+    # Saving the existing child still works after its parent was renamed.
+    ChartOfAccountService(session).update(child.id, ChartOfAccountUpdate(parent_account_id=original_id))
+    report = TrialBalanceService(session).report(date_from=date(2026, 1, 1), date_to=date(2026, 2, 28), paginate=False)
+    assert any(r["account_code"] == "400-100" and r["period_credit"] == Decimal("100") for r in report["items"])
+    assert journals.validate(session, [SimpleNamespace(account_id=child.id, debit=0, credit=Decimal("1"))]) == (ZERO, Decimal("1"))
+
+
+def test_revenue_creation_and_ledger_use_account_identity_not_literal_400(db, monkeypatch):
+    from app.schemas.chart_of_account import ChartOfAccountCreate, ChartOfAccountUpdate
+    from app.services.chart_of_account_service import ChartOfAccountService
+    from app.services.general_ledger import GeneralLedgerService
+    from app.services.sales_transaction_service import SalesTransactionService
+    session, a = db
+    service = ChartOfAccountService(session)
+    revenue = service.create(ChartOfAccountCreate(account_code="400-200", account_name="Catering revenue", account_type="REVENUE", normal_balance="CREDIT"))
+    assert SalesTransactionService._revenue_account(session, revenue).id == revenue.id
+    from app.services.fiscal_period_service import FiscalPeriodService
+    monkeypatch.setattr(FiscalPeriodService, "business_today", staticmethod(lambda: date(2026, 2, 10)))
+    monkeypatch.setattr(GeneralLedgerService, "generate_number", staticmethod(lambda _db: "GL-REVENUE-EDIT"))
+    entry = GeneralLedgerService.post(session, account_id=revenue.id, credit=Decimal("50"), reference_type="MANUAL", reference_id=1, reference_number="TEST", description="Revenue", user_id=1, posting_date=date(2026, 2, 10))
+    assert entry.account_id == revenue.id and entry.credit == Decimal("50")
+    # Ordinary uniqueness and non-posting protections still apply.
+    with pytest.raises(HTTPException):
+        service.update(revenue.id, ChartOfAccountUpdate(account_code=a[1].account_number))
+    revenue.is_posting = False
+    with pytest.raises(HTTPException):
+        journals.validate(session, [SimpleNamespace(account_id=revenue.id, debit=0, credit=1)])
+
 
 
 def test_comparison_leap_day_and_empty_period(db):

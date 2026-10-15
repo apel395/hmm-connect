@@ -203,7 +203,6 @@ class HistoricalImportService:
                 for row in rows:
                     data=row.normalized_data_json; account=self._master(ChartOfAccount,"account_number",code(data.get("account_code"))); d=decimal_value(data.get("debit"),"debit",errors); c=decimal_value(data.get("credit"),"credit",errors)
                     if not account or not account.is_active or not account.is_posting: errors.append(f"Invalid posting account {text(data.get('account_code'))}")
-                    if account and account.account_type in {"REVENUE", "INCOME"} and account.account_number != "400": errors.append("Revenue entries must use account 400")
                     if d<0 or c<0 or (d>0)==(c>0): errors.append(f"Row {row.row_number}: enter debit or credit, not both")
                     debit+=d;credit+=c
                 if status=="POSTED" and debit!=credit: errors.append(f"Unbalanced journal: debit {debit}, credit {credit}")

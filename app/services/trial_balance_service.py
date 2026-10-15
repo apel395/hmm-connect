@@ -101,13 +101,13 @@ class TrialBalanceService:
             raise ValueError("Trial Balance date range must be within one fiscal year")
         year_start = date(date_to.year, 1, 1)
 
-        # Trial Balance reports only leaf/posting accounts. Parent/header COA
-        # remains in the COA hierarchy but must not appear as a separate row.
+        # Keep legacy revenue posting parents visible after code edits.
+        # Other parent/header rows remain excluded from this leaf-account report.
         child = ChartOfAccount.__table__.alias("trial_balance_child")
         has_child = exists().where(child.c.parent_account_id == ChartOfAccount.id)
         accounts_query = self.db.query(ChartOfAccount).options(joinedload(ChartOfAccount.parent)).filter(
             ChartOfAccount.is_posting.is_(True),
-            or_(~has_child, ChartOfAccount.account_number == "400"),
+            or_(~has_child, ChartOfAccount.account_type.in_(("REVENUE", "INCOME"))),
         )
         if not include_inactive:
             accounts_query = accounts_query.filter(ChartOfAccount.is_active.is_(True))
