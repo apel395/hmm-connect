@@ -1,9 +1,10 @@
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { normalizeReportUnit, reportUnitKind } from "@/components/reports/unitScope";
 import { useEffect, useState } from "react";
 import { loadReportPreferences, saveReportPreferences } from "./reportState";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ListFilter, RefreshCw, Settings2 } from "lucide-react";
+import { Download, ListFilter, Settings2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { DepartmentPerformance } from "./DepartmentPerformanceTable";
@@ -76,7 +77,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   }) : [];
   const columns = kind === "BALANCE_SHEET" ? [...metrics, "movement" as const] : [...metrics];
   const headings = kind === "BALANCE_SHEET" ? [...metricNames, "Movement"] : metricNames;
-  const table = (sections: string[]) => <div className="overflow-x-auto rounded border bg-white"><table className="w-full text-xs whitespace-nowrap"><thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">Account</th>{headings.map((name, index) => <th title={data?.comparison_available?.[period][columns[index]] === false ? "Comparison data unavailable for this year and scope" : data?.periods[period][columns[index]]?.join(" to ")} key={name} className="px-2 py-1.5 text-right">{name}</th>)}</tr></thead><tbody>
+  const table = (sections: string[]) => <div className="workspace-report-table"><table className="w-full text-xs whitespace-nowrap"><thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">Account</th>{headings.map((name, index) => <th title={data?.comparison_available?.[period][columns[index]] === false ? "Comparison data unavailable for this year and scope" : data?.periods[period][columns[index]]?.join(" to ")} key={name} className="px-2 py-1.5 text-right">{name}</th>)}</tr></thead><tbody>
     {sections.map(section => <ReportSection key={section} section={section} rows={data?.rows?.filter(row => row.section === section) ?? []} totals={totals(section)} period={period} ledgerLink={ledgerLink} columns={columns} />)}
     {kind === "BALANCE_SHEET" && sections.includes("LIABILITIES") && <tr className="border-t-2 bg-slate-100 font-bold"><td className="px-2 py-2">Liabilitas + Ekuitas</td>{columns.map(metric => {
       const l = totals("LIABILITIES")?.[metric], e = totals("EQUITY")?.[metric];
@@ -84,13 +85,12 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     })}</tr>}
     {kind === "PROFIT_LOSS" && <tr className="border-t-2 bg-slate-100 font-bold"><td className="px-2 py-2">Laba / Rugi</td>{profit.map((value, index) => <td key={metrics[index]} className={`px-2 py-2 text-right tabular-nums ${value != null && Number(value) < 0 ? "text-red-600" : ""}`}>{money(value)}</td>)}</tr>}
   </tbody></table></div>;
-  return <div className="print-document space-y-2">
+  return <DataWorkspace area="Reports" className="print-document ">
     <PageHeader title={title} description={`${filters.as_of_date} · ${period} · ${scopeNames.join(" · ") || "Consolidated"}${filters.kap ? " · KAP" : ""}`} actions={<div className="flex gap-1 print:hidden">
       <Button variant="outline" size="sm" title="Filters" aria-label="Report filters" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}><ListFilter size={15} /></Button>
       {canManage && <Link to="/finance-setup/reports" className="inline-flex h-8 items-center rounded border px-2" title="Report setup" aria-label="Report setup"><Settings2 size={15} /></Link>}
       <Button variant="outline" size="sm" title="Export Excel" aria-label="Export Excel" disabled={!data} onClick={exportReport}><Download size={15} /></Button>
       {kind === "BALANCE_SHEET" ? <PrintPreviewButton src="/balance-sheet/print" title="Balance Sheet" ariaLabel="Print balance sheet" layouts={(["KAP", "DETAIL"] as const).map(layout => ({label: layout === "KAP" ? "KAP summary" : "Detail", title: `Balance Sheet — ${layout}`, src: `/balance-sheet/print?${new URLSearchParams(Object.fromEntries(Object.entries({...params, kap:layout === "KAP", detail:layout === "DETAIL"}).map(([key,value])=>[key,String(value)])))}`}))} /> : <PrintPreviewButton src={`/profit-loss/print?${new URLSearchParams(Object.fromEntries(Object.entries(params).map(([key,value])=>[key,String(value)])))}`} title={title} ariaLabel="Print profit and loss" />}
-      <Button variant="outline" size="sm" title="Refresh" aria-label="Refresh report" disabled={report.isFetching} onClick={() => report.refetch()}><RefreshCw size={15} /></Button>
     </div>} />
     {showFilters && <Card className="p-2 print:hidden"><form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); setFilters({ ...draft }); setShowFilters(false); }}>
       <label className="grid text-xs">As of<input className={input} type="date" required value={draft.as_of_date} onChange={event => setDraft({ ...draft, as_of_date: event.target.value })} /></label>
@@ -101,18 +101,19 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
       <label className="flex h-8 items-center gap-1 text-xs"><input type="checkbox" checked={draft.include_zero} onChange={event => setDraft({ ...draft, include_zero: event.target.checked })} />Zero values</label>
       <Button size="sm" type="submit">Apply</Button>
     </form></Card>}
-    <ReportUnitButtons value={applied.business_unit_id} onChange={id=>{const next={...filters,business_unit_id:id,report_scope:reportUnitKind(units.data?.find(unit=>String(unit.id)===id)),location_id:"",department_id:""};setFilters(next);setDraft(next);}}/>
+    <div className="workspace-report-controls"><ReportUnitButtons value={applied.business_unit_id} onChange={id=>{const next={...filters,business_unit_id:id,report_scope:reportUnitKind(units.data?.find(unit=>String(unit.id)===id)),location_id:"",department_id:""};setFilters(next);setDraft(next);}}/>
     <div className="flex items-center gap-1 print:hidden">{(["MTD", "YTD"] as const).map(value => <Button key={value} size="sm" variant={period === value ? "primary" : "outline"} onClick={() => setPeriod(value)}>{value}</Button>)}</div>
+    <span className="workspace-scope-label">{filters.as_of_date} · {scopeNames.join(" · ") || "Consolidated"}</span></div>
     {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
-      <div className="flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}</div>
-      {kind === "BALANCE_SHEET" ? <div className="grid items-start gap-2 xl:grid-cols-2">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : <ProfitLossTable data={data} periods={[period]} asOf={filters.as_of_date} />}
+      <div className="workspace-report-totals flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}</div>
+      {kind === "BALANCE_SHEET" ? <div className="workspace-report-grid">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : <ProfitLossTable data={data} periods={[period]} asOf={filters.as_of_date} />}
       <div className="hidden print:block text-xs">{user?.full_name || user?.username} · {new Date().toLocaleString()}</div>
     </>}
-  </div>;
+  </DataWorkspace>;
 }
 
 function ReportSection({ section, rows, totals, period, ledgerLink, columns }: { section: string; rows: Row[]; totals?: Amounts; period: Period; ledgerLink: (row: Row) => string; columns: (keyof Amounts)[] }) {
   return <><tr className="border-y bg-slate-50 font-semibold"><td className="px-2 py-1.5">{labels[section]}</td>{columns.map(metric => <td key={metric} className="px-2 py-1.5 text-right tabular-nums">{money(totals?.[metric])}</td>)}</tr>
-    {rows.map(row => <tr key={`${row.account_code}-${row.account_name}`} className="border-b hover:bg-blue-50/40"><td className="max-w-[22rem] truncate px-2 py-1" title={row.account_name}>{row.account_ids.length > 0 ? <Link className="text-blue-700 hover:underline" to={ledgerLink(row)}>{row.account_name}</Link> : <span>{row.account_name}</span>}</td>{columns.map(metric => <td key={metric} className={`px-2 py-1 text-right tabular-nums ${Number(row.periods[period][metric]) < 0 ? "text-red-600" : ""}`}>{money(row.periods[period][metric])}</td>)}</tr>)}</>;
+    {rows.map(row => <tr key={`${row.account_code}-${row.account_name}`} className="border-b hover:bg-emerald-50/40"><td className="max-w-[22rem] truncate px-2 py-1" title={row.account_name}>{row.account_ids.length > 0 ? <Link className="text-emerald-700 hover:underline" to={ledgerLink(row)}>{row.account_name}</Link> : <span>{row.account_name}</span>}</td>{columns.map(metric => <td key={metric} className={`px-2 py-1 text-right tabular-nums ${Number(row.periods[period][metric]) < 0 ? "text-red-600" : ""}`}>{money(row.periods[period][metric])}</td>)}</tr>)}</>;
 }
 

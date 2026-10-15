@@ -479,3 +479,114 @@ h6 {
  .stock-toolbar { gap: 6px; }.stock-view-switch button { padding: 0 7px; font-size: 11px; }.stock-tools { gap: 1px; }.stock-tool, .stock-tools > button:last-child { width: 28px; }.stock-tool-divider { margin: 0 2px; }
 }
 @media screen { .stock-filter-field:focus { border-color: #88b7a8; box-shadow: 0 0 0 2px #0f67580c; outline: none; } }
+
+/* Opt-in MMH data workspaces. Module forms, print routes and other pages keep their own layouts. */
+@media screen {
+  .data-workspace, .workspace-accounting-shell {
+    height: calc(100dvh - 108px); min-height: 420px; min-width: 0;
+    display: flex; flex-direction: column; gap: 8px; overflow: auto;
+    color: #263540;
+  }
+  .data-workspace > *, .workspace-body > * { flex-shrink: 0; min-width: 0; margin-top: 0 !important; }
+  .workspace-body, .workspace-table-stack { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; min-width: 0; gap: 8px; }
+  .workspace-page-identity { display: flex; align-items: center; gap: 10px; }
+  .data-workspace .workspace-page-header { border: 0; padding: 2px 0 4px; margin: 0; gap: 8px; }
+  .workspace-module-icon { display: grid; place-items: center; flex: 0 0 38px; height: 38px; border: 1px solid #d5e5de; border-radius: 10px; color: #17614e; background: #edf5f0; }
+  .workspace-eyebrow { color: #75818b; font-size: 10px; line-height: 13px; letter-spacing: .07em; text-transform: uppercase; }
+  .workspace-tool { display: inline-flex; align-items: center; justify-content: center; height: 30px; width: 30px; flex-shrink: 0; border: 1px solid #dde3e8; border-radius: 6px; color: #566572; background: white; }
+  .workspace-tool:hover, .workspace-tool[aria-pressed="true"], .workspace-tool[aria-expanded="true"] { background: #edf5f0; color: #17614e; border-color: #b6d0c2; }
+  .workspace-tool:focus-visible { outline: 2px solid #15805d; outline-offset: 2px; }
+  .data-workspace .workspace-data {
+    display: flex; flex-direction: column; flex: 1 1 240px; min-height: 180px; min-width: 0;
+    gap: 0; overflow: hidden; background: white; border: 1px solid #dce3e8; border-radius: 8px; box-shadow: none; padding: 0;
+  }
+  .workspace-data > * { flex-shrink: 0; min-width: 0; }
+  .workspace-data > .workspace-table-stack, .workspace-table-stack > .workspace-table-stack { flex: 1 1 0; min-height: 0; gap: 0; overflow: hidden; }
+  .data-workspace .workspace-data [data-table-viewport], .data-workspace .workspace-data .workspace-table-scroll, .data-workspace .workspace-data.workspace-table-scroll {
+    flex: 1 1 0; min-height: 0; max-height: none !important; overflow: auto !important; border: 0; border-radius: 0;
+  }
+  .workspace-data > div:not([data-table-viewport]):not(.workspace-table-stack):not(.workspace-table-scroll) { padding: 8px 10px; }
+  .workspace-data > .workspace-toolbar { padding: 8px 10px; border-bottom: 1px solid #e9edf0; margin-bottom: 0; }
+  .workspace-data .workspace-footer { padding: 7px 10px; }
+  .workspace-footer { font-size: 12px; padding: 6px 2px; }
+  .data-workspace .workspace-data table, .workspace-report-table table, .workspace-profit-table table, .workspace-drilldown table { font-size: 12px; line-height: 18px; }
+  .workspace-data th, .workspace-data td, .workspace-report-table th, .workspace-report-table td, .workspace-profit-table th, .workspace-profit-table td, .workspace-drilldown th, .workspace-drilldown td {
+    height: 32px; padding: 5px 10px !important; white-space: nowrap; border-bottom: 1px solid #edf0f3;
+  }
+  .data-workspace[data-density="dense"] .workspace-data td, .data-workspace[data-density="dense"] .workspace-data th,
+  .data-workspace[data-density="dense"] .workspace-report-table :is(th,td), .data-workspace[data-density="dense"] .workspace-profit-table :is(th,td) { height: 27px; padding-top: 3px !important; padding-bottom: 3px !important; }
+  .workspace-data thead th, .workspace-report-table thead th { position: sticky; top: 0; z-index: 12; background: #f5f7f9; color: #62717e; font-size: 11px; font-weight: 600; letter-spacing: .01em; text-transform: none; }
+  .workspace-data tbody tr:hover td { background-color: #f2f7f5; }
+  .workspace-data tbody td:first-child, .workspace-data thead th:first-child { position: sticky; left: 0; z-index: 5; background: white; box-shadow: 1px 0 #e6ebef; }
+  .workspace-data thead th:first-child { z-index: 15; background: #f5f7f9; }
+  .workspace-data .workspace-item-table :is(th,td):first-child { width: 148px; min-width: 148px; max-width: 148px; }
+  .workspace-data .workspace-item-table :is(th,td):nth-child(2) { position: sticky; left: 148px; z-index: 5; background: white; box-shadow: 1px 0 #e6ebef; }
+  .workspace-data .workspace-item-table thead th:nth-child(2) { z-index: 14; background: #f5f7f9; }
+  .workspace-data td button { font-size: inherit; }
+  .workspace-data :is(input:not([type="checkbox"]):not([type="radio"]),select), .workspace-filter-fields :is(input:not([type="checkbox"]):not([type="radio"]),select) { height: 30px; min-height: 30px; font-size: 12px; }
+  .workspace-data input:focus, .workspace-filter-fields input:focus { --tw-ring-color: #b8d8c8; border-color: #589a7f; }
+  .data-workspace > .workspace-summary, .data-workspace .workspace-summary { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid #dce3e8; border-radius: 7px; background: white; box-shadow: none; }
+  .workspace-summary > div, .workspace-summary-fields > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; padding: 7px 12px !important; border: 0; border-right: 1px solid #e6ebef; border-radius: 0; box-shadow: none; }
+  .workspace-summary > div > div, .workspace-summary-fields > div > div { margin: 0 !important; font-size: 13px; line-height: 18px; }
+  .workspace-summary > div > div:first-child { font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .workspace-summary > div > div:last-child:not(:nth-child(2)) { font-size: 10px; }
+  .workspace-summary .workspace-summary-fields { display: flex; flex-wrap: wrap; border: 0; padding: 0 !important; gap: 0; }
+  .workspace-summary-fields small { font-size: 11px; color: #73818d; }
+  .workspace-filter-panel { border: 1px solid #dce3e8; border-radius: 7px; background: white; }
+  .workspace-filter-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 10px; }
+  .workspace-filter-fields { padding: 8px 10px; border-top: 1px solid #e9edf0; overflow: auto; max-height: 35dvh; }
+  .workspace-filter-fields[hidden] { display: none; }
+  .workspace-filter-fields table { font-size: 12px; }
+  .workspace-filter-fields :is(th,td) { white-space: nowrap; padding: 5px 10px; }
+  .workspace-report-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 7px 10px; background: white; border: 1px solid #dce3e8; border-radius: 7px; }
+  .workspace-scope-label { margin-left: auto; font-size: 11px; color: #75818b; }
+  .workspace-report-totals { border-color: #dce3e8; }
+  .workspace-report-totals > div { padding: 7px 12px; }
+  .workspace-report-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); flex: 1 1 0; min-height: 240px; gap: 8px; }
+  .workspace-report-table, .workspace-profit-table { min-width: 0; min-height: 0; overflow: auto; background: white; border: 1px solid #dce3e8; border-radius: 8px; }
+  .workspace-profit-table { flex: 1 1 240px; min-height: 240px; max-height: none; }
+  .workspace-report-table :is(th,td):first-child, .workspace-profit-table :is(th,td):first-child { position: sticky; left: 0; background: #f7faf8; z-index: 6; min-width: 210px; max-width: 300px; box-shadow: 1px 0 #e6ebef; }
+  .workspace-report-table thead th:first-child, .workspace-profit-table thead th:first-child { z-index: 16; background: #f5f7f9; }
+  .workspace-profit-table thead { z-index: 18; }
+  .workspace-profit-table tr.group { background: white; }
+  .workspace-profit-table tr.grand-total { background: #edf5f0; border-color: #c6dace; }
+  .workspace-accounting-shell > .data-workspace { height: auto; flex: 1 1 0; min-height: 0; }
+  .workspace-accounting-nav { display: flex; flex-shrink: 0; gap: 4px; border-bottom: 1px solid #dce3e8; }
+  .workspace-accounting-nav a { padding: 5px 12px; font-size: 12px; color: #73818d; border-bottom: 2px solid transparent; }
+  .workspace-accounting-nav a.is-active { color: #17614e; border-color: #17614e; font-weight: 600; }
+  @media (max-width: 1100px) { .workspace-report-grid { display: flex; flex-direction: column; min-height: 400px; overflow: auto; }.workspace-report-table { flex: 1 0 240px; } }
+  @media (max-width: 640px) {
+    .data-workspace, .workspace-accounting-shell { height: calc(100dvh - 104px); }
+    .data-workspace .workspace-page-header > div:last-child { gap: 3px; }
+    .workspace-module-icon { height: 32px; flex-basis: 32px; }
+    .workspace-eyebrow { font-size: 9px; }
+    .workspace-summary > div, .workspace-summary-fields > div { padding: 5px 8px !important; }
+    .workspace-data .workspace-item-table :is(th,td):nth-child(2) { position: static; }
+    .workspace-report-controls { gap: 6px; }.workspace-scope-label { width: 100%; margin: 0; }
+  }
+}
+@media print {
+  .data-workspace, .workspace-accounting-shell, .workspace-body, .workspace-data, .workspace-table-stack, .workspace-table-scroll, .workspace-report-grid, .workspace-report-table, .workspace-profit-table {
+    display: block !important; height: auto !important; min-height: 0 !important; max-height: none !important; overflow: visible !important; box-shadow: none !important;
+  }
+  body:has(.data-workspace) [data-app-print-shell], body:has(.data-workspace) [data-app-print-content], body:has(.data-workspace) main { height: auto !important; overflow: visible !important; }
+  .data-workspace :is(th,td) { position: static !important; }
+}
+@media screen {
+  .workspace-data .workspace-journal-table :is(th,td):first-child { width: 38px; min-width: 38px; max-width: 38px; }
+  .workspace-data .workspace-journal-table :is(th,td):nth-child(2) { position: sticky; left: 38px; z-index: 5; background: white; box-shadow: 1px 0 #e6ebef; }
+  .workspace-data .workspace-journal-table thead th:nth-child(2) { z-index: 14; background: #f5f7f9; }
+  .workspace-data .workspace-ledger-table :is(th,td):first-child { width: 106px; min-width: 106px; max-width: 106px; }
+  .workspace-data .workspace-ledger-table :is(th,td):nth-child(2) { position: sticky; left: 106px; z-index: 5; background: white; box-shadow: 1px 0 #e6ebef; }
+  .workspace-data .workspace-ledger-table thead th:nth-child(2) { z-index: 14; background: #f5f7f9; }
+  @media(max-width: 640px) { .workspace-data .workspace-ledger-table :is(th,td):nth-child(2) { position: static; } }
+}
+@media screen {
+  .workspace-data td button { min-height: 22px; height: 22px; padding-top: 0; padding-bottom: 0; }
+  .workspace-filter-panel :is(input:not([type="checkbox"]):not([type="radio"]),select) { height: 30px; min-height: 30px; font-size: 12px; }
+  @media(max-width: 640px) {
+    .data-workspace .workspace-page-header { display: grid; grid-template-columns: minmax(0,1fr); gap: 6px; }
+    .data-workspace .workspace-page-header h1, .workspace-eyebrow { white-space: nowrap; }
+    .data-workspace .workspace-page-header > div:last-child { justify-content: flex-start; }
+  }
+}

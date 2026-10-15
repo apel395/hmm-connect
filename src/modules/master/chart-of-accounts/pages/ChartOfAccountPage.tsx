@@ -1,3 +1,4 @@
+import DataWorkspace, { WorkspaceFilters } from "@/components/workspace/DataWorkspace";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
@@ -94,8 +95,8 @@ export default function ChartOfAccountPage() {
   }
   function sort(field: string) { if (sortBy === field) setSortOrder(sortOrder === "asc" ? "desc" : "asc"); else { setSortBy(field); setSortOrder("asc"); } }
 
-  return <>
-    <div className="space-y-6">
+  return <DataWorkspace area="Master data">
+    <div className="workspace-body">
       <PageHeader title="Chart of Accounts" description="Manage the finance account structure and availability." actions={<div className="flex flex-wrap gap-2"><Button onClick={() => openForm()}><Plus size={16}/> Create</Button><Button variant="outline" disabled title="COA import is not available yet">Import</Button><Button variant="outline" loading={excelExport.isPending} disabled={excelExport.isPending} title="Export all filtered accounts to Excel" onClick={() => excelExport.mutate()}>Export Excel</Button>  <PrintPreviewButton src={printSrc} title="Chart of Accounts Register" ariaLabel="Preview chart of accounts" label="Print" />
 </div>}/>
       <ModuleSummary metrics={[
@@ -104,17 +105,18 @@ export default function ChartOfAccountPage() {
         {label:"Posting Accounts",value:accounts.data?.items.filter((item) => item.is_posting).length ?? 0,note:"Visible page"},
         {label:"System Accounts",value:accounts.data?.items.filter((item) => item.is_system).length ?? 0,note:"Visible page"},
       ]}/>
-      <Card>
-        <div className="mb-5 flex flex-wrap gap-3">
+      <Card className="workspace-data">
+        <div className="workspace-toolbar flex flex-wrap gap-2">
           <Input aria-label="Search accounts" className="max-w-sm" placeholder="Search code, name, or description..." value={search} onChange={(e) => setSearch(e.target.value)}/>
-          <select className={selectClass + " max-w-48"} value={type} onChange={(e) => setType(e.target.value as AccountType | "")}><option value="">All account types</option>{accountTypes.map((v) => <option key={v}>{v}</option>)}</select>
+          <div className="ml-auto flex"><Button variant={view === "table" ? "secondary" : "outline"} onClick={() => setView("table")}>Table View</Button><Button variant={view === "tree" ? "secondary" : "outline"} onClick={() => setView("tree")}>Hierarchy View</Button></div>
+        </div>
+        <WorkspaceFilters label="Account filters" context="Account type · Normal balance · Posting · Status"><div className="flex flex-wrap gap-2">          <select className={selectClass + " max-w-48"} value={type} onChange={(e) => setType(e.target.value as AccountType | "")}><option value="">All account types</option>{accountTypes.map((v) => <option key={v}>{v}</option>)}</select>
           <select className={selectClass + " max-w-44"} value={balance} onChange={(e) => setBalance(e.target.value as NormalBalance | "")}><option value="">All balances</option><option>DEBIT</option><option>CREDIT</option></select>
           <select aria-label="Posting account filter" className={selectClass + " max-w-44"} value={posting} onChange={(e) => setPosting(e.target.value)}><option value="">All accounts</option><option value="posting">Posting accounts</option><option value="group">Group accounts</option></select>
           <select className={selectClass + " max-w-40"} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="archived">Archived</option></select>
-          <div className="ml-auto flex"><Button variant={view === "table" ? "secondary" : "outline"} onClick={() => setView("table")}>Table View</Button><Button variant={view === "tree" ? "secondary" : "outline"} onClick={() => setView("tree")}>Hierarchy View</Button></div>
-        </div>
+</div></WorkspaceFilters>
         {(accounts.isLoading || tree.isLoading) ? <div className="py-12"><Loading/></div> : view === "tree" ?
-          <div className="rounded-lg border border-slate-200 px-4">{tree.data?.map((node) => <TreeRow key={node.id} node={node}/>)}</div> :
+          <div className="workspace-table-scroll rounded-lg border border-slate-200 px-4">{tree.data?.map((node) => <TreeRow key={node.id} node={node}/>)}</div> :
           <><Table variant="grid"><THead><TR>{[["account_code","Account Code"],["account_name","Account Name"],["account_type","Account Type"]].map(([field,label]) => <TH key={field}><button onClick={() => sort(field)}>{label}{sortBy === field ? (sortOrder === "asc" ? " ↑" : " ↓") : ""}</button></TH>)}<TH>Subtype</TH><TH>Parent Account</TH><TH><button onClick={() => sort("normal_balance")}>Normal Balance{sortBy === "normal_balance" ? (sortOrder === "asc" ? " ↑" : " ↓") : ""}</button></TH><TH>Posting Account</TH><TH>Cash Flow Category</TH><TH>Status</TH><TH>Actions</TH></TR></THead>
           <TBody>{accounts.data?.items.map((account) => <TR key={account.id}><TD className="font-mono font-medium">{account.account_code}</TD><TD>{account.account_name}</TD><TD>{account.account_type}</TD><TD>{account.account_subtype !== "OTHER" ? <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">{account.account_subtype}</span> : "—"}</TD><TD>{lookup.data?.find((p) => p.id === account.parent_account_id)?.account_name ?? "—"}</TD><TD>{account.account_type === "STATISTIC" ? "—" : account.normal_balance}</TD><TD>{account.is_posting ? "Yes" : "No"}</TD><TD>{account.cash_flow_category ?? "—"}</TD><TD><span className={account.is_active ? "text-emerald-700" : "text-slate-500"}>{account.is_active ? "Active" : "Archived"}</span></TD><TD><div className="flex gap-1"><Button size="xs" variant="outline" onClick={() => setViewing(account)}><Eye size={15}/> View</Button><Button size="xs" variant="outline" onClick={() => openForm(account)}>Edit</Button>{!account.is_system && <Button size="xs" variant="outline" disabled={activeMutation.isPending} onClick={() => activeMutation.mutate(account)}>{account.is_active ? "Archive" : "Restore"}</Button>}</div></TD></TR>)}</TBody></Table>
           {!accounts.data?.items.length && <p className="py-8 text-center text-sm text-slate-500">No accounts found.</p>}
@@ -135,5 +137,5 @@ export default function ChartOfAccountPage() {
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={form.account_type === "STATISTIC"} checked={form.is_posting} onChange={(e) => setForm({...form, is_posting: e.target.checked})}/> Posting Account</label>
       <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({...form, is_active: e.target.checked})}/> Active</label>
     </DialogBody><DialogFooter><Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button><Button type="submit" loading={save.isPending}>Save Account</Button></DialogFooter></form></DialogContent></Dialog>
-  </>;
+  </DataWorkspace>;
 }

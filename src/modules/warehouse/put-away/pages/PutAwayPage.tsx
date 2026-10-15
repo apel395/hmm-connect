@@ -1,3 +1,4 @@
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import InventoryPrintButton from "@/components/print/InventoryPrintButton";
 import { inventoryDocumentReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
@@ -29,7 +30,7 @@ if(isLoading)return<Loading/>;
 
 return(
 
-<div className="inventory-print-report space-y-6">
+<DataWorkspace area="Inventory" className="inventory-print-report ">
 <InventoryReportHeading title="Put Away" context={"Received stock awaiting warehouse placement"} rows={data.length} total={data.length}/>
 
 <PageHeader
@@ -40,7 +41,7 @@ description="Move received stock into warehouse locations"
 
 />
 
-<Card>
+<Card className="workspace-data workspace-table-scroll">
 
 <table className="min-w-full">
 
@@ -112,7 +113,7 @@ Complete
 
 </Card>
 
-</div>
+</DataWorkspace>
 
 );
 

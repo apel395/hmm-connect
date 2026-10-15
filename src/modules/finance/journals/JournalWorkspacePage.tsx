@@ -1,4 +1,4 @@
-import ModuleWorkspaceHeader from "@/components/workspace/ModuleWorkspaceHeader";
+import { NavLink } from "react-router-dom";
 import JournalListPage from "./JournalListPage";
 import GeneralLedgerPage from "@/modules/finance/general-ledger/GeneralLedgerPage";
 import TrialBalancePage from "@/modules/finance/trial-balance/TrialBalancePage";
@@ -13,12 +13,8 @@ const tabs = [
 
 export default function JournalWorkspacePage({ section }: { section: Section }) {
   return (
-    <div className="space-y-5">
-      <ModuleWorkspaceHeader
-        title="Journal"
-        description="Review manual journals, general ledger activity, and trial balance from one workspace."
-        tabs={tabs}
-      />
+    <div className="workspace-accounting-shell">
+      <nav className="workspace-accounting-nav print:hidden" aria-label="Accounting modules">{tabs.map(tab => <NavLink key={tab.to} to={tab.to} end={tab.exact} className={({ isActive }) => isActive ? "is-active" : ""}>{tab.label}</NavLink>)}</nav>
       {section === "journal" && <JournalListPage />}
       {section === "general-ledger" && <GeneralLedgerPage />}
       {section === "trial-balance" && <TrialBalancePage />}

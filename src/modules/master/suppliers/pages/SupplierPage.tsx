@@ -1,3 +1,4 @@
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import axios from "axios";
@@ -141,13 +142,13 @@ export default function SupplierPage() {
     finally { setActionId(null); }
   }
 
-  return <>
-    <div className="space-y-6">
+  return <DataWorkspace area="Master data">
+    <div className="workspace-body">
       <PageHeader title="Suppliers" description="Manage supplier profiles, contacts, banking details, and availability." actions={<>
 {canCreateSupplier && <Button onClick={openCreate}>Add Supplier</Button>}
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}/>
-      <Card>
+      <Card className="workspace-data">
         <div className="mb-2 flex flex-col gap-2 sm:flex-row">
           <Input type="search" aria-label="Search suppliers" placeholder="Search supplier code or name..." value={search} className="sm:max-w-md" onChange={(event) => setSearch(event.target.value)}/>
           <select aria-label="Filter suppliers by status" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -159,5 +160,5 @@ export default function SupplierPage() {
     </div>
     <SupplierForm open={formOpen} supplier={editing} loading={createMutation.isPending || (updateMutation.isPending && actionId === null)} error={formError} onClose={() => { if (createMutation.isPending || updateMutation.isPending) return; setFormOpen(false); setEditing(null); setFormError(null); }} onSubmit={save}/>
     <SupplierDetail open={viewId !== undefined} supplier={detailQuery.data} loading={detailQuery.isLoading} error={detailQuery.isError ? errorMessage(detailQuery.error) : null} onClose={() => setViewId(undefined)}/>
-  </>;
+  </DataWorkspace>;
 }

@@ -1,3 +1,4 @@
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import { Printer } from "lucide-react";
@@ -40,9 +41,9 @@ export default function OrganizationDimensionsPage({ section: fixedSection }: Pr
       };
 
   return (
-    <div className="space-y-4">
+    <DataWorkspace area="Master data" >
       <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title={copy.title} description={copy.description} />
       <OrganizationManagement fixedSection={section} />
-    </div>
+    </DataWorkspace>
   );
 }

@@ -1,3 +1,4 @@
+import DataWorkspace, { WorkspaceFilters } from "@/components/workspace/DataWorkspace";
 import InventoryPrintButton from "@/components/print/InventoryPrintButton";
 import { movementReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
@@ -132,7 +133,7 @@ export default function InventoryMovementPage() {
     setParams(next, { replace: true });
   };
 
-  return <div className="inventory-print-report space-y-3">
+  return <DataWorkspace area="Inventory" className="inventory-print-report ">
     <InventoryReportHeading title={focused ? "Item Stock History" : "Stock Movement"} context={`Period: ${dateFrom || "2026-01-01"} – ${dateTo || "Current"}${search ? ` · Search: ${search}` : ""}${productId ? ` · Item ID: ${productId}` : ""}${warehouseId ? ` · Warehouse ID: ${warehouseId}` : ""}${accountId ? ` · Account ID: ${accountId}` : ""}${locationId ? ` · Location ID: ${locationId}` : ""}${departmentId ? ` · Department ID: ${departmentId}` : ""}${poId ? ` · PO ID: ${poId}` : ""}${receiptId ? ` · Receipt ID: ${receiptId}` : ""} · Source: ${sourceKind}`} rows={rows.length} total={total}/>
     <PageHeader title={focused ? "Item Stock History" : "Stock Movement"}
       description={focused
@@ -143,7 +144,7 @@ export default function InventoryMovementPage() {
         <InventoryPrintButton disabled={invalidRange} loadReport={() => movementReport({...filters}, `Period: ${dateFrom || "All"} – ${dateTo || "Current"} · Search: ${search || "All"} · Source: ${sourceKind}${productId ? ` · Item ID: ${productId}` : ""}${warehouseId ? ` · Warehouse ID: ${warehouseId}` : ""}${locationId ? ` · Location: ${locations.data?.find(l => l.id === Number(locationId))?.name || locationId}` : ""}${departmentId ? ` · Department ID: ${departmentId}` : ""}${accountId ? ` · Account: ${accounts.data?.find(a => a.id === Number(accountId))?.account_name || accountId}` : ""}${poId ? ` · PO ID: ${poId}` : ""}${receiptId ? ` · Receipt ID: ${receiptId}` : ""}`)}/>
       </div>}/>
 
-    <Card className="p-3 print:hidden">
+    <Card className="workspace-filter-panel p-2 print:hidden">
       <div className="flex flex-wrap items-end gap-2">
         <label className="min-w-[220px] flex-1 text-xs font-medium text-slate-600">Search item or warehouse
           <input className={input} placeholder="Item code, name or warehouse" value={search} onChange={e => setSearch(e.target.value)}/>
@@ -207,7 +208,7 @@ export default function InventoryMovementPage() {
     {query.isError && <Card className="p-4 text-sm text-red-700">Stock history could not be loaded. Check the filters and try again.</Card>}
     {query.isLoading ? <Loading/> : <>
       {focused && <>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="workspace-summary">
           <Card className="p-3"><div className="text-xs uppercase text-slate-500">Stock awal · {result?.history_period?.date_from ?? "2026-01-01"}</div>
             <div className="mt-1 text-2xl font-bold">{quantity(openingQuantity)}</div></Card>
           <Card className="p-3"><div className="text-xs uppercase text-slate-500">Stock akhir · {result?.history_period?.date_to ?? "today"}</div>
@@ -215,8 +216,7 @@ export default function InventoryMovementPage() {
           <Card className="p-3"><div className="text-xs uppercase text-slate-500">Matching events</div>
             <div className="mt-1 text-2xl font-bold">{total}</div></Card>
         </div>
-        <Card className="overflow-x-auto p-0">
-          <div className="border-b px-3 py-2 font-semibold">Opening and closing by warehouse</div>
+        <WorkspaceFilters label="Opening and closing by warehouse" context="Warehouse balances">
           <table className="w-full min-w-[580px] text-sm"><thead><tr>
             <th className="px-4 py-2 text-left">Warehouse</th><th className="px-4 py-2 text-right">Opening qty</th>
             <th className="px-4 py-2 text-right">Closing qty</th>
@@ -226,17 +226,16 @@ export default function InventoryMovementPage() {
             <td className="px-4 py-2 text-right font-semibold">{quantity(item.closing_quantity)}</td>
           </tr>)}</tbody></table>
           <p className="border-t px-4 py-2 text-xs text-slate-500">Opening quantity is reconstructed from current stock and recorded movements. It is a balance, not an additional stock transaction.</p>
-        </Card>
+        </WorkspaceFilters>
       </>}
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="workspace-summary">
         {!focused && <Card className="p-3"><div className="text-xs uppercase text-slate-500">Matching events</div><div className="mt-1 text-2xl font-bold">{total}</div></Card>}
         <Card className="p-3"><div className="text-xs uppercase text-slate-500">Filtered stock in</div><div className="mt-1 text-xl font-bold">Rp {money(summary?.in_value)}</div></Card>
         <Card className="p-3"><div className="text-xs uppercase text-slate-500">Filtered stock out</div><div className="mt-1 text-xl font-bold">{quantity(summary?.out_qty)} · Rp {money(summary?.out_value)}</div></Card>
       </div>
 
-      <Card className="overflow-x-auto p-0">
-        <div className="border-b px-3 py-2 font-semibold">Filtered totals by inventory account</div>
+      <WorkspaceFilters label="Inventory account totals" context="Filtered account totals">
         <table className="w-full min-w-[790px] text-sm"><thead><tr>
           <th className="px-4 py-2 text-left">Inventory COA</th><th className="px-4 py-2 text-right">IN Qty</th>
           <th className="px-4 py-2 text-right">OUT Qty</th><th className="px-4 py-2 text-right">Net Qty</th>
@@ -247,9 +246,9 @@ export default function InventoryMovementPage() {
           <td className="px-4 py-2 text-right">{quantity(row.net_qty)}</td><td className="px-4 py-2 text-right">Rp {money(row.in_value)}</td>
           <td className="px-4 py-2 text-right">Rp {money(row.out_value)}</td>
         </tr>)}{!byAccount.length && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-500">No events for the selected filters.</td></tr>}</tbody></table>
-      </Card>
+      </WorkspaceFilters>
 
-      <Card className="overflow-hidden p-0">
+      <Card className="workspace-data p-0">
         <div className="border-b px-3 py-2 font-semibold">{focused ? "Item timeline · oldest first" : "Recent item events · select an item for its timeline"}</div>
         <Table className="min-w-[1320px]" containerClassName="rounded-none border-0 shadow-none">
           <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Event</TH><TH>Item code</TH><TH>Item name</TH><TH>Warehouse</TH>
@@ -274,5 +273,5 @@ export default function InventoryMovementPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 print:hidden"><label className="text-xs text-slate-600">Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => setPageSize(Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option></select></label><Pagination page={page} pages={pages} total={total} pageSize={pageSize} noun="events" onChange={setPage}/></div>
       </Card>
     </>}
-  </div>;
+  </DataWorkspace>;
 }
