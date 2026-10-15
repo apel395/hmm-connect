@@ -32,6 +32,7 @@ def _row(request: StoreRequest, requester_name: str | None = None) -> dict:
         "sr_number": request.sr_number,
         "status": request.status,
         "request_date": request.request_date,
+        "last_issue_date": max((issue.issue_date or issue.posted_at.date() for issue in request.issues if issue.status == "POSTED" and (issue.issue_date or issue.posted_at)), default=None),
         "requester_name": requester_name or (request.requested_by.full_name if request.requested_by else None),
         "business_unit_id": request.business_unit_id,
         "business_unit_name": request.business_unit.name if request.business_unit else None,

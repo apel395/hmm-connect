@@ -134,8 +134,13 @@ def _ensure_default_workflow(db: Session, *, workflow_code: str, user=None) -> A
         db.flush()
 
     if workflow_code == "SR_APPROVAL":
-        if not workflow.steps:
-            raise HTTPException(status_code=409, detail="Store Request approval workflow has no configured steps")
+        if workflow.steps:
+            return workflow
+        role = _role_by_name(db, "STORE")
+        if not role:
+            raise HTTPException(status_code=409, detail="Configure the STORE role before submitting Store Requests")
+        workflow.steps.append(ApprovalWorkflowStep(step_order=1, name="Store Approval", approver_role_id=role.id))
+        db.flush()
         return workflow
 
     chain = WORKFLOW_CHAINS[workflow_code]

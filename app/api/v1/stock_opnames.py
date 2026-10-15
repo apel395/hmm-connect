@@ -116,6 +116,7 @@ def listing(
         .all()
     )
     return {
+        "blind_count": _blind_count(_),
         "items": [_row(row, _) for row in items],
         "page": page,
         "page_size": page_size,
