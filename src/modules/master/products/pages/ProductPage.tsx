@@ -1,9 +1,10 @@
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
-import SearchBox from "@/components/datatable/SearchBox";
+import Input from "@/components/ui/Input";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
@@ -160,8 +161,8 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
       ? "Preparing XLS..."
       : "Download XLS";
 
-  return <>
-    <div className="space-y-6">
+  return <DataWorkspace area="Master data">
+    <div className="workspace-body">
       <PageHeader
         title={catalogType === "HOTEL" ? "Hotel Items" : "Catering Items"}
         description="Item Master"
@@ -176,8 +177,8 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
           {exportError}
         </div>
       )}
-      <Card>
-        <div className="mb-2 flex flex-wrap items-center gap-2"><div className="min-w-[250px] flex-1">          <SearchBox value={search} onChange={setSearch} placeholder="Search item code or name..." />
+      <Card className="workspace-data">
+        <div className="mb-2 flex flex-wrap items-center gap-2"><div className="min-w-[250px] flex-1">          <Input aria-label="Search item code or name" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search item code or name..." />
 </div><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value=>!value)}>Filters{[itemTypeFilter,treatmentFilter,taxFilter].filter(Boolean).length ? ` (${[itemTypeFilter,treatmentFilter,taxFilter].filter(Boolean).length})` : ""}</Button></div>
         {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-3">          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={itemTypeFilter} onChange={(event) => setItemTypeFilter(event.target.value as ItemType | "")}>
             <option value="">Buy and sell</option><option value="BUY">Buy items</option><option value="SELL">Sell items</option>
@@ -199,7 +200,7 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
             <option value="SPECIAL">Special Tax</option>
           </select>
 </div>}
-        {query.isLoading ? <Loading/> : <>
+        {query.isLoading ? <Loading/> : query.isError ? <div role="alert" className="p-6 text-center text-sm text-red-700">Items could not be loaded. <Button size="sm" variant="outline" onClick={() => query.refetch()}>Retry</Button></div> : <>
           <ProductTable rows={rows} accounts={accountLookup.data ?? []} onEdit={handleEdit} onView={(product) => setDetailId(product.id)}/>
           <div className="flex flex-wrap items-center justify-between gap-2"><label className="text-xs">Rows per page <select className="ml-1 rounded border border-slate-300 px-2 py-1" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1)}}><option value={50}>50</option><option value={100}>100</option></select></label><Pagination page={page} pages={pages} total={total} pageSize={pageSize} noun="products" onChange={setPage}/></div>
         </>}
@@ -208,5 +209,5 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
     {formOpen && classification.isError && <div role="alert" className="fixed bottom-4 right-4 z-[100] rounded border border-red-200 bg-white p-3 text-sm text-red-700">Item classifications could not be loaded. <Button size="sm" variant="outline" onClick={() => classification.refetch()}>Retry</Button></div>}
     <ProductForm catalogType={catalogType} open={formOpen} product={selected} groups={classification.data ?? []} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
     <ProductDetailDialog productId={detailId} accounts={accountLookup.data ?? []} onClose={() => setDetailId(null)} onEdit={(product) => { setDetailId(null); handleEdit(product); }}/>
-  </>;
+  </DataWorkspace>;
 }

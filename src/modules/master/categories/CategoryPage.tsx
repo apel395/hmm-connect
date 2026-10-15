@@ -1,3 +1,4 @@
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import PageHeader from "@/components/common/PageHeader";
 import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
@@ -7,7 +8,7 @@ export default function CategoryPage(){
 
 return(
 
-<div className="space-y-6">
+<DataWorkspace area="Master data" >
 
 <PageHeader
 
@@ -17,13 +18,13 @@ description="Manage product groups"
 
 />
 
-<Card>
+<Card className="workspace-data workspace-table-scroll">
 
 Category Management
 
 </Card>
 
-</div>
+</DataWorkspace>
 
 );
 

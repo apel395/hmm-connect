@@ -1,3 +1,4 @@
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import InventoryPrintButton from "@/components/print/InventoryPrintButton";
 import { inventoryDocumentReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
@@ -263,11 +264,11 @@ export default function StockAdjustmentPage() {
   const totalDeltaLines = lines.filter((line) => Math.abs(line.adjusted_quantity - line.system_quantity) > 0.0001).length;
 
   return (
-    <div className="inventory-print-report space-y-6">
+    <DataWorkspace area="Inventory" className="inventory-print-report ">
 <InventoryReportHeading title="Stock Adjustment" context={`Search: ${search || "All"} · Status: ${status}${warehouseFilter ? ` · Warehouse ID: ${warehouseFilter}` : ""}`} rows={rows.length} total={data.total_items ?? 0}/>
       <PageHeader  actions={<InventoryPrintButton loadReport={() => inventoryDocumentReport("adjustments",{status:status === "ALL" ? undefined : status,search:search.trim() || undefined,warehouse_id:warehouseFilter ? Number(warehouseFilter) : undefined}, `Search: ${search || "All"} · Status: ${status} · Warehouse: ${warehouses.find(w => w.id === Number(warehouseFilter))?.name || "All"}`)}/>} title="Stock Adjustment" description="Correct warehouse stock for damage, expiry, found surplus or bookkeeping errors. Adjustments are posted to inventory and recorded as stock movements." />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="workspace-summary">
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Adjustments</div><div className="mt-2 text-2xl font-bold">{num(data.total_items ?? 0)}</div></Card>
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Draft</div><div className="mt-2 text-2xl font-bold">{num(statusCounts.DRAFT ?? 0)}</div></Card>
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Posted</div><div className="mt-2 text-2xl font-bold text-emerald-700">{num(statusCounts.POSTED ?? 0)}</div></Card>
@@ -292,10 +293,10 @@ export default function StockAdjustmentPage() {
         {!canAdjust && <div className="mt-2 text-xs text-slate-500">You can view adjustments. Only warehouse staff with adjustment permission can create or post them.</div>}
       </Card>
 
-      <Card className="p-0">
+      <Card className="workspace-data p-0">
         {listQuery.isLoading ? <Loading /> : (
           <>
-            <div className="overflow-x-auto">
+            <div className="workspace-table-scroll overflow-x-auto">
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead><tr className="whitespace-nowrap border-b text-xs uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3">Number</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Warehouse</th><th className="px-4 py-3">Reason</th>
@@ -460,6 +461,6 @@ export default function StockAdjustmentPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </DataWorkspace>
   );
 }

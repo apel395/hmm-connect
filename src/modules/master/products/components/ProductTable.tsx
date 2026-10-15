@@ -1,3 +1,4 @@
+import { Eye, Pencil } from "lucide-react";
 import { Table, THead, TBody, TR, TH, TD, TableCellStack } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -58,12 +59,12 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="overflow-x-auto">
-        <Table className="min-w-[1280px]">
+    <div className="workspace-table-stack">
+      <div className="workspace-table-stack">
+        <Table className="workspace-item-table min-w-[1400px]">
           <THead>
             <TR>
-              <TH>Product</TH>
+              <TH className="w-[148px]">Item code</TH><TH>Item name</TH>
               <TH>Type / Price</TH>
               <TH>Classification</TH>
               <TH>Treatment</TH>
@@ -77,14 +78,14 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
           </THead>
           <TBody>
             {rows.length === 0 ? (
-              <TR><TD colSpan={10} className="py-10 text-center">No Products</TD></TR>
+              <TR><TD colSpan={11} className="py-10 text-center">No Products</TD></TR>
             ) : rows.map((row) => {
               const account = mappedAccount(row);
               const state = readiness(row);
               const subgroup = row.subgroup_name === "GRESORIS" ? "GROCERIES" : row.subgroup_name;
               return (
                 <TR key={row.id}>
-                  <TD><TableCellStack primary={row.name} secondary={row.code}/></TD>
+                  <TD className="font-semibold text-emerald-800"><span title={row.code}>{row.code}</span></TD><TD className="max-w-[320px]"><button type="button" className="block max-w-full truncate font-medium text-emerald-800 hover:underline" title={row.name} onClick={() => onView?.(row)}>{row.name}</button></TD>
                   <TD><TableCellStack primary={row.item_type === "SELL" ? "Sell" : "Buy"} secondary={row.item_type === "SELL" ? `Rp ${Number(row.selling_price ?? 0).toLocaleString("id-ID")}` : `Rp ${Number(row.reference_cost ?? row.cost_price ?? 0).toLocaleString("id-ID")} / ${row.uom}`}/></TD>
                   <TD><TableCellStack primary={row.group_name} secondary={subgroup}/></TD>
                   <TD><Badge variant={treatmentVariant(row.inventory_treatment)}>{treatmentLabel(row.inventory_treatment)}</Badge></TD>
@@ -104,8 +105,8 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
                   </TD>
                   <TD><Badge variant={row.is_active ? "success" : "secondary"}>{row.is_active ? "Active" : "Inactive"}</Badge></TD>
                   <TD><div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => onView?.(row)}>Details</Button>
-                    <Button size="sm" variant="outline" onClick={() => onEdit?.(row)}>Edit</Button>
+                    <Button size="xs" variant="ghost" title="Item details" aria-label={`View ${row.code}`} onClick={() => onView?.(row)}><Eye size={15}/></Button>
+                    <Button size="xs" variant="ghost" title="Edit item" aria-label={`Edit ${row.code}`} onClick={() => onEdit?.(row)}><Pencil size={15}/></Button>
                   </div></TD>
                 </TR>
               );

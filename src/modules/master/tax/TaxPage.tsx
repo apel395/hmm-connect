@@ -1,3 +1,4 @@
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { Printer } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
@@ -7,7 +8,7 @@ export default function TaxPage(){
 
 return(
 
-<div className="space-y-6">
+<DataWorkspace area="Master data" >
 
 <PageHeader
 
@@ -22,7 +23,7 @@ actions={<>
 
 />
 
-<Card>
+<Card className="workspace-data workspace-table-scroll">
 
 <table className="min-w-full">
 
@@ -52,7 +53,7 @@ actions={<>
 
 </Card>
 
-</div>
+</DataWorkspace>
 
 );
 
