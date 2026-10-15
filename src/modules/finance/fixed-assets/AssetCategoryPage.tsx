@@ -118,7 +118,7 @@ export default function AssetCategoryPage() {
             value={form.default_residual_percentage}
             onChange={event => setForm({ ...form, default_residual_percentage: Number(event.target.value) })} />
         </label>
-        {accountField("disposal_gain_account_id","Disposal gain account",(revenueLookup.data??[]).filter(a=>a.account_code==="400"))}
+        {accountField("disposal_gain_account_id","Disposal gain account",(revenueLookup.data??[]))}
         {accountField("disposal_loss_account_id","Disposal loss account",(expenseLookup.data??[]).filter(a=>a.normal_balance==="DEBIT"))}
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>Active</label>
         <div className="flex items-end">
