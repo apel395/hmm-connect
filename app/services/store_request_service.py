@@ -112,7 +112,7 @@ class StoreRequestService:
         request = StoreRequest(
             sr_number=next_document_number(db, "SR"),
             status="DRAFT",
-            request_date=data.request_date or date.today(),
+            request_date=data.request_date or FiscalPeriodService.business_today(),
             notes=data.notes,
             business_unit_id=business_unit_id,
             department_id=department_id,
@@ -242,12 +242,15 @@ class StoreRequestService:
             raise HTTPException(status_code=409, detail="Store Request already has an active issue draft")
         if not data.items:
             raise HTTPException(status_code=400, detail="Issue must have items")
+        issue_date = data.issue_date or FiscalPeriodService.business_today()
+        if issue_date < request.request_date:
+            raise HTTPException(status_code=400, detail="Issue date cannot precede request date")
         requested = {item.id: item for item in request.items}
         issue = StoreIssue(
             issue_number=next_document_number(db, "SI"),
             store_request_id=request.id,
             status="DRAFT",
-            issue_date=data.issue_date or FiscalPeriodService.business_today(),
+            issue_date=issue_date,
             notes=data.notes,
             created_by_id=current_user.id,
         )
