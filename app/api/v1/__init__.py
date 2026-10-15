@@ -1,5 +1,6 @@
 from app.api.v1 import purchasing_exceptions
 from . import financial_reports, budgets, cashier, ar_invoice_print
+from app.api.v1 import statistics
 from fastapi import APIRouter
 
 from app.api.v1 import (
@@ -53,6 +54,7 @@ for router in (
     profit_loss.router,
     financial_reports.router,
     budgets.router,
+    statistics.router,
     balance_sheet.router,
     cash_flow.router,
     cashier.router,
