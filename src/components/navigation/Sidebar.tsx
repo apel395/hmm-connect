@@ -43,6 +43,7 @@ const groups: Group[] = [
     { title: "Sales", url: "/pos/sales", permission: "pos.view", roles: POS_ROLES },
   ] },
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"], children: [
+    { title: "Statistics", url: "/statistics", permission: "finance.view" },
     { title: "Budget Input", url: "/budgets", permission: "finance.view" },
     { title: "Finance Dashboard", url: "/finance-dashboard", permission: "finance.view" },
     { title: "Accounts Payable", url: "/accounts-payable", permission: "ap.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"] },

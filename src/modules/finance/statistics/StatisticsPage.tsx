@@ -1,0 +1,46 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, SlidersHorizontal } from "lucide-react";
+import { toast } from "sonner";
+import axios from "axios";
+import api from "@/api/client";
+import PageHeader from "@/components/common/PageHeader";
+import Button from "@/components/ui/Button";
+import { Table, THead, TBody, TH, TD, TR } from "@/components/ui/Table";
+import Dialog, { DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from "@/components/ui/Dialog";
+import Pagination from "@/components/datatable/Pagination";
+import useAuthorization from "@/hooks/useAuthorization";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import { listDepartments, listLocations } from "@/modules/admin/organization/api";
+
+type Row = { id: number; account_id: number; account_code: string; account_name: string; period: string; location_id: number; location_name: string; department_id: number|null; department_name: string|null; unit: string; actual: string|null; budget: string|null; variance: string|null; version: number };
+type Form = { account_id: string; period: string; location_id: string; department_id: string; unit: string; actual: string; budget: string; version?: number };
+const input="h-8 w-full rounded border border-slate-300 px-2 text-xs";
+const number=(value:string|null)=>value===null ? "—" : Number(value).toLocaleString("id-ID",{maximumFractionDigits:4});
+const blank=():Form=>({account_id:"",period:new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Jakarta"}).slice(0,7),location_id:"",department_id:"",unit:"",actual:"",budget:""});
+
+export default function StatisticsPage(){
+ const {hasPermission}=useAuthorization();
+ const canEdit=hasPermission("finance.manage");
+ const client=useQueryClient();
+ const [year,setYear]=useState(2026),[search,setSearch]=useState(""),[location,setLocation]=useState(""),[department,setDepartment]=useState(""),[page,setPage]=useState(1),[filters,setFilters]=useState(false);
+ const [form,setForm]=useState<Form|null>(null);
+ const locations=useQuery({queryKey:["statistics-locations"],queryFn:()=>listLocations({is_active:true})});
+ const locationId=form?.location_id??location;
+ const departments=useQuery({queryKey:["statistics-departments",locationId],queryFn:()=>listDepartments({location_id:Number(locationId),is_active:true}),enabled:!!locationId});
+ const accounts=useQuery({queryKey:["statistics-accounts"],queryFn:()=>getAllAccountLookup({account_type:"STATISTIC",is_active:true})});
+ const query=useQuery({queryKey:["statistics",year,search,location,department,page],queryFn:async()=>(await api.get<{items:Row[];total_items:number;total_pages:number}>("/statistics",{params:{year,search:search||undefined,location_id:location||undefined,department_id:department||undefined,page,page_size:50}})).data});
+ const save=useMutation({mutationFn:async()=>{
+  if(!form?.account_id||!form.location_id||!form.unit.trim()||(!form.actual&& !form.budget))throw new Error("Choose account, location, unit and enter Actual or Budget");
+  return api.put("/statistics",{account_id:Number(form.account_id),period:`${form.period}-01`,location_id:Number(form.location_id),department_id:Number(form.department_id)||null,unit:form.unit,actual:form.actual===""?null:form.actual,budget:form.budget===""?null:form.budget,version:form.version});
+ },onSuccess:async()=>{setForm(null);await client.invalidateQueries({queryKey:["statistics"]});toast.success("Statistic saved");},onError:(error)=>{const detail=axios.isAxiosError(error)?error.response?.data?.detail:null;toast.error(typeof detail==="string"?detail:error instanceof Error?error.message:"Unable to save statistic");}});
+ const change=(key:keyof Form,value:string)=>setForm(old=>old?{...old,[key]:value}:old);
+ const rows=query.data?.items??[];
+ return <div className="space-y-2"><PageHeader title="Statistics" description="Operational Actual and Budget quantities under COA 900. These values never change financial balances." actions={canEdit&&<Button onClick={()=>{save.reset();setForm({...blank(),location_id:locations.data?.length===1?String(locations.data[0].id):""})}}><Plus size={14}/>Add Statistic</Button>}/>
+ <div className="flex gap-2"><input aria-label="Search statistics" className={input} placeholder="Search metric or code" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/><Button variant="outline" title="Filters" aria-label="Filters" aria-expanded={filters} onClick={()=>setFilters(v=>!v)}><SlidersHorizontal size={15}/></Button></div>
+ {filters&&<div className="grid gap-2 rounded border bg-white p-2 sm:grid-cols-3"><label className="text-xs">Year<input type="number" min="2026" max="9999" className={input} value={year} onChange={e=>{setYear(Number(e.target.value)||2026);setPage(1)}}/></label><label className="text-xs">Location<select className={input} value={location} onChange={e=>{setLocation(e.target.value);setDepartment("");setPage(1)}}><option value="">All accessible locations</option>{locations.data?.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label><label className="text-xs">Department<select disabled={!location} className={input} value={department} onChange={e=>{setDepartment(e.target.value);setPage(1)}}><option value="">All accessible departments</option>{departments.data?.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label></div>}
+ {query.isError?<p role="alert">Statistics could not be loaded.</p>:<Table><THead><TR>{["Period","Metric","Location","Department","Unit","Actual","Budget","Variance",""] .map((text,i)=><TH key={i}>{text}</TH>)}</TR></THead><TBody>{rows.map(row=><TR key={row.id}><TD>{row.period.slice(0,7)}</TD><TD>{row.account_code} — {row.account_name}</TD><TD>{row.location_name}</TD><TD>{row.department_name??"—"}</TD><TD>{row.unit}</TD><TD numeric>{number(row.actual)}</TD><TD numeric>{number(row.budget)}</TD><TD numeric>{number(row.variance)}</TD><TD>{canEdit&&<Button size="xs" variant="outline" onClick={()=>{save.reset();setForm({account_id:String(row.account_id),period:row.period.slice(0,7),location_id:String(row.location_id),department_id:row.department_id?String(row.department_id):"",unit:row.unit,actual:row.actual??"",budget:row.budget??"",version:row.version})}}>Edit</Button>}</TD></TR>)}{!rows.length&&<TR><TD colSpan={9}>{query.isLoading?"Loading…":"No statistics for these filters."}</TD></TR>}</TBody></Table>}
+ <Pagination page={page} pages={Math.max(query.data?.total_pages??1,1)} total={query.data?.total_items??0} pageSize={50} noun="statistics" onChange={setPage}/>
+ <Dialog open={!!form} onOpenChange={open=>{if(!open&&!save.isPending)setForm(null)}}><DialogContent><DialogHeader><DialogTitle>{form?.version?"Edit Statistic":"Add Statistic"}</DialogTitle></DialogHeader>{form&&<form onSubmit={e=>{e.preventDefault();save.mutate()}}><DialogBody className="grid gap-3 sm:grid-cols-2"><label className="text-xs">Metric<select required disabled={!!form.version} className={input} value={form.account_id} onChange={e=>change("account_id",e.target.value)}><option value="">Select COA 900 detail</option>{accounts.data?.filter(row=>row.account_code!=="900").map(row=><option key={row.id} value={row.id}>{row.account_code} — {row.account_name}</option>)}</select></label><label className="text-xs">Month<input required disabled={!!form.version} type="month" min="2026-01" className={input} value={form.period} onChange={e=>change("period",e.target.value)}/></label><label className="text-xs">Location<select required disabled={!!form.version} className={input} value={form.location_id} onChange={e=>setForm({...form,location_id:e.target.value,department_id:""})}><option value="">Select location</option>{locations.data?.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label><label className="text-xs">Department<select disabled={!!form.version||!form.location_id} className={input} value={form.department_id} onChange={e=>change("department_id",e.target.value)}><option value="">Location total</option>{departments.data?.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label><label className="text-xs">Unit<input required disabled={!!form.version} maxLength={30} className={input} placeholder="ROOM / GUEST / PORTION" value={form.unit} onChange={e=>change("unit",e.target.value)}/></label><label className="text-xs">Actual<input type="number" min="0" step="0.0001" className={input} value={form.actual} onChange={e=>change("actual",e.target.value)}/></label><label className="text-xs">Budget<input type="number" min="0" step="0.0001" className={input} value={form.budget} onChange={e=>change("budget",e.target.value)}/></label></DialogBody><DialogFooter><Button type="button" variant="outline" disabled={save.isPending} onClick={()=>setForm(null)}>Cancel</Button><Button type="submit" loading={save.isPending}>Save</Button></DialogFooter></form>}</DialogContent></Dialog>
+ </div>;
+}

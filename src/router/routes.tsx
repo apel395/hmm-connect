@@ -1,3 +1,4 @@
+import StatisticsPage from "@/modules/finance/statistics/StatisticsPage";
 import ARInvoicePage from "@/modules/finance/accounts-receivable/ARInvoicePage";
 import CashierPage from "@/modules/finance/cash-flow/CashierPage";
 import BudgetListPage from "@/modules/finance/budgets/BudgetListPage";
@@ -281,6 +282,7 @@ const router = createBrowserRouter([
       { path: "financial-reconciliation/stock", element: <StockConsolidationPage /> },
       { path: "balance-sheet/print", element: <FinancialReportPrintPage kind="BALANCE_SHEET" /> },
       { path: "balance-sheet", element: <BalanceSheetPage /> },
+      { path: "statistics", element: <StatisticsPage /> },
       { path: "budgets", element: <BudgetListPage /> },
       { path: "budgets/new", element: <BudgetFormPage /> },
       { path: "budgets/:id/edit", element: <BudgetFormPage /> },
