@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { BarChart3, Crown, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X, PanelLeftOpen, PanelLeftClose } from "lucide-react";
+import { BarChart3, Crown, Boxes, Building2, CheckSquare2, ChevronDown, FileBarChart, Landmark, LayoutDashboard, Scale, Settings, ShoppingCart, Store, X, PanelLeftClose } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
@@ -138,14 +138,14 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
         </NavLink>);
 
   return <>
-    {collapsed && <aside aria-label="Module navigation" className="relative z-50 hidden h-screen w-16 shrink-0 flex-col border-r border-white/10 bg-[#073F37] text-white lg:flex">
-      <div className="flex h-14 shrink-0 items-center justify-center border-b border-white/10">
+    {collapsed && <aside aria-label="Module navigation" className="relative z-50 hidden h-screen w-16 shrink-0 flex-col border-r border-white/10 bg-[#103E36] text-white lg:flex">
+      <div className="flex h-12 shrink-0 items-center justify-center border-b border-white/10">
         <button type="button" onClick={toggleSidebar} aria-label="Expand navigation"
           aria-describedby={tooltip?.title === "Expand navigation" ? tooltipId : undefined}
           onMouseEnter={event => showTooltip("Expand navigation", event.currentTarget)}
           onMouseLeave={() => setTooltip(null)} onFocus={event => showTooltip("Expand navigation", event.currentTarget)}
           onBlur={() => setTooltip(null)} className="rounded-lg p-2 text-emerald-50/80 hover:bg-white/10">
-          <PanelLeftOpen className="h-5 w-5"/>
+          <span className="text-[11px] font-bold tracking-tight">MMH</span>
         </button>
       </div>
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
@@ -176,15 +176,15 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
     </aside>}
     {collapsed && tooltip && createPortal(
       <div id={tooltipId} role="tooltip"
-        className="pointer-events-none fixed z-[100] hidden max-w-64 -translate-y-1/2 whitespace-nowrap rounded-md bg-[#073F37] px-3 py-2 text-xs font-medium text-white shadow-lg lg:block"
+        className="pointer-events-none fixed z-[100] hidden max-w-64 -translate-y-1/2 whitespace-nowrap rounded-md bg-[#103E36] px-3 py-2 text-xs font-medium text-white shadow-lg lg:block"
         style={{ left: "4.5rem", top: tooltip.top }}>
-        <span aria-hidden="true" className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-[#073F37]" />
+        <span aria-hidden="true" className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-[#103E36]" />
         {tooltip.title}
       </div>, document.body)}
     {collapsed && selectedGroup && <>
       <button type="button" className="fixed inset-0 z-40 hidden bg-black/10 lg:block" aria-label="Close module submenu" onClick={() => setFlyout(null)}/>
-      <section id="sidebar-module-flyout" aria-label={selectedGroup.title} className="fixed bottom-0 left-16 top-0 z-50 hidden w-64 flex-col border-l border-white/10 bg-[#073F37] text-white shadow-xl lg:flex">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-3">
+      <section id="sidebar-module-flyout" aria-label={selectedGroup.title} className="fixed bottom-0 left-16 top-0 z-50 hidden w-64 flex-col border-l border-white/10 bg-[#103E36] text-white shadow-xl lg:flex">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-3">
           <span className="text-sm font-semibold">{selectedGroup.title}</span>
           <button type="button" aria-label="Close module submenu" onClick={() => setFlyout(null)} className="rounded p-2 hover:bg-white/10"><X className="h-4 w-4"/></button>
         </div>
@@ -192,7 +192,7 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
       </section>
     </>}
     {open && <button type="button" className="fixed inset-0 z-40 bg-black/40 lg:hidden" aria-label="Close navigation" onClick={onClose}/>}
-    <aside aria-label="Full navigation" className={`fixed inset-y-0 left-0 z-50 h-screen w-64 shrink-0 flex-col overflow-hidden bg-[#073F37] text-white lg:static ${open ? "flex" : "hidden"} ${collapsed ? "lg:hidden" : "lg:flex"}`}>
+    <aside aria-label="Full navigation" className={`fixed inset-y-0 left-0 z-50 h-screen w-64 shrink-0 flex-col overflow-hidden bg-[#103E36] text-white lg:static ${open ? "flex" : "hidden"} ${collapsed ? "lg:hidden" : "lg:flex"}`}>
       <div className="relative shrink-0 border-b border-white/10 px-3 py-3">
         <button type="button" className="absolute right-2 top-3 rounded-lg p-2 text-white/70 hover:bg-white/10 lg:hidden" aria-label="Close navigation" onClick={onClose}><X className="h-5 w-5"/></button>
         <button type="button" className="absolute right-2 top-3 hidden rounded-lg p-2 text-white/70 hover:bg-white/10 lg:block" aria-label="Collapse navigation" title="Collapse navigation" onClick={toggleSidebar}><PanelLeftClose className="h-5 w-5"/></button>
@@ -219,7 +219,7 @@ export default function Sidebar({ open = false, onClose, collapsed, onToggle }: 
           </div>;
         })}
       </nav>
-      <div className="shrink-0 border-t border-white/10 p-3 text-[11px] text-emerald-100/55"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#D4AA1D]"/>Premium hotel operations</div></div>
+      <div className="shrink-0 border-t border-white/10 p-3 text-[11px] text-emerald-100/55"><div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#D4AA1D]"/>MMH · Operations</div></div>
     </aside>
   </>;
 }

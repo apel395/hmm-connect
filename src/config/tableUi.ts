@@ -4,9 +4,9 @@ export const TABLE_UI = {
   defaultDensity: "compact" as TableDensity,
   density: {
     compact: {
-      table: "text-xs leading-4",
-      headerCell: "h-6 px-2 py-0.5",
-      bodyCell: "px-2 py-0.5",
+      table: "text-[13px] leading-5",
+      headerCell: "h-8 px-3 py-1",
+      bodyCell: "px-3 py-1",
     },
     standard: {
       table: "text-[13px]",
@@ -19,7 +19,7 @@ export const TABLE_UI = {
       bodyCell: "px-4 py-2.5",
     },
   },
-  header: "text-[11px] font-semibold uppercase tracking-[0.04em] text-slate-600",
+  header: "text-[11px] font-semibold tracking-[0.01em] text-slate-600",
   secondaryText: "text-[11px] text-slate-400",
   documentLink: "font-medium text-emerald-700 hover:underline",
   numeric: "text-right tabular-nums",

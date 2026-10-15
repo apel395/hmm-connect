@@ -1,4 +1,11 @@
-import { Bell, CircleHelp, Menu, PanelLeftOpen, PanelLeftClose } from "lucide-react";
+import {
+  Bell,
+  Settings,
+  LogOut,
+  Menu,
+  PanelLeftOpen,
+  PanelLeftClose,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import useAuthStore from "@/store/auth";
 
@@ -8,7 +15,11 @@ interface Props {
   onSidebarToggle: () => void;
 }
 
-export default function Header({ onMenuClick, sidebarCollapsed, onSidebarToggle }: Props) {
+export default function Header({
+  onMenuClick,
+  sidebarCollapsed,
+  onSidebarToggle,
+}: Props) {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const name = user?.full_name || user?.username || "Hotel User";
@@ -20,21 +31,32 @@ export default function Header({ onMenuClick, sidebarCollapsed, onSidebarToggle 
     .toUpperCase();
 
   return (
-    <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-[#E8E2D8] bg-white/95 px-4 backdrop-blur sm:px-5">
+    <header className="z-30 flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3">
         <button
-          className="rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] lg:hidden"
+          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] lg:hidden"
           aria-label="Open navigation"
           onClick={onMenuClick}
         >
           <Menu className="h-5 w-5" />
         </button>
-        <button type="button" className="hidden rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] lg:block"
-          aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} aria-expanded={!sidebarCollapsed}
-          title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} onClick={onSidebarToggle}>
-          {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5"/> : <PanelLeftClose className="h-5 w-5"/>}
+        <button
+          type="button"
+          className="hidden rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] lg:block"
+          aria-label={
+            sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
+          }
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+          onClick={onSidebarToggle}
+        >
+          {sidebarCollapsed ? (
+            <PanelLeftOpen className="h-5 w-5" />
+          ) : (
+            <PanelLeftClose className="h-5 w-5" />
+          )}
         </button>
-        <div className="truncate text-sm font-semibold sm:text-base">
+        <div className="truncate text-[13px] font-semibold">
           Hotel Mutiara Merdeka Pekanbaru
         </div>
       </div>
@@ -42,37 +64,38 @@ export default function Header({ onMenuClick, sidebarCollapsed, onSidebarToggle 
       <div className="flex items-center gap-1 sm:gap-2">
         <Link
           to="/notifications"
-          className="relative rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]"
+          className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]"
           aria-label="Notifications"
         >
           <Bell className="h-[18px] w-[18px]" />
-          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#C49A4A]" />
         </Link>
         <Link
           to="/settings"
-          className="hidden rounded-lg p-2 text-[#6F756F] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] sm:block"
-          aria-label="Help"
+          className="hidden rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] sm:block"
+          aria-label="Settings"
+          title="Settings"
         >
-          <CircleHelp className="h-[18px] w-[18px]" />
+          <Settings className="h-[18px] w-[18px]" />
         </Link>
-        <div className="ml-1 flex items-center gap-2 border-l border-[#E8E2D8] pl-3">
+        <div className="ml-1 flex items-center gap-2 border-l border-slate-200 pl-3">
+          <div
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-800"
+            aria-hidden="true"
+          >
+            {initials || "MM"}
+          </div>
+          <span className="hidden max-w-32 truncate text-xs font-medium sm:block">
+            {name}
+          </span>
           <button
-            className="grid h-8 w-8 place-items-center rounded-full bg-[#0F6758] text-xs font-bold text-white sm:hidden"
-            aria-label="Sign out"
+            type="button"
             title={`Sign out ${name}`}
+            aria-label="Sign out"
+            className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             onClick={logout}
           >
-            {initials || "HU"}
+            <LogOut size={15} />
           </button>
-          <div className="hidden max-w-32 sm:block">
-            <div className="truncate text-sm font-semibold">{name}</div>
-            <button
-              className="text-xs text-[#6F756F] hover:text-[#086B5A] hover:underline"
-              onClick={logout}
-            >
-              Sign out
-            </button>
-          </div>
         </div>
       </div>
     </header>

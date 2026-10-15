@@ -36,7 +36,7 @@ export default function PageHeader({
       )}
     >
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2"><h1 className="text-base font-semibold tracking-tight text-slate-900">{title}</h1>{description && <button type="button" className="text-slate-400 hover:text-slate-700" title={description} aria-label={description}><Info size={14}/></button>}</div>
+        <div className="flex items-center gap-2"><h1 className="text-[17px] font-semibold tracking-tight text-slate-900">{title}</h1>{description && <button type="button" className="text-slate-400 hover:text-slate-700" title={description} aria-label={description}><Info size={14}/></button>}</div>
 
 
 

@@ -30,7 +30,7 @@ export function Table({
 }: TableProps) {
   return (
     <TableDensityContext.Provider value={density}>
-      <div data-table-viewport data-sticky-header={stickyHeader || undefined} className={clsx("w-full overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm", containerClassName)}>
+      <div data-table-viewport data-sticky-header={stickyHeader || undefined} className={clsx("w-full overflow-x-auto rounded-lg border border-slate-200 bg-white", containerClassName)}>
         <table
           data-table-density={density}
           className={clsx(

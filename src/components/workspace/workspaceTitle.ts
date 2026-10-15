@@ -112,6 +112,7 @@ export function workspaceTitle(pathname: string, search = ""): string {
 }
 
 export function workspaceTabGroup(pathname: string): string | undefined {
+  if (pathname === "/inventory") return "list:inventory";
   if (!/\/\d+$/.test(pathname)) return undefined;
   return `detail:${pathname.replace(/\/\d+$/, "/:id")}`;
 }

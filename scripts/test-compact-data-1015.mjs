@@ -37,6 +37,6 @@ const detail = await render('src/modules/warehouse/stock-opname/StockOpnameDetai
 assert.doesNotMatch(detail,/>System<|>Variance<|>Unit Cost<|>Variance Value<|Use System/);
 assert.match(detail,/Physical/);
 const stock = await render('src/modules/warehouse/inventory/pages/InventoryPage.tsx',true,[]);
-assert.match(stock,/Stock lines/);assert.match(stock,/38.521.422/);assert.match(stock,/Account totals/);
+assert.match(stock,/stock lines/);assert.match(stock,/38.521.422/);assert.match(stock,/Account totals/);
 assert.doesNotMatch(stock,/Closing Stock Lines|Reorder Required at Closing|Totals by Inventory Account|Movement class/);
 console.log('PASS: create action is permission-gated with no JSX text; icon filters; blind count print has no system quantity or officer fields.');
