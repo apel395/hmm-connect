@@ -41,7 +41,7 @@ function SetupForm({ kind, setup }: { kind: string; setup: Setup }) {
   const save = useMutation({ mutationFn: async () => api.put(`/financial-reports/setup/${kind}`, { profit_loss_categories: kind === "PROFIT_LOSS" ? categories : undefined, selected_account_ids: selected, header_only: headerOnly, current_year_earnings_account_id: Number(earnings) || null }),
     onSuccess: () => { toast.success("Report setup saved"); queryClient.invalidateQueries({ queryKey: ["financial-report-setup"] }); queryClient.invalidateQueries({ queryKey: ["financial-report-comparison"] }); },
     onError: (error: { response?: { data?: { detail?: string } } }) => toast.error(error.response?.data?.detail || "Report setup could not be saved") });
-  const shown = accounts.filter(account => (!["REVENUE", "INCOME"].includes(account.type) || account.code === "400") && `${account.code} ${account.name}`.toLowerCase().includes(search.toLowerCase()));
+  const shown = accounts.filter(account => `${account.code} ${account.name}`.toLowerCase().includes(search.toLowerCase()));
   return <form className="space-y-2" onSubmit={event => { event.preventDefault(); save.mutate(); }}>
     <div className="flex flex-wrap items-center gap-2 text-xs"><input aria-label="Search report accounts" className="h-8 rounded border px-2" placeholder="Search accounts" value={search} onChange={event => setSearch(event.target.value)} />
       <Button size="sm" variant="outline" type="button" onClick={() => setSelected(null)}>Select all</Button><Button size="sm" variant="outline" type="button" onClick={() => setSelected([])}>Clear</Button>
