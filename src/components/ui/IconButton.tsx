@@ -18,7 +18,7 @@ export interface IconButtonProps
 
 const variants: Record<IconButtonVariant, string> = {
   primary:
-    "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500",
+    "bg-emerald-700 text-white hover:bg-emerald-800 focus:ring-emerald-600",
 
   secondary:
     "bg-slate-700 text-white hover:bg-slate-800 focus:ring-slate-500",

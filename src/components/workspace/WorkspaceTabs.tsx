@@ -13,6 +13,15 @@ export default function WorkspaceTabs() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const stripRef = useRef<HTMLDivElement>(null);
+  const [visibleLimit, setVisibleLimit] = useState(6);
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const measure = () => setVisibleLimit(Math.max(1, Math.min(MAX_VISIBLE_TABS, Math.floor(strip.clientWidth / 148))));
+    measure();
+    const observer = new ResizeObserver(measure); observer.observe(strip);
+    return () => observer.disconnect();
+  }, []);
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const {
     tabs,
@@ -24,14 +33,17 @@ export default function WorkspaceTabs() {
     closeAllTabs,
     reopenLastClosed,
   } = useWorkspaceTabs();
+  const activatedPath = useRef("");
   const currentPath = `${location.pathname}${location.search}`;
 
   useEffect(() => {
     // Workspace navigation can revisit long-lived detail tabs after another
     // screen changed the same record. Refresh active route data on every tab
     // activation instead of relying on component mount semantics.
+    if (location.pathname === "/inventory" && activatedPath.current === "/inventory") return;
+    activatedPath.current = location.pathname;
     void queryClient.invalidateQueries({ refetchType: "active" });
-  }, [currentPath, queryClient]);
+  }, [currentPath, queryClient, location.pathname]);
 
   useEffect(() => {
     if (location.pathname === "/" || location.pathname.endsWith("/print")) return;
@@ -47,19 +59,19 @@ export default function WorkspaceTabs() {
   }, [currentPath, ensureTab, location.pathname, location.search]);
 
   const { visibleTabs, overflowTabs } = useMemo(() => {
-    if (tabs.length <= MAX_VISIBLE_TABS) return { visibleTabs: tabs, overflowTabs: [] };
+    if (tabs.length <= visibleLimit) return { visibleTabs: tabs, overflowTabs: [] };
     const priority = [...tabs].sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       if (a.id === currentPath) return -1;
       if (b.id === currentPath) return 1;
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       return Number(b.lastActiveAt || 0) - Number(a.lastActiveAt || 0);
     });
-    const visibleIds = new Set(priority.slice(0, MAX_VISIBLE_TABS).map((tab) => tab.id));
+    const visibleIds = new Set(priority.slice(0, visibleLimit).map((tab) => tab.id));
     return {
       visibleTabs: tabs.filter((tab) => visibleIds.has(tab.id)),
       overflowTabs: tabs.filter((tab) => !visibleIds.has(tab.id)),
     };
-  }, [currentPath, tabs]);
+  }, [currentPath, tabs, visibleLimit]);
 
   useEffect(() => {
     const active = stripRef.current?.querySelector<HTMLElement>("[data-active='true']");
@@ -115,7 +127,7 @@ export default function WorkspaceTabs() {
             close(tab.id);
           }
         }}
-        className={`group relative flex min-w-[132px] max-w-[280px] items-stretch border-r border-[#DCD6CB] text-xs transition ${active ? "bg-white text-[#202723]" : "bg-[#F3F0EA] text-[#666C68] hover:bg-[#EDE9E1]"}`}
+        className={`group relative flex min-w-0 flex-1 max-w-[220px] items-stretch border-r border-slate-200 text-xs transition ${active ? "bg-white text-emerald-900" : "bg-[#F3F5F7] text-slate-500 hover:bg-slate-200/60"}`}
       >
         <button
           type="button"
@@ -148,7 +160,7 @@ export default function WorkspaceTabs() {
   const activeWillCloseToRight = tabsToRight.some((tab) => tab.id === currentPath && !tab.pinned);
 
   return (
-    <div className="flex h-10 shrink-0 items-stretch border-b border-[#DCD6CB] bg-[#F3F0EA] print:hidden">
+    <div className="mmh-workspace-tabs flex h-9 shrink-0 items-stretch border-b border-slate-200 bg-[#F3F5F7] print:hidden">
       <div className="flex shrink-0 items-center border-r px-1"><WorkspaceBackButton /></div>
       <div ref={stripRef} className="min-w-0 flex-1 overflow-hidden">
         <div className="flex h-full min-w-0 items-stretch">
@@ -157,8 +169,8 @@ export default function WorkspaceTabs() {
       </div>
 
       {overflowTabs.length > 0 && (
-        <details className="group/more relative shrink-0 border-l border-[#DCD6CB]">
-          <summary className="flex h-full cursor-pointer list-none items-center gap-1 px-3 text-xs text-[#5F665F] hover:bg-[#EDE9E1]">
+        <details className="group/more relative shrink-0 border-l border-slate-200">
+          <summary className="flex h-full cursor-pointer list-none items-center gap-1 px-3 text-xs text-[#5F665F] hover:bg-slate-200/60">
             More Tabs ({overflowTabs.length}) <ChevronDown className="h-3.5 w-3.5" />
           </summary>
           <div className="absolute right-0 top-full z-50 mt-1 max-h-80 w-64 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-xl">
@@ -195,7 +207,7 @@ export default function WorkspaceTabs() {
         title="Close all tabs"
         disabled={!tabs.some((tab) => !tab.pinned)}
         onClick={() => navigate(closeAllTabs())}
-        className="grid w-10 shrink-0 place-items-center border-l border-[#DCD6CB] text-[#6F756F] hover:bg-[#EDE9E1] disabled:cursor-default disabled:opacity-30"
+        className="grid w-8 shrink-0 place-items-center border-l border-slate-200 text-[#6F756F] hover:bg-slate-200/60 disabled:cursor-default disabled:opacity-30"
       >
         <X className="h-4 w-4" />
       </button>
@@ -207,7 +219,7 @@ export default function WorkspaceTabs() {
           const path = reopenLastClosed();
           if (path) navigate(path);
         }}
-        className="grid w-10 shrink-0 place-items-center border-l border-[#DCD6CB] text-[#6F756F] hover:bg-[#EDE9E1] disabled:cursor-default disabled:opacity-30"
+        className="grid w-8 shrink-0 place-items-center border-l border-slate-200 text-[#6F756F] hover:bg-slate-200/60 disabled:cursor-default disabled:opacity-30"
       >
         <RotateCcw className="h-4 w-4" />
       </button>
