@@ -4,7 +4,7 @@ import InventoryReportHeading from "@/components/print/InventoryReportHeading";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { SlidersHorizontal } from "lucide-react";
+import { Calculator, SlidersHorizontal } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Button from "@/components/ui/Button";
@@ -45,6 +45,7 @@ export default function InventoryPage() {
   const [health, setHealth] = useState<HealthFilter>(initialHealth);
   const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("inventory-page-size")) === 100 ? 100 : 50);
   const [showFilters, setShowFilters] = useState(false);
+  const [showTotals, setShowTotals] = useState(false);
   const [accountId, setAccountId] = useState<number | undefined>();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -121,24 +122,24 @@ export default function InventoryPage() {
     </div>
 
 
-    <Card className="p-3 print:hidden">
+    <Card className="p-2 print:hidden">
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-[220px] flex-1">        <label className="block min-w-0 text-xs font-medium text-slate-600">
-          Search item or warehouse
+          <span className="sr-only">Search item or warehouse</span>
           <input className={input} placeholder="Code, name or warehouse"
             value={search} onChange={e => setSearch(e.target.value)}/>
         </label>
 </div>
-        <label className="text-xs font-medium text-slate-600">Stock status
-          <select className={input} value={health} onChange={e => changeHealth(e.target.value as HealthFilter)}>
-            <option value="ALL">All stock</option><option value="HEALTHY">Healthy</option><option value="LOW_STOCK">Low stock</option>
-          </select>
-        </label>
         <Button type="button" size="sm" variant="outline" title="Filters" aria-label="Filters" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
           <SlidersHorizontal size={15}/>
         </Button>
       </div>
-      {showFilters && <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+      {showFilters && <div className="mt-2 grid gap-2 border-t border-slate-100 pt-2 sm:grid-cols-2 xl:grid-cols-4">        <label className="text-xs font-medium text-slate-600">Stock status
+          <select className={input} value={health} onChange={e => changeHealth(e.target.value as HealthFilter)}>
+            <option value="ALL">All stock</option><option value="HEALTHY">Healthy</option><option value="LOW_STOCK">Low stock</option>
+          </select>
+        </label>
+
         <label className="block min-w-0 text-xs font-medium text-slate-600">Inventory account
           <select className={input} value={accountId ?? ""} onChange={e => setAccountId(e.target.value ? Number(e.target.value) : undefined)}>
             <option value="">All inventory COA</option>
@@ -152,21 +153,12 @@ export default function InventoryPage() {
           <input type="date" className={input} value={dateTo} min={dateFrom || undefined} onChange={e => setDateTo(e.target.value)}/>
         </label>
       </div>}
-      <p className="mt-3 text-xs text-slate-500">
-        {hasRange
-          ? `Opening: before ${dateFrom} · Closing: ${dateTo || "current stock"} · Change: closing minus opening.`
-          : `Showing stock ${dateTo ? `as of ${dateTo}` : "as of now"}. Set From date to compare opening and closing balances.`}
-      </p>
       {invalidRange && <p className="mt-2 text-sm text-red-700">From date must be on or before To date.</p>}
     </Card>
 
     {!invalidRange && <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Closing Stock Lines</div><div className="mt-2 text-2xl font-bold">{summary.stock_lines ?? 0}</div></Card>
-        <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Closing Stock Value</div><div className="mt-2 text-2xl font-bold">Rp {money(summary.stock_value)}</div>{hasRange && <div className="mt-1 text-xs text-slate-500">Opening: Rp {money(openingSummary.stock_value)} · Change: Rp {money(Number(summary.stock_value ?? 0) - Number(openingSummary.stock_value ?? 0))}</div>}</Card>
-        <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Reorder Required at Closing</div><div className="mt-2 text-2xl font-bold text-red-700">{summary.low_stock ?? 0}</div><div className="mt-1 text-xs text-slate-500">Warehouse-item lines at or below minimum</div></Card>
-      </div>
-
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded border bg-white px-2 py-1 text-xs"><span>Stock lines <b>{summary.stock_lines ?? 0}</b></span><span>Value <b>Rp {money(summary.stock_value)}</b></span><span>Reorder <b className="text-red-700">{summary.low_stock ?? 0}</b></span>{hasRange && <span>Opening Rp {money(openingSummary.stock_value)} · Change Rp {money(Number(summary.stock_value ?? 0)-Number(openingSummary.stock_value ?? 0))}</span>}<Button variant="outline" size="xs" title="Account totals" aria-label="Account totals" aria-expanded={showTotals} onClick={()=>setShowTotals(v=>!v)}><Calculator size={14}/></Button></div>
+      {showTotals && <>
       <Card className="p-0">
         <div className="border-b px-4 py-3 font-semibold">Totals by Inventory Account {dateTo ? `as of ${dateTo}` : "(current)"}</div>
         <div className="overflow-x-auto">
@@ -216,6 +208,7 @@ export default function InventoryPage() {
           </tbody>
         </table></div>
       </details>
+      </>}
       <Card className="p-0">
         {loading ? <Loading/> : <>
           <InventoryTable rows={rows}/>

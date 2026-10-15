@@ -66,7 +66,7 @@ export default function InventoryPrintButton({
         loading={busy}
         onClick={prepare}
       >
-        <Printer size={16} /> Print
+        <Printer size={16} /><span className="sr-only">Print</span>
       </Button>
       <Dialog
         open={Boolean(html)}
@@ -96,7 +96,7 @@ export default function InventoryPrintButton({
               Close
             </Button>
             <Button disabled={!ready} onClick={print}>
-              <Printer size={16} /> Print
+              <Printer size={16} /><span className="sr-only">Print</span>
             </Button>
           </DialogFooter>
         </DialogContent>

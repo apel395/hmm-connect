@@ -344,3 +344,13 @@ h6 {
   .inventory-print-report .inventory-item-code { white-space: nowrap !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   body:has(.inventory-print-report) :is([role="dialog"], .fixed.inset-0) { display: none !important; }
 }
+
+/* Data-first workspace: bounded scrolling keeps column headers in view. */
+@media screen {
+  [data-table-viewport] { max-height: max(240px, calc(100dvh - 250px)); overflow: auto; }
+  [data-table-viewport][data-sticky-header] > table > thead > tr > th { position: sticky; top: 0; z-index: 5; background: #f8fafc; }
+  [data-table-viewport] > table > :is(thead, tbody) > tr > :first-child { position: sticky; left: 0; z-index: 2; background: white; }
+  [data-table-viewport] > table > thead > tr > :first-child { z-index: 6; background: #f8fafc; }
+  [data-workspace-content] > :is(.space-y-4,.space-y-5,.space-y-6,.space-y-8) > :not([hidden]) ~ :not([hidden]) { margin-top: .375rem; }
+}
+@media print { [data-table-viewport] { max-height: none; overflow: visible; } [data-table-viewport] :is(th,td) { position: static !important; } }
