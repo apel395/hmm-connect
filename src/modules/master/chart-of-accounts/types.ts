@@ -1,4 +1,4 @@
-export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE" | "STATISTIC";
 export type NormalBalance = "DEBIT" | "CREDIT";
 export type AccountSubtype = "CASH" | "BANK" | "PETTY_CASH" | "OTHER";
 export type CashFlowCategory = "OPERATING" | "INVESTING" | "FINANCING" | "NON_CASH" | "UNCLASSIFIED";
