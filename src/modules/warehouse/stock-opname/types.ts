@@ -54,6 +54,7 @@ export type StockOpnameList = {
   page_size: number;
   total_items: number;
   total_pages: number;
+  blind_count?: boolean;
   has_next: boolean;
   has_previous: boolean;
 };

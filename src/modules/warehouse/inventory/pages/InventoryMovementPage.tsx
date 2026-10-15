@@ -154,8 +154,8 @@ export default function InventoryMovementPage() {
             <option value="USAGE">Pemakaian</option><option value="ADJUSTMENT">Penyesuaian / Stock Opname</option>
           </select>
         </label>
-        <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
-          <SlidersHorizontal size={15}/> Filters{[productId,warehouseId,poId,receiptId,locationId,departmentId,accountId,dateFrom,dateTo].filter(Boolean).length ? ` (${[productId,warehouseId,poId,receiptId,locationId,departmentId,accountId,dateFrom,dateTo].filter(Boolean).length})` : ""}
+        <Button type="button" size="sm" variant="outline" title="Filters" aria-label="Filters" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
+          <SlidersHorizontal size={15}/>
         </Button>
       </div>
       {showFilters && <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 md:grid-cols-2 xl:grid-cols-4">

@@ -38,6 +38,7 @@ export interface StoreRequest {
   sr_number: string;
   status: StoreRequestStatus;
   request_date: string;
+  last_issue_date?: string | null;
   requester_name?: string | null;
   business_unit_id: number;
   business_unit_name?: string | null;

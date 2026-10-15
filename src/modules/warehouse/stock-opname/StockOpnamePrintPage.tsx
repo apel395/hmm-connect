@@ -37,8 +37,6 @@ export default function StockOpnamePrintPage() {
       { label: "LOCATION", value: data.location_name },
       { label: "BUSINESS UNIT", value: data.business_unit_name },
       { label: "DEPARTMENT", value: data.department_name },
-      { label: "CREATED BY", value: data.created_by_name },
-      { label: "COUNT METHOD", value: "Manual field count → system entry" },
     ]}
     columns={[
       { label: "NO", align: "center", render: (_row: any, index: number) => index + 1 },
@@ -51,19 +49,7 @@ export default function StockOpnamePrintPage() {
     rows={data.items ?? []}
     rowKey={(row: any) => row.id}
     notes={data.notes || "Physical quantity is written by the counting team on this sheet, then entered into MMH-Connect."}
-    signatures={[
-      { label: "Counted By", name: "" },
-      { label: "Entered By", name: "" },
-      ...approvals,
-    ]}
-    authenticity={[
-      { label: "CREATOR", value: data.created_by_name },
-      { label: "CREATED AT", value: data.created_at ? new Date(data.created_at).toLocaleString("id-ID") : undefined },
-      { label: "PRINTED BY", value: data.printed_by },
-      { label: "PRINTED AT", value: data.generated_at ? new Date(data.generated_at).toLocaleString("id-ID") : undefined },
-      { label: "DOCUMENT #", value: data.opname_number },
-      { label: "STATUS", value: data.status },
-    ]}
-    footer={<>Field count sheet · {data.opname_number} · Printed by {data.printed_by || "—"}</>}
+    signatures={approvals}
+    footer={<>Field count sheet · {data.opname_number}</>}
   />;
 }
