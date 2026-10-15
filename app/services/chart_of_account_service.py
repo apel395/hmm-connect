@@ -138,8 +138,6 @@ class ChartOfAccountService:
         ]
 
     def create(self, payload: ChartOfAccountCreate) -> ChartOfAccount:
-        if payload.account_type in {"REVENUE", "INCOME"} and payload.is_posting and payload.account_code != "400":
-            raise HTTPException(422, "Revenue posting account must be 400")
         self._validate_statistic(payload.account_code, payload.account_type, payload.parent_account_id)
         if payload.account_type == "STATISTIC":
             payload = payload.model_copy(update={"is_posting": False, "normal_balance": "DEBIT", "cash_flow_category": None, "financial_statement_group": None, "account_subtype": "OTHER"})
@@ -183,9 +181,7 @@ class ChartOfAccountService:
             self._validate_parent(account.id, account.parent_account_id)
         if data.get("is_active") is False and account.is_active:
             self._ensure_no_active_children(account.id)
-        if account.account_number == "400" and any(key in data and data[key] != value for key, value in (("account_code", "400"), ("account_type", "REVENUE"), ("normal_balance", "CREDIT"))):
-            raise HTTPException(409, "Account 400 is the single credit revenue posting account")
-        if data.get("is_posting") is True and account.account_number != "400":
+        if data.get("is_posting") is True and not account.is_posting:
             self._ensure_no_active_children(account.id)
         if account.is_system and any(key in data and data[key] != getattr(account, "account_number" if key == "account_code" else key) for key in ("account_code", "account_type", "normal_balance")):
             raise HTTPException(status_code=409, detail="Protected fields of a system account cannot be changed")
@@ -268,8 +264,8 @@ class ChartOfAccountService:
             raise HTTPException(status_code=404, detail="Parent account not found")
         if not parent.is_active:
             raise HTTPException(status_code=400, detail="Parent account must be active")
-        preserving_legacy_revenue_parent = parent.account_number == "400" and account_id is not None and self.get_or_404(account_id).parent_account_id == parent_id
-        if parent.is_posting and not preserving_legacy_revenue_parent:
+        preserving_existing_parent = account_id is not None and self.get_or_404(account_id).parent_account_id == parent_id
+        if parent.is_posting and not preserving_existing_parent:
             raise HTTPException(status_code=400, detail="A posting account cannot have child accounts")
         current = parent
         visited = set()

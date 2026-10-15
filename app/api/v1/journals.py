@@ -63,8 +63,6 @@ def validate(db, lines):
         account = db.get(ChartOfAccount, line.account_id)
         if not account or not account.is_active or not account.is_posting:
             raise HTTPException(400, "Journal lines require active posting accounts")
-        if account.account_type in {"REVENUE", "INCOME"} and account.account_number != "400":
-            raise HTTPException(422, "Revenue postings must use account 400")
         debit += d
         credit += c
     return debit, credit

@@ -55,8 +55,8 @@ def validate_accounts(db, data):
     elif data.operation == "PAYMENT":
         if other.account_type != "EXPENSE":
             raise HTTPException(422, "Use Payments for invoice settlement; direct cashier payments require an expense account")
-    elif other.account_type not in ("REVENUE", "INCOME") or other.account_number != "400":
-        raise HTTPException(422, "Direct receipts use revenue account 400; settle customer invoices through customer payments")
+    elif other.account_type not in ("REVENUE", "INCOME"):
+        raise HTTPException(422, "Direct receipts require a revenue account; settle customer invoices through customer payments")
     return cash, other
 
 

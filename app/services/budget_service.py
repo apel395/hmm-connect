@@ -27,7 +27,6 @@ class BudgetService:
   for l in data.lines:
    a=self.db.get(ChartOfAccount,l.account_id)
    if not a or not a.is_active or not a.is_posting:raise ValueError("Budget lines require active posting accounts")
-   if a.account_type in ("REVENUE","INCOME") and a.account_number!="400":raise ValueError("Revenue budgets must use account 400")
    bu=self.db.get(BusinessUnit,l.business_unit_id)
    if not bu or not bu.is_active:raise ValueError("Budget lines require an active Business Unit")
    validate_dimensions(self.db,l.business_unit_id,l.location_id,l.department_id,required=True)
