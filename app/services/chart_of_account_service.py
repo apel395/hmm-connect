@@ -140,6 +140,9 @@ class ChartOfAccountService:
     def create(self, payload: ChartOfAccountCreate) -> ChartOfAccount:
         if payload.account_type in {"REVENUE", "INCOME"} and payload.is_posting and payload.account_code != "400":
             raise HTTPException(422, "Revenue posting account must be 400")
+        self._validate_statistic(payload.account_code, payload.account_type, payload.parent_account_id)
+        if payload.account_type == "STATISTIC":
+            payload = payload.model_copy(update={"is_posting": False, "normal_balance": "DEBIT", "cash_flow_category": None, "financial_statement_group": None, "account_subtype": "OTHER"})
         self._validate_unique(payload.account_code, payload.account_name)
         self._validate_parent(None, payload.parent_account_id)
         account = ChartOfAccount(
@@ -165,6 +168,12 @@ class ChartOfAccountService:
     def update(self, account_id: int, payload: ChartOfAccountUpdate) -> ChartOfAccount:
         account = self.get_or_404(account_id)
         data = payload.model_dump(exclude_unset=True)
+        next_type = data.get("account_type", account.account_type)
+        if (account.account_type == "STATISTIC") != (next_type == "STATISTIC"):
+            raise HTTPException(409, "Create a separate account when switching between financial and statistical types")
+        self._validate_statistic(data.get("account_code", account.account_number), next_type, data.get("parent_account_id", account.parent_account_id))
+        if next_type == "STATISTIC":
+            data.update(is_posting=False, normal_balance="DEBIT", cash_flow_category=None, financial_statement_group=None, account_subtype="OTHER")
         code = data.get("account_code", account.account_number)
         name = data.get("account_name", account.account_name)
         self._validate_unique(code, name, account.id)
@@ -178,8 +187,11 @@ class ChartOfAccountService:
             raise HTTPException(409, "Account 400 is the single credit revenue posting account")
         if data.get("is_posting") is True and account.account_number != "400":
             self._ensure_no_active_children(account.id)
-        if account.is_system and any(key in data for key in ("account_code", "account_type", "normal_balance")):
+        if account.is_system and any(key in data and data[key] != getattr(account, "account_number" if key == "account_code" else key) for key in ("account_code", "account_type", "normal_balance")):
             raise HTTPException(status_code=409, detail="Protected fields of a system account cannot be changed")
+        if account.is_system and next_type == "STATISTIC":
+            for key in ("normal_balance", "account_type", "account_code"):
+                data.pop(key, None)
         if data.get("normal_balance") is None:
             data.pop("normal_balance", None)
         self._validate_cash_classification(data.get("account_type",account.account_type),data.get("account_subtype",account.account_subtype),data.get("is_posting",account.is_posting),data.get("is_active",account.is_active),data.get("parent_account_id",account.parent_account_id))
@@ -208,6 +220,19 @@ class ChartOfAccountService:
         account.is_active = True
         self.db.flush()
         return account
+
+    def _validate_statistic(self, code, account_type, parent_id):
+        parent = self.db.get(ChartOfAccount, parent_id) if parent_id else None
+        if account_type != "STATISTIC":
+            if code == "900" or code.startswith("900-") or (parent and parent.account_type == "STATISTIC"):
+                raise HTTPException(422, "900 is reserved for statistical accounts")
+            return
+        if code == "900":
+            if parent_id:
+                raise HTTPException(422, "Statistic header 900 cannot have a parent")
+            return
+        if not code.startswith("900-") or not parent or parent.account_type != "STATISTIC":
+            raise HTTPException(422, "Statistical detail accounts require code 900-* and a statistical parent")
 
     @staticmethod
     def _default_balance(account_type: str) -> str:

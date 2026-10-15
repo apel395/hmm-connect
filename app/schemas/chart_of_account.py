@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-AccountType = Literal["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"]
+AccountType = Literal["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE", "STATISTIC"]
 NormalBalance = Literal["DEBIT", "CREDIT"]
 AccountSubtype = Literal["CASH", "BANK", "PETTY_CASH", "OTHER"]
 CashFlowCategory = Literal["OPERATING", "INVESTING", "FINANCING", "NON_CASH", "UNCLASSIFIED"]
