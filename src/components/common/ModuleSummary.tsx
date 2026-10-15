@@ -1,13 +1,7 @@
-import Card from "@/components/ui/Card";
+export interface SummaryMetric { label: string; value: string | number; note?: string }
 
-export interface SummaryMetric { label:string; value:string | number; note?:string }
-
-export default function ModuleSummary({metrics}:{metrics:SummaryMetric[]}) {
-  return <section aria-label="Page summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-    {metrics.map((metric) => <Card key={metric.label} className="p-4">
-      <p className="text-xs font-medium text-slate-500">{metric.label}</p>
-      <p className="mt-1 text-xl font-semibold text-slate-900 sm:text-2xl">{metric.value}</p>
-      {metric.note && <p className="mt-1 text-xs text-slate-500">{metric.note}</p>}
-    </Card>)}
+export default function ModuleSummary({ metrics }: { metrics: SummaryMetric[] }) {
+  return <section aria-label="Page summary" className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs">
+    {metrics.map(metric => <span key={metric.label} title={metric.note} className="inline-flex items-baseline gap-2 whitespace-nowrap"><span className="text-slate-500">{metric.label}</span><strong className="font-semibold tabular-nums text-slate-900">{metric.value}</strong></span>)}
   </section>;
 }

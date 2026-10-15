@@ -1,5 +1,6 @@
-import { ButtonHTMLAttributes, forwardRef } from "react";
+import { ButtonHTMLAttributes, Children, isValidElement, forwardRef } from "react";
 import clsx from "clsx";
+import { Download, Printer, RefreshCw, SlidersHorizontal } from "lucide-react";
 
 export type ButtonVariant =
   | "primary"
@@ -66,6 +67,10 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
+    const nodes = Children.toArray(children);
+    const supportLabel = nodes.filter(node => typeof node === "string").join(" ").trim();
+    const compactSupport = /^(print(?: preview| report| complete report)?|export(?: to)?(?: excel| xlsx?| csv)?|download xlsx?|filters?(?: \(\d+\))?|refresh)$/i.test(supportLabel);
+    const SupportIcon = /^print/i.test(supportLabel) ? Printer : /^filters?/i.test(supportLabel) ? SlidersHorizontal : /^refresh/i.test(supportLabel) ? RefreshCw : Download;
     return (
       <button
         ref={ref}
@@ -78,13 +83,15 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           sizeClasses[size],
           className
         )}
+        title={compactSupport ? supportLabel : undefined}
+        aria-label={compactSupport ? supportLabel : undefined}
         {...props}
       >
         {loading && (
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
         )}
 
-        {children}
+        {compactSupport ? <>{nodes.some(isValidElement) ? nodes.filter(node => typeof node !== "string") : <SupportIcon size={15}/>}<span className="sr-only">{supportLabel}</span></> : children}
       </button>
     );
   }
