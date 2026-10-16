@@ -12,8 +12,8 @@ export interface ExportJob {
 }
 
 export const exportApi = {
-  createProductsExport: (catalogType?: "CATERING" | "HOTEL") =>
-    api.post<ExportJob>("/exports", { export_type: "products", params: { catalog_type: catalogType } }),
+  createProductsExport: (catalogType?: "CATERING" | "HOTEL", itemType?: "BUY" | "SELL") =>
+    api.post<ExportJob>("/exports", { export_type: "products", params: { catalog_type: catalogType, item_type: itemType } }),
 
   getExport: (jobId: string) =>
     api.get<ExportJob>(`/exports/${jobId}`),

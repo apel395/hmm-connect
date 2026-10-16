@@ -67,6 +67,7 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
               <TH className="w-[148px]">Item code</TH><TH>Item name</TH>
               <TH>Type / Price</TH>
               <TH>Classification</TH>
+              <TH>Department</TH>
               <TH>Treatment</TH>
               <TH>UOM</TH>
               <TH>PPN</TH>
@@ -78,7 +79,7 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
           </THead>
           <TBody>
             {rows.length === 0 ? (
-              <TR><TD colSpan={11} className="py-10 text-center">No Products</TD></TR>
+              <TR><TD colSpan={12} className="py-10 text-center">No Products</TD></TR>
             ) : rows.map((row) => {
               const account = mappedAccount(row);
               const state = readiness(row);
@@ -88,6 +89,7 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
                   <TD className="font-semibold text-emerald-800"><span title={row.code}>{row.code}</span></TD><TD className="max-w-[320px]"><button type="button" className="block max-w-full truncate font-medium text-emerald-800 hover:underline" title={row.name} onClick={() => onView?.(row)}>{row.name}</button></TD>
                   <TD><TableCellStack primary={row.item_type === "SELL" ? "Sell" : "Buy"} secondary={row.item_type === "SELL" ? `Rp ${Number(row.selling_price ?? 0).toLocaleString("id-ID")}` : `Rp ${Number(row.reference_cost ?? row.cost_price ?? 0).toLocaleString("id-ID")} / ${row.uom}`}/></TD>
                   <TD><TableCellStack primary={row.group_name} secondary={subgroup}/></TD>
+                  <TD className="max-w-[150px] truncate" title={row.department_name || "Shared"}>{row.department_name || "Shared"}</TD>
                   <TD><Badge variant={treatmentVariant(row.inventory_treatment)}>{treatmentLabel(row.inventory_treatment)}</Badge></TD>
                   <TD><TableCellStack primary={row.uom} secondary={`${row.usage_uom} · ×${Number(row.conversion).toLocaleString("id-ID")}`}/></TD>
                   <TD>

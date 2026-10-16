@@ -1,3 +1,4 @@
+import UsageGuide from "./UsageGuide";
 import { DataWorkspaceContext } from "@/components/workspace/dataWorkspaceContext";
 import { useContext, ReactNode } from "react";
 import clsx from "clsx";
@@ -49,7 +50,7 @@ export default function PageHeader({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1 print:hidden">{actions}{workspace && <button type="button" className="workspace-tool" title={workspace.dense ? "Use compact rows" : "Use extra compact rows"} aria-label="Extra compact rows" aria-pressed={workspace.dense} onClick={workspace.toggleDensity}><Rows3 size={16}/></button>}<button type="button" disabled={refreshing} onClick={refresh} title="Refresh data" aria-label="Refresh data" className="grid h-8 w-8 place-items-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50"><RefreshCw size={15} className={refreshing ? "animate-spin" : ""}/></button></div>
+      <div className="flex flex-wrap items-center gap-1 print:hidden">{actions}<UsageGuide title={title}/>{workspace && <button type="button" className="workspace-tool" title={workspace.dense ? "Use compact rows" : "Use extra compact rows"} aria-label="Extra compact rows" aria-pressed={workspace.dense} onClick={workspace.toggleDensity}><Rows3 size={16}/></button>}<button type="button" disabled={refreshing} onClick={refresh} title="Refresh data" aria-label="Refresh data" className="grid h-8 w-8 place-items-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50"><RefreshCw size={15} className={refreshing ? "animate-spin" : ""}/></button></div>
     </header>
   );
 }

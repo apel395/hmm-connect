@@ -23,7 +23,7 @@ const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
 const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
 const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
-export default function ProductPage({ catalogType = "CATERING" }: { catalogType?: "CATERING" | "HOTEL" }) {
+export default function ProductPage({ catalogType = "CATERING", itemType = "BUY" }: { catalogType?: "CATERING" | "HOTEL"; itemType?: ItemType }) {
   const user = useAuthStore((state) => state.user);
   const canCreateProduct = isSuperuser(user);
   const [formOpen, setFormOpen] = useState(false);
@@ -35,7 +35,7 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [treatmentFilter, setTreatmentFilter] = useState<InventoryTreatment | "">("");
-  const [itemTypeFilter, setItemTypeFilter] = useState<ItemType | "">("");
+  const itemTypeFilter = itemType;
   const [taxFilter, setTaxFilter] = useState<TaxCategory | "">("");
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
@@ -145,7 +145,7 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
     setExportError(null);
     setExportStatus("starting");
     try {
-      const response = await exportApi.createProductsExport(catalogType);
+      const response = await exportApi.createProductsExport(catalogType, itemType);
       setExportJobId(response.data.job_id);
       setExportStatus("processing");
     } catch (error: any) {
@@ -164,7 +164,7 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
   return <DataWorkspace area="Master data">
     <div className="workspace-body">
       <PageHeader
-        title={catalogType === "HOTEL" ? "Hotel Items" : "Catering Items"}
+        title={`${catalogType === "HOTEL" ? "Hotel" : "Catering"} ${itemType === "SELL" ? "Sell" : "Buy"} Items`}
         description="Item Master"
         actions={<div className="flex items-center gap-2">
           <Button onClick={handleExport} disabled={exportBusy}>{exportLabel}</Button>
@@ -179,11 +179,8 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
       )}
       <Card className="workspace-data">
         <div className="mb-2 flex flex-wrap items-center gap-2"><div className="min-w-[250px] flex-1">          <Input aria-label="Search item code or name" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search item code or name..." />
-</div><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value=>!value)}>Filters{[itemTypeFilter,treatmentFilter,taxFilter].filter(Boolean).length ? ` (${[itemTypeFilter,treatmentFilter,taxFilter].filter(Boolean).length})` : ""}</Button></div>
-        {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-3">          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={itemTypeFilter} onChange={(event) => setItemTypeFilter(event.target.value as ItemType | "")}>
-            <option value="">Buy and sell</option><option value="BUY">Buy items</option><option value="SELL">Sell items</option>
-          </select>
-          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={treatmentFilter} onChange={(event) => setTreatmentFilter(event.target.value as InventoryTreatment | "")}>
+</div><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value=>!value)}>Filters{[treatmentFilter,taxFilter].filter(Boolean).length ? ` (${[treatmentFilter,taxFilter].filter(Boolean).length})` : ""}</Button></div>
+        {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-3">          <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={treatmentFilter} onChange={(event) => setTreatmentFilter(event.target.value as InventoryTreatment | "")}>
             <option value="">All treatments</option>
             <option value="REVIEW_REQUIRED">Treatment Review Required</option>
             <option value="STOCK">Stock / Warehouse</option>
@@ -207,7 +204,7 @@ export default function ProductPage({ catalogType = "CATERING" }: { catalogType?
       </Card>
     </div>
     {formOpen && classification.isError && <div role="alert" className="fixed bottom-4 right-4 z-[100] rounded border border-red-200 bg-white p-3 text-sm text-red-700">Item classifications could not be loaded. <Button size="sm" variant="outline" onClick={() => classification.refetch()}>Retry</Button></div>}
-    <ProductForm catalogType={catalogType} open={formOpen} product={selected} groups={classification.data ?? []} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
+    <ProductForm itemType={itemType} catalogType={catalogType} open={formOpen} product={selected} groups={classification.data ?? []} loading={classification.isLoading || createMutation.isPending || updateMutation.isPending} onClose={() => { setFormOpen(false); setSelected(null); }} onSubmit={handleSubmit}/>
     <ProductDetailDialog productId={detailId} accounts={accountLookup.data ?? []} onClose={() => setDetailId(null)} onEdit={(product) => { setDetailId(null); handleEdit(product); }}/>
   </DataWorkspace>;
 }

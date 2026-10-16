@@ -30,6 +30,7 @@ const TREATMENTS: { value: InventoryTreatment; label: string; help: string }[] =
 
 interface Props {
   catalogType?: "CATERING" | "HOTEL";
+  itemType?: ItemType;
   open: boolean;
   product?: Product | null;
   groups?: ProductGroup[];
@@ -41,6 +42,7 @@ interface Props {
 const blank = () => ({
   catalog_type: "CATERING" as "CATERING" | "HOTEL",
   reference_cost_method: "LAST_PURCHASE" as "LAST_PURCHASE" | "AVERAGE_PURCHASE" | "MANUAL",
+  department_id: null as number | null, is_market_item: false,
   code: "", name: "", item_type: "BUY" as ItemType,
   sales_service_name: "", sales_business_unit_id: null as number | null, sales_location_id: null as number | null,
   service_charge_rate: 0, pbjt_rate: 0, sales_ppn_rate: 0, pph23_rate: 0,
@@ -58,7 +60,7 @@ const blank = () => ({
   asset_account_id: null as number | null,
 });
 
-export default function ProductForm({ catalogType = "CATERING", open, product, groups = [], loading, onClose, onSubmit }: Props) {
+export default function ProductForm({ catalogType = "CATERING", itemType, open, product, groups = [], loading, onClose, onSubmit }: Props) {
   const [form, setForm] = useState(blank());
   const uomListId = useId();
   const user = useAuthStore((state) => state.user);
@@ -86,6 +88,11 @@ export default function ProductForm({ catalogType = "CATERING", open, product, g
     enabled: open && form.item_type === "SELL" && Boolean(form.sales_business_unit_id),
   });
 
+  const departments = useQuery({
+    queryKey: ["item-departments", catalogType],
+    queryFn: async () => (await api.get<{available: boolean; items: {id: number; name: string}[]}>("/products/departments", {params: {catalog_type: catalogType}})).data,
+    enabled: open,
+  });
   const groupOptions = useMemo(() => {
     const set = new Map<string, { code: string; name: string; item_type?: ItemType }>();
     groups.filter((item) => (item.item_type ?? "BUY") === form.item_type).forEach((item) => set.set(item.code, { code: item.code, name: item.name, item_type: item.item_type }));
@@ -143,6 +150,7 @@ export default function ProductForm({ catalogType = "CATERING", open, product, g
   useEffect(() => {
     if (!open) return;
     setForm(product ? {
+      department_id: product.department_id ?? null, is_market_item: product.is_market_item,
       code: product.code,
       name: product.name,
       item_type: product.item_type ?? "BUY",
@@ -175,8 +183,8 @@ export default function ProductForm({ catalogType = "CATERING", open, product, g
       purchase_account_id: product.purchase_account_id ?? null,
       cogs_account_id: product.cogs_account_id ?? null,
       asset_account_id: product.asset_account_id ?? null,
-    } : blank());
-  }, [open, product, catalogType]);
+    } : {...blank(), item_type: itemType ?? "BUY", inventory_treatment: itemType === "SELL" ? "NON_STOCK" : "REVIEW_REQUIRED"});
+  }, [open, product, catalogType, itemType]);
 
   const update = (key: string, value: unknown) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -277,9 +285,11 @@ export default function ProductForm({ catalogType = "CATERING", open, product, g
   );
 
   const submit = () => {
-    const { cogs_account_id, ...itemFields } = form;
+    const { cogs_account_id, department_id, ...itemFields } = form;
     const payload = {
       ...itemFields,
+      ...(departments.data?.available ? {department_id} : {}),
+      is_market_item: form.subgroup_name.trim().toUpperCase() === "MEAT" ? form.is_market_item : ["VEGETABLES","FRUIT","HERB","FISH","POULTRY","SNACK"].includes(form.subgroup_name.trim().toUpperCase()),
       catalog_type: catalogType,
       ...(cogs_account_id !== (product?.cogs_account_id ?? null) ? { cogs_account_id } : {}),
       code: displayedCode.trim(),
@@ -311,7 +321,7 @@ export default function ProductForm({ catalogType = "CATERING", open, product, g
       <DialogHeader><DialogTitle>{product ? "Edit Item" : "New Item"}</DialogTitle></DialogHeader>
       <DialogBody>
         <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          {!itemType && <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="mb-3 font-semibold text-slate-900">Item Type</div>
             <div className="grid grid-cols-2 gap-2">
               {(["BUY", "SELL"] as ItemType[]).map((value) => (
@@ -320,7 +330,7 @@ export default function ProductForm({ catalogType = "CATERING", open, product, g
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
           <label className="col-span-2 text-sm font-medium">Product Code
             <Input className="mt-1" readOnly maxLength={20} value={displayedCode} placeholder={codePreview.isFetching ? "Generating code…" : "Select group and subgroup"} title="Generated automatically; finalized when saved" />
@@ -333,6 +343,8 @@ export default function ProductForm({ catalogType = "CATERING", open, product, g
           <SearchableSelect label="Group" value={form.group_code || undefined} required placeholder="Type group code or name..." options={groupOptions} onChange={updateGroup} />
           <SearchableSelect label="Sub Group" value={form.subgroup_code || undefined} required={subgroupRequired} disabled={!form.group_code} placeholder={form.group_code ? "Type subgroup code or name..." : "Select Group first"} options={subGroupOptions} onChange={updateSubgroup} />
 
+          <div className="col-span-2"><SearchableSelect label="Department" value={form.department_id ?? undefined} options={departments.data?.items ?? []} disabled={!departments.data?.available} placeholder={departments.data?.available ? "Shared / no default department" : "Department setup awaiting database update"} onChange={id => setForm({...form, department_id: id ?? null})}/></div>
+          {form.item_type === "BUY" && form.subgroup_name.trim().toUpperCase() === "MEAT" && <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_market_item} onChange={e => setForm({...form, is_market_item: e.target.checked})}/>Eligible for Market List (fresh meat). Leave off for normal warehouse purchases.</label>}
           {form.item_type === "BUY" && <div className="col-span-2 grid grid-cols-2 gap-3">
             <label className="text-sm font-medium">Reference cost method<select className="mt-1 w-full rounded border p-2" value={form.reference_cost_method} onChange={e => update("reference_cost_method", e.target.value as typeof form.reference_cost_method)}><option value="LAST_PURCHASE">Last purchase</option><option value="AVERAGE_PURCHASE">Weighted average purchase</option><option value="MANUAL">Manual reference</option></select></label>
             <label className="text-sm font-medium">{form.reference_cost_method === "MANUAL" ? "Reference unit cost" : "Fallback unit cost"}<Input className="mt-1" type="number" min="0" step="0.01" value={form.cost_price} onChange={e => update("cost_price", Number(e.target.value))}/></label>
