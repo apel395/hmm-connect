@@ -1,6 +1,7 @@
 import copy
 from datetime import date
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,41 @@ def test_existing_void_register_not_silently_reimported():
     db["journals"] = [{"id": 1, "external_reference": "HOTEL-JAN2026-REG-123", "journal_number": "MAN-1", "document_number": None, "status": "VOID"}]
     plan = prep.build_plan(source(), db, review())
     assert "EXISTING_REGISTER_REVIEW" in plan["source"]["journals"][0]["issues"]
+
+
+def test_explicit_account_department_handles_unprefixed_room_revenue():
+    data = source()
+    data["journals"][0]["lines"][0].update(department_prefix=None, suggested_department=None)
+    mapping = review()
+    mapping["departments"] = {}
+    mapping["account_departments"] = {"547001": 11}
+    plan = prep.build_plan(data, database(), mapping)
+    assert plan["summary"]["statuses"] == {"READY_FOR_SEED_REVIEW": 1}
+    assert plan["source"]["journals"][0]["lines"][0]["department_id"] == 11
+
+
+@pytest.mark.parametrize("existing_unit,expected_overlap", [(2, True), (3, False)])
+def test_legacy_import_reference_overlap_is_scoped_and_detected_across_dates(existing_unit, expected_overlap):
+    db = database()
+    db["journals"] = [{"id": 8, "external_reference": "JOURNAL_IMPORT:59:1", "journal_number": "MAN-8", "document_number": " SAME-REFERENCE ", "status": "DRAFT", "posting_date": "2026-01-31", "business_unit_id": existing_unit, "location_id": 8}]
+    plan = prep.build_plan(source(), db, review())
+    journal = plan["source"]["journals"][0]
+    assert ("SOURCE_REFERENCE_OVERLAP_REVIEW" in journal["issues"]) is expected_overlap
+    if expected_overlap:
+        assert journal["possible_existing_journals"][0]["id"] == 8
+    assert journal["posting_date"] == "2026-01-15"  # No source date correction.
+
+
+def test_prepared_manifest_keeps_unresolved_controls_out_of_applied_mapping():
+    path = Path(__file__).parents[1] / "scripts/hotel_january_2026_mapping.json"
+    mapping = json.loads(path.read_text())
+    assert mapping["accounts"]["201101"] == "200-100-1"
+    assert not (set(mapping["accounts"]) & set(mapping["review_required_accounts"]))
+    assert "103085" in mapping["review_required_accounts"]  # OTA advance is not automatically a liability.
+    assert "202014" in mapping["review_required_accounts"]  # Payable not reclassified to expense.
+    assert "SWP" not in mapping["departments"]
+    assert "BOD" not in mapping["departments"]
+    assert mapping["departments"]["LDY"] == 14
 
 
 def test_same_invoice_reference_does_not_merge_distinct_registers():
