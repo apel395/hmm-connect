@@ -627,3 +627,27 @@ h6 {
 .module-top-picker { min-width: 0; }.module-top-picker svg { flex-shrink: 0; }.module-top-picker span { min-width: 0; }
 .module-icon-rail :is(a,button):focus-visible,.module-top-picker:focus-visible,.open-tabs-trigger:focus-visible,.module-tab-icon:focus-visible { outline: 2px solid #5eac8b; outline-offset: 2px; }
 @media print { .module-launcher,.module-top-popup,.open-tabs-popup { display: none !important; } }
+
+/* Wide centered finance drilldowns; warehouse side panels keep their layout. */
+.report-drilldown-dialog {
+  width: calc(100vw - 32px);
+  max-width: 1440px !important;
+  height: min(88dvh, 900px);
+  max-height: calc(100dvh - 32px);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.report-drilldown-dialog table { min-width: 860px; border-collapse: separate; border-spacing: 0; }
+.report-drilldown-dialog .report-account-code {
+  position: sticky;
+  left: 0;
+  min-width: 128px;
+  background: white;
+  z-index: 1;
+}
+.report-drilldown-dialog thead { position: sticky; top: 0; z-index: 10; }
+.report-drilldown-dialog thead .report-account-code { top: 0; background: #f1f5f9; z-index: 3; }
+@media (max-width: 640px) {
+  .report-drilldown-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); height: 92dvh; }
+}
