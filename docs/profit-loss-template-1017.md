@@ -31,11 +31,46 @@ department profit include service charge revenue and deduct its payroll expense
 once. Department/location residuals remain visible in the summary. Presentation
 does not mutate accounts, budgets, source journals, opening balances or GL.
 
-Room occupancy/ADR statistics and separate utilities are not inferred from
-combined financial accounts. This change formats the financial figures already
-supported by the report, and does not claim to populate unsupported template
-statistics. The original template's division errors, broken references and sums
-of monthly rates are not reused.
+Operating statistics are read from the separate monthly Statistics register.
+The six accounts Finance created are recognized by their exact codes:
+
+| Code | Report metric | Period calculation |
+| --- | --- | --- |
+| 900-100-100 | Room Available | Sum of monthly room-nights |
+| 900-100-101 | Room Occupied | Sum of monthly occupied room-nights |
+| 900-100-102 | Bookkeeping Rate | Latest rate, never summed |
+| 900-100-103 | Number of Guest | Sum |
+| 900-200-100 | Food Cover | Sum |
+| 900-200-101 | Beverage Cover | Sum |
+
+Report Setup has optional source overrides, a Room Saleable source and a Paid
+Room Nights Sold source. Defaults do not write mappings or change COA records.
+The original default Room Revenue source is 400-100-100; a different revenue
+account or revenue parent can be selected for ADR. ADR requires an explicitly
+selected paid-room source. Finance can select Room Occupied for paid rooms only
+when that count excludes complimentary rooms. Bookkeeping Rate is separate.
+
+Occupancy = occupied room-nights / available room-nights. ADR = Hotel room revenue
+/ paid room-nights sold. YTD uses the cumulative numerator and denominator, not
+an average or sum of monthly ratios. Room revenue uses the same scoped posted
+financial data (and selected financial budget for budget ADR). Statistical budgets
+come from the Statistics register and are not separate named budget versions.
+The register stores monthly values: current-month statistics are the latest values
+entered for that month, rather than a reconstructed daily history.
+
+A location total takes precedence over its departmental component records for the
+same metric, period and actual/budget field. A department-scoped report uses only
+that department's records. Hotel room statistics and ADR never include Catering
+room data/revenue even when the same COA is used. Food/beverage covers follow the
+selected scope. Historical comparisons require recorded statistics; missing values
+stay unavailable. Zero denominators and inconsistent units yield no calculated
+ratio. Different currency pairs are never averaged or compared as a single rate.
+
+Statistics are included on screen, print, the summary and detail Excel sheets.
+This does not post journals/GL, change opening balances, or seed any statistical
+actuals or budgets. Separate utility/revenue/payroll detail still depends on real
+source attribution. The template's division errors, broken references and sums of
+monthly rates are not reused.
 
 Print layout is landscape A3, one page wide with unconstrained vertical pages,
 repeated rows 1–6, frozen headings/name column, numeric amounts and native percent

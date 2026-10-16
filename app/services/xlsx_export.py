@@ -61,7 +61,7 @@ def statement_worksheet(rows):
             numeric = isinstance(value, (Decimal, int, float)) and not isinstance(value, bool)
             style = {'header': 12, 'title': 11, 'section': 3, 'total': 4, 'grand': 5}.get(kind, 0)
             if numeric:
-                style = (10 if col in percentages else 9) if kind == 'grand' else (8 if col in percentages else 7) if kind == 'total' else 6 if col in percentages else 2
+                style = 6 if index in getattr(rows, 'percent_rows', ()) else (10 if col in percentages else 9) if kind == 'grand' else (8 if col in percentages else 7) if kind == 'total' else 6 if col in percentages else 2
             ref = f'{column_name(col)}{index}'
             if value is None:
                 cells.append(f'<c r="{ref}" s="{style}"/>')

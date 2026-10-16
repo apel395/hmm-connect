@@ -37,6 +37,7 @@ def require_report_setup(db: Session):
 class ReportSetupInput(BaseModel):
     selected_account_ids: list[int] | None = None
     profit_loss_categories: dict[int, str] | None = None
+    statistic_accounts: dict[str, int] | None = None
     header_only: bool = False
     current_year_earnings_account_id: int | None = None
 
@@ -48,7 +49,11 @@ def setup(db: Session = Depends(get_db), user=Depends(view)):
     settings = db.query(FinancialReportSetting).all()
     earnings = db.query(AccountingSetting).filter_by(setting_key="CURRENT_YEAR_EARNINGS_ACCOUNT").first()
     categories = {row.account_id: row.description for row in db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).all()}
-    return {"profit_loss_categories": categories, "category_options": CATEGORIES, "accounts": [{"id": a.id, "code": a.account_number, "name": a.account_name,
+    from app.services.report_statistics import mappings, SOURCES
+    stat_saved, stat_effective, _ = mappings(db)
+    return {"statistic_accounts": stat_saved, "effective_statistic_accounts": stat_effective,
+            "statistic_options": {k: {"label": v[0], "default_code": v[1], "kind": v[2]} for k,v in SOURCES.items()},
+            "profit_loss_categories": categories, "category_options": CATEGORIES, "accounts": [{"id": a.id, "code": a.account_number, "name": a.account_name,
              "type": a.account_type, "normal_balance": a.normal_balance, "parent_id": a.parent_account_id, "is_posting": a.is_posting} for a in rows],
             "settings": [{"report_type": s.report_type, "selected_account_ids": s.selected_account_ids, "header_only": s.header_only} for s in settings],
             "current_year_earnings_account_id": earnings.account_id if earnings else None}
@@ -74,6 +79,12 @@ def save_setup(data: ReportSetupInput, report_type: str, db: Session = Depends(g
             mapping = AccountingSetting(setting_key="CURRENT_YEAR_EARNINGS_ACCOUNT")
             db.add(mapping)
         mapping.account_id = account.id
+    from app.services.report_statistics import mappings, save_mappings
+    previous_statistics = mappings(db)[0]
+    if data.statistic_accounts is not None:
+        if report_type != "PROFIT_LOSS":
+            raise HTTPException(422, "Statistical report sources apply only to Profit & Loss")
+        save_mappings(db, data.statistic_accounts)
     previous_categories = {row.account_id: row.description for row in db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).all()}
     if data.profit_loss_categories is not None:
         if report_type != "PROFIT_LOSS":
@@ -97,7 +108,7 @@ def save_setup(data: ReportSetupInput, report_type: str, db: Session = Depends(g
     if not setting:
         setting = FinancialReportSetting(report_type=report_type)
         db.add(setting)
-    before = {"selected_account_ids": setting.selected_account_ids, "header_only": setting.header_only, "profit_loss_categories": previous_categories}
+    before = {"selected_account_ids": setting.selected_account_ids, "header_only": setting.header_only, "profit_loss_categories": previous_categories, "statistic_accounts": previous_statistics}
     setting.selected_account_ids = sorted(set(data.selected_account_ids)) if data.selected_account_ids is not None else None
     setting.header_only, setting.updated_by_id = data.header_only, user.id
     record_audit(db, user, "FINANCIAL_REPORT_SETUP_UPDATED", "FINANCIAL_REPORT", f"Updated {report_type} display",
