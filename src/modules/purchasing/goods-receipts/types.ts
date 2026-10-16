@@ -1,8 +1,12 @@
+import type { ReceivingDestination } from "./destination";
 export interface GoodsReceiptItemPayload {
   purchase_order_item_id?: number | null;
   market_list_item_id?: number;
   product_id?: number | null;
   expense_account_id?: number | null;
+  destination_type?: ReceivingDestination | null;
+  destination_override_reason?: string | null;
+  purchase_account_id?: number | null;
   quantity: number;
   unit_cost?: number | null;
   is_taxable?: boolean;
@@ -17,7 +21,7 @@ export interface GoodsReceiptCreatePayload {
   business_unit_id?: number | null;
   department_id?: number | null;
   location_id?: number | null;
-  destination_type: "WAREHOUSE" | "DIRECT_USE";
+  destination_type?: "WAREHOUSE" | "DIRECT_USE";
   warehouse_id?: number | null;
   items: GoodsReceiptItemPayload[];
   notes?: string | null;
@@ -29,10 +33,10 @@ export interface GoodsReceiptCreatePayload {
 export interface GoodsReceiptUpdatePayload {
   received_at: string;
   external_reference?: string | null;
-  destination_type: "WAREHOUSE" | "DIRECT_USE";
+  destination_type?: "WAREHOUSE" | "DIRECT_USE";
   warehouse_id?: number | null;
   notes?: string | null;
-  items: Array<{ item_id: number; expense_account_id?: number | null; quantity: number; unit_cost: number; is_taxable: boolean; tax_rate: number }>;
+  items: Array<{ item_id: number; destination_type?: ReceivingDestination | null; destination_override_reason?: string | null; expense_account_id?: number | null; quantity: number; unit_cost: number; is_taxable: boolean; tax_rate: number }>;
 }
 
 export interface GoodsReceiptCostCorrectionPayload { reason: string; items: Array<{ item_id: number; unit_cost: number }> }
@@ -42,6 +46,9 @@ export interface GoodsReceiptItem {
   catalog_type?: "CATERING" | "HOTEL"; inventory_treatment?: string;
   id: number; purchase_order_item_id?: number | null; product_id: number; product_code: string; product_name: string; uom?: string | null;
   expense_account_id?: number | null;
+  destination_type?: ReceivingDestination | null;
+  destination_override_reason?: string | null;
+  purchase_account_id?: number | null;
   quantity: number; unit_cost: number; line_subtotal?: number; is_taxable?: boolean; tax_rate?: number; tax_amount?: number; line_total?: number;
 }
 

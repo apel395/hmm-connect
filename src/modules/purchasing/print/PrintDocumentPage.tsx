@@ -1,10 +1,11 @@
+import { destinationLabel } from "../goods-receipts/destination";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import api from "@/api/client";
 import Loading from "@/components/ui/Loading";
 import DocumentPrintTemplate, { type PrintSignature } from "@/components/print/DocumentPrintTemplate";
 
-interface PrintItem { id:number;product_code?:string;product_name:string;uom?:string;quantity:number;unit_price?:number;estimated_price?:number;unit_cost?:number;total_price?:number;line_total?:number }
+interface PrintItem { destination_type?: string; inventory_treatment?: string; id:number;product_code?:string;product_name:string;uom?:string;quantity:number;unit_price?:number;estimated_price?:number;unit_cost?:number;total_price?:number;line_total?:number }
 interface ApprovalRecord {level:number;name:string;status:string;approver_name?:string|null;decided_at?:string|null;comment?:string|null;signature_name?:string|null;signature_label?:string|null;signature_image?:string|null}
 interface PrintDocument {
   document_type:string;brand_name?:string;hotel_name?:string;pr_number?:string;ml_number?:string;po_number?:string;receipt_number?:string;
@@ -48,7 +49,7 @@ export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"
   const fields=[
     ...((isPr||isMl)?[{label:"REQUESTER",value:data.requester_name}]:[{label:"SUPPLIER",value:data.supplier_name}]),
     ...(!isPr&&!isMl&&data.source_pr_number?[{label:"PR #",value:data.source_pr_number}]:[]),
-    ...(isReceipt?[{label:"PO #",value:data.purchase_order_number??data.po_number},{label:"DELIVERY NOTE",value:data.delivery_note_number??data.external_reference},{label:"DESTINATION",value:data.destination_type==="WAREHOUSE"?`Warehouse — ${data.warehouse_name??""}`:"Direct Use"}]:[]),
+    ...(isReceipt?[{label:"PO #",value:data.purchase_order_number??data.po_number},{label:"DELIVERY NOTE",value:data.delivery_note_number??data.external_reference},{label:"DESTINATION",value:`${destinationLabel(data.destination_type)}${data.warehouse_name ? ` — ${data.warehouse_name}` : ""}`}]:[]),
     {label:"UNIT BISNIS",value:data.business_unit_name??(data.business_unit_id?`#${data.business_unit_id}`:undefined)},
     {label:"LOCATION",value:data.location_name??(data.location_id?`#${data.location_id}`:undefined)},
     {label:"DEPARTMENT",value:data.department_name??(data.department_id?`#${data.department_id}`:undefined)},
@@ -60,6 +61,7 @@ export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"
   const columns=[
     {label:"CODE",align:"left" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{item.product_code??"—"}</span>},
     {label:"DESCRIPTION",align:"left" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{item.product_name}</span>},
+    ...(isReceipt?[{label:"DESTINATION",align:"left" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{destinationLabel(item.destination_type??data.destination_type,item.inventory_treatment)}</span>}]:[]),
     {label:"QTY",align:"right" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{item.quantity}</span>},
     {label:"UOM",align:"center" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{item.uom??"—"}</span>},
     {label:"PRICE",align:"right" as const,render:(item:PrintItem)=><span className="whitespace-nowrap">{money(isReceipt?item.unit_cost:item.unit_price??item.estimated_price??0)}</span>},

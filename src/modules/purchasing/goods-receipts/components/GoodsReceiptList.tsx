@@ -1,3 +1,4 @@
+import { destinationLabel } from "../destination";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 
@@ -143,7 +144,7 @@ export default function GoodsReceiptList({
 
                       <div className="font-medium">
 
-                        {receipt.destination_type === "WAREHOUSE" ? "Warehouse inventory" : "Direct use"}
+                        {destinationLabel(receipt.destination_type)}
 
                       </div>
 
