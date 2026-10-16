@@ -18,6 +18,7 @@ class ProductCreate(BaseModel):
     uom: str
     usage_uom: str
     conversion: Decimal = Decimal("1")
+    department_id: int | None = Field(default=None, gt=0)
     description: str | None = None
     item_type: Literal["BUY", "SELL"] = "BUY"
     catalog_type: Literal["CATERING", "HOTEL"] = "CATERING"
@@ -66,6 +67,7 @@ class ProductUpdate(BaseModel):
     uom: str | None = None
     usage_uom: str | None = None
     conversion: Decimal | None = None
+    department_id: int | None = Field(default=None, gt=0)
     description: str | None = None
     item_type: Literal["BUY", "SELL"] | None = None
     catalog_type: Literal["CATERING", "HOTEL"] | None = None

@@ -8,11 +8,11 @@ from app.models.purchase_requisition import PurchaseRequisition
 from app.models.purchase_requisition_item import PurchaseRequisitionItem
 
 
-MARKET_SUBGROUPS = {"VEGETABLES", "FRUIT"}
+MARKET_SUBGROUPS = {"VEGETABLES", "FRUIT", "HERB", "FISH", "POULTRY", "MEAT", "SNACK"}
 
 
 def is_market_list_product(product: Product | None) -> bool:
-    return bool(product) and (product.subgroup_name or "").strip().upper() in MARKET_SUBGROUPS
+    return bool(product) and getattr(product, "item_type", "BUY") == "BUY" and (product.subgroup_name or "").strip().upper() in MARKET_SUBGROUPS and ((product.subgroup_name or "").strip().upper() != "MEAT" or bool(product.is_market_item))
 
 
 def _product(session: OrmSession, item) -> Product | None:
@@ -26,7 +26,7 @@ def _validate_market_item(session: OrmSession, item: MarketListItem) -> None:
     if not is_market_list_product(product):
         raise HTTPException(
             status_code=409,
-            detail=f"{product.code} - {product.name} must use Purchase Requisition; Market List only accepts VEGETABLES and FRUIT.",
+            detail=f"{product.code} - {product.name} must use Purchase Requisition; Item is not enabled for Market List in Item Master.",
         )
 
 

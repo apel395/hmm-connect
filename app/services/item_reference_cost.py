@@ -68,5 +68,6 @@ def reference_payload(product, history=None):
 
 
 def serialize_item(product, history=None):
+    from app.models.purchasing_item_policy import is_market_list_product
     return {**{column.name: getattr(product, column.name) for column in Product.__table__.columns},
-            **reference_payload(product, history)}
+            **reference_payload(product, history), "is_market_item": is_market_list_product(product)}

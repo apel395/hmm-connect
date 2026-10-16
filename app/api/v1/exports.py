@@ -67,6 +67,9 @@ def create_export(
     if export_type == "products" and (data.params or {}).get("catalog_type") not in {None, "CATERING", "HOTEL"}:
         raise HTTPException(422, "Choose Catering or Hotel Items")
 
+    if export_type == "products" and (data.params or {}).get("item_type") not in {None, "BUY", "SELL"}:
+        raise HTTPException(422, "Choose Buy or Sell Items")
+
     job = ExportJob(user_id=current_user.id, export_type=export_type, params=data.params, status="PENDING")
     db.add(job)
     db.commit()

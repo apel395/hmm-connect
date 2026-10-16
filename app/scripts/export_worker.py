@@ -47,13 +47,18 @@ def _generate_products_xlsx(db, output_path: Path, params=None, user=None) -> No
         "Tax Category",
         "Taxable",
         "Tax Rate",
-        "Active",
+        "Active", "Item Type", "Department",
     ])
 
     catalog = (params or {}).get("catalog_type")
     if catalog not in {None, "CATERING", "HOTEL"}:
         raise ValueError("Unknown item catalog")
+    item_type = (params or {}).get("item_type")
+    if item_type not in {None, "BUY", "SELL"}:
+        raise ValueError("Unknown item type")
     query = db.query(Product)
+    if item_type:
+        query = query.filter(Product.item_type == item_type)
     if catalog:
         query = query.filter(Product.catalog_type == catalog)
     # Read price history in batches, so exports do not issue one query per item.
@@ -63,6 +68,8 @@ def _generate_products_xlsx(db, output_path: Path, params=None, user=None) -> No
         if not rows:
             break
         history = receipt_costs(db, [row.id for row in rows], user) if user else {}
+        from app.services.item_departments import payloads
+        departments = payloads(db, [row.id for row in rows])
         for row in rows:
             ref = reference_payload(row, history.get(row.id))
             ws.append([
@@ -73,7 +80,7 @@ def _generate_products_xlsx(db, output_path: Path, params=None, user=None) -> No
                 float(row.selling_price or 0), float(row.minimum_stock or 0),
                 float(row.reorder_level or 0), float(row.maximum_stock or 0),
                 row.lead_time_days, row.tax_category, bool(row.is_taxable),
-                float(row.tax_rate or 0), bool(row.is_active),
+                float(row.tax_rate or 0), bool(row.is_active), row.item_type, departments.get(row.id, {}).get("department_name", "Shared"),
             ])
         last_id = rows[-1].id
     wb.save(output_path)
