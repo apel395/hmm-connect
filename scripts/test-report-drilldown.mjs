@@ -1,4 +1,4 @@
-/* global document, innerWidth, innerHeight */
+/* global innerWidth, innerHeight */
 /** Real P&L table/dialog; synthetic data only, no signed-in session or API. */
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
