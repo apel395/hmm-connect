@@ -137,7 +137,7 @@ class SupplierInvoiceService:
             warehouse_location_id = getattr(warehouse, "location_id", None) if warehouse else None
             receipt_location_id = getattr(receipt, "location_id", None)
 
-            if destination == "WAREHOUSE":
+            if destination in {"WAREHOUSE", "MIXED"}:
                 if warehouse_location_id is None:
                     raise HTTPException(
                         409,

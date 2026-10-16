@@ -56,6 +56,8 @@ class GoodsReceiptItem(Base):
     market_list_item_id: Mapped[int | None] = mapped_column(ForeignKey("market_list_items.id"), nullable=True, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
     expense_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id"), nullable=True)
+    destination_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    destination_override_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     is_taxable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
