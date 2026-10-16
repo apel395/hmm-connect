@@ -36,9 +36,10 @@ try{
   else{unmocked.push(p);return route.fulfill({status:404,body:'Unmocked request blocked'});}
   return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
  });
+ const assertCompact=async()=>{const table=page.locator('table.receiving-lines');const metrics=await table.evaluate(t=>({table:t.getBoundingClientRect().width,available:t.parentElement.clientWidth,qty:t.querySelector('col.rl-quantity').getBoundingClientRect().width,unit:t.querySelector('col.rl-unit').getBoundingClientRect().width,tax:t.querySelector('col.rl-tax-rate').getBoundingClientRect().width}));assert.ok(metrics.table<=metrics.available+1,`Receiving fits desktop: ${JSON.stringify(metrics)}`);assert.ok(metrics.qty<=80&&metrics.unit<=48&&metrics.tax<=68,`Compact numeric columns: ${JSON.stringify(metrics)}`);};
  const goto=mode=>page.goto(`http://127.0.0.1:${port}/${stem}.html?mode=${mode}`);
  const choose=async(placeholder,text)=>{await page.getByPlaceholder(placeholder,{exact:true}).fill(text);await page.locator('button[role=option]').filter({hasText:text}).first().click();};
- await goto('direct');await page.getByRole('dialog').waitFor();
+ await goto('direct');await page.getByRole('dialog').waitFor();await assertCompact();await page.setViewportSize({width:1280,height:900});await assertCompact();await page.setViewportSize({width:1440,height:1000});
  assert.equal(await page.locator('label').filter({hasText:/^Destination$/}).count(),0,'No document-wide destination selector');
  await choose('Type supplier code or name...','Test Supplier');await choose('Type business unit...','Hotel');await choose('Type location...','Hotel');await choose('Type department...','Food and Beverage');
  await page.getByPlaceholder('Type product code or name...').fill('READY MEAL');await page.getByRole('option').filter({hasText:'READY MEAL'}).click();
@@ -53,11 +54,14 @@ try{
  await page.getByRole('button',{name:'Save RR Draft',exact:true}).click();assert.equal(writes.length,1);assert.match(alertText.at(-1),/reason/);
  await page.getByLabel('Destination reason for READY MEAL',{exact:true}).fill('Special batch held for later use');
  await page.getByRole('button',{name:'Save RR Draft',exact:true}).click();await pause(200);
+ await assertCompact();
  if(process.env.QA_SCREENSHOT_DIR){await mkdir(process.env.QA_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:`${process.env.QA_SCREENSHOT_DIR}/receiving-create.png`});}
  assert.equal(writes.length,2);assert.equal(writes[1].items[0].destination_type,'WAREHOUSE');assert.equal(writes[1].items[0].expense_account_id,null);assert.equal(writes[1].items[1].destination_type,null);assert.equal(writes[1].warehouse_id,5);
  await goto('po');await page.getByRole('columnheader',{name:'Destination',exact:true}).waitFor();assert.match(await page.locator('tbody').innerText(),/Direct Use/);assert.match(await page.locator('tbody').innerText(),/Warehouse/);
+ await page.setViewportSize({width:1280,height:900});await assertCompact();await page.setViewportSize({width:1440,height:1000});
  await page.getByRole('spinbutton').nth(0).fill('2');await page.getByRole('spinbutton').nth(2).fill('2');await choose('Type warehouse code or name...','Hotel Warehouse');await page.getByRole('button',{name:'Save Receiving Draft',exact:true}).click();await pause(200);if(process.env.QA_SCREENSHOT_DIR)await page.screenshot({path:`${process.env.QA_SCREENSHOT_DIR}/receiving-po.png`});assert.equal(writes.length,3);assert.equal(writes[2].purchase_order_id,10);assert.equal(writes[2].destination_type,undefined);
  await goto('edit');await page.getByRole('columnheader',{name:'Destination',exact:true}).waitFor();assert.match(await page.locator('tbody').innerText(),/Direct Use/);assert.match(await page.locator('tbody').innerText(),/Warehouse/);await page.getByRole('button',{name:'Save Changes',exact:true}).click();await pause(200);assert.equal(writes.length,4);assert.deepEqual(writes[3].items.map(x=>x.destination_type),['DIRECT_USE','WAREHOUSE']);
+ await page.setViewportSize({width:1280,height:900});await assertCompact();await page.setViewportSize({width:1440,height:1000});
  if(process.env.QA_SCREENSHOT_DIR){await mkdir(process.env.QA_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:`${process.env.QA_SCREENSHOT_DIR}/receiving-desktop.png`});await page.setViewportSize({width:390,height:844});await page.screenshot({path:`${process.env.QA_SCREENSHOT_DIR}/receiving-mobile.png`});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
- assert.deepEqual(unmocked,[]);assert.deepEqual(errors,[]);console.log('PASS: Item Master defaults, no header selector, per-line exceptions/reason, warehouse scope, Direct/PO/Edit payloads, desktop/mobile, synthetic writes only.');
+ assert.deepEqual(unmocked,[]);assert.deepEqual(errors,[]);console.log('PASS: Item Master defaults, no header selector, per-line exceptions/reason, warehouse scope, Direct/PO/Edit payloads, compact columns fit 1280/1440 desktop, mobile contained scrolling, synthetic writes only.');
 }finally{await browser?.close();server?.kill();await Promise.all(files.map(f=>unlink(f).catch(()=>{})));}

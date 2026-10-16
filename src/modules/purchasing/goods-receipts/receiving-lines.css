@@ -1,0 +1,28 @@
+/* Reserve room for numbers without letting intrinsic input widths stretch the table. */
+.receiving-lines {
+  width: 100%;
+  min-width: 1000px;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.receiving-lines-po { min-width: 1120px; }
+.receiving-lines :is(th, td) { min-width: 0; padding: 6px 4px; }
+.receiving-lines th { white-space: nowrap; }
+.receiving-lines :is(input:not([type="checkbox"]), select, [role="combobox"]) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.receiving-lines input:not([type="checkbox"]) { padding-left: 6px; padding-right: 6px; }
+.receiving-lines .rl-destination { width: 128px; }
+.receiving-lines .rl-unit { width: 44px; }
+.receiving-lines .rl-quantity { width: 76px; }
+.receiving-lines .rl-cost { width: 120px; }
+.receiving-lines .rl-tax-rate { width: 64px; }
+.receiving-lines .rl-tax-check { width: 40px; }
+.receiving-lines .rl-amount { width: 104px; }
+.receiving-lines .rl-total { width: 112px; }
+.receiving-lines .rl-action { width: 36px; }
+.receiving-lines .rl-po-quantity { width: 72px; }
+.receiving-lines .rl-expense { width: 192px; }
+.receiving-lines td:has(> select), .receiving-lines td:first-child { overflow-wrap: anywhere; }

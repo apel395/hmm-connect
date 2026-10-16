@@ -1,3 +1,4 @@
+import "../receiving-lines.css";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
@@ -78,7 +79,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
   const warehouseOptions=warehouses.filter((row:any)=>row.is_active && Number(row.location_id) === receipt.location_id).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
 
   return <Dialog open={open} onOpenChange={value=>!value&&onClose()}>
-    <DialogContent className="max-h-[92vh] max-w-6xl overflow-hidden">
+    <DialogContent className="max-h-[92vh] max-w-[1440px] overflow-hidden">
       <DialogHeader><DialogTitle>Edit Receiving Report</DialogTitle></DialogHeader>
       <DialogBody className="space-y-4 overflow-y-auto">
         <div className="rounded border bg-slate-50 p-3 text-sm">
@@ -94,8 +95,9 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
         </div>
         <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-3" value={notes} onChange={e=>setNotes(e.target.value)}/></label>
         <div className="overflow-x-auto rounded border">
-          <table className="w-full min-w-[1320px] text-sm">
-            <thead><tr><th className="min-w-56 p-3 text-left">Item</th><th className="min-w-44">Destination</th><th className="w-20">UOM</th><th className="w-32">Qty</th><th className="min-w-40 whitespace-nowrap">Unit Cost</th><th className="w-20">PPN</th><th className="w-28">Rate %</th>{hasDirectUse && <th className="min-w-64">Expense destination</th>}</tr></thead>
+          <table className="receiving-lines receiving-lines-edit">
+            <colgroup><col/><col className="rl-destination"/><col className="rl-unit"/><col className="rl-quantity"/><col className="rl-cost"/><col className="rl-tax-check"/><col className="rl-tax-rate"/>{hasDirectUse && <col className="rl-expense"/>}</colgroup>
+            <thead><tr><th className="p-2 text-left">Item</th><th >Destination</th><th className="">UOM</th><th className="">Qty</th><th className="whitespace-nowrap">Unit Cost</th><th className="">PPN</th><th className="">Rate %</th>{hasDirectUse && <th >Expense destination</th>}</tr></thead>
             <tbody>{items.map(item=><tr key={item.item_id} className="border-t">
               <td className="p-3"><div className="font-medium">{item.product_name}</div><div className="text-xs text-slate-500">{item.product_code}</div></td>
               <td className="p-2"><ReceivingDestinationField name={item.product_name} line={item} onChange={value => patch(item.item_id, value)}/></td>
