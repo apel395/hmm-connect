@@ -31,12 +31,13 @@ def category(account, mappings):
     return 'UNDER_EXPENSE' if group == 'OTHER_EXPENSE' else 'UNCLASSIFIED'
 
 
-def presentation(report, originals, values, accounts, mappings, selected):
+def presentation(report, originals, values, accounts, mappings, selected, evidence=frozenset()):
     """Summary layout plus complete related accounts, including zero values."""
+    from app.services.profit_loss_relevance import related
     members = {key: [] for key in CATEGORIES if key != 'UNCLASSIFIED'}
     for aid in originals:
         account = accounts.get(aid)
-        if account:
+        if account and related(account, report, values, evidence):
             code = category(account, mappings)
             members['UNDER_EXPENSE' if code == 'UNCLASSIFIED' else code].append((aid, account))
     def amounts(ids):
