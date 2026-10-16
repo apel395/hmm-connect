@@ -10,6 +10,8 @@ class GoodsReceiptItemCreate(BaseModel):
     market_list_item_id: int | None = None
     product_id: int | None = None
     expense_account_id: int | None = None
+    destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
+    destination_override_reason: str | None = Field(default=None, max_length=500)
     quantity: Decimal = Field(gt=0)
     unit_cost: Decimal | None = Field(default=None, gt=0)
     is_taxable: bool = False
@@ -34,7 +36,7 @@ class GoodsReceiptCreate(BaseModel):
     external_reference: str | None = Field(default=None, max_length=100)
     receipt_type: Literal["GOODS", "SERVICE"] = "GOODS"
     warehouse_id: int | None = None
-    destination_type: Literal["WAREHOUSE", "DIRECT_USE"] = "WAREHOUSE"
+    destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
     notes: str | None = None
     cost_correction_reason: str | None = Field(default=None, max_length=500)
     items: list[GoodsReceiptItemCreate]
@@ -81,6 +83,8 @@ class GoodsReceiptCostCorrection(BaseModel):
 class GoodsReceiptItemUpdate(BaseModel):
     item_id: int
     expense_account_id: int | None = None
+    destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
+    destination_override_reason: str | None = Field(default=None, max_length=500)
     quantity: Decimal = Field(gt=0)
     unit_cost: Decimal = Field(gt=0)
     is_taxable: bool
@@ -96,15 +100,13 @@ class GoodsReceiptItemUpdate(BaseModel):
 class GoodsReceiptUpdate(BaseModel):
     received_at: datetime
     external_reference: str | None = Field(default=None, max_length=100)
-    destination_type: Literal["WAREHOUSE", "DIRECT_USE"]
+    destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
     warehouse_id: int | None = None
     notes: str | None = None
     items: list[GoodsReceiptItemUpdate]
 
     @model_validator(mode="after")
     def validate_update(self):
-        if self.destination_type == "WAREHOUSE" and self.warehouse_id is None:
-            raise ValueError("Warehouse is required for warehouse receiving")
         if not self.items:
             raise ValueError("Receipt must contain items")
         if len({item.item_id for item in self.items}) != len(self.items):

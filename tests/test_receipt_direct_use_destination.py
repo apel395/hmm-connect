@@ -1,28 +1,9 @@
-"""Exercise the actual receiving validation/routing methods without DB setup."""
-import ast
-from pathlib import Path
+"""Receiving routing rules, including explicit warehouse exceptions."""
 from types import SimpleNamespace
 import unittest
-
-ROOT = Path(__file__).resolve().parents[1]
-tree = ast.parse((ROOT/'app/services/goods_receipt_service.py').read_text())
-service = next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='GoodsReceiptService')
-methods = [n for n in service.body if isinstance(n,ast.FunctionDef)
-           and n.name in {'_validate_item_treatments','_receiving_debit_account'}]
-module = ast.Module(body=[ast.ImportFrom(module='__future__',
-    names=[ast.alias(name='annotations')],level=0),
-    ast.ClassDef(name='Service',bases=[],keywords=[],body=methods,decorator_list=[])],type_ignores=[])
-
-
-class HTTPException(Exception):
-    def __init__(self,status_code,detail):
-        super().__init__(detail)
-        self.status_code=status_code
-
-
-namespace={'HTTPException':HTTPException}
-exec(compile(ast.fix_missing_locations(module),'receiving methods','exec'),namespace)
-Service=namespace['Service']
+from fastapi import HTTPException
+from app.services.goods_receipt_service import GoodsReceiptService as Service
+from app.services.receiving_destination import resolve_destination
 
 
 def receipt(destination,*treatments):
@@ -49,17 +30,19 @@ class DestinationTests(unittest.TestCase):
         Service._validate_item_treatments(doc)
         self.assertEqual(Service._receiving_debit_account(Resolver(),doc,doc.items[0].product),'inventory')
 
-    def test_direct_use_items_cannot_enter_warehouse(self):
-        for treatments in [('DIRECT_USE',),('STOCK','DIRECT_USE'),('NON_STOCK',)]:
-            with self.assertRaises(HTTPException):
-                Service._validate_item_treatments(receipt('WAREHOUSE',*treatments))
+    def test_direct_use_warehouse_exception_requires_a_reason(self):
+        product = SimpleNamespace(code="MEAT", inventory_treatment="DIRECT_USE")
+        with self.assertRaises(HTTPException):
+            resolve_destination(product, "WAREHOUSE")
+        self.assertEqual(resolve_destination(product, "WAREHOUSE", "Frozen imported meat")[0], "WAREHOUSE")
+        with self.assertRaises(HTTPException):
+            Service._validate_item_treatments(receipt('WAREHOUSE','NON_STOCK'))
 
-    def test_fixed_assets_still_capitalize_and_cannot_mix_with_consumption(self):
+    def test_fixed_assets_still_capitalize_alongside_consumption(self):
         doc=receipt('DIRECT_USE','FIXED_ASSET')
         Service._validate_item_treatments(doc)
         self.assertEqual(Service._receiving_debit_account(Resolver(),doc,doc.items[0].product),'fixed_asset')
-        with self.assertRaises(HTTPException):
-            Service._validate_item_treatments(receipt('DIRECT_USE','FIXED_ASSET','STOCK'))
+        Service._validate_item_treatments(receipt('DIRECT_USE','FIXED_ASSET','STOCK'))
 
     def test_unreviewed_items_still_require_mapping(self):
         with self.assertRaises(HTTPException):

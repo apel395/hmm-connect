@@ -1,5 +1,6 @@
 from app.models.market_list import MarketList
 from app.services.market_list_receiving import allocated_market_items
+from app.services.receiving_destination import (line_destination, master_destination, resolve_destination, receipt_destination, warehouse_items)
 from app.services.location_access import enforce_location_access
 from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
@@ -63,7 +64,7 @@ class GoodsReceiptService:
 
     @staticmethod
     def _validate_destination(db: Session, data: GoodsReceiptCreate, location_id: int | None):
-        if data.destination_type == "WAREHOUSE":
+        if (warehouse_items(data) if hasattr(data, "items") else data.destination_type == "WAREHOUSE"):
             if data.warehouse_id is None:
                 raise HTTPException(status_code=400, detail="Warehouse is required for warehouse receiving")
             warehouse = db.get(Warehouse, data.warehouse_id)
@@ -102,56 +103,37 @@ class GoodsReceiptService:
         return resolved["business_unit_id"], resolved["location_id"], resolved["department_id"]
 
     @staticmethod
-    def _validate_item_treatments(receipt: GoodsReceipt) -> None:
-        treatments = {
-            str(getattr(item.product, "inventory_treatment", "REVIEW_REQUIRED") or "REVIEW_REQUIRED").upper()
-            for item in receipt.items
-        }
-        if "REVIEW_REQUIRED" in treatments:
-            unresolved = [item.product.code for item in receipt.items if str(getattr(item.product, "inventory_treatment", "REVIEW_REQUIRED") or "REVIEW_REQUIRED").upper() == "REVIEW_REQUIRED"]
-            raise HTTPException(
-                status_code=409,
-                detail=f"Item Master inventory treatment review required before receiving can post: {', '.join(unresolved[:5])}",
-            )
-        # Stockable goods may be purchased for immediate consumption. The
-        # receiving destination describes what actually happened to this batch.
-        if receipt.destination_type == "DIRECT_USE" and treatments <= {"STOCK", "DIRECT_USE", "NON_STOCK"}:
-            return
-        if len(treatments) > 1:
-            raise HTTPException(
-                status_code=409,
-                detail="A receiving document cannot mix STOCK, DIRECT_USE, FIXED_ASSET, or NON_STOCK treatments. Split the receiving document by treatment.",
-            )
-        treatment = next(iter(treatments), None)
-        if treatment == "STOCK" and receipt.destination_type != "WAREHOUSE":
-            raise HTTPException(status_code=409, detail="STOCK items must be received into a warehouse")
-        if treatment in {"DIRECT_USE", "NON_STOCK", "FIXED_ASSET"} and receipt.destination_type == "WAREHOUSE":
-            raise HTTPException(status_code=409, detail=f"{treatment} items cannot be received into warehouse stock")
+    def _validate_item_treatments(receipt):
+        for item in receipt.items:
+            product = item.product
+            master_destination(product)
+            if line_destination(receipt, item) == "WAREHOUSE" and product.inventory_treatment in {"FIXED_ASSET", "NON_STOCK"}:
+                raise HTTPException(409, f"{product.inventory_treatment} item {product.code} cannot be received into warehouse stock")
 
     @staticmethod
-    def _receiving_debit_account(resolver, receipt, product, expense_account_id=None):
+    def _receiving_debit_account(resolver, receipt, product, expense_account_id=None, destination_type=None):
+        destination = destination_type or receipt.destination_type
         treatment = str(getattr(product, "inventory_treatment", "REVIEW_REQUIRED") or "REVIEW_REQUIRED").upper()
         if expense_account_id:
-            if receipt.destination_type != "DIRECT_USE" or treatment not in {"STOCK", "DIRECT_USE", "NON_STOCK"}:
+            if destination != "DIRECT_USE" or treatment not in {"STOCK", "DIRECT_USE", "NON_STOCK"}:
                 raise HTTPException(422, "Expense destination is only available for Direct Use receiving")
             account = resolver.account(expense_account_id, "Direct Use expense destination")
             if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
                 raise HTTPException(422, "Direct Use destination must be an expense account")
             return account
-        if treatment == "STOCK" and receipt.destination_type == "WAREHOUSE":
+        if treatment in {"STOCK", "DIRECT_USE"} and destination == "WAREHOUSE":
             return resolver.inventory_account(product, receipt.location_id)
-        if treatment in {"STOCK", "DIRECT_USE", "NON_STOCK"} and receipt.destination_type == "DIRECT_USE":
+        if treatment in {"STOCK", "DIRECT_USE", "NON_STOCK"} and destination == "DIRECT_USE":
             return resolver.expense_account(product)
-        if treatment == "FIXED_ASSET" and receipt.destination_type != "WAREHOUSE":
+        if treatment == "FIXED_ASSET" and destination == "DIRECT_USE":
             return resolver.fixed_asset_account(product)
-        raise HTTPException(status_code=409, detail=f"Item {product.code} has an incompatible receiving destination or requires inventory treatment review")
+        raise HTTPException(409, f"Item {product.code} has an incompatible receiving destination or requires inventory treatment review")
 
     @staticmethod
     def _validate_hotel_expenses(receipt):
-        if receipt.destination_type != "DIRECT_USE":
-            return
         hotel_items = [item for item in receipt.items
-            if getattr(item.product, "catalog_type", "CATERING") == "HOTEL"
+            if line_destination(receipt, item) == "DIRECT_USE"
+            and getattr(item.product, "catalog_type", "CATERING") == "HOTEL"
             and getattr(item.product, "inventory_treatment", None) != "FIXED_ASSET"]
         if hotel_items and not receipt.department_id:
             raise HTTPException(422, "Select the consuming department for Hotel Direct Use receiving")
@@ -267,7 +249,7 @@ class GoodsReceiptService:
         grouped: dict[int, Decimal] = {}
 
         for item in receipt.items:
-            debit_account = cls._receiving_debit_account(resolver, receipt, item.product, getattr(item, "expense_account_id", None))
+            debit_account = cls._receiving_debit_account(resolver, receipt, item.product, getattr(item, "expense_account_id", None), line_destination(receipt, item))
 
             amount = (
                 Decimal(item.quantity or 0) * Decimal(item.unit_cost or 0)
@@ -321,10 +303,7 @@ class GoodsReceiptService:
 
         line_number = 1
         for account_id, amount in sorted(grouped.items()):
-            if receipt.destination_type == "WAREHOUSE":
-                description = f"Inventory received via {receipt.receipt_number}"
-            else:
-                description = f"Direct consumption received via {receipt.receipt_number}"
+            description = f"Goods received via {receipt.receipt_number}"
             journal.lines.append(
                 JournalLine(
                     line_number=line_number,
@@ -400,13 +379,12 @@ class GoodsReceiptService:
                     raise HTTPException(409, f'Market List item {source.id} exceeds remaining quantity')
         enforce_location_access(user, location_id)
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
-        cls._validate_destination(db, data, location_id)
         receipt = GoodsReceipt(
             receipt_number=cls._number(db), status="DRAFT", purchase_order_id=purchase_order.id if purchase_order else None,
             market_list_id=market.id if market else None,
             supplier_id=supplier_id, received_by_id=user.id, received_at=data.received_at or datetime.now(timezone.utc),
             source_type=data.source_type, external_reference=data.external_reference, receipt_type=data.receipt_type,
-            destination_type=data.destination_type, warehouse_id=data.warehouse_id if data.destination_type == "WAREHOUSE" else None,
+            destination_type=data.destination_type or "DIRECT_USE", warehouse_id=data.warehouse_id,
             notes=data.notes, business_unit_id=business_unit_id, location_id=location_id, department_id=department_id,
         )
 
@@ -435,6 +413,7 @@ class GoodsReceiptService:
                     raise HTTPException(status_code=409, detail=f"Receiving unit cost must be greater than zero for PO item {po_item.id}")
                 receipt.items.append(GoodsReceiptItem(
                     purchase_order_item_id=po_item.id, product_id=po_item.product_id, quantity=incoming.quantity, unit_cost=unit_cost, expense_account_id=incoming.expense_account_id,
+                    destination_type=incoming.destination_type, destination_override_reason=incoming.destination_override_reason,
                     is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
                 ))
             else:
@@ -449,6 +428,7 @@ class GoodsReceiptService:
                     raise HTTPException(status_code=409, detail=f"Receiving unit cost must be greater than zero for product {product.id}")
                 receipt.items.append(GoodsReceiptItem(
                     purchase_order_item_id=None, market_list_item_id=incoming.market_list_item_id if market else None, product_id=product.id, quantity=incoming.quantity, unit_cost=unit_cost, expense_account_id=incoming.expense_account_id,
+                    destination_type=incoming.destination_type, destination_override_reason=incoming.destination_override_reason,
                     is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
                 ))
 
@@ -458,8 +438,17 @@ class GoodsReceiptService:
             line.product = product
             if product.item_type != "BUY":
                 raise HTTPException(422, "Receiving requires a BUY item")
+            line.destination_type, line.destination_override_reason = resolve_destination(
+                product, line.destination_type, line.destination_override_reason, data.destination_type,
+            )
+            if line.destination_type == "DIRECT_USE" and product.inventory_treatment != "FIXED_ASSET":
+                line.expense_account_id = line.expense_account_id or getattr(product, "purchase_account_id", None)
             if line.expense_account_id:
-                cls._receiving_debit_account(resolver, receipt, product, line.expense_account_id)
+                cls._receiving_debit_account(resolver, receipt, product, line.expense_account_id, line.destination_type)
+        receipt.destination_type = receipt_destination(receipt)
+        if not warehouse_items(receipt):
+            receipt.warehouse_id = None
+        cls._validate_destination(db, receipt, location_id)
         cls._validate_hotel_expenses(receipt)
         cls._recalculate_totals(receipt)
         db.add(receipt)
@@ -468,7 +457,7 @@ class GoodsReceiptService:
             db=db, user=user, action="CREATE", entity_type="GOODS_RECEIPT", entity_id=receipt.id,
             summary=f"Created {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number,
             document_status="DRAFT", reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT",
-            details={"source": "PO" if purchase_order else "DIRECT", "cost_overrides": cost_overrides, "subtotal": str(receipt.subtotal), "tax_amount": str(receipt.tax_amount), "total_amount": str(receipt.total_amount)},
+            details={"source": "PO" if purchase_order else "DIRECT", "cost_overrides": cost_overrides, "line_destinations": [{"product_id": item.product_id, "destination_type": item.destination_type, "override_reason": item.destination_override_reason} for item in receipt.items], "subtotal": str(receipt.subtotal), "tax_amount": str(receipt.tax_amount), "total_amount": str(receipt.total_amount)},
         )
         db.commit(); db.refresh(receipt); return receipt
 
@@ -491,33 +480,6 @@ class GoodsReceiptService:
                 if not source or line.quantity > Decimal(source.quantity)-Decimal(used.get(source.id,0)):
                     raise HTTPException(409, 'Market List quantity exceeds the remaining amount')
         purchase_order = receipt.purchase_order
-        destination_probe = GoodsReceiptCreate(
-            business_unit_id=receipt.business_unit_id,
-            location_id=receipt.location_id,
-            department_id=receipt.department_id,
-            purchase_order_id=receipt.purchase_order_id,
-            supplier_id=receipt.supplier_id,
-            received_at=data.received_at,
-            source_type=receipt.source_type,
-            external_reference=data.external_reference,
-            receipt_type=receipt.receipt_type,
-            warehouse_id=data.warehouse_id,
-            destination_type=data.destination_type,
-            notes=data.notes,
-            items=[
-                {
-                    "purchase_order_item_id": item.purchase_order_item_id,
-                    "product_id": item.product_id,
-                    "quantity": item.quantity,
-                    "unit_cost": item.unit_cost,
-                    "is_taxable": item.is_taxable,
-                    "tax_rate": item.tax_rate,
-                }
-                for item in receipt.items
-            ],
-        )
-        cls._validate_destination(db, destination_probe, receipt.location_id)
-
         by_id = {item.id: item for item in receipt.items}
         if set(by_id) != {item.item_id for item in data.items}:
             raise HTTPException(
@@ -532,6 +494,8 @@ class GoodsReceiptService:
                 "quantity": str(item.quantity),
                 "unit_cost": str(item.unit_cost),
                 "expense_account_id": item.expense_account_id,
+                "destination_type": line_destination(receipt, item),
+                "destination_override_reason": getattr(item, "destination_override_reason", None),
                 "is_taxable": bool(item.is_taxable),
                 "tax_rate": str(item.tax_rate or 0),
             }
@@ -546,9 +510,25 @@ class GoodsReceiptService:
                 if quantity > remaining:
                     raise HTTPException(status_code=409, detail=f"Quantity exceeds remaining amount for PO item {po_item.id}")
 
-            if incoming.expense_account_id:
-                cls._receiving_debit_account(DirectCoaService(db), destination_probe, item.product, incoming.expense_account_id)
+            current_destination = line_destination(receipt, item)
+            if "destination_type" in incoming.model_fields_set:
+                requested = incoming.destination_type
+                if requested == current_destination and incoming.destination_override_reason == getattr(item, "destination_override_reason", None):
+                    # Preserve recorded/legacy routing when only cost or quantity changes.
+                    item.destination_type = current_destination
+                else:
+                    item.destination_type, item.destination_override_reason = resolve_destination(
+                        item.product, requested, incoming.destination_override_reason,
+                    )
+            elif data.destination_type is not None:
+                item.destination_type, item.destination_override_reason = resolve_destination(item.product, legacy_header=data.destination_type)
+            else:
+                item.destination_type = current_destination
             item.expense_account_id = incoming.expense_account_id
+            if item.destination_type == "DIRECT_USE" and item.product.inventory_treatment != "FIXED_ASSET":
+                item.expense_account_id = item.expense_account_id or getattr(item.product, "purchase_account_id", None)
+            if item.expense_account_id:
+                cls._receiving_debit_account(DirectCoaService(db), receipt, item.product, item.expense_account_id, item.destination_type)
             item.quantity = quantity
             item.unit_cost = unit_cost
             item.is_taxable = bool(incoming.is_taxable)
@@ -557,6 +537,8 @@ class GoodsReceiptService:
                 "quantity": str(item.quantity),
                 "unit_cost": str(item.unit_cost),
                 "expense_account_id": item.expense_account_id,
+                "destination_type": line_destination(receipt, item),
+                "destination_override_reason": getattr(item, "destination_override_reason", None),
                 "is_taxable": bool(item.is_taxable),
                 "tax_rate": str(item.tax_rate or 0),
             }
@@ -565,8 +547,9 @@ class GoodsReceiptService:
 
         receipt.received_at = data.received_at
         receipt.external_reference = data.external_reference
-        receipt.destination_type = data.destination_type
-        receipt.warehouse_id = data.warehouse_id if data.destination_type == "WAREHOUSE" else None
+        receipt.destination_type = receipt_destination(receipt)
+        receipt.warehouse_id = data.warehouse_id if warehouse_items(receipt) else None
+        cls._validate_destination(db, receipt, receipt.location_id)
         receipt.notes = data.notes
         cls._validate_hotel_expenses(receipt)
         cls._recalculate_totals(receipt)
@@ -588,7 +571,7 @@ class GoodsReceiptService:
             details={
                 "received_at": data.received_at.isoformat(),
                 "external_reference": data.external_reference,
-                "destination_type": data.destination_type,
+                "destination_type": receipt.destination_type,
                 "warehouse_id": receipt.warehouse_id,
                 "notes": data.notes,
                 "item_changes": changes,
@@ -625,7 +608,7 @@ class GoodsReceiptService:
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
         if receipt.purchase_order_id and (not purchase_order or purchase_order.status not in {"APPROVED", "PARTIALLY_RECEIVED"}):
             raise HTTPException(status_code=409, detail="Purchase order is no longer receivable")
-        if receipt.destination_type == "WAREHOUSE":
+        if warehouse_items(receipt):
             warehouse = db.get(Warehouse, receipt.warehouse_id)
             if not warehouse or warehouse.location_id is None:
                 raise HTTPException(status_code=409, detail="Receiving warehouse must be assigned to a work location")
@@ -649,7 +632,7 @@ class GoodsReceiptService:
                 if quantity > remaining: raise HTTPException(status_code=409, detail=f"Quantity exceeds remaining amount for PO item {po_item.id}")
                 po_item.received_quantity = Decimal(po_item.received_quantity or 0) + quantity
                 receipt_item.product_id = po_item.product_id
-            if receipt.destination_type == "WAREHOUSE":
+            if line_destination(receipt, receipt_item) == "WAREHOUSE":
                 existing_movement = (
                     db.query(StockMovement)
                     .filter(
@@ -679,7 +662,7 @@ class GoodsReceiptService:
                 db.add(cls._movement(receipt, receipt_item, "IN", "GOODS_RECEIPT"))
 
         db.flush()
-        if receipt.destination_type == "WAREHOUSE":
+        if warehouse_items(receipt):
             movement_count = (
                 db.query(StockMovement)
                 .filter(
@@ -689,16 +672,16 @@ class GoodsReceiptService:
                 )
                 .count()
             )
-            if movement_count != len(receipt.items):
+            if movement_count != len(warehouse_items(receipt)):
                 raise HTTPException(
                     status_code=409,
                     detail=(
                         f"Receiving inventory ledger verification failed: expected "
-                        f"{len(receipt.items)} movements, found {movement_count}."
+                        f"{len(warehouse_items(receipt))} movements, found {movement_count}."
                     ),
                 )
             missing_inventory = []
-            for receipt_item in receipt.items:
+            for receipt_item in warehouse_items(receipt):
                 inventory = (
                     db.query(Inventory)
                     .filter(
@@ -716,7 +699,7 @@ class GoodsReceiptService:
                 )
 
         journal = cls._sync_accounting_journal(db, receipt=receipt, user=user)
-        if receipt.destination_type == "WAREHOUSE" and journal is not None:
+        if warehouse_items(receipt) and journal is not None:
             resolver = DirectCoaService(db)
             ap_suspense = resolver.ap_suspense_account()
             for movement in (
@@ -752,7 +735,7 @@ class GoodsReceiptService:
             if not item: raise HTTPException(status_code=400, detail=f"Receipt item {correction.item_id} does not belong to this receipt")
             old_cost, new_cost = Decimal(item.unit_cost or 0), Decimal(correction.unit_cost)
             if new_cost == old_cost: continue
-            if receipt.status == "POSTED" and receipt.destination_type == "WAREHOUSE":
+            if receipt.status == "POSTED" and line_destination(receipt, item) == "WAREHOUSE":
                 movement = db.query(StockMovement).filter(StockMovement.goods_receipt_item_id == item.id, StockMovement.movement_type == "IN", StockMovement.reference_type == "GOODS_RECEIPT").order_by(StockMovement.id.asc()).first()
                 if not movement: raise HTTPException(status_code=409, detail=f"Original inventory movement for receipt item {item.id} was not found")
                 later_outbound = db.query(StockMovement).filter(StockMovement.product_id == item.product_id, StockMovement.warehouse_id == receipt.warehouse_id, StockMovement.id > movement.id, StockMovement.movement_type == "OUT").first()
@@ -788,7 +771,7 @@ class GoodsReceiptService:
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
         for receipt_item in receipt.items:
             quantity = Decimal(receipt_item.quantity)
-            if receipt.destination_type == "WAREHOUSE":
+            if line_destination(receipt, receipt_item) == "WAREHOUSE":
                 inventory = db.query(Inventory).filter(Inventory.product_id == receipt_item.product_id, Inventory.warehouse_id == receipt.warehouse_id).with_for_update().first()
                 if not inventory or Decimal(inventory.quantity or 0) < quantity: raise HTTPException(status_code=409, detail=f"Insufficient current stock to return product {receipt_item.product_id}")
                 current_qty, current_avg = Decimal(inventory.quantity or 0), Decimal(inventory.average_cost or 0)

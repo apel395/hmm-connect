@@ -15,6 +15,7 @@ from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission, require_permission
 from app.models.approval_request import ApprovalRequest
+from app.services.receiving_destination import line_destination
 from app.models.department import Department
 from app.models.goods_receipt import GoodsReceipt
 from app.models.location import Location
@@ -144,6 +145,9 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
                 "catalog_type": item.product.catalog_type if item.product else None,
                 "inventory_treatment": item.product.inventory_treatment if item.product else None,
                 "expense_account_id": item.expense_account_id,
+                "destination_type": line_destination(receipt, item),
+                "destination_override_reason": item.destination_override_reason,
+                "purchase_account_id": item.product.purchase_account_id if item.product else None,
                 "product_code": item.product.code if item.product else None,
                 "product_name": item.product.name if item.product else None,
                 "uom": (item.purchase_order_item.uom if item.purchase_order_item else None) or (item.product.uom if item.product else None),
@@ -202,6 +206,7 @@ def remaining_items(purchase_order: PurchaseOrder):
             "product_id": item.product_id,
             "catalog_type": item.product.catalog_type if item.product else None,
             "inventory_treatment": item.product.inventory_treatment if item.product else None,
+            "purchase_account_id": item.product.purchase_account_id if item.product else None,
             "product_code": item.product.code if item.product else None,
             "product_name": item.product.name if item.product else None,
             "uom": item.uom or (item.product.uom if item.product else None),
@@ -257,7 +262,9 @@ def list_receipts(
     if purchase_order_id:
         query = query.filter(GoodsReceipt.purchase_order_id == purchase_order_id)
     if destination_type:
-        query = query.filter(GoodsReceipt.destination_type == destination_type.upper())
+        selected_destination = destination_type.upper()
+        destinations = [selected_destination, "MIXED"] if selected_destination in {"WAREHOUSE", "DIRECT_USE"} else [selected_destination]
+        query = query.filter(GoodsReceipt.destination_type.in_(destinations))
     if status:
         query = query.filter(GoodsReceipt.status == status.upper())
     if date_from:
@@ -378,7 +385,7 @@ def receivable_market_lists(db: Session = Depends(get_db), user=Depends(receivin
             items.append(dict(market_list_item_id=item.id,product_id=item.product_id,
                 product_code=product.code,product_name=product.name,uom=product.uom,
                 quantity=remaining,remaining_quantity=remaining,unit_cost=item.estimated_price,
-                catalog_type=product.catalog_type, inventory_treatment=product.inventory_treatment,
+                catalog_type=product.catalog_type, inventory_treatment=product.inventory_treatment, purchase_account_id=product.purchase_account_id,
                 is_taxable=item.is_taxable,tax_rate=item.tax_rate))
         if items:
             result.append(dict(id=market.id,ml_number=market.ml_number,request_date=market.request_date,

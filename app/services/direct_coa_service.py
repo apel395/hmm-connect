@@ -247,15 +247,12 @@ class DirectCoaService:
         if uses_grni:
             check("GRNI", self.grni_account)
 
-        inventory = bool(
-            invoice.goods_receipt
-            and str(invoice.goods_receipt.destination_type or "").upper() == "WAREHOUSE"
-        )
         for index, line in enumerate(invoice.lines, start=1):
             if uses_grni:
                 continue
 
             def validate_line(current=line):
+                inventory = self._invoice_line_inventory(invoice, current)
                 if current.account_id:
                     account = self.account(current.account_id, f"Invoice line {index}")
                 elif current.product:
@@ -276,16 +273,28 @@ class DirectCoaService:
 
         return {"is_ready": not blockers, "blockers": blockers}
 
+    def _invoice_line_inventory(self, invoice, line):
+        from app.models.goods_receipt import GoodsReceiptItem
+        from app.services.receiving_destination import line_destination
+        source_id = getattr(line, "goods_receipt_item_id", None)
+        source = self.db.get(GoodsReceiptItem, source_id) if source_id else None
+        receipt = source.goods_receipt if source else invoice.goods_receipt
+        if source:
+            return line_destination(receipt, source) == "WAREHOUSE"
+        if receipt and receipt.destination_type == "MIXED":
+            raise HTTPException(409, "Mixed receiving invoice lines require their source receiving item")
+        return bool(receipt and receipt.destination_type in {"WAREHOUSE", "INVENTORY"})
+
     def snapshot_invoice_line(self, invoice: SupplierInvoice, line: SupplierInvoiceLine) -> ChartOfAccount:
         from app.models.goods_receipt import GoodsReceiptItem
         source_id = getattr(line, "goods_receipt_item_id", None)
         source = self.db.get(GoodsReceiptItem, source_id) if source_id else None
         receipt = source.goods_receipt if source else invoice.goods_receipt
-        inventory = bool(receipt and receipt.destination_type == "WAREHOUSE")
+        inventory = self._invoice_line_inventory(invoice, line)
         if source and getattr(source, "expense_account_id", None):
             from app.services.goods_receipt_service import GoodsReceiptService
             # Keep the selected Direct Use expense on the invoice snapshot too.
-            account = GoodsReceiptService._receiving_debit_account(self, receipt, source.product, source.expense_account_id)
+            account = GoodsReceiptService._receiving_debit_account(self, receipt, source.product, source.expense_account_id, "WAREHOUSE" if inventory else "DIRECT_USE")
             line.account_id = account.id
             self.validate_invoice_debit(account, inventory=False)
             return account
