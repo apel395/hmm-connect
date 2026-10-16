@@ -224,3 +224,47 @@ def test_issue_rejects_legacy_empty_store_request(store_db):
 
     assert error.value.status_code == 409
     assert "at least one item" in str(error.value.detail)
+
+
+def test_issue_draft_rejects_closed_period_before_any_stock_change(store_db):
+    db,bu,dept,loc,warehouse,requester,store_user,products=store_db
+    request=make_request(db,bu,dept,loc,warehouse,requester,products[:1],[1])
+    period=db.query(FiscalPeriod).one();period.is_open=False;period.is_closed=True;db.commit()
+    with pytest.raises(HTTPException) as error:
+        StoreRequestService.create_issue(db,request_id=request.id,data=StoreRequestIssueCreate(items=[StoreRequestIssueItem(item_id=request.items[0].id,quantity=1)]),current_user=store_user)
+    assert 'closed' in error.value.detail
+    assert db.query(StoreIssue).count()==0
+    assert db.query(StockMovement).count()==0
+
+
+def test_issue_draft_backdating_uses_selected_period_setting(store_db,monkeypatch):
+    from datetime import timedelta
+    db,bu,dept,loc,warehouse,requester,store_user,products=store_db
+    today=FiscalPeriodService.business_today()
+    past=today-timedelta(days=1)
+    request=make_request(db,bu,dept,loc,warehouse,requester,products[:1],[1])
+    request.request_date=past
+    period=db.query(FiscalPeriod).one();period.start_date=past;period.allow_backdated_entries=False;db.commit()
+    data=StoreRequestIssueCreate(issue_date=past,items=[StoreRequestIssueItem(item_id=request.items[0].id,quantity=1)])
+    with pytest.raises(HTTPException) as error:
+        StoreRequestService.create_issue(db,request_id=request.id,data=data,current_user=store_user)
+    assert 'Backdated entries are disabled' in error.value.detail
+    period.allow_backdated_entries=True;db.commit()
+    issue=StoreRequestService.create_issue(db,request_id=request.id,data=data,current_user=store_user)
+    assert issue.issue_date==past and issue.status=='DRAFT'
+    assert db.query(StockMovement).count()==0
+
+
+def test_request_creation_rejects_backdate_until_period_enables_it(store_db):
+    from datetime import timedelta
+    from app.schemas.store_request import StoreRequestCreate, StoreRequestItemCreate
+    db,bu,dept,loc,warehouse,requester,_,products=store_db
+    past=FiscalPeriodService.business_today()-timedelta(days=1)
+    period=db.query(FiscalPeriod).one();period.start_date=past;period.allow_backdated_entries=False;db.commit()
+    from app.models.location_department import LocationDepartment
+    db.add(LocationDepartment(location_id=loc.id,department_id=dept.id));db.commit()
+    data=StoreRequestCreate(request_date=past,business_unit_id=bu.id,department_id=dept.id,location_id=loc.id,warehouse_id=warehouse.id,items=[StoreRequestItemCreate(product_id=products[0].id,quantity=1)])
+    with pytest.raises(HTTPException) as error:
+        StoreRequestService.create(db,data=data,current_user=requester)
+    assert 'Backdated entries are disabled' in error.value.detail
+    assert db.query(StoreRequest).count()==0

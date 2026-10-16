@@ -28,7 +28,8 @@ from app.services.location_access import apply_location_scope, assigned_location
 from app.models.warehouse import Warehouse
 
 router = APIRouter(prefix="/products", tags=["Products"])
-MARKET_SUBGROUPS = {"VEGETABLES", "FRUIT"}
+from app.services import item_departments
+from app.models.purchasing_item_policy import MARKET_SUBGROUPS, is_market_list_product
 
 def _is_market_subgroup(subgroup_name: str | None) -> bool:
     return (subgroup_name or "").strip().upper() in MARKET_SUBGROUPS
@@ -37,10 +38,11 @@ def _apply_filters(query, *, active_only: bool, search: str | None, market_only:
     if active_only:
         query = query.filter(Product.is_active.is_(True))
     subgroup = func.upper(func.trim(Product.subgroup_name))
+    eligible = (Product.item_type == "BUY") & subgroup.in_(MARKET_SUBGROUPS) & ((subgroup != "MEAT") | Product.is_market_item.is_(True))
     if market_only:
-        query = query.filter(subgroup.in_(MARKET_SUBGROUPS))
+        query = query.filter(eligible)
     elif exclude_market:
-        query = query.filter(or_(Product.subgroup_name.is_(None), ~subgroup.in_(MARKET_SUBGROUPS)))
+        query = query.filter(~eligible)
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
@@ -168,7 +170,8 @@ def list_products(
     rows = query.order_by(Product.code).offset((page - 1) * page_size).limit(page_size).all()
     total_pages = ceil(total / page_size) if total else 0
     costs = receipt_costs(db, [row.id for row in rows], user)
-    return {"items": [serialize_item(row, costs.get(row.id)) for row in rows], "page": page, "page_size": page_size, "total_items": total, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
+    departments = item_departments.payloads(db, [r.id for r in rows])
+    return {"items": [{**serialize_item(row, costs.get(row.id)), **departments.get(row.id, {"department_id": None, "department_name": None})} for row in rows], "page": page, "page_size": page_size, "total_items": total, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
 
 def classification_catalog(groups, products, item_type=None):
     catalog = {}
@@ -211,7 +214,7 @@ def lookup_products(catalog_type: Annotated[str | None, Query(pattern="^(CATERIN
     query = scoped_items(query.filter(Product.item_type == item_type), db, user, catalog_type)
     rows = query.order_by(Product.name, Product.code).limit(limit).all()
     price_history = receipt_costs(db, [row.id for row in rows], user)
-    return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "inventory_treatment": row.inventory_treatment, "inventory_account_id": row.inventory_account_id, "purchase_account_id": row.purchase_account_id, "cogs_account_id": row.cogs_account_id, "asset_account_id": row.asset_account_id, "is_market_item": _is_market_subgroup(row.subgroup_name), "catalog_type": row.catalog_type, "cost_price": row.cost_price, **reference_payload(row, price_history.get(row.id))} for row in rows]
+    return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "inventory_treatment": row.inventory_treatment, "inventory_account_id": row.inventory_account_id, "purchase_account_id": row.purchase_account_id, "cogs_account_id": row.cogs_account_id, "asset_account_id": row.asset_account_id, "is_market_item": is_market_list_product(row), "catalog_type": row.catalog_type, "cost_price": row.cost_price, **reference_payload(row, price_history.get(row.id))} for row in rows]
 
 def numbering_classification(db, item_type, group_code, subgroup_code):
     catalog = classification_master(item_type=item_type, db=db)
@@ -227,6 +230,11 @@ def numbering_classification(db, item_type, group_code, subgroup_code):
 def preview_item_code(group_code: str, subgroup_code: str = "", item_type: Annotated[str, Query(pattern="^(BUY|SELL)$")] = "BUY", db: Session = Depends(get_db), _=Depends(get_current_user)):
     numbering_classification(db, item_type, group_code, subgroup_code)
     return {"code": next_item_code(db, group_code, subgroup_code)}
+
+@router.get("/departments")
+def item_department_options(catalog_type: Annotated[str, Query(pattern="^(CATERING|HOTEL)$")] = "CATERING", db: Session = Depends(get_db), user=Depends(get_current_user)):
+    return {"available": item_departments.available(db), "items": [{"id": d.id, "name": d.name} for d in item_departments.options(db, user, catalog_type)]}
+
 
 @router.get("/{product_id}")
 def product_detail(product_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -267,7 +275,7 @@ def product_detail(product_id: int, db: Session = Depends(get_db), user=Depends(
                  for line, receipt in receipts]
     unit = db.get(BusinessUnit, product.sales_business_unit_id) if product.sales_business_unit_id else None
     location = db.get(Location, product.sales_location_id) if product.sales_location_id else None
-    return {"item": serialize_item(product, receipt_costs(db, [product_id], user).get(product_id)), "stock": stock, "purchases": purchases, "receiving": receiving,
+    return {"item": {**serialize_item(product, receipt_costs(db, [product_id], user).get(product_id)), **item_departments.payloads(db, [product_id]).get(product_id, {"department_id": None, "department_name": None})}, "stock": stock, "purchases": purchases, "receiving": receiving,
             "sales_scope": {"business_unit": unit.name if unit else None,
                             "location": location.name if location else None}}
 
@@ -276,6 +284,7 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     if not is_superuser(user):
         raise HTTPException(status_code=403, detail="Only SYSTEM_ADMINISTRATOR can create new Item Master records")
     payload = data.model_dump()
+    department_id = payload.pop("department_id", None)
     automatic = payload.pop("auto_code") or not data.code.strip()
     lock_item_creation(db)
     if automatic:
@@ -291,7 +300,7 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     payload["code"] = normalized_code
     if str(payload.get("subgroup_name") or "").strip().upper() == "GRESORIS":
         payload["subgroup_name"] = "GROCERIES"
-    payload["is_market_item"] = _is_market_subgroup(payload.get("subgroup_name"))
+    payload["is_market_item"] = data.is_market_item if "is_market_item" in data.model_fields_set else (_is_market_subgroup(payload.get("subgroup_name")) and payload.get("subgroup_name", "").strip().upper() != "MEAT")
     _normalize_item_coa(payload)
     _validate_treatment(payload)
     _validate_coa_mappings(db, payload)
@@ -299,6 +308,8 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     validate_reference_profile(db, payload)
     product = Product(**payload)
     db.add(product)
+    db.flush()
+    item_departments.assign(db, product, department_id, user)
     try:
         db.commit()
     except IntegrityError:
@@ -327,6 +338,8 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     payload = data.model_dump(exclude_unset=True)
+    department_changed = "department_id" in payload
+    department_id = payload.pop("department_id", None)
     regenerate = payload.pop("regenerate_code", False)
     expected_code = payload.pop("expected_code", None)
     before_code = product.code
@@ -355,7 +368,12 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     for field, value in payload.items():
         if field != "is_market_item":
             setattr(product, field, value)
-    product.is_market_item = _is_market_subgroup(product.subgroup_name)
+    product.is_market_item = payload.get("is_market_item", product.is_market_item) if "subgroup_name" not in payload or "is_market_item" in payload else (_is_market_subgroup(product.subgroup_name) and product.subgroup_name.strip().upper() != "MEAT")
+    if department_changed or "catalog_type" in payload:
+        old_department = item_departments.payloads(db, [product.id]).get(product.id, {})
+        department_id = department_id if department_changed else old_department.get("department_id")
+        item_departments.assign(db, product, department_id, user)
+        record_audit(db, user, "ITEM_DEPARTMENT_UPDATED", "PRODUCT", f"Updated department for {product.code}", entity_id=product.id, before_data=old_department, after_data={"department_id": department_id})
     if regenerate:
         record_audit(db, user, "ITEM_CODE_REPAIRED", "PRODUCT", f"Replaced import code {before_code} with {product.code}", entity_id=product.id,
             before_data={"code": before_code}, after_data={"code": product.code, "group_code": product.group_code, "subgroup_code": product.subgroup_code})

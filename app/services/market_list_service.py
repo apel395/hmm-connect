@@ -30,7 +30,7 @@ class MarketListService:
         if not is_market_list_product(product):
             raise HTTPException(
                 status_code=409,
-                detail=f"{product.code} - {product.name} must use Purchase Requisition; Market List only accepts VEGETABLES and FRUIT.",
+                detail=f"{product.code} - {product.name} must use Purchase Requisition; Item is not enabled for Market List in Item Master.",
             )
         return product
 
@@ -129,7 +129,7 @@ class MarketListService:
         if invalid_market_items:
             raise HTTPException(
                 status_code=409,
-                detail="Market List only accepts VEGETABLES and FRUIT; invalid item(s): " + ", ".join(invalid_market_items[:5]),
+                detail="Items not enabled for Market List: " + ", ".join(invalid_market_items[:5]),
             )
         unresolved = [i.product.name for i in market_list.items if i.product.tax_category == "REVIEW_REQUIRED"]
         if unresolved:

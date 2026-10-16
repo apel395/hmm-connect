@@ -76,3 +76,5 @@ from app.models.ar_invoice_layout import ARInvoiceLayout
 from app.services import asset_master_registration as _asset_master_registration
 
 from app.models.statistical_value import StatisticalValue
+
+from app.models.item_department import ItemDepartment

@@ -109,6 +109,7 @@ class StoreRequestService:
         business_unit_id = location.business_unit_id
         department_id = data.department_id or current_user.default_department_id or current_user.department_id
         validate_dimensions(db, business_unit_id, location_id, department_id, True)
+        FiscalPeriodService.validate_posting_date(db, data.request_date or FiscalPeriodService.business_today())
         request = StoreRequest(
             sr_number=next_document_number(db, "SR"),
             status="DRAFT",
@@ -144,6 +145,8 @@ class StoreRequestService:
         warehouse = StoreRequestService._warehouse(db, data.warehouse_id, current_user, location_id)
         if warehouse.location is None or warehouse.location.business_unit_id is None:
             raise HTTPException(409, "Store Request warehouse Location must belong to a Business Unit")
+        if data.request_date and data.request_date != request.request_date:
+            FiscalPeriodService.validate_posting_date(db, data.request_date)
         request.request_date = data.request_date or request.request_date
         request.notes = data.notes
         request.business_unit_id = warehouse.location.business_unit_id
@@ -243,6 +246,7 @@ class StoreRequestService:
         if not data.items:
             raise HTTPException(status_code=400, detail="Issue must have items")
         issue_date = data.issue_date or FiscalPeriodService.business_today()
+        FiscalPeriodService.validate_posting_date(db, issue_date)
         if issue_date < request.request_date:
             raise HTTPException(status_code=400, detail="Issue date cannot precede request date")
         requested = {item.id: item for item in request.items}
