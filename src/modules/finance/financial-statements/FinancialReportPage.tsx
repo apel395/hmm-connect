@@ -9,6 +9,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { DepartmentPerformance } from "./DepartmentPerformanceTable";
 import type { DepartmentStatement } from "./DepartmentStatementTables";
+import ReportStatisticsTable, { type ReportStatistics } from "./ReportStatisticsTable";
 import ProfitLossTable, { type PresentationRow, type RelatedAccount } from "./ProfitLossTable";
 import api from "@/api/client";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
@@ -23,7 +24,7 @@ export type Period = "MTD" | "YTD";
 export type Amounts = { current: string; budget: string | null; last_month: string | null; last_year: string | null; variance: string | null; movement?: string };
 export type Row = { account_code: string; account_name: string; account_ids: number[]; section: string; includes_unclosed_earnings?: boolean; periods: Record<Period, Amounts> };
 export type EarningsEvidence = { account_id: number | null; account_name: string | null; opening_balance: string; posted_movement: string; unclosed_profit_loss: string; displayed_balance: string };
-export type Report = { executive_rows?: Row[]; summary?: Record<Period, Record<string, { earnings_reconciliation?: EarningsEvidence }>>; related_accounts?: RelatedAccount[]; presentation_rows?: PresentationRow[]; report_scope?: string; balance_control?: {difference: string; is_balanced: boolean}; department_reports?: DepartmentStatement[]; departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
+export type Report = { statistics?: ReportStatistics; executive_rows?: Row[]; summary?: Record<Period, Record<string, { earnings_reconciliation?: EarningsEvidence }>>; related_accounts?: RelatedAccount[]; presentation_rows?: PresentationRow[]; report_scope?: string; balance_control?: {difference: string; is_balanced: boolean}; department_reports?: DepartmentStatement[]; departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
 const money = (value: string | number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { maximumFractionDigits: 2 });
 const input = "h-8 rounded border border-slate-300 bg-white px-2 text-xs";
 const labels: Record<string, string> = { REVENUE: "Pendapatan", COST_OF_REVENUE: "HPP", GOI: "GOI", GOP: "GOP / GOL", NOP: "NOP", EXPENSES: "Beban", ASSETS: "Aset", LIABILITIES: "Liabilitas", EQUITY: "Ekuitas" };
@@ -106,6 +107,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     <span className="workspace-scope-label">{filters.as_of_date} · {scopeNames.join(" · ") || "Consolidated"}</span></div>
     {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
       <div className="workspace-report-totals flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}</div>
+      {kind === "PROFIT_LOSS" && <ReportStatisticsTable data={data.statistics} periods={[period]} />}
       {kind === "BALANCE_SHEET" ? <div className="workspace-report-grid">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : <ProfitLossTable data={data} periods={[period]} asOf={filters.as_of_date} />}
       <div className="hidden print:block text-xs">{user?.full_name || user?.username} · {new Date().toLocaleString()}</div>
     </>}

@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import ReportStatisticsTable from "./ReportStatisticsTable";
 import ProfitLossTable from "./ProfitLossTable";
 import api from "@/api/client";
 import useAuthStore from "@/store/auth";
@@ -70,6 +71,7 @@ export function FinancialStatementPrint({ kind, data, asOf, printedBy }: { kind:
   const metadata = <div className="print-meta">{printedBy ? `Dicetak oleh ${printedBy} · ` : ""}{new Date().toLocaleString("id-ID")} · MMH-Connect</div>;
   return <article className="statement-print print-document" data-print-ready="true"><style>{kind === "BALANCE_SHEET" && data.header_only ? css.replace("A4 landscape", "A4 portrait") : css}</style><ReportHeader kind={kind} data={data} asOf={asOf} />
     {kind === "BALANCE_SHEET" && <div className="statement-summary">{["ASSETS", "LIABILITIES", "EQUITY"].map(section => <div key={section}>{labels[section]}<b>{money(data.section_totals[section]?.YTD.current)}</b></div>)}</div>}
+    {kind === "PROFIT_LOSS" && <ReportStatisticsTable data={data.statistics} periods={["MTD","YTD"]} printable />}
     {kind === "PROFIT_LOSS" ? data.presentation_rows ? <ProfitLossTable data={data} periods={["MTD", "YTD"]} asOf={asOf} printable /> : <table><thead><tr><th className="account" rowSpan={2}>Akun</th>{(["MTD", "YTD"] as const).map(period => <th key={period} colSpan={metrics.length}>{period}<span className="period-range">{data.periods[period].current?.join(" — ")}</span></th>)}</tr><tr>{["MTD", "YTD"].flatMap(period => metricNames.map(name => <th className="amount" key={`${period}-${name}`}>{name}</th>))}</tr></thead><tbody>
       <SectionRows data={data} sections={["REVENUE", "COST_OF_REVENUE", "EXPENSES"]} periods={["MTD", "YTD"]} columns={metrics} />
       <tr className="grand-total"><td>Laba / Rugi</td>{(["MTD", "YTD"] as const).flatMap(period => metrics.map(metric => <td className="amount" key={`${period}-${metric}`}>{money(profit(data, period, metric))}</td>))}</tr>
