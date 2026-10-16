@@ -159,3 +159,12 @@ def test_export_statistical_rows_numeric_percent_and_no_financial_effect(statist
         Path(output).write_bytes(content)
         import json
         Path(output+'.json').write_text(json.dumps(report,default=str))
+
+
+def test_archiving_metric_keeps_historical_report_data(statistical_records):
+    db,_,_,_,_,stat,_=statistical_records
+    stat['ROOM_AVAILABLE'].is_active=False
+    db.commit()
+    assert item(build(db,report_scope='HOTEL'),'ROOM_AVAILABLE')['periods']['YTD']['current']==200
+    with pytest.raises(HTTPException):
+        save_mappings(db,{'ROOM_AVAILABLE':stat['ROOM_AVAILABLE'].id})

@@ -33,13 +33,13 @@ def mappings(db):
     resolved = {}
     for key, (_, code, _) in SOURCES.items():
         account = accounts.get(overrides.get(key)) if key in overrides else next((a for a in accounts.values() if code and a.account_number == code), None)
-        if account and eligible(account, key, accounts):
+        if account and eligible(account, key, accounts, reading=True):
             resolved[key] = account.id
     return overrides, resolved, accounts
 
 
-def eligible(account, key, accounts):
-    if not account.is_active:
+def eligible(account, key, accounts, reading=False):
+    if not reading and not account.is_active:
         return False
     if key == 'ROOM_REVENUE':
         return account.account_type in ('REVENUE', 'INCOME')
