@@ -1,3 +1,5 @@
+import { Trash2 } from "lucide-react";
+import "../receiving-lines.css";
 import api from "@/api/client";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -186,7 +188,7 @@ export default function DirectReceiveDialog({
   };
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="max-w-[1440px]">
         <DialogHeader>
           <DialogTitle>{marketListMode ? "Receiving from Market List" : "Create Direct Receiving Draft"}</DialogTitle>
         </DialogHeader>
@@ -267,15 +269,16 @@ export default function DirectReceiveDialog({
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <label className="mb-2 block text-xs">Item catalog<select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL")}><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>
-            <table className="min-w-[1240px] w-full text-xs">
+            <table className="receiving-lines receiving-lines-direct">
+              <colgroup><col/><col className="rl-destination"/><col className="rl-unit"/><col className="rl-quantity"/><col className="rl-cost"/><col className="rl-tax-rate"/><col className="rl-amount"/><col className="rl-total"/><col className="rl-action"/></colgroup>
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="min-w-56 p-2 text-left">Product</th>
+                  <th className="p-2 text-left">Product</th>
                   <th className="p-2 text-left">Destination</th>
                   <th>UOM</th>
                   <th>Qty</th>
-                  <th className="min-w-40 whitespace-nowrap">Unit Cost</th>
-                  <th>PPN estimate %</th>
+                  <th className="whitespace-nowrap">Unit Cost</th>
+                  <th title="Provisional PPN rate; confirmed in AP">PPN %</th>
                   <th>PPN</th>
                   <th>Line Total</th>
                   <th></th>
@@ -334,14 +337,16 @@ export default function DirectReceiveDialog({
                       <td className="p-2">
                         <Button
                           size="sm"
-                          variant="danger"
+                          variant="ghost"
+                          aria-label={`Remove item ${index + 1}`}
+                          title="Remove item"
                           onClick={() =>
                             setLines((current) =>
                               current.filter((_, i) => i !== index),
                             )
                           }
                         >
-                          Remove
+                          <Trash2 size={14}/>
                         </Button>
                       </td>
                     </tr>

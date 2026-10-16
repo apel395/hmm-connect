@@ -9,7 +9,7 @@ export default function ReceivingDestinationField({ name, line, onChange }: Prop
   const effective = destinationFor(line);
   const exceptional = effective !== baseline;
   const canOverride = line.inventory_treatment === "STOCK" || line.inventory_treatment === "DIRECT_USE";
-  return <div className="min-w-40 space-y-1">
+  return <div className="min-w-0 space-y-1">
     <div className="flex items-center justify-between gap-2">
       <span title={exceptional ? "Receiving exception" : "From Item Master"} className={`whitespace-nowrap text-xs ${exceptional ? "font-medium text-amber-800" : "text-slate-700"}`}>{destinationLabel(effective, line.inventory_treatment)}{exceptional ? " *" : ""}</span>
       {canOverride && <button type="button" className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-emerald-700" aria-label={`Destination options for ${name}`} title="Special case" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}><SlidersHorizontal size={14}/></button>}
