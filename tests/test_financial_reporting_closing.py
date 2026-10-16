@@ -247,10 +247,10 @@ def test_report_api_scopes_reads_and_excel_and_rejects_other_location(db):
     async def collect():
         return b"".join([chunk async for chunk in response.body_iterator])
     workbook=load_workbook(BytesIO(asyncio.run(collect())))
-    assert workbook.sheetnames == ["MTD","YTD"]
-    values=list(workbook["MTD"].values)
-    assert any(row[0]=="Pendapatan" and row[1]==100 for row in values)
-    assert not any(row[2]==900 for row in values)
+    assert workbook.sheetnames[0] == "Summary"
+    values=list(workbook["Summary"].values)
+    assert any(row[0]=="Net Revenue With Service Charge" and row[1]==100 and row[10]==100 for row in values)
+    assert not any(value==900 for row in values for value in row)
 
 
 def test_overlapping_budgets_require_selection_and_missing_budget_is_unavailable(db):

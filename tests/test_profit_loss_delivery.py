@@ -73,13 +73,13 @@ def test_excel_summary_first_one_sheet_per_dimension_both_periods(records):
     report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10))
     sheets=workbook_sheets(report)
     assert sheets[0][0]=='Summary'
-    assert len(sheets)==4
-    assert len(set(name.casefold() for name,_ in sheets))==4
+    assert len(sheets)==6
+    assert len(set(name.casefold() for name,_ in sheets))==6
     assert all(len(name)<=31 for name,_ in sheets)
-    assert all('MTD Current' in rows[1] and 'YTD Current' in rows[1] for _,rows in sheets)
+    assert all('MTD Current' in rows[5] and 'YTD Current' in rows[5] for _,rows in sheets)
     with ZipFile(BytesIO(build_xlsx(sheets))) as x:
         root=ET.fromstring(x.read('xl/workbook.xml'))
-        assert len(root.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheets'))==4
+        assert len(root.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheets'))==6
         assert b'700-0' not in x.read('xl/worksheets/sheet1.xml')
 
 
@@ -141,9 +141,92 @@ def test_excel_export_ignores_hidden_accounts_and_includes_zero_department_accou
     response=export_comparison(report_type='PROFIT_LOSS',as_of_date=date(2026,10,10),report_scope='HOTEL',include_zero=False,kap=True,db=db,user=admin)
     async def collect():return b''.join([chunk async for chunk in response.body_iterator])
     workbook=load_workbook(BytesIO(asyncio.run(collect())))
-    rows=list(workbook[workbook.sheetnames[1]].values)
-    assert any(row[0]=='Unused department expense' and row[1]==0 and row[6]==0 for row in rows)
-    assert any(row[0]=='Cost' and row[1]==100 for row in rows)
-    assert any(row[0]=='Salary' and row[1]==50 for row in rows)
-    assert any(row[0]=='Revenue' and row[1]==1000 for row in rows)
+    rows=list(workbook[next(name for name in workbook.sheetnames if 'House Keeping' in name)].values)
+    assert any(str(row[0]).strip()=='Unused department expense' and row[1]==0 and row[10]==0 for row in rows)
+    assert any(str(row[0]).strip()=='Cost' and row[1]==100 for row in rows)
+    assert any(str(row[0]).strip()=='Salary' and row[1]==50 for row in rows)
+    assert any(str(row[0]).strip()=='Revenue' and row[1]==1000 for row in rows)
     assert workbook.sheetnames[0]=='Summary'
+
+
+def test_template_export_subtotals_match_report_and_keep_missing_comparisons(records):
+    from app.services.profit_loss_workbook import department_rows, summary_rows
+    db, *_ = records
+    report = deliver(FinancialReportingService(db), as_of_date=date(2026,10,10))
+    for statement in [report, *report['unit_reports'], *report['group_reports']]:
+        rows = department_rows(statement, 'Test', report['as_of_date'])
+        net = next(r for r in rows if r and r[0] == 'Net Operating Profit / Loss')
+        expected = next(r for r in statement['presentation_rows'] if r['key'] == 'NOP')
+        assert net[1] == expected['periods']['MTD']['current']
+        assert net[10] == expected['periods']['YTD']['current']
+        assert net[3] is None  # no budget entered
+        assert net[7] is None  # no prior-year financial evidence
+    summary = summary_rows(report, 'Summary', report['group_reports'], report['as_of_date'])
+    net = next(r for r in summary if r and r[0] == 'Net Operating Profit / Loss')
+    assert net[1] == subtotal(report, 'NOP')
+
+
+def test_template_service_charge_is_counted_once_and_combined_payroll_stays_intact(records):
+    from app.services.profit_loss_workbook import department_rows, service_charge
+    db,h,c1,c2,d,_ = records
+    sc = ChartOfAccount(account_number='400-SC', account_name='Service Charge Revenue', account_type='REVENUE', normal_balance='CREDIT', is_posting=True)
+    wage = ChartOfAccount(account_number='600-SC', account_name='Service Charge Distribution', account_type='EXPENSE', normal_balance='DEBIT', is_posting=True, financial_statement_group='OPERATING_PAYROLL')
+    db.add_all([sc,wage]);db.flush()
+    journal = JournalEntry(journal_number='SC-QA', posting_date=date(2026,10,5), status='POSTED',reference_type='MANUAL',reference_id=0,location_id=h.id,business_unit_id=h.business_unit_id,department_id=d.id)
+    journal.lines = [JournalLine(account_id=sc.id,debit=0,credit=100),JournalLine(account_id=wage.id,debit=60,credit=0)]
+    db.add(journal);db.commit()
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='HOTEL')
+    rows=department_rows(report,'Hotel',report['as_of_date'])
+    get=lambda label:next(r for r in rows if r and r[0]==label)
+    assert get('Net Revenue Without Service Charge')[1] == 1000
+    assert get('Service Charge Revenue')[1] == 100
+    assert get('Net Revenue With Service Charge')[1] == 1100
+    assert get('Service Charge Distribution')[1] == 60
+    assert get('Net Operating Profit / Loss')[1] == subtotal(report,'NOP') == 785
+    assert not service_charge({'account_name':'Salary, Wages & Service Charge'})
+
+
+def test_template_variance_is_last_month_and_percentages_use_matching_revenue(records):
+    from app.services.profit_loss_workbook import department_rows
+    db,*_=records
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='HOTEL')
+    # Distinct comparisons prove columns do not reuse the budget variance.
+    for account in report['related_accounts']:
+        for p in ('MTD','YTD'):
+            account['periods'][p]['last_month']=account['periods'][p]['current']/2
+            account['periods'][p]['budget']=account['periods'][p]['current']*2
+    for row in report['presentation_rows']:
+        for p in ('MTD','YTD'):
+            row['periods'][p]['budget']=Decimal(0)
+    rows=department_rows(report,'Hotel',report['as_of_date'])
+    row=next(r for r in rows if r and r[0]=='Net Revenue With Service Charge')
+    assert row[1:7] == [1000,1,2000,1,500,1]
+    assert row[9] == 500
+    assert row[14] == 500
+
+
+def test_template_excel_layout_print_and_numeric_formats(records, tmp_path):
+    from openpyxl import load_workbook
+    db,*_=records
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10))
+    workbook=load_workbook(BytesIO(build_xlsx(workbook_sheets(report))))
+    for sheet in workbook:
+        assert sheet.freeze_panes=='B7'
+        assert sheet.print_title_rows=='$1:$6'
+        assert sheet.page_setup.orientation=='landscape'
+        assert sheet.sheet_properties.pageSetUpPr.fitToPage
+        assert sheet.auto_filter.ref is None
+        assert sheet['B6'].value=='MTD Current'
+        assert sheet['K6'].value=='YTD Current'
+        assert sheet['J6'].value=='MTD Variance vs Last Month'
+        for row in sheet:
+            for cell in row:
+                assert cell.data_type != 'e'
+        revenue=next(row for row in sheet if row[0].value=='Net Revenue With Service Charge')
+        assert revenue[1].data_type=='n'
+        assert revenue[2].number_format=='0.00%'
+    # Build the real production bytes for optional read-only visual QA.
+    import os
+    if path:=os.environ.get('PL_TEMPLATE_QA_OUTPUT'):
+        from pathlib import Path
+        Path(path).write_bytes(build_xlsx(workbook_sheets(report)))
