@@ -274,3 +274,56 @@ def test_related_zeros_are_scoped_but_wrong_and_offsetting_postings_remain(recor
     project=deliver(FinancialReportingService(db),report_scope='CATERING',**options)
     assert room.id in {a['account_id'] for a in project['related_accounts']}
     assert db.query(JournalEntry).count()==5
+
+
+def test_catering_workbook_has_one_location_schedule_and_no_hotel_boilerplate(records):
+    db,h,c1,c2,d,accounts=records
+    room=ChartOfAccount(account_number='400-100-100',account_name='Room Sales',account_type='REVENUE',normal_balance='CREDIT',is_posting=True)
+    db.add(room);db.commit()
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='CATERING',all_accounts=True,include_zero=True)
+    sheets=workbook_sheets(report)
+    assert [name for name,_ in sheets]==['Summary','Project Catering · Location one','Project Catering · Location two']
+    for (name,rows),statement in zip(sheets[1:],report['group_reports']):
+        labels=[r[0] for r in rows if r]
+        assert 'Room Sales' not in [label.strip() for label in labels]
+        assert 'OPERATING STATISTICS' not in labels
+        assert 'Net Revenue With Service Charge' not in labels
+        assert 'Service Charge Distribution' not in labels
+        assert [r[0] for r in rows[6:] if r and not r[0].startswith('   ')]==[r['label'] for r in statement['presentation_rows'] if r['kind']!='detail']
+        for account in statement['related_accounts']:
+            detail=[r for r in rows if r and r[0]=='   '+account['account_name']]
+            assert len(detail)==1
+            assert detail[0][1]==account['periods']['MTD']['current']
+            assert detail[0][10]==account['periods']['YTD']['current']
+        net=next(r for r in rows if r and r[0]=='NOP')
+        assert net[1]==subtotal(statement,'NOP')
+        assert net[3] is None and net[7] is None
+    assert sum(next(r for r in rows if r and r[0]=='NOP')[1] for _,rows in sheets[1:])==subtotal(report,'NOP')
+    assert db.query(JournalEntry).count()==3
+
+
+def test_consolidated_export_dispatches_hotel_and_catering_layouts_separately(records):
+    from openpyxl import load_workbook
+    db,*_=records
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10))
+    workbook=load_workbook(BytesIO(build_xlsx(workbook_sheets(report))))
+    hotel=workbook[next(n for n in workbook.sheetnames if 'House Keeping' in n)]
+    location=workbook[next(n for n in workbook.sheetnames if 'Location one' in n)]
+    assert any(row[0].value=='Net Revenue With Service Charge' for row in hotel)
+    assert not any(row[0].value=='Net Revenue With Service Charge' for row in location)
+    assert next(row[1].value for row in location if row[0].value=='NOP')==1490
+    assert location.freeze_panes=='B7'
+
+
+def test_catering_service_charge_detail_is_once_and_cannot_inherit_other_location(records):
+    db,h,c1,c2,d,_=records
+    sc=ChartOfAccount(account_number='400-SC',account_name='Service Charge Revenue',account_type='REVENUE',normal_balance='CREDIT',is_posting=True)
+    db.add(sc);db.flush()
+    journal=JournalEntry(journal_number='PROJECT-SC',posting_date=date(2026,10,5),status='POSTED',reference_type='MANUAL',reference_id=0,location_id=c1.id,business_unit_id=c1.business_unit_id)
+    journal.lines=[JournalLine(account_id=sc.id,debit=0,credit=50)]
+    db.add(journal);db.commit()
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='CATERING')
+    sheets=workbook_sheets(report)
+    for (_,rows),expected in zip(sheets[1:],(50,0)):
+        assert next(r for r in rows if r and r[0]=='   Service Charge Revenue')[1]==expected
+    assert next(r for r in sheets[1][1] if r and r[0]=='NOP')[1]==1540

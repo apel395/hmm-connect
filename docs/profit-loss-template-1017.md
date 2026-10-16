@@ -109,10 +109,19 @@ Operated Departments Schedule 3, and undistributed operating departments:
 - https://www.hftp.org/downloads/documents/annual-convention/ac24-pres-usali02.pdf
 - https://iahfme.org/ws/media-library/e82a00a759b8fcec1483089be4a0890f/sig-meeting_usali_chrie2024.pdf
 
-Catering design next: Summary uses the same management totals; one detail sheet
+Catering location layout: Summary uses the same management totals; one detail sheet
 per authorized project location. Use Catering contract/service revenue, food and
 beverage HPP, operational payroll, operational expenses, project contribution,
 overhead payroll/expenses, GOP and under expenses/NOP. No Rooms department or
 room-specific statistics. Shared costs require recorded location attribution;
 no automatic allocation from Hotel or Head Office. Retain real exceptions for
 finance to correct rather than hide them.
+
+
+Catering exports use the page's exact management rows with each related account
+listed once under its category. Summary retains header/subtotal rows only.
+Each location sheet includes its own actuals, budget and comparisons; no Hotel
+Rooms schedule, room statistics, assumed service-charge totals or distribution
+rows. Existing service-charge accounts, if any, remain ordinary detail counted
+once. Consolidated workbooks dispatch Hotel department and Catering location
+layouts separately. No cost allocation or account reclassification is implied.

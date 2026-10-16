@@ -135,14 +135,14 @@ def deliver(service, *, as_of_date, report_scope='CONSOLIDATED', location_id=Non
         report['unit_reports'].append(child)
         if unit_kind(unit) == 'HOTEL':
             for department in service.department_reports(child, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail, all_accounts=all_accounts):
-                report['group_reports'].append({**department, 'title': f"{unit.name} · {department['department_name']}", 'scope': {**child['scope'], 'department_id': department['department_id'] or 0}})
+                report['group_reports'].append({**department, 'report_scope': 'HOTEL', 'title': f"{unit.name} · {department['department_name']}", 'scope': {**child['scope'], 'department_id': department['department_id'] or 0}})
         else:
             query = service.db.query(Location).filter(Location.business_unit_id == unit.id)
             if location_id is not None:
                 query = query.filter(Location.id == location_id)
             for location in query.order_by(Location.name).all():
                 location_report = service.build(**{**child_options, 'location_id': location.id})
-                report['group_reports'].append({**location_report, 'title': f'{unit.name} · {location.name}'})
+                report['group_reports'].append({**location_report, 'report_scope': unit_kind(unit), 'title': f'{unit.name} · {location.name}'})
     # Surface missing organizational attribution rather than silently distributing it.
     report['split_control'] = {}
     for p in ('MTD', 'YTD') if include_breakdown else ():

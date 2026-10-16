@@ -176,6 +176,24 @@ def department_rows(statement, title, as_of):
     return rows
 
 
+def catering_rows(statement, title, as_of):
+    """Location responsibility statement, without Hotel department boilerplate.
+
+    Reuse the exact computed management categories and scoped account IDs. A
+    service charge is an ordinary account detail here, never an assumed line or
+    a fabricated distribution. BEBAN is an aggregate, not a second deduction.
+    """
+    rows = StatementRows(statement, title, as_of)
+    for row in statement.get('presentation_rows', []):
+        if row['kind'] == 'detail':
+            continue
+        rows.line(row['label'], row['periods'], 'grand' if row['kind'] == 'subtotal' else 'total')
+        if row['kind'] != 'subtotal' and row['key'] != 'BEBAN':
+            ids = set(row.get('account_ids', []))
+            rows.detail([a for a in statement.get('related_accounts', []) if a['account_id'] in ids])
+    return rows
+
+
 def summary_rows(statement, title, groups, as_of):
     rows = StatementRows(statement, title, as_of)
     # Same header/subtotal rows as the P&L page; departmental detail belongs
@@ -216,5 +234,6 @@ def workbook_sheets(report):
         0 if 'department_name' in pair[1] else 1,
         department_sort(pair[1]) if 'department_name' in pair[1] else (0, pair[0], '')))
     for _, group in ordered:
-        add(group['title'], department_rows(group, group['title'], as_of))
+        renderer = catering_rows if group.get('report_scope') == 'CATERING' else department_rows
+        add(group['title'], renderer(group, group['title'], as_of))
     return sheets
