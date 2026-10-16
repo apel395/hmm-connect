@@ -1,3 +1,4 @@
+/* global localStorage */
 /** Browser regression using synthetic stock only. No production API requests or writes. */
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -45,7 +46,7 @@ try{
  await page.getByRole('button',{name:'Next page',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.stock-footer-range')?.textContent.includes('51'));
  await page.getByRole('button',{name:/^Reorder/}).click();await page.waitForFunction(()=>document.querySelector('.stock-footer')?.textContent.includes('of 19 stock lines'));
  await page.getByRole('button',{name:'All stock',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.stock-footer')?.textContent.includes('of 80 stock lines'));
- assert.equal(await page.locator('.mmh-workspace-tabs [data-active]').count(),2,'Filtering must reuse one Inventory tab');
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('hmm-workspace-tabs')).state.tabs.length),2,'Filtering must reuse one Inventory tab');
  await page.getByRole('button',{name:'Filters',exact:true}).click();await page.getByLabel('Warehouse',{exact:true}).selectOption('5');await page.getByLabel('Inventory account',{exact:true}).selectOption('1');
  await page.getByLabel('From date',{exact:true}).fill('2026-01-01');await page.getByLabel('To date',{exact:true}).fill('2026-10-15');await page.waitForFunction(()=>document.querySelector('.stock-summary-values')?.textContent.includes('Opening'));
  assert.ok(requests.some(url=>url.searchParams.get('as_of')==='2025-12-31'),'Opening must use stock before From date');

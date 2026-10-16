@@ -111,8 +111,9 @@ export function workspaceTitle(pathname: string, search = ""): string {
   return segment.replaceAll("-", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-export function workspaceTabGroup(pathname: string): string | undefined {
-  if (pathname === "/inventory") return "list:inventory";
-  if (!/\/\d+$/.test(pathname)) return undefined;
-  return `detail:${pathname.replace(/\/\d+$/, "/:id")}`;
+export function workspaceTabGroup(pathname: string, search = ""): string {
+  // Query changes are a view of the same module/document, never another tab.
+  if (/\/\d+(?:\/edit)?$/.test(pathname)) return `document:${pathname.replace(/\/edit$/, "")}`;
+  const section = pathname === "/organization-dimensions" ? new URLSearchParams(search).get("section") : null;
+  return `module:${pathname}${section ? `:${section}` : ""}`;
 }
