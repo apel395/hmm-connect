@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "@/components/navigation/Sidebar";
 import Header from "@/components/navigation/Header";
@@ -7,8 +7,7 @@ import WorkspaceTabs from "@/components/workspace/WorkspaceTabs";
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("navigation-expanded") !== "true");
-  useEffect(() => window.localStorage.setItem("navigation-expanded", String(!sidebarCollapsed)), [sidebarCollapsed]);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   const location = useLocation();
 
   if (location.pathname.endsWith("/print")) {
@@ -17,9 +16,9 @@ export default function AppLayout() {
 
   return (
     <div data-app-print-shell className="flex h-screen overflow-hidden bg-[#F3F5F7] text-[#1F2937]">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} />
+      <Sidebar open={sidebarOpen} onClose={closeSidebar} />
       <div data-app-print-content className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
-        <Header onMenuClick={() => setSidebarOpen(true)} sidebarCollapsed={sidebarCollapsed} onSidebarToggle={() => setSidebarCollapsed(value => !value)} />
+        <Header onMenuClick={() => setSidebarOpen(true)} />
         <div className="print:hidden"><WorkspaceTabs /></div>
         <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div data-workspace-content className="w-full p-2 sm:p-3">

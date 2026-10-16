@@ -1,3 +1,4 @@
+import { workspaceTabGroup } from "@/components/workspace/workspaceTitle";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -8,6 +9,20 @@ export interface WorkspaceTab {
   pinned?: boolean;
   group?: string;
   lastActiveAt?: number;
+}
+
+
+function normalizedTabs(rows: WorkspaceTab[]): WorkspaceTab[] {
+  const output: WorkspaceTab[] = [];
+  for (const row of rows) {
+    if (!row || typeof row.path !== "string" || !row.path.startsWith("/") || typeof row.title !== "string") continue;
+    const [pathname, query = ""] = row.path.split("?");
+    const tab = { ...row, id: row.path, pinned: pathname === "/dashboard", group: workspaceTabGroup(pathname, query) };
+    const index = output.findIndex(item => item.group === tab.group);
+    if (index < 0) output.push(tab);
+    else if ((tab.lastActiveAt ?? 0) >= (output[index].lastActiveAt ?? 0)) output[index] = tab;
+  }
+  return output;
 }
 
 interface WorkspaceTabsState {
@@ -56,12 +71,10 @@ export const useWorkspaceTabs = create<WorkspaceTabsState>()(
             ? state.tabs.findIndex((item) => item.group === tab.group && !item.pinned)
             : -1;
           if (grouped >= 0) {
-            const replaced = state.tabs[grouped];
             const tabs = [...state.tabs];
             tabs[grouped] = { ...tab, lastActiveAt: now };
             return {
               tabs,
-              closedTabs: rememberClosed([replaced], state.closedTabs),
             };
           }
 
@@ -122,9 +135,7 @@ export const useWorkspaceTabs = create<WorkspaceTabsState>()(
         const target = state.closedTabs[0];
         if (!target) return null;
         set({
-          tabs: state.tabs.some((tab) => tab.id === target.id)
-            ? state.tabs
-            : [...state.tabs, { ...target, lastActiveAt: Date.now() }],
+          tabs: normalizedTabs([...state.tabs, { ...target, lastActiveAt: Date.now() }]),
           closedTabs: state.closedTabs.slice(1),
         });
         return target.path;
@@ -136,10 +147,11 @@ export const useWorkspaceTabs = create<WorkspaceTabsState>()(
       partialize: (state) => ({ tabs: state.tabs, closedTabs: state.closedTabs }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<WorkspaceTabsState> | undefined;
-        const tabs = saved?.tabs?.length ? saved.tabs : [dashboardTab];
+        const tabs = normalizedTabs(saved?.tabs?.length ? saved.tabs : [dashboardTab]);
         return {
           ...current,
           ...saved,
+          closedTabs: normalizedTabs(saved?.closedTabs ?? []),
           tabs: tabs.some((tab) => tab.id === dashboardTab.id)
             ? tabs.map((tab) => tab.id === dashboardTab.id ? { ...tab, pinned: true } : tab)
             : [dashboardTab, ...tabs],
