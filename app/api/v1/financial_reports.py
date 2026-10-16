@@ -144,13 +144,13 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
     allowed = resolve_organization_access(db, user, location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
     scope, business_unit_id, department_id = allowed["location_id"], allowed["business_unit_id"], allowed["department_id"]
     service = FinancialReportingService(db)
-    if report_type == "PROFIT_LOSS" and report_scope is not None:
-        report = deliver(service, as_of_date=as_of_date, report_scope=report_scope, location_id=scope,
+    if report_type == "PROFIT_LOSS":
+        report = deliver(service, as_of_date=as_of_date, report_scope=report_scope or "CONSOLIDATED", location_id=scope,
                          business_unit_id=business_unit_id, department_id=department_id, budget_id=budget_id,
                          kap=False, include_zero=True, detail=True, all_accounts=True)
         output = BytesIO(build_xlsx(workbook_sheets(report),first_column_width=48))
         return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="profit_loss-{report_scope.lower()}-{as_of_date}.xlsx"'})
+            headers={"Content-Disposition": f'attachment; filename="profit_loss-{(report_scope or "CONSOLIDATED").lower()}-{as_of_date}.xlsx"'})
     report = service.build(report_type=report_type, as_of_date=as_of_date,
         location_id=scope, business_unit_id=business_unit_id, department_id=department_id,
         budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail)
@@ -159,46 +159,7 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
         output=BytesIO(build_xlsx(balance_sheet_sheets(service,report,budget_id=budget_id),first_column_width=48))
         return StreamingResponse(output,media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition":f'attachment; filename="balance_sheet-{as_of_date}.xlsx"'})
-    sheets = []
-    for period in ("MTD", "YTD"):
-        rows = []
-        labels = report["scope_labels"]
-        rows.append([report_type, as_of_date.isoformat(), "Location", labels["location_id"], "Unit", labels["business_unit_id"], "Department", labels["department_id"]])
-        metrics = ("current", "budget", "last_month", "last_year", "variance") + (("movement",) if report_type == "BALANCE_SHEET" else ())
-        rows.append(["Name", "Current", "Budget", "Last month", "Same period last year", "Variance"] + (["Period movement"] if report_type == "BALANCE_SHEET" else []))
-        for section, totals in report["section_totals"].items():
-            values = totals[period]
-            rows.append([section, *[values[m] if values[m] is not None else None for m in metrics]])
-            for row in report["rows"]:
-                if row["section"] != section:
-                    continue
-                values = row["periods"][period]
-                rows.append([row["account_name"], *[values[m] if values[m] is not None else None for m in metrics]])
-        if report_type == "PROFIT_LOSS":
-            v = report["section_totals"]
-            rows.append(["Net profit", *[None if any(v[s][period][m] is None for s in v) else v["REVENUE"][period][m] - v["COST_OF_REVENUE"][period][m] - v["EXPENSES"][period][m] for m in metrics]])
-            if not department_tables:
-                from app.services.management_dashboard import activity_rows, departments
-                rows.append([])
-                rows.append(["Department", "Revenue", "Cost of revenue", "Operating expenses", "Other expenses", "Profit / loss"])
-                for department in departments(db, activity_rows(db, as_of_date, report["scope"]), as_of_date.month, report["scope"]):
-                    values = department[period]
-                    rows.append([department["department_name"], *[values[key] for key in ("revenue", "cogs", "operating_expenses", "other_expenses", "nop")]])
-        sheets.append((period, rows))
-    if report_type == "PROFIT_LOSS" and department_tables:
-        for index, department in enumerate(service.department_reports(report, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail), 1):
-            for period in ("MTD", "YTD"):
-                rows = [[department["department_name"], period, as_of_date.isoformat()],
-                        ["Name", "Current", "Budget", "Last month", "Last year", "Variance"]]
-                for section, totals in department["section_totals"].items():
-                    rows.append([section, *[totals[period][m] for m in METRIC_NAMES]])
-                    rows += [[row["account_name"], *[row["periods"][period][m] for m in METRIC_NAMES]] for row in department["rows"] if row["section"] == section]
-                v = department["section_totals"]
-                rows.append(["Net profit", *[None if any(v[section][period][m] is None for section in v) else v["REVENUE"][period][m]-v["COST_OF_REVENUE"][period][m]-v["EXPENSES"][period][m] for m in METRIC_NAMES]])
-                sheets.append((f"D{index} {period}", rows))
-    output = BytesIO(build_xlsx(sheets))
-    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{report_type.lower()}-{as_of_date}.xlsx"'})
+    raise HTTPException(422, "Unsupported report type")
 
 
 @router.get("/executive")

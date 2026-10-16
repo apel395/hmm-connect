@@ -158,35 +158,5 @@ def deliver(service, *, as_of_date, report_scope='CONSOLIDATED', location_id=Non
 
 
 def workbook_sheets(report):
-    columns = ['Name', *[f'{p} {m.replace("_", " ").title()}' for p in ('MTD', 'YTD') for m in METRICS]]
-    def rows(statement, title, full=False):
-        result = [[title, str(report['as_of_date'])], columns]
-        for row in statement['presentation_rows']:
-            if row['kind'] == 'detail': continue
-            result.append([row['label'], *[row['periods'][p][m] for p in ('MTD', 'YTD') for m in METRICS]])
-            if full and row['kind'] == 'category' and row['key'] != 'BEBAN':
-                for account in statement.get('related_accounts',[]):
-                    if account['category'] == row['key']:
-                        result.append([account['account_name'],*[account['periods'][p][m] for p in ('MTD','YTD') for m in METRICS]])
-        return result
-    summary = rows(report, f"Profit & Loss · {report['report_scope']}")
-    summary += [[], ['Balance control', report['balance_control']['difference']], [], ['Unit summary']]
-    for unit in report['unit_reports']:
-        summary += rows(unit, unit['title'])
-        summary += [[]]
-    summary += [['Split control', *[f'{p} {s}' for p in ('MTD', 'YTD') for s in ('REVENUE', 'COST_OF_REVENUE', 'EXPENSES')]], ['Unassigned / unmatched difference', *[report['split_control'][p][s] for p in ('MTD', 'YTD') for s in ('REVENUE', 'COST_OF_REVENUE', 'EXPENSES')]], [], ['Department / location summary', *columns[1:]]]
-    for group in report['group_reports']:
-        nop = next(r for r in group['presentation_rows'] if r['key'] == 'NOP')
-        summary.append([group['title'], *[nop['periods'][p][m] for p in ('MTD', 'YTD') for m in METRICS]])
-    used = {'summary'}
-    sheets = [('Summary', summary)]
-    for index, group in enumerate(report['group_reports'], 1):
-        name = re.sub(r'[\\/*?:\[\]]', '-', group['title']).strip(" '")[:31] or f'Report {index}'
-        base, count = name, 1
-        while name.casefold() in used:
-            count += 1
-            suffix = f' ({count})'
-            name = base[:31-len(suffix)] + suffix
-        used.add(name.casefold())
-        sheets.append((name, rows(group, group['title'],full=True)))
-    return sheets
+    from app.services.profit_loss_workbook import workbook_sheets as template_sheets
+    return template_sheets(report)
