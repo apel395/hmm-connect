@@ -283,7 +283,9 @@ class FinancialReportingService:
             if self._category_mappings is None:
                 self._category_mappings = {row.account_id: row.description for row in self.db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).all()}
             report["include_zero"] = include_zero
-            report["presentation_rows"] = presentation(report, originals, values, all_accounts, self._category_mappings, selected)
+            from app.services.profit_loss_relevance import scoped_usage
+            evidence = scoped_usage(self.db, scope, as_of_date)
+            report["presentation_rows"] = presentation(report, originals, values, all_accounts, self._category_mappings, selected, evidence)
             from app.services.report_statistics import build_statistics
             report["statistics"] = build_statistics(self, report, budget_id)
         return report

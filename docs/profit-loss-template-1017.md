@@ -6,7 +6,11 @@ broken formulas are not imported into accounting.
 Excel exports start with Summary. Consolidated exports also include separate
 Hotel and Project Catering summaries. Detail sheets follow the actual authorized
 Hotel departments and Catering locations, including historical attribution.
-Revenue-producing departments precede other departments. Sheet names are unique
+Hotel department sheets use a stable order: Front Office, Food and Beverage,
+Swimming Pool, Laundry, House Keeping, Admin and General, Accounting, Human
+Resources, Sales and Marketing, Pomec, BOD, then other and unassigned departments.
+This is a local adaptation of USALI operated-department/support-department ordering;
+it does not allocate support costs or change account categories. Sheet names are unique
 and limited to Excel's 31 characters.
 
 Each sheet contains MTD current, budget, last month and last year, with matching
@@ -18,7 +22,7 @@ existing definition. Missing budgets/comparisons are blank, not fabricated zero.
 Department sheets use Revenue, Cost of Sales, Gross Profit, Payroll and Related
 Expenses, Other Operating Expenses, GOI, Overhead Payroll, Overhead Expenses,
 GOP, Other Deductions and NOP. Detail accounts remain in the P&L categories
-configured in Finance Report Setup. All account detail, including zero accounts,
+configured in Finance Report Setup. All related account detail, including zero accounts,
 is exported regardless of the screen's header-only or zero-value setting.
 The expense list follows the reference order where names match. Other registered
 accounts remain visible rather than being dropped or assigned to an unrelated
@@ -28,7 +32,7 @@ Only separately identifiable P&L service charge accounts are shown in the servic
 charge lines. Combined payroll/revenue/utility accounts retain their full source
 amount; this layout does not manufacture a finer allocation. Gross profit and
 department profit include service charge revenue and deduct its payroll expense
-once. Department/location residuals remain visible in the summary. Presentation
+once. Unassigned postings retain their own detail sheet and remain in Summary totals. Presentation
 does not mutate accounts, budgets, source journals, opening balances or GL.
 
 Operating statistics are read from the separate monthly Statistics register.
@@ -66,7 +70,8 @@ selected scope. Historical comparisons require recorded statistics; missing valu
 stay unavailable. Zero denominators and inconsistent units yield no calculated
 ratio. Different currency pairs are never averaged or compared as a single rate.
 
-Statistics are included on screen, print, the summary and detail Excel sheets.
+Operating Statistics is removed from the P&L page and Summary Excel sheet.
+Statistics remain available in the Statistics module, print and detail Excel sheets.
 This does not post journals/GL, change opening balances, or seed any statistical
 actuals or budgets. Separate utility/revenue/payroll detail still depends on real
 source attribution. The template's division errors, broken references and sums of
@@ -81,3 +86,33 @@ Validation: full backend regression suite, numeric export read-back, independent
 profit/category reconciliation, missing comparison and service charge cases,
 rendered synthetic exports, frontend build, and browser dialog checks.
 No schema migration or data repair is required.
+
+## Summary and related account corrections (2026-10-17)
+
+Summary contains exactly the P&L page category/subtotal labels, in the same order,
+without department repetitions, account detail or operating statistics. Each
+Hotel department has its own detail sheet. Comparison and percentage columns
+continue to use the supplied template; Excel variance remains explicitly
+current minus last month, not the page's budget variance.
+
+Zero Hotel revenue accounts in the registered `400-100` family are excluded from
+Catering, and zero `400-200` Catering revenue from Hotel. Hotel room/F&B/laundry/
+pool revenue follows exact registered codes; department-prefixed accounts follow
+their named department. Generic shared or unknown accounts remain available.
+Scoped posted evidence (including debit/credit cancellations) and any actual or
+budget comparison override zero-account display defaults: real mispostings stay
+visible. No accounting records or mappings are changed.
+
+References: HFTP USALI Rooms Schedule 1, Food and Beverage Schedule 2, Other
+Operated Departments Schedule 3, and undistributed operating departments:
+- https://www.hftp.org/downloads/documents/usali/usali12_060624_rooms.pdf
+- https://www.hftp.org/downloads/documents/annual-convention/ac24-pres-usali02.pdf
+- https://iahfme.org/ws/media-library/e82a00a759b8fcec1483089be4a0890f/sig-meeting_usali_chrie2024.pdf
+
+Catering design next: Summary uses the same management totals; one detail sheet
+per authorized project location. Use Catering contract/service revenue, food and
+beverage HPP, operational payroll, operational expenses, project contribution,
+overhead payroll/expenses, GOP and under expenses/NOP. No Rooms department or
+room-specific statistics. Shared costs require recorded location attribution;
+no automatic allocation from Hotel or Head Office. Retain real exceptions for
+finance to correct rather than hide them.

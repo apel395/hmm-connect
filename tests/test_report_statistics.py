@@ -147,7 +147,10 @@ def test_export_statistical_rows_numeric_percent_and_no_financial_effect(statist
     report=build(db,report_scope='HOTEL')
     content=build_xlsx(workbook_sheets(report))
     wb=load_workbook(BytesIO(content))
-    sheet=wb['Summary']
+    assert not any(r[0].value == 'OPERATING STATISTICS' for r in wb['Summary'])
+    from app.services.profit_loss_workbook import department_rows
+    detail=load_workbook(BytesIO(build_xlsx([('Hotel detail', department_rows(report,'Hotel',report['as_of_date']))])))
+    sheet=detail['Hotel detail']
     row=next(r for r in sheet if r[0].value=='Occupancy (%)')
     assert row[1].value==.2 and row[10].value==.5 and row[1].number_format=='0.00%'
     rate=next(r for r in sheet if r[0].value=='Bookkeeping Rate (IDR/USD)')

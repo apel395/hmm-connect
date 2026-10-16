@@ -178,45 +178,12 @@ def department_rows(statement, title, as_of):
 
 def summary_rows(statement, title, groups, as_of):
     rows = StatementRows(statement, title, as_of)
-    rows.statistics()
-    deductions = [(1, rows.revenue)]
-    for category, heading, total in (
-        ('REVENUE', 'REVENUE', 'Net Revenue With Service Charge'),
-        ('COST_OF_REVENUE', 'COST OF SALES', 'Total Cost of Sales'),
-        ('OPERATING_PAYROLL', 'PAYROLL AND RELATED EXPENSES', 'Total Operating Payroll With Service Charge'),
-        ('OPERATING_EXPENSE', 'OTHER OPERATING EXPENSES', 'Total Other Operating Expenses'),
-        ('OVERHEAD_PAYROLL', 'OVERHEAD PAYROLL AND RELATED EXPENSES', 'Total Overhead Payroll With Service Charge'),
-        ('OVERHEAD_EXPENSE', 'OTHER OVERHEAD EXPENSES', 'Total Other Overhead Expenses'),
-        ('UNDER_EXPENSE', 'OTHER DEDUCTIONS / UNDER EXPENSES', 'Total Other Deductions'),
-    ):
-        rows.heading(heading)
-        pieces = []
-        for group in groups:
-            amount = values(group, accounts(group, category))
-            pieces.append((1, amount))
-            rows.line('   ' + group['title'], amount)
-        amount = values(statement, accounts(statement, category))
-        if pieces:
-            residual = combine((1, amount), (-1, combine(*pieces)))
-            if any(residual[p][m] not in (ZERO, None) for p in PERIODS for m in METRICS):
-                rows.line('   Unassigned department / location', residual)
-        if category == 'REVENUE':
-            sc = [a for a in accounts(statement, category) if service_charge(a)]
-            rows.line('Net Revenue Without Service Charge', values(statement, [a for a in accounts(statement, category) if not service_charge(a)]), 'total')
-            rows.line('Service Charge Revenue', values(statement, sc))
-        rows.line(total, amount, 'total')
-        if category != 'REVENUE':
-            deductions.append((-1, amount))
-        if category in ('OPERATING_EXPENSE', 'OVERHEAD_EXPENSE', 'UNDER_EXPENSE'):
-            if category == 'OPERATING_EXPENSE':
-                rows.heading('DEPARTMENTAL INCOME')
-                for group in groups:
-                    group_income = combine((1, values(group, accounts(group, 'REVENUE'))),
-                        (-1, values(group, accounts(group, 'COST_OF_REVENUE', 'OPERATING_PAYROLL', 'OPERATING_EXPENSE'))))
-                    rows.line('   ' + group['title'], group_income)
-            rows.line({'OPERATING_EXPENSE': 'Gross Operating Income / Profit / Loss',
-                       'OVERHEAD_EXPENSE': 'Gross Operating Profit / Loss',
-                       'UNDER_EXPENSE': 'Net Operating Profit / Loss'}[category], combine(*deductions), 'grand')
+    # Same header/subtotal rows as the P&L page; departmental detail belongs
+    # exclusively on its own sheet. Use computed rows, not new allocations.
+    for row in statement.get('presentation_rows', []):
+        if row['kind'] == 'detail':
+            continue
+        rows.line(row['label'], row['periods'], 'grand' if row['kind'] == 'subtotal' else 'total')
     return rows
 
 
@@ -242,11 +209,12 @@ def workbook_sheets(report):
         # A scoped export already has this unit's summary as its first sheet.
         if scope == 'CONSOLIDATED' and len(report['unit_reports']) > 1:
             add(f"Summary {unit['title']}", summary_rows(unit, unit['title'], unit_groups, as_of))
-    # Revenue-producing departments first, then cost centers. Preserve all
-    # configured departments and historical/unassigned activity.
+    # Stable Hotel order is independent of this month's revenue or erroneous
+    # postings. Catering keeps its existing location order pending its design.
+    from app.services.profit_loss_relevance import department_sort
     ordered = sorted(enumerate(groups), key=lambda pair: (
-        not any(a['category'] == 'REVENUE' and any(a['periods'][p]['current'] != ZERO for p in PERIODS)
-                for a in pair[1].get('related_accounts', [])), pair[0]))
+        0 if 'department_name' in pair[1] else 1,
+        department_sort(pair[1]) if 'department_name' in pair[1] else (0, pair[0], '')))
     for _, group in ordered:
         add(group['title'], department_rows(group, group['title'], as_of))
     return sheets

@@ -162,7 +162,7 @@ def test_template_export_subtotals_match_report_and_keep_missing_comparisons(rec
         assert net[3] is None  # no budget entered
         assert net[7] is None  # no prior-year financial evidence
     summary = summary_rows(report, 'Summary', report['group_reports'], report['as_of_date'])
-    net = next(r for r in summary if r and r[0] == 'Net Operating Profit / Loss')
+    net = next(r for r in summary if r and r[0] == 'NOP')
     assert net[1] == subtotal(report, 'NOP')
 
 
@@ -222,7 +222,7 @@ def test_template_excel_layout_print_and_numeric_formats(records, tmp_path):
         for row in sheet:
             for cell in row:
                 assert cell.data_type != 'e'
-        revenue=next(row for row in sheet if row[0].value=='Net Revenue With Service Charge')
+        revenue=next(row for row in sheet if row[0].value in ('Net Revenue With Service Charge', 'Pendapatan'))
         assert revenue[1].data_type=='n'
         assert revenue[2].number_format=='0.00%'
     # Build the real production bytes for optional read-only visual QA.
@@ -230,3 +230,47 @@ def test_template_excel_layout_print_and_numeric_formats(records, tmp_path):
     if path:=os.environ.get('PL_TEMPLATE_QA_OUTPUT'):
         from pathlib import Path
         Path(path).write_bytes(build_xlsx(workbook_sheets(report)))
+
+
+def test_hotel_summary_matches_page_and_departments_have_stable_order(records):
+    db,h,c1,c2,d,_=records
+    for code,name in [('FO','Front Office'),('FB','Food and Beverage'),('ACC','Accounting')]:
+        dept=Department(code=code,name=name,business_unit_id=h.business_unit_id)
+        db.add(dept);db.flush()
+        db.add(LocationDepartment(location_id=h.id,department_id=dept.id))
+    db.commit()
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='HOTEL')
+    sheets=workbook_sheets(report)
+    summary=sheets[0][1]
+    page=[r for r in report['presentation_rows'] if r['kind']!='detail']
+    assert [r[0] for r in summary[6:]]==[r['label'] for r in page]
+    for exported, row in zip(summary[6:],page):
+        assert exported[1]==row['periods']['MTD']['current']
+        assert exported[10]==row['periods']['YTD']['current']
+    assert [name for name,_ in sheets[1:]]==['Hotel · Front Office','Hotel · Food and Beverage','Hotel · House Keeping','Hotel · Accounting']
+
+
+def test_related_zeros_are_scoped_but_wrong_and_offsetting_postings_remain(records):
+    db,h,c1,c2,d,_=records
+    room=ChartOfAccount(account_number='400-100-100',account_name='Room Sales',account_type='REVENUE',normal_balance='CREDIT',is_posting=True)
+    catering=ChartOfAccount(account_number='400-200-100',account_name='Pendapatan Project Catering',account_type='REVENUE',normal_balance='CREDIT',is_posting=True)
+    fo=ChartOfAccount(account_number='600-FO',account_name='FO - Salary',account_type='EXPENSE',normal_balance='DEBIT',is_posting=True)
+    hk=ChartOfAccount(account_number='600-HK',account_name='HK - Salary',account_type='EXPENSE',normal_balance='DEBIT',is_posting=True)
+    db.add_all([room,catering,fo,hk]);db.commit()
+    options=dict(as_of_date=date(2026,10,10),include_zero=True,all_accounts=True)
+    hotel=deliver(FinancialReportingService(db),report_scope='HOTEL',**options)
+    house=hotel['group_reports'][0]
+    assert hk.id in {a['account_id'] for a in house['related_accounts']}
+    assert not {room.id,catering.id,fo.id}&{a['account_id'] for a in house['related_accounts']}
+    project=deliver(FinancialReportingService(db),report_scope='CATERING',**options)
+    assert room.id not in {a['account_id'] for a in project['related_accounts']}
+    assert catering.id in {a['account_id'] for a in project['related_accounts']}
+    # Preserve misclassified actuals, even when debit/credit cancel to zero.
+    for n,amount in enumerate((10,-10)):
+        journal=JournalEntry(journal_number=f'WRONG-ROOM-{n}',posting_date=date(2026,10,5),status='POSTED',reference_type='MANUAL',reference_id=0,location_id=c1.id,business_unit_id=c1.business_unit_id)
+        journal.lines=[JournalLine(account_id=room.id,debit=max(-amount,0),credit=max(amount,0))]
+        db.add(journal)
+    db.commit()
+    project=deliver(FinancialReportingService(db),report_scope='CATERING',**options)
+    assert room.id in {a['account_id'] for a in project['related_accounts']}
+    assert db.query(JournalEntry).count()==5
