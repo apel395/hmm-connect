@@ -68,9 +68,10 @@ def assert_existing_provenance(db, journal, source_hash):
 
 
 def seed(db, source, mapping, actor, *, apply=False, post=False):
-    from sqlalchemy import text
+    from sqlalchemy import and_, func, text
     from app.api.v1.journals import post_locked_journal, validate
     from app.models.import_batch import ImportBatch, ImportRow
+    from app.models.general_ledger import GeneralLedger
     from app.models.journal_entry import JournalEntry
     from app.models.journal_line import JournalLine
     from app.services.activity_service import ActivityService
@@ -90,6 +91,8 @@ def seed(db, source, mapping, actor, *, apply=False, post=False):
     result = {
         "mode": "APPLY" if apply else "DRY_RUN", "target_status": "POSTED" if post else "DRAFT",
         "source_sha256": source["source_sha256"], "new_journals": len(create),
+        "source_total_debit": source["grand_total"]["debit"],
+        "source_total_credit": source["grand_total"]["credit"],
         "financial_lines": sum(sum(not l.get("omit_zero_value") for l in j["lines"]) for j in create),
         "already_present": existing,
         "skipped": [{"register": j["register"], "issues": j["issues"], "possible_existing_journals": j.get("possible_existing_journals", [])} for j in skipped],
@@ -122,7 +125,7 @@ def seed(db, source, mapping, actor, *, apply=False, post=False):
     )
     db.add(batch)
     db.flush()
-    for group in create:
+    for index, group in enumerate(create, 1):
         active = [line for line in group["lines"] if not line.get("omit_zero_value")]
         departments = {line.get("department_id") for line in active}
         journal = JournalEntry(
@@ -166,12 +169,22 @@ def seed(db, source, mapping, actor, *, apply=False, post=False):
         if post:
             post_locked_journal(db, journal=journal, user=actor)
         result["created"].append({"register": group["register"], "id": journal.id, "journal_number": journal.journal_number, "status": journal.status})
+        if index % 250 == 0:
+            print(f"Staged {index}/{len(create)} journals; transaction not committed yet.", file=sys.stderr, flush=True)
     batch.status = "IMPORTED"
     batch.success_count = len(create)
     batch.imported_rows = batch.total_rows
     batch.valid_rows = result["financial_lines"]
     batch.validated_at = now
     db.flush()
+    if post:
+        count, debit, credit = db.query(func.count(GeneralLedger.id), func.sum(GeneralLedger.debit), func.sum(GeneralLedger.credit)).join(
+            JournalEntry, and_(GeneralLedger.reference_number == JournalEntry.journal_number,
+                GeneralLedger.reference_type == JournalEntry.reference_type, GeneralLedger.reference_id == JournalEntry.reference_id)
+        ).filter(JournalEntry.import_batch_id == batch.id).one()
+        if count != result["financial_lines"] or Decimal(debit or 0) != Decimal(result["debit"]) or Decimal(credit or 0) != Decimal(result["credit"]):
+            raise ValueError("Posted GL does not match the imported source lines; transaction will roll back")
+        result["verified_gl_rows"] = count
     result["batch_id"] = batch.id
     return result
 
