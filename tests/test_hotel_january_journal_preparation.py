@@ -109,16 +109,26 @@ def test_legacy_import_reference_overlap_is_scoped_and_detected_across_dates(exi
     assert journal["posting_date"] == "2026-01-15"  # No source date correction.
 
 
-def test_prepared_manifest_keeps_unresolved_controls_out_of_applied_mapping():
+def test_user_authorized_manifest_uses_registered_accounts_and_preserves_directions():
     path = Path(__file__).parents[1] / "scripts/hotel_january_2026_mapping.json"
     mapping = json.loads(path.read_text())
     assert mapping["accounts"]["201101"] == "200-100-1"
-    assert not (set(mapping["accounts"]) & set(mapping["review_required_accounts"]))
-    assert "103085" in mapping["review_required_accounts"]  # OTA advance is not automatically a liability.
-    assert "202014" in mapping["review_required_accounts"]  # Payable not reclassified to expense.
-    assert "SWP" not in mapping["departments"]
-    assert "BOD" not in mapping["departments"]
+    assert mapping["accounts"]["103085"].startswith("100-200")  # Source AR stays an asset.
+    assert mapping["accounts"]["202014"].startswith("200-")  # Tax payable stays a liability.
+    assert mapping["department_names"]["SWP"] == "Swimming Pool"
+    assert mapping["department_names"]["BOD"] == "Board of Directur"
+    assert mapping["line_accounts"]["26448"] == "100-210-102"
     assert mapping["departments"]["LDY"] == 14
+
+
+def test_new_department_resolved_by_name_without_using_display_code_as_id():
+    mapping = review()
+    mapping["departments"] = {}
+    mapping["department_names"] = {"PMC": "Pomec"}
+    db = database()
+    db["departments"][0]["name"] = "Pomec"
+    plan = prep.build_plan(source(), db, mapping)
+    assert plan["source"]["journals"][0]["lines"][0]["department_id"] == 11
 
 
 def test_same_invoice_reference_does_not_merge_distinct_registers():

@@ -38,7 +38,14 @@
     "401301": 7,
     "401309": 7,
     "302002": 14,
-    "401602": 14
+    "401602": 14,
+    "308001": 6,
+    "308003": 8,
+    "308004": 6,
+    "308005": 6,
+    "601001": 13,
+    "514008": 8,
+    "602070": 13
   },
   "accounts": {
     "201": "200-100-1",
@@ -118,9 +125,66 @@
     "522025": "700-500-999",
     "546018": "700-500-999",
     "536007": "700-500-999",
-    "542025": "700-500-999"
+    "542025": "700-500-999",
+    "591050": "600-100-107",
+    "591007": "750-100-104",
+    "201409": "200-300-999",
+    "201408": "200-300-999",
+    "201411": "200-300-999",
+    "202014": "200-300-999",
+    "103086": "100-200-999",
+    "103091": "100-200-999",
+    "103092": "100-200-999",
+    "103089": "100-200-999",
+    "103087": "100-200-999",
+    "103090": "100-200-999",
+    "103085": "100-200-101",
+    "536005": "700-500-138",
+    "516002": "700-500-138",
+    "548006": "700-500-124",
+    "548009": "700-500-124",
+    "305002": "400-100-101",
+    "401602": "500-100-999",
+    "201499": "200-100-1",
+    "544006": "700-500-107",
+    "514007": "700-500-118",
+    "544021": "750-100-999",
+    "544017": "750-100-999",
+    "532023": "500-100-101",
+    "522023": "500-100-101",
+    "512037": "500-100-101",
+    "544012": "700-500-131",
+    "106099": "100-600-105",
+    "514051": "700-500-106",
+    "512007": "700-500-119",
+    "548048": "700-500-115",
+    "542011": "700-500-120"
   },
-  "review_required_accounts": {
+  "policy": "User authorized seeding for correction in app. Create MANUAL historical journals and post when requested; user authorized unpost/edit correction. Use existing accounts, preserve every nonzero source debit/credit/date and the Rp45000 difference; no automatic contra, source documents or opening changes. GL follows the normal app posting function. DANA PROYEK uses Piutang Direksi provisionally per owner repayment explanation; source directions retained. Registered broad accounts used where no exact legacy account exists; retain review notes for finance.",
+  "department_names": {
+    "BOD": "Board of Directur",
+    "SWP": "Swimming Pool"
+  },
+  "account_department_names": {
+    "306001": "Swimming Pool",
+    "306002": "Swimming Pool",
+    "306009": "Swimming Pool",
+    "401401": "Swimming Pool",
+    "401402": "Swimming Pool"
+  },
+  "line_accounts": {
+    "24372": "100-210-102",
+    "24375": "100-210-102",
+    "24376": "100-210-102",
+    "24377": "100-210-102",
+    "26448": "100-210-102",
+    "24347": "600-100-100",
+    "24348": "600-100-100",
+    "24357": "600-100-100",
+    "24359": "600-100-100",
+    "24364": "600-100-100"
+  },
+  "draft_review_notes": {
     "591050": "Director complimentary meals: confirm staff meal versus directors expense and department.",
     "591007": "Mixed owner/business/project descriptions: confirm expense versus drawings; do not force all to Prive.",
     "201409": "Refund payable: confirm guest deposit/refund control account.",
@@ -154,11 +218,5 @@
     "548048": "Underground-water tax: confirm expense target; water expense and tax payable exist but no explicit tax expense account.",
     "202014": "Advertising tax payable: no explicit matching posting liability exists; do not map it to expense/prepayment.",
     "542011": "Sales commission/incentive: confirm sales expense versus travel agents commission/payroll."
-  },
-  "unresolved_departments": {
-    "SWP": "No matching Swimming Pool Hotel department; confirm assignment rather than create one automatically.",
-    "BOD": "Confirm directors department assignment; do not silently use Admin and General.",
-    "UNPREFIXED": "Only explicit Rooms, F&B/Banquet and Laundry families assigned. Other unprefixed P&L accounts require evidence."
-  },
-  "policy": "Preparation mappings only; no seed authorization or DB changes. Preserve source mappings except confirmed AP code replacement, amounts and dates; no contra or opening changes."
+  }
 }

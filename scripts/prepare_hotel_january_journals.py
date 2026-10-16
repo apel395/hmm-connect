@@ -124,7 +124,7 @@ def read_source(path):
             "journals": list(groups.values()), "grand_total": controls[0], "missing_sequences": missing}
 
 
-def inspect_database():
+def inspect_database(connection=None):
     """All database SQL runs in a PostgreSQL READ ONLY transaction."""
     from sqlalchemy import text
     from app.core.database import engine
@@ -139,6 +139,8 @@ def inspect_database():
         # Include void/draft records; reimporting must be an explicit decision.
         "journals": "SELECT id,journal_number,document_number,external_reference,status,posting_date,business_unit_id,location_id FROM journal_entries WHERE posting_date BETWEEN '2026-01-01' AND '2026-01-31' OR external_reference LIKE 'HOTEL-JAN2026-REG-%'",
     }
+    if connection is not None:
+        return {key: [dict(row) for row in connection.execute(text(sql)).mappings()] for key, sql in queries.items()}
     with engine.connect() as connection:
         with connection.begin():
             connection.execute(text("SET TRANSACTION READ ONLY"))
@@ -149,6 +151,12 @@ def build_plan(source, database=None, review=None):
     review = review or {}
     accounts = {a["account_number"]: a for a in (database or {}).get("accounts", [])}
     scope = review.get("scope", {})
+    department_ids = dict(review.get("departments", {}))
+    if database is not None:
+        for prefix, name in review.get("department_names", {}).items():
+            matches = [dep for dep in database["departments"] if dep["is_active"] and dep["business_unit_id"] == scope.get("business_unit_id") and reference_key(dep["name"]) == reference_key(name)]
+            if len(matches) == 1:
+                department_ids[prefix] = matches[0]["id"]
     scope_issues = []
     if database is None:
         scope_issues.append("DATABASE_NOT_CHECKED")
@@ -190,6 +198,7 @@ def build_plan(source, database=None, review=None):
                 dc_mismatches += 1
             legacy = line["legacy_code"]
             line["account_code"] = review.get("accounts", {}).get(legacy) or line["source_account_code"]
+            line["account_code"] = review.get("line_accounts", {}).get(str(line["source_row"])) or line["account_code"]
             line["mapping_origin"] = "REVIEW_FILE" if review.get("accounts", {}).get(legacy) else "SOURCE_COLUMN_F"
             code = line["account_code"]
             if not code:
@@ -204,7 +213,11 @@ def build_plan(source, database=None, review=None):
             prefix = line["department_prefix"]
             dept_id = review.get("account_departments", {}).get(legacy)
             if dept_id is None:
-                dept_id = review.get("departments", {}).get(prefix) if prefix else None
+                dept_id = department_ids.get(prefix) if prefix else None
+            department_name = review.get("account_department_names", {}).get(legacy)
+            if department_name and database is not None:
+                matches = [dep for dep in database["departments"] if dep["is_active"] and dep["business_unit_id"] == scope.get("business_unit_id") and reference_key(dep["name"]) == reference_key(department_name)]
+                dept_id = matches[0]["id"] if len(matches) == 1 else None
             # Department evidence is required for P&L; never infer from an invoice reference.
             pnl = (code or "").startswith(("4", "5", "6", "7", "8")) or prefix in DEPARTMENT_SUGGESTIONS or prefix in {"BOD", "SWP", "LDY"}
             if pnl and dept_id is None:
@@ -246,7 +259,7 @@ def build_plan(source, database=None, review=None):
                 legacy_match = journal["register"] in {existing["journal_number"], existing["document_number"], existing["external_reference"]}
                 if stable or legacy_match:
                     matches.append(existing)
-                elif existing.get("business_unit_id") == scope.get("business_unit_id") and existing.get("location_id") == scope.get("location_id") and reference_key(existing.get("document_number")) in source_references:
+                elif not str(existing.get("external_reference") or "").startswith("HOTEL-JAN2026-REG-") and existing.get("business_unit_id") == scope.get("business_unit_id") and existing.get("location_id") == scope.get("location_id") and reference_key(existing.get("document_number")) in source_references:
                     # Old app imports used generated external references, not legacy
                     # registers. A matching document reference is evidence to review,
                     # even when its date differs. Never silently merge or delete it.
