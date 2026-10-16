@@ -1,3 +1,4 @@
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
@@ -40,6 +41,7 @@ export default function ProductDetailDialog({ productId, accounts, onClose, onEd
         {item && detail && <div className="space-y-5 text-sm">
           <section className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-3">
             <div><div className="text-slate-500">Classification</div><strong>{item.group_name} / {item.subgroup_name}</strong></div>
+            <div><div className="text-slate-500">Department</div><strong>{item.department_name || "Shared"}</strong></div>
             <div><div className="text-slate-500">Product ID</div><strong>{item.id}</strong></div>
             <div><div className="text-slate-500">Treatment</div><strong>{item.inventory_treatment.replace(/_/g, " ")}</strong></div>
             <div><div className="text-slate-500">Purchase → Usage UOM</div><strong>{item.uom} → {quantity(item.conversion)} {item.usage_uom}</strong></div>
@@ -74,7 +76,7 @@ export default function ProductDetailDialog({ productId, accounts, onClose, onEd
             {detail.purchases.length === 0 ? <p className="text-slate-500">No approved purchase orders yet.</p> :
               <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full text-left">
                 <thead className="bg-slate-50"><tr><th className="p-2">Date / PO</th><th className="p-2">Supplier</th><th className="p-2 text-right">Quantity</th><th className="p-2 text-right">Unit price</th></tr></thead>
-                <tbody>{detail.purchases.map((row, index) => <tr className="border-t" key={`${row.order_id}-${index}`}><td className="p-2">{row.order_date}<br/><Link className="text-blue-700 hover:underline" to={`/purchase-orders/${row.order_id}`} onClick={onClose}>{row.po_number}</Link></td><td className="p-2">{row.supplier}</td><td className="p-2 text-right">{quantity(row.quantity)} {row.uom}</td><td className="p-2 text-right">{amount(row.unit_price)}</td></tr>)}</tbody>
+                <tbody>{detail.purchases.map((row, index) => <tr className="border-t" key={`${row.order_id}-${index}`}><td className="p-2">{row.order_date}<br/><Link className="text-blue-700 hover:underline" to={`/purchase-orders/${row.order_id}`} onClick={onClose}>{row.po_number}</Link><span className="ml-2 inline-block"><PrintPreviewButton src={`/purchase-orders/${row.order_id}/print`} title={row.po_number}/></span></td><td className="p-2">{row.supplier}</td><td className="p-2 text-right">{quantity(row.quantity)} {row.uom}</td><td className="p-2 text-right">{amount(row.unit_price)}</td></tr>)}</tbody>
               </table></div>}
           </section>
 
@@ -83,7 +85,7 @@ export default function ProductDetailDialog({ productId, accounts, onClose, onEd
             {detail.receiving.length === 0 ? <p className="text-slate-500">No posted receipts yet.</p> :
               <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full text-left">
                 <thead className="bg-slate-50"><tr><th className="p-2">Date / receipt</th><th className="p-2 text-right">Quantity</th><th className="p-2 text-right">Unit cost</th></tr></thead>
-                <tbody>{detail.receiving.map((row, index) => <tr className="border-t" key={`${row.receipt_id}-${index}`}><td className="p-2">{row.received_at.slice(0, 10)}<br/><Link className="text-blue-700 hover:underline" to={`/receiving/${row.receipt_id}`} onClick={onClose}>{row.receipt_number}</Link></td><td className="p-2 text-right">{quantity(row.quantity)}</td><td className="p-2 text-right">{amount(row.unit_cost)}</td></tr>)}</tbody>
+                <tbody>{detail.receiving.map((row, index) => <tr className="border-t" key={`${row.receipt_id}-${index}`}><td className="p-2">{row.received_at.slice(0, 10)}<br/><Link className="text-blue-700 hover:underline" to={`/receiving/${row.receipt_id}`} onClick={onClose}>{row.receipt_number}</Link><span className="ml-2 inline-block"><PrintPreviewButton src={`/receiving/${row.receipt_id}/print`} title={row.receipt_number}/></span></td><td className="p-2 text-right">{quantity(row.quantity)}</td><td className="p-2 text-right">{amount(row.unit_cost)}</td></tr>)}</tbody>
               </table></div>}
           </section>
           {item.inventory_treatment === "FIXED_ASSET" && <p className="rounded-lg bg-blue-50 p-3 text-blue-900">Each physical unit is tracked in the <Link className="font-medium underline" to="/fixed-assets" onClick={onClose}>Fixed Asset register</Link>. The item master and receiving records describe the purchase; depreciation belongs to the asset record.</p>}

@@ -15,6 +15,8 @@ export interface Product {
   conversion: string | number;
   item_type: ItemType;
   catalog_type?: "CATERING" | "HOTEL";
+  department_id?: number | null;
+  department_name?: string | null;
   reference_cost_method?: "LAST_PURCHASE" | "AVERAGE_PURCHASE" | "MANUAL";
   reference_cost?: string | number;
   reference_cost_source?: string;
@@ -73,6 +75,8 @@ export interface ProductCreateRequest {
   conversion: number;
   item_type: ItemType;
   catalog_type?: "CATERING" | "HOTEL";
+  department_id?: number | null;
+  department_name?: string | null;
   reference_cost_method?: "LAST_PURCHASE" | "AVERAGE_PURCHASE" | "MANUAL";
   reference_cost?: string | number;
   reference_cost_source?: string;

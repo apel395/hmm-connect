@@ -12,8 +12,10 @@ export const navigationGroups: NavigationGroup[] = [
   { title: "Executive View", url: "/executive-view", icon: Crown, permissions: ["reports.view", "finance.view"] },
   { title: "Approval Center", url: "/approval-center", icon: CheckSquare2, permission: "approval.view", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "DEPARTMENT", "GENERAL_MANAGER", "AUDITOR"] },
   { title: "Master Data", icon: Building2, roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"], children: [
-    { title: "Catering Items", url: "/products", permission: "products.view" },
-    { title: "Hotel Items", url: "/hotel-items", permission: "products.view" },
+    { title: "Catering Buy Items", url: "/products", permission: "products.view" },
+    { title: "Hotel Buy Items", url: "/hotel-items", permission: "products.view" },
+    { title: "Catering Sell Items", url: "/sell-items", permission: "products.view" },
+    { title: "Hotel Sell Items", url: "/hotel-sell-items", permission: "products.view" },
     { title: "Suppliers", url: "/suppliers", permission: "suppliers.view", roles: ["SYSTEM_ADMINISTRATOR", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Warehouses", url: "/warehouses", permission: "warehouse.view", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Business Units", url: "/organization-dimensions?section=business-units", permission: "admin.settings.manage", roles: ["SYSTEM_ADMINISTRATOR"] },
@@ -106,7 +108,7 @@ export function activeNavigation(groups: NavigationGroup[], pathname: string, se
 }
 
 const childIcons: Record<string, LucideIcon> = {
-  "/products": Package, "/hotel-items": Hotel, "/suppliers": Truck, "/warehouses": Warehouse,
+  "/sell-items": Package, "/hotel-sell-items": Hotel, "/products": Package, "/hotel-items": Hotel, "/suppliers": Truck, "/warehouses": Warehouse,
   "/organization-dimensions?section=business-units": Network, "/organization-dimensions?section=departments": Users, "/organization-dimensions?section=locations": MapPin,
   "/purchase-requisitions": ClipboardList, "/market-lists": ListChecks, "/purchase-orders": FileText, "/receiving": PackageCheck,
   "/inventory": Boxes, "/inventory/movements": ArrowLeftRight, "/store-requests": ClipboardList, "/stock-opnames": ClipboardCheck, "/stock-adjustments": SlidersHorizontal,
