@@ -60,7 +60,7 @@ Calon receiving dari PO memperlihatkan estimasi pengiriman dan sisa item. Kuanti
 
 1. Pilih PO atau ML yang memenuhi syarat, atau sumber yang didukung.
 2. Periksa supplier dan dimensi sumber.
-3. Tujuan barang mengikuti treatment Item Master. Untuk Direct Use, periksa department dan akun expense tujuan.
+3. Tujuan setiap baris otomatis mengikuti treatment Item Master. Ikon Special Case pada baris dapat mengubah Warehouse/Direct Use untuk kondisi khusus, disertai alasan. Pilihan tersebut hanya berlaku pada penerimaan ini dan tidak mengubah master. Untuk Direct Use, periksa department dan akun expense tujuan.
 4. Warehouse receiving memerlukan warehouse pada work location yang sama.
 5. Simpan dan submit. **Receiving normal mengambil tanggal server saat submit**, dengan tanggal bisnis Asia/Jakarta.
 6. Selesaikan approval oleh **dua approver berbeda**.

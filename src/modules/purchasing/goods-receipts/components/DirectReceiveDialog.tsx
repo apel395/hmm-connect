@@ -27,8 +27,10 @@ import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import useAuthorization from "@/hooks/useAuthorization";
 import { nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
+import ReceivingDestinationField from "./ReceivingDestinationField";
+import { destinationFor, destinationError, type LineRouting } from "../destination";
 
-type Line = { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; tax_rate?:number; expense_account_id?: number | null };
+type Line = LineRouting & { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; tax_rate?:number; expense_account_id?: number | null };
 const money = (value: unknown) =>
   Number(value ?? 0).toLocaleString("id-ID", {
     minimumFractionDigits: 2,
@@ -59,10 +61,6 @@ export default function DirectReceiveDialog({
   const [businessUnitId, setBusinessUnitId] = useState<number>();
   const [departmentId, setDepartmentId] = useState<number>();
   const [locationId, setLocationId] = useState<number>();
-  const [destinationType, setDestinationType] = useState<
-    "WAREHOUSE" | "DIRECT_USE"
-  >("WAREHOUSE");
-  const expenseAccounts = useQuery({queryKey:["receiving-expense-accounts"],queryFn:()=>getAllAccountLookup({account_type:"EXPENSE",is_active:true,is_posting:true}),enabled:open && destinationType === "DIRECT_USE"});
   const [warehouseId, setWarehouseId] = useState<number>();
   const [receivedAt, setReceivedAt] = useState(nowLocal());
   const [historical, setHistorical] = useState(false);
@@ -72,6 +70,10 @@ export default function DirectReceiveDialog({
     { product_id: 0, quantity: 1, unit_cost: 0 },
   ]);
   const [productRows, setProductRows] = useState<ProductComboboxOption[]>([]);
+  const routingFor = (line: Line) => ({...line, inventory_treatment: productRows.find(product => product.id === line.product_id)?.inventory_treatment});
+  const hasWarehouse = lines.some(line => line.product_id && line.quantity > 0 && destinationFor(routingFor(line)) === "WAREHOUSE");
+  const hasDirectUse = lines.some(line => line.product_id && destinationFor(routingFor(line)) === "DIRECT_USE");
+  const expenseAccounts = useQuery({queryKey:["receiving-expense-accounts"],queryFn:()=>getAllAccountLookup({account_type:"EXPENSE",is_active:true,is_posting:true}),enabled:open && hasDirectUse});
   const businessUnits = useQuery({
     queryKey: ["business-units", "direct-receipt"],
     queryFn: () => filterBusinessUnits({ is_active: true }),
@@ -96,8 +98,8 @@ export default function DirectReceiveDialog({
     setBusinessUnitId(source.business_unit_id);
     setLocationId(source.location_id);
     setDepartmentId(source.department_id);
-    setLines(source.items.map((item: any) => ({market_list_item_id:item.market_list_item_id,product_id:item.product_id,quantity:Number(item.remaining_quantity),unit_cost:Number(item.unit_cost)})));
-    setProductRows(source.items.map((item: any) => ({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,is_taxable:item.is_taxable,tax_rate:item.tax_rate})));
+    setLines(source.items.map((item: any) => ({market_list_item_id:item.market_list_item_id,product_id:item.product_id,quantity:Number(item.remaining_quantity),unit_cost:Number(item.unit_cost),expense_account_id:item.purchase_account_id,destination_type:null})));
+    setProductRows(source.items.map((item: any) => ({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,purchase_account_id:item.purchase_account_id,is_taxable:item.is_taxable,tax_rate:item.tax_rate})));
     setWarehouseId(undefined);
   }, [marketListMode, marketListId, marketLists.data]);
   const rememberProduct = (product: ProductComboboxOption) =>
@@ -126,25 +128,29 @@ export default function DirectReceiveDialog({
       return alert(
         "Supplier, Business Unit, Department and Location are required.",
       );
-    if (destinationType === "WAREHOUSE" && !warehouseId)
+    if (hasWarehouse && !warehouseId)
       return alert("Warehouse is required.");
     if (!receivedAt)
       return alert("Receipt Date/Time is required.");
+    const routingIssue = lines.filter(line => line.product_id && line.quantity > 0).map(line => destinationError(routingFor(line))).find(Boolean);
+    if (routingIssue) return alert(routingIssue);
     const items = lines
       .filter((line) => line.product_id && line.quantity > 0)
       .map((line) => ({
         market_list_item_id: line.market_list_item_id,
         product_id: line.product_id,
-        expense_account_id: destinationType === "DIRECT_USE" ? line.expense_account_id ?? null : null,
+        destination_type: line.destination_type ?? null,
+        destination_override_reason: line.destination_override_reason || null,
+        expense_account_id: destinationFor(routingFor(line)) === "DIRECT_USE" ? line.expense_account_id ?? null : null,
         quantity: line.quantity,
         unit_cost: line.unit_cost,
         is_taxable: Number(line.tax_rate||0)>0,
         tax_rate: Number(line.tax_rate||0),
       }));
     if (!items.length) return alert("Add at least one valid item.");
-    if (destinationType === "DIRECT_USE" && items.some(item => {
+    if (items.some(item => {
       const product=productRows.find(row=>row.id===item.product_id);
-      return product?.catalog_type === "HOTEL" && product.inventory_treatment !== "FIXED_ASSET" && !item.expense_account_id;
+      return destinationFor({...item, inventory_treatment: product?.inventory_treatment}) === "DIRECT_USE" && product?.catalog_type === "HOTEL" && product.inventory_treatment !== "FIXED_ASSET" && !item.expense_account_id;
     })) return alert("Choose an expense destination for each Hotel Direct Use item in the selected department.");
     if (items.some((item) => Number(item.unit_cost) <= 0))
       return alert(
@@ -161,8 +167,7 @@ export default function DirectReceiveDialog({
           location_id: locationId,
           received_at: new Date(receivedAt).toISOString(),
           external_reference: reference || null,
-          destination_type: destinationType,
-          warehouse_id: destinationType === "WAREHOUSE" ? warehouseId : null,
+          warehouse_id: hasWarehouse ? warehouseId : null,
           notes: notes || null,
           items,
         },
@@ -209,6 +214,7 @@ export default function DirectReceiveDialog({
               options={(businessUnits.data ?? []).map(option)}
               onChange={(id) => {
                 setBusinessUnitId(id);
+                setCatalogType((businessUnits.data ?? []).find(unit => unit.id === id)?.name.toLowerCase().includes("hotel") ? "HOTEL" : "CATERING");
                 setDepartmentId(undefined);
                 setLocationId(undefined);
               }}
@@ -249,36 +255,26 @@ export default function DirectReceiveDialog({
                 onChange={(e) => setReference(e.target.value)}
               />
             </label>
-            <label className="text-xs font-medium text-slate-700">
-              Destination
-              <select
-                className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
-                value={destinationType}
-                onChange={(e) => setDestinationType(e.target.value as any)}
-              >
-                <option value="WAREHOUSE">Warehouse</option>
-                <option value="DIRECT_USE">Direct Use</option>
-              </select>
-            </label>
-            {destinationType === "WAREHOUSE" && (
+            {hasWarehouse && (
               <SearchableSelect
                 label="Warehouse"
                 value={warehouseId}
                 placeholder="Type warehouse code or name..."
-                options={(warehouses as any[]).map(option)}
+                options={(warehouses as any[]).filter(row => row.is_active && Number(row.location_id) === locationId).map(option)}
                 onChange={setWarehouseId}
               />
             )}
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <label className="mb-2 block text-xs">Item catalog<select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL")}><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>
-            <table className="min-w-[940px] w-full text-xs">
+            <table className="min-w-[1240px] w-full text-xs">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="p-2 text-left">Product</th>
+                  <th className="min-w-56 p-2 text-left">Product</th>
+                  <th className="p-2 text-left">Destination</th>
                   <th>UOM</th>
                   <th>Qty</th>
-                  <th>Unit Cost</th>
+                  <th className="min-w-40 whitespace-nowrap">Unit Cost</th>
                   <th>PPN estimate %</th>
                   <th>PPN</th>
                   <th>Line Total</th>
@@ -304,10 +300,11 @@ export default function DirectReceiveDialog({
                           onChange={(id) =>
                             patch(index, { product_id: id || 0 })
                           }
-                          onSelect={product => { rememberProduct(product); patch(index, {product_id:product.id, unit_cost:Number(product.reference_cost ?? product.last_purchase_price ?? 0)}); }}
+                          onSelect={product => { rememberProduct(product); patch(index, {product_id:product.id, destination_type:null, destination_override_reason:null, expense_account_id:product.purchase_account_id ?? null, unit_cost:Number(product.reference_cost ?? product.last_purchase_price ?? 0)}); }}
                         />
 
                       </td>
+                      <td className="p-2"><ReceivingDestinationField name={product?.name ?? `item ${index+1}`} line={routingFor(line)} onChange={value => patch(index, value)}/></td>
                       <td>{product?.uom ?? "—"}</td>
                       <td className="p-2">
                         <QuantityInput
@@ -324,7 +321,7 @@ export default function DirectReceiveDialog({
                             patch(index, { unit_cost: value })
                           }
                         />
-                        {destinationType === "DIRECT_USE" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" className="w-full rounded border p-1" value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}
+                        {destinationFor(routingFor(line)) === "DIRECT_USE" && product?.inventory_treatment !== "FIXED_ASSET" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" className="w-full rounded border p-1" value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}
                       </td>
                       <td>
                         <input aria-label={`Provisional PPN rate for item ${index+1}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={line.tax_rate??0} onChange={event=>patch(index,{tax_rate:Number(event.target.value)})}/>

@@ -17,6 +17,8 @@ export interface ProductComboboxOption {
   uom?: string;
   usage_uom?: string;
   inventory_treatment?: string;
+  purchase_account_id?: number | null;
+  inventory_account_id?: number | null;
   tax_category?: string;
   is_taxable?: boolean;
   tax_rate?: number | string;
