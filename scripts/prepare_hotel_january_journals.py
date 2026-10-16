@@ -47,6 +47,10 @@ def mapping_code(value):
     return text if re.fullmatch(r"\d+(?:-\d+)+", text) else None
 
 
+def reference_key(value):
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
 def read_source(path):
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     if digest != SOURCE_SHA256:
@@ -186,6 +190,7 @@ def build_plan(source, database=None, review=None):
                 dc_mismatches += 1
             legacy = line["legacy_code"]
             line["account_code"] = review.get("accounts", {}).get(legacy) or line["source_account_code"]
+            line["mapping_origin"] = "REVIEW_FILE" if review.get("accounts", {}).get(legacy) else "SOURCE_COLUMN_F"
             code = line["account_code"]
             if not code:
                 line_issues.append("COA_MAPPING_REQUIRED")
@@ -197,7 +202,9 @@ def build_plan(source, database=None, review=None):
                 else:
                     line["account_id"] = account["id"]
             prefix = line["department_prefix"]
-            dept_id = review.get("departments", {}).get(prefix) if prefix else None
+            dept_id = review.get("account_departments", {}).get(legacy)
+            if dept_id is None:
+                dept_id = review.get("departments", {}).get(prefix) if prefix else None
             # Department evidence is required for P&L; never infer from an invoice reference.
             pnl = (code or "").startswith(("4", "5", "6", "7", "8")) or prefix in DEPARTMENT_SUGGESTIONS or prefix in {"BOD", "SWP", "LDY"}
             if pnl and dept_id is None:
@@ -231,15 +238,25 @@ def build_plan(source, database=None, review=None):
             issues.add("NO_FINANCIAL_LINES")
         if database is not None:
             matches = []
+            overlaps = []
+            source_references = {reference_key(journal.get(field)) for field in ("invoice_reference", "description")} - {""}
             for existing in database["journals"]:
                 stable = existing["external_reference"] == journal["external_reference"]
                 # Exact legacy register matching, not repeated invoice/reference descriptions.
                 legacy_match = journal["register"] in {existing["journal_number"], existing["document_number"], existing["external_reference"]}
                 if stable or legacy_match:
                     matches.append(existing)
+                elif existing.get("business_unit_id") == scope.get("business_unit_id") and existing.get("location_id") == scope.get("location_id") and reference_key(existing.get("document_number")) in source_references:
+                    # Old app imports used generated external references, not legacy
+                    # registers. A matching document reference is evidence to review,
+                    # even when its date differs. Never silently merge or delete it.
+                    overlaps.append(existing)
             if matches:
                 issues.add("EXISTING_REGISTER_REVIEW")
                 journal["existing_journals"] = matches
+            if overlaps:
+                issues.add("SOURCE_REFERENCE_OVERLAP_REVIEW")
+                journal["possible_existing_journals"] = overlaps
         journal.update(debit=str(debit), credit=str(credit), difference=str(difference), issues=sorted(issues), status="REVIEW" if issues else "READY_FOR_SEED_REVIEW")
         counts[journal["status"]] += 1
     control_matches = total_debit == money(source["grand_total"]["debit"]) and total_credit == money(source["grand_total"]["credit"])
