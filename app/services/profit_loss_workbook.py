@@ -75,6 +75,7 @@ class StatementRows(list):
     def __init__(self, statement, title, as_of):
         super().__init__()
         self.styles = {}
+        self.percent_rows = set()
         self.statement = statement
         self.revenue = values(statement, accounts(statement, 'REVENUE'))
         self.extend([
@@ -86,6 +87,25 @@ class StatementRows(list):
              'YTD Variance vs Last Month'],
         ])
         self.styles.update({1: 'title', 2: 'title', 3: 'title', 6: 'header'})
+
+    def statistics(self):
+        statistics = self.statement.get('statistics') or {}
+        if not statistics.get('rows'):
+            return
+        self.heading('OPERATING STATISTICS')
+        for item in statistics['rows']:
+            unit = item.get('unit')
+            label = item['label'] + (f' ({unit})' if unit and item['format'] != 'percent' else ' (%)' if item['format'] == 'percent' else '')
+            row = [label]
+            for metric in METRICS:
+                row += [item['periods']['MTD'][metric], None]
+            m, y = item['periods']['MTD'], item['periods']['YTD']
+            row += [m['current']-m['last_month'] if m['current'] is not None and m['last_month'] is not None else None]
+            row += [y[k] for k in METRICS]
+            row += [y['current']-y['last_month'] if y['current'] is not None and y['last_month'] is not None else None]
+            self.append(row)
+            if item['format'] == 'percent':
+                self.percent_rows.add(len(self))
 
     def heading(self, label):
         self.append([])
@@ -113,6 +133,7 @@ class StatementRows(list):
 
 def department_rows(statement, title, as_of):
     rows = StatementRows(statement, title, as_of)
+    rows.statistics()
     revenue = accounts(statement, 'REVENUE')
     sc_revenue = [a for a in revenue if service_charge(a)]
     rows.heading('REVENUE')
@@ -157,6 +178,7 @@ def department_rows(statement, title, as_of):
 
 def summary_rows(statement, title, groups, as_of):
     rows = StatementRows(statement, title, as_of)
+    rows.statistics()
     deductions = [(1, rows.revenue)]
     for category, heading, total in (
         ('REVENUE', 'REVENUE', 'Net Revenue With Service Charge'),
