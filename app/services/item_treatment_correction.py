@@ -82,6 +82,10 @@ def correct_receiving_only_stock(db, product, *, expense_account_id, user, reaso
             raise HTTPException(409,'Receiving journal and General Ledger differ; correct that discrepancy first')
         all_items=db.query(GoodsReceiptItem).filter(GoodsReceiptItem.goods_receipt_id==rid).with_for_update().all()
         original_destinations={item.id:line_destination(receipt,item) for item in all_items}
+        header_fields=('subtotal','tax_amount','total_amount','supplier_id','received_at','business_unit_id','location_id','department_id','purchase_order_id','market_list_id')
+        item_fields=('product_id','quantity','unit_cost','is_taxable','tax_rate','tax_amount','purchase_order_item_id','market_list_item_id')
+        original_header={key:getattr(receipt,key) for key in header_fields}
+        original_items={item.id:{key:getattr(item,key) for key in item_fields} for item in all_items}
         old={'receipt':snapshot(receipt),'items':[snapshot(i) for i in all_items], 'journal_lines':[snapshot(l) for l in source], 'ledger':[snapshot(g) for g in ledger]}
         amounts=defaultdict(lambda:ZERO)
         seen=set()
@@ -133,6 +137,8 @@ def correct_receiving_only_stock(db, product, *, expense_account_id, user, reaso
         receipt.destination_type=receipt_destination(receipt)
         if receipt.destination_type=='DIRECT_USE':receipt.warehouse_id=None
         db.flush()
+        if any(getattr(receipt,key)!=value for key,value in original_header.items()) or any(getattr(item,key)!=value for item in all_items for key,value in original_items[item.id].items()):
+            raise HTTPException(409,'Receiving financial values or organization changed during correction; review the original source before retrying')
         if totals_before!=(sum((l.debit for l in source),ZERO),sum((l.credit for l in source),ZERO)) or signature(source)!=signature(ledger):
             raise HTTPException(409,'Accounting verification failed; correction rolled back')
         journal.updated_at=datetime.now(timezone.utc)
