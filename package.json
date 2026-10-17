@@ -11,7 +11,8 @@
     "format": "prettier --write .",
     "test:finance": "node scripts/test-finance-print-recovery.mjs && node scripts/test-form-recovery-hook.cjs && node scripts/test-executive-summary.mjs",
     "test:inventory-print": "node scripts/test-inventory-print.mjs",
-    "test:workspace": "node scripts/test-workspace-back.cjs"
+    "test:workspace": "node scripts/test-workspace-back.cjs",
+    "test:store-request": "node scripts/test-store-request-availability.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
