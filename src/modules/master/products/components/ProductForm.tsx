@@ -1,3 +1,5 @@
+import { foodTreatment } from "../itemTreatmentPolicy";
+import { productApi } from "../api/productApi";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
@@ -63,6 +65,8 @@ const blank = () => ({
 export default function ProductForm({ catalogType = "CATERING", itemType, open, product, groups = [], loading, onClose, onSubmit }: Props) {
   const [form, setForm] = useState(blank());
   const uomListId = useId();
+  const [stockReason, setStockReason] = useState("Correct Item Master treatment to Direct Use");
+  const existingStock = useQuery({queryKey:["product-detail",product?.id],queryFn:async()=>(await productApi.detail(product!.id)).data,enabled:open && Boolean(product)});
   const user = useAuthStore((state) => state.user);
   const repairImportCode = Boolean(product?.code.toUpperCase().startsWith("RBI-") && isSuperuser(user));
   const codePreview = useQuery({
@@ -149,6 +153,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
 
   useEffect(() => {
     if (!open) return;
+    setStockReason(`Correct Item Master treatment for ${product?.code ?? "item"} to Direct Use`);
     setForm(product ? {
       department_id: product.department_id ?? null, is_market_item: product.is_market_item,
       code: product.code,
@@ -253,7 +258,8 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
     const group = groups.find((item) => item.code === form.group_code && (item.item_type ?? "BUY") === form.item_type);
     const sub = (group?.subgroups ?? []).find((item) => item.code === code);
     const name = sub?.name === "GRESORIS" ? "GROCERIES" : sub?.name;
-    setForm((current) => ({ ...current, subgroup_code: code, subgroup_name: name ?? "" }));
+    const treatment = !product && form.item_type === "BUY" && form.group_name.toUpperCase() === "FOOD" ? foodTreatment(name ?? "",form.name) : undefined;
+    setForm((current) => ({ ...current, subgroup_code: code, subgroup_name: name ?? "", ...(treatment ? {inventory_treatment:treatment,is_market_item:treatment === "DIRECT_USE"} : {}) }));
   };
 
   const accountingReady =
@@ -268,6 +274,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
     (["EXEMPT", "NON_TAXABLE"].includes(form.tax_category)) ||
     (form.is_taxable && Number(form.tax_rate) > 0);
 
+  const correctingStock = Boolean(product && form.inventory_treatment === "DIRECT_USE" && existingStock.data?.stock.length);
   const subgroupRequired = form.item_type === "BUY";
   const valid = Boolean(
     displayedCode.trim() &&
@@ -281,6 +288,8 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
     Number(form.conversion) > 0 &&
     Number(form.minimum_stock) >= 0 &&
     accountingReady &&
+    (!correctingStock || stockReason.trim().length >= 3) &&
+    !(product && existingStock.isLoading) &&
     taxReady
   );
 
@@ -288,6 +297,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
     const { cogs_account_id, department_id, ...itemFields } = form;
     const payload = {
       ...itemFields,
+      ...(correctingStock ? {correct_existing_stock:true,stock_correction_reason:stockReason.trim()} : {}),
       ...(departments.data?.available ? {department_id} : {}),
       is_market_item: form.subgroup_name.trim().toUpperCase() === "MEAT" ? form.is_market_item : ["VEGETABLES","FRUIT","HERB","FISH","POULTRY","SNACK"].includes(form.subgroup_name.trim().toUpperCase()),
       catalog_type: catalogType,
@@ -477,9 +487,10 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
           </div>}
         </div>
       </DialogBody>
+      {correctingStock && <div className="mx-5 mb-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Saving will correct existing receiving-only stock to this expense account and remove its warehouse balance. Existing issues, transfers and warehouse exceptions require separate correction.</p><p className="my-2 tabular-nums">Stock value: Rp {existingStock.data?.stock.reduce((sum,row)=>sum+Number(row.value),0).toLocaleString("id-ID")}</p><Input aria-label="Stock correction reason" value={stockReason} onChange={e=>setStockReason(e.target.value)}/></div>}
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button disabled={!valid} loading={loading} onClick={submit}>Save</Button>
+        <Button disabled={!valid} loading={loading} onClick={submit}>{correctingStock ? "Save & correct stock" : "Save"}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>;
