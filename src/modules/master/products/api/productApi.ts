@@ -33,8 +33,8 @@ export const productApi = {
   list: (params: ProductListParams = {}) =>
     api.get("/products", { params }),
 
-  classificationMaster: () =>
-    api.get<ProductClassificationGroup[]>("/products/classification-master"),
+  classificationMaster: (itemType?: ItemType, catalogType?: "CATERING" | "HOTEL") =>
+    api.get<ProductClassificationGroup[]>("/products/classification-master", { params: { item_type: itemType, catalog_type: catalogType } }),
 
   lookup: (search = "", limit = 30, marketOnly = false, excludeMarket = false, catalogType?: "CATERING" | "HOTEL") =>
     api.get("/products/lookup", { params: { search, limit, market_only: marketOnly, exclude_market: excludeMarket, catalog_type: catalogType } }),

@@ -88,7 +88,7 @@ export default function ProductTable({ rows = [], accounts = [], onEdit, onView 
                 <TR key={row.id}>
                   <TD className="font-semibold text-emerald-800"><span title={row.code}>{row.code}</span></TD><TD className="max-w-[320px]"><button type="button" className="block max-w-full truncate font-medium text-emerald-800 hover:underline" title={row.name} onClick={() => onView?.(row)}>{row.name}</button></TD>
                   <TD><TableCellStack primary={row.item_type === "SELL" ? "Sell" : "Buy"} secondary={row.item_type === "SELL" ? `Rp ${Number(row.selling_price ?? 0).toLocaleString("id-ID")}` : `Rp ${Number(row.reference_cost ?? row.cost_price ?? 0).toLocaleString("id-ID")} / ${row.uom}`}/></TD>
-                  <TD><TableCellStack primary={row.group_name} secondary={subgroup}/></TD>
+                  <TD><TableCellStack primary={row.group_name} secondary={row.item_type === "SELL" ? undefined : subgroup}/></TD>
                   <TD className="max-w-[150px] truncate" title={row.department_name || "Shared"}>{row.department_name || "Shared"}</TD>
                   <TD><Badge variant={treatmentVariant(row.inventory_treatment)}>{treatmentLabel(row.inventory_treatment)}</Badge></TD>
                   <TD><TableCellStack primary={row.uom} secondary={`${row.usage_uom} · ×${Number(row.conversion).toLocaleString("id-ID")}`}/></TD>

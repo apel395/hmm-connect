@@ -40,7 +40,7 @@ export default function ProductDetailDialog({ productId, accounts, onClose, onEd
         {query.isError && <p className="text-sm text-red-700">Item details could not be loaded.</p>}
         {item && detail && <div className="space-y-5 text-sm">
           <section className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-3">
-            <div><div className="text-slate-500">Classification</div><strong>{item.group_name} / {item.subgroup_name}</strong></div>
+            <div><div className="text-slate-500">Classification</div><strong>{item.group_name}{item.item_type === "BUY" && item.subgroup_name ? ` / ${item.subgroup_name}` : ""}</strong></div>
             <div><div className="text-slate-500">Department</div><strong>{item.department_name || "Shared"}</strong></div>
             <div><div className="text-slate-500">Product ID</div><strong>{item.id}</strong></div>
             <div><div className="text-slate-500">Treatment</div><strong>{item.inventory_treatment.replace(/_/g, " ")}</strong></div>
