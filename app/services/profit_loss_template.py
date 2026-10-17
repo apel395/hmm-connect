@@ -207,7 +207,11 @@ def utility_account(account):
 
 def summary_schedule(statement, title, groups, as_of):
     if statement.get('report_scope') == 'CATERING':
-        return detail_rows({**statement, 'template_title': title}, title, as_of)
+        rows = TemplateRows(statement, 'PROJECT', title, as_of)
+        for item in statement.get('presentation_rows', []):
+            if item['kind'] != 'detail':
+                rows.line(item['label'], item['periods'], 82 if item['kind'] == 'subtotal' else 80)
+        return rows
     hotel_only = statement.get('report_scope') == 'HOTEL'
     rows = TemplateRows(statement, 'SUMMARY_HOTEL' if hotel_only else 'SUMMARY', title, as_of)
     root_members = statement.get('related_accounts', [])

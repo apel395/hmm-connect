@@ -222,7 +222,7 @@ def test_template_excel_layout_print_and_numeric_formats(records, tmp_path):
         for row in sheet:
             for cell in row:
                 assert cell.data_type != 'e'
-        revenue=next(row for row in sheet if row[0].value in ('NET REVENUE WITH SERVICE CHARGE', 'Net Revenue With SC', 'Total Revenue'))
+        revenue=next(row for row in sheet if row[0].value in ('NET REVENUE WITH SERVICE CHARGE', 'Net Revenue With SC', 'Total Revenue', 'Pendapatan'))
         assert revenue[1].data_type=='n'
         if revenue[2].value is not None:
             assert '%' in revenue[2].number_format
@@ -296,7 +296,7 @@ def test_catering_workbook_has_one_location_schedule_and_no_hotel_boilerplate(re
         assert net[rows.headers.index('MTD Budget')] is None
         assert net[rows.headers.index('MTD Last Year')] is None
     assert sum(next(r for r in rows if r and r[0]=='Gross Operating Income / Profit / Loss')[1] for _,rows in sheets[1:])==subtotal(report,'NOP')
-    assert next(r[1] for r in sheets[0][1] if r and r[0]=='Gross Operating Income / Profit / Loss')==subtotal(report,'NOP')
+    assert next(r[1] for r in sheets[0][1] if r and r[0]=='NOP')==subtotal(report,'NOP')
     assert db.query(JournalEntry).count()==3
 
 

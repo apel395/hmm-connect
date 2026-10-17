@@ -38,7 +38,9 @@ def test_catering_export_summary_equals_locations_and_consolidated_keeps_same_la
     final=lambda rows: next(r for r in rows if r and r[0]=='Gross Operating Income / Profit / Loss')
     for period in ('MTD','YTD'):
         col=sheets[0][1].headers.index(period+' Current')
-        assert final(sheets[0][1])[col]==sum(final(rows)[col] for _,rows in sheets[1:])
+        summary_net=next(r for r in sheets[0][1] if r and r[0]=='NOP')
+        assert summary_net[col]==sum(final(rows)[col] for _,rows in sheets[1:])
+    assert not any(r and r[0].strip()=='Salaries & Wages' for r in sheets[0][1])
     wb=load_workbook(BytesIO(build_xlsx(sheets)))
     for sheet in wb:
         assert sheet.freeze_panes=='B7'
