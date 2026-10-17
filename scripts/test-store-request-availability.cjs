@@ -12,6 +12,13 @@ const axios = require(root + '/node_modules/axios/dist/node/axios.cjs');
   global.__stockApi = axios.create({ adapter: async config => {
     const url = new URL(axios.getUri(config), 'https://stock.test');
     requests.push(url);
+    if (url.pathname === '/inventory') {
+      const page = Number(url.searchParams.get('page'));
+      const rows = mode === 'empty-stock' ? [] : page === 1
+        ? [{ product_id: 1, warehouse_id: 5, quantity: 0 }, { product_id: 2, warehouse_id: 5, quantity: -2 }, { product_id: 3, warehouse_id: 3, quantity: 10 }]
+        : [{ product_id: 6021, product_code: '1-800034', product_name: 'AMRIS', uom: 'PCS', warehouse_id: 5, quantity: '40.0000' }];
+      return { data: { items: rows, total_pages: mode === 'empty-stock' ? 1 : 2 }, status: 200, statusText: 'OK', headers: {}, config };
+    }
     // Model FastAPI's repeated list[int] query parameter contract.
     const ids = url.searchParams.getAll('product_ids').map(Number);
     const warehouse = Number(url.searchParams.get('warehouse_id'));
@@ -41,5 +48,13 @@ const axios = require(root + '/node_modules/axios/dist/node/axios.cjs');
   await assert.rejects(storeRequestApi.availability(5, [6021]), /stock could not be read/);
   mode = 'error';
   await assert.rejects(storeRequestApi.availability(5, [6021]), /access denied/);
+  mode = 'normal';
+  const stocked = await storeRequestApi.stockedItems(5, 'amris');
+  assert.deepEqual(stocked, [{ id: 6021, code: '1-800034', name: 'AMRIS', uom: 'PCS' }]);
+  assert.equal(requests.at(-1).searchParams.get('search'), 'amris');
+  assert.equal(requests.at(-1).searchParams.get('warehouse_id'), '5');
+  assert.equal(requests.at(-1).searchParams.get('page'), '2', 'later positive stock is not lost after an empty/negative page');
+  mode = 'empty-stock';
+  assert.deepEqual(await storeRequestApi.stockedItems(5), [], 'empty stock returns no products, never the global catalog');
   console.log('PASS: AMRIS stock 40, repeated item IDs, warehouse isolation, real zero, incomplete and failed lookup rejection.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
