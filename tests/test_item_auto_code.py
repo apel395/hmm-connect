@@ -67,7 +67,9 @@ def test_sell_catalog_uses_separate_prefix(db):
     group = ItemGroup(code="S", name="FOOD SERVICE", item_type="SELL", is_active=True)
     group.subgroups = [ItemSubgroup(code="S-1", name="MENU", is_active=True)]
     db.add(group); db.commit()
-    assert preview_item_code("S", "S-1", "SELL", db, ADMIN)["code"] == "S-100001"
+    assert preview_item_code("S", "", "SELL", db, ADMIN)["code"] == "S-000001"
+    with pytest.raises(HTTPException):
+        preview_item_code("S", "S-1", "SELL", db, ADMIN)
 
 
 def test_postgres_creation_lock_is_transaction_scoped():
