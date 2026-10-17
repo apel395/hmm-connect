@@ -57,6 +57,8 @@ class ProductCreate(BaseModel):
 
 
 class ProductUpdate(BaseModel):
+    correct_existing_stock: bool = False
+    stock_correction_reason: str | None = Field(default=None, max_length=500)
     regenerate_code: bool = False
     expected_code: str | None = Field(default=None, max_length=20)
     name: str | None = None
