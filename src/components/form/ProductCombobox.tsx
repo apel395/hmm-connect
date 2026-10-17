@@ -36,6 +36,7 @@ interface Props {
   disabled?: boolean;
   placeholder?: string;
   remote?: boolean;
+  loadOptions?: (search: string) => Promise<ProductComboboxOption[]>;
   marketOnly?: boolean;
   excludeMarket?: boolean;
   requireTaxReady?: boolean;
@@ -76,7 +77,7 @@ async function loadRemoteProducts(search: string, marketOnly: boolean, excludeMa
   return Array.isArray(payload?.items) ? payload.items : [];
 }
 
-export default function ProductCombobox({ catalogType, value, products = [], disabled, placeholder = "Type product code or name...", remote = false, marketOnly = false, excludeMarket = false, requireTaxReady = false, onChange, onSelect }: Props) {
+export default function ProductCombobox({ catalogType, value, products = [], disabled, placeholder = "Type product code or name...", remote = false, marketOnly = false, excludeMarket = false, requireTaxReady = false, loadOptions, onChange, onSelect }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -136,7 +137,8 @@ export default function ProductCombobox({ catalogType, value, products = [], dis
       setLoading(true);
       setLoadError(false);
       try {
-        const rows = await loadRemoteProducts(selected && raw === selectedLabel ? "" : raw, marketOnly, excludeMarket, catalogType);
+        const search = selected && raw === selectedLabel ? "" : raw;
+        const rows = loadOptions ? await loadOptions(search) : await loadRemoteProducts(search, marketOnly, excludeMarket, catalogType);
         if (requestId === requestIdRef.current) setRemoteProducts(rows);
       } catch {
         if (requestId === requestIdRef.current) { setRemoteProducts([]); setLoadError(true); }
@@ -145,7 +147,7 @@ export default function ProductCombobox({ catalogType, value, products = [], dis
       }
     }, raw ? 250 : 0);
     return () => window.clearTimeout(timer);
-  }, [remote, disabled, open, query, selected, selectedLabel, marketOnly, excludeMarket, catalogType]);
+  }, [remote, disabled, open, query, selected, selectedLabel, marketOnly, excludeMarket, catalogType, loadOptions]);
 
   useEffect(() => {
     if (!open) return;
