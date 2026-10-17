@@ -195,6 +195,26 @@ def classification_catalog(groups, products, item_type=None):
         })
         if sub_code and sub_name and sub_code not in blocked_subgroups:
             group["subgroups"].setdefault(sub_code, {"id": 0, "code": sub_code, "name": sub_name})
+    # A new selling catalog must be usable before its first product exists.
+    # Keep these separate from BUY classifications and use the same catalog for
+    # dropdowns, code previews and save validation. Explicit master settings win,
+    # including deliberately inactive selling groups.
+    if item_type in (None, "SELL"):
+        configured_names = {
+            group.name.strip().upper() for group in groups
+            if group.item_type == "SELL"
+        } | {
+            group["name"].strip().upper() for (kind, _), group in catalog.items()
+            if kind == "SELL"
+        }
+        occupied_codes = {group.code for group in groups} | {code for _, code in catalog}
+        for code, name in (("S-FOOD", "FOOD"), ("S-BEV", "BEVERAGE"),
+                           ("S-ROOM", "ROOM"), ("S-SERVICE", "SERVICE")):
+            if name in configured_names or code in occupied_codes:
+                continue
+            catalog[("SELL", code)] = {
+                "id": 0, "code": code, "name": name, "item_type": "SELL", "subgroups": {},
+            }
     return [{**group, "subgroups": sorted(group["subgroups"].values(), key=lambda sub: sub["code"])}
             for _, group in sorted(catalog.items())]
 
