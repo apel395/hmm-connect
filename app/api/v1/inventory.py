@@ -106,6 +106,7 @@ def list_inventory(
     business_unit_id: int | None = None,
     as_of: date | None = None,
     movement_class: str | None = None,
+    show_empty: bool = False,
     health: str | None = Query(default=None, pattern="^(HEALTHY|LOW_STOCK|REORDER|BELOW_MINIMUM)$"),
     search: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
@@ -185,6 +186,11 @@ def list_inventory(
     monitored = minimum > 0
     low_stock = monitored & (quantity <= minimum)
     query = scoped
+    # Keep empty snapshots for stock cards and historical rollback. Only suppress
+    # them in the current listing, before counting, totals and pagination.
+    # Reorder views must retain monitored items that have run out.
+    if not show_empty and health not in {"LOW_STOCK", "REORDER", "BELOW_MINIMUM"}:
+        query = query.filter(or_(quantity != 0, stock_value != 0))
     if health in {"LOW_STOCK", "REORDER", "BELOW_MINIMUM"}:
         query = query.filter(low_stock)
     elif health == "HEALTHY":
