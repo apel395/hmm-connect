@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/**"
+      - "scripts/test-store-request-availability.cjs"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/frontend-ci.yml"
@@ -25,4 +26,5 @@ jobs:
       - run: npm run lint
       - run: npx tsc -b
       - run: npm run test:finance
+      - run: npm run test:store-request
       - run: npm run build
