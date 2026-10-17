@@ -87,7 +87,11 @@ def test_classification_master_is_independent_of_product_rows(master_db):
     db.commit()
 
     result = classification_master(db=db, _=admin)
-    assert [group["code"] for group in result] == ["BEVERAGE", "FOOD"]
+    assert [group["code"] for group in result if group["item_type"] == "BUY"] == ["BEVERAGE", "FOOD"]
+    assert {group["name"] for group in result if group["item_type"] == "SELL"} == {
+        "FOOD", "BEVERAGE", "ROOM", "SERVICE",
+    }
+    assert not any(group["code"] == "HIDDEN" for group in result)
     food_result = next(group for group in result if group["code"] == "FOOD")
     assert [(item["code"], item["name"]) for item in food_result["subgroups"]] == [
         ("1-1", "Meat"), ("1-10", "Dairy"),
