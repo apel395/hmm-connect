@@ -55,7 +55,7 @@ def presentation(report, originals, values, accounts, mappings, selected, eviden
     for code, group in members.items():
         for aid, account in group:
             related.append(dict(account_id=aid, account_code=account.account_number,
-                account_name=account.account_name, category=code, periods=amounts([aid])))
+                account_name=account.account_name, category=code, periods=amounts([aid]), has_posted_activity=aid in evidence))
     report['related_accounts'] = sorted(related, key=lambda r: r['account_code'])
     result = []
     for code, group in members.items():

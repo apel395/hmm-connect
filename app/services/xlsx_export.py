@@ -24,6 +24,9 @@ def column_name(index):
 
 
 def worksheet(rows, first_column_width=None):
+    if hasattr(rows, 'template_profile'):
+        from app.services.profit_loss_template_xml import worksheet as template_worksheet
+        return template_worksheet(rows)
     if hasattr(rows, 'styles'):
         return statement_worksheet(rows)
     output = []
@@ -96,7 +99,7 @@ def build_xlsx(sheets, *, first_column_width=None):
         "".join(f'<Override PartName="/xl/worksheets/sheet{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' for i in range(1,len(sheets)+1)) + '</Types>'
     workbook = XML + f'<workbook xmlns="{NS}" xmlns:r="{DOC_REL}"><sheets>' +\
         "".join(f'<sheet name={quoteattr(title)} sheetId="{i}" r:id="rId{i}"/>' for i,(title,_) in enumerate(sheets,1)) + '</sheets>' +\
-        '<definedNames>' + ''.join(f'<definedName name="_xlnm.Print_Titles" localSheetId="{i}">{escape(chr(39)+title.replace(chr(39),chr(39)*2)+chr(39))}!$1:$6</definedName>' for i,(title,rows) in enumerate(sheets) if hasattr(rows,'styles')) + '</definedNames></workbook>'
+        '<definedNames>' + ''.join(f'<definedName name="_xlnm.Print_Titles" localSheetId="{i}">{escape(chr(39)+title.replace(chr(39),chr(39)*2)+chr(39))}!$1:$6</definedName>' for i,(title,rows) in enumerate(sheets) if hasattr(rows,'styles') or hasattr(rows,'template_profile')) + '</definedNames></workbook>'
     relationships = XML + f'<Relationships xmlns="{REL}">' +\
         "".join(f'<Relationship Id="rId{i}" Type="{DOC_REL}/worksheet" Target="worksheets/sheet{i}.xml"/>' for i in range(1,len(sheets)+1)) +\
         f'<Relationship Id="styles" Type="{DOC_REL}/styles" Target="styles.xml"/></Relationships>'
@@ -118,6 +121,13 @@ def build_xlsx(sheets, *, first_column_width=None):
         '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +\
         '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf></cellXfs>' +\
         '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'
+    template_export = bool(sheets) and all(hasattr(rows, 'template_profile') for _, rows in sheets)
+    if template_export:
+        from app.services.profit_loss_template import ROOT
+        from app.services.profit_loss_template_xml import template_styles
+        styles = template_styles()[0]
+        content = content.replace('</Types>', '<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/></Types>')
+        relationships = relationships.replace('</Relationships>', f'<Relationship Id="theme" Type="{DOC_REL}/theme" Target="theme/theme1.xml"/></Relationships>')
     output = BytesIO()
     with ZipFile(output, "w", ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", content)
@@ -125,6 +135,8 @@ def build_xlsx(sheets, *, first_column_width=None):
         archive.writestr("xl/workbook.xml", workbook)
         archive.writestr("xl/_rels/workbook.xml.rels", relationships)
         archive.writestr("xl/styles.xml", styles)
+        if template_export:
+            archive.writestr("xl/theme/theme1.xml", (ROOT / "pl_theme.xml").read_bytes())
         for i,(_,rows) in enumerate(sheets,1):
             archive.writestr(f"xl/worksheets/sheet{i}.xml", worksheet(rows,first_column_width=first_column_width))
     return output.getvalue()

@@ -1,11 +1,9 @@
-# Hotel P&L department layout
+# Hotel P&L Excel template
 
-The user-supplied Template PL REV.xlsx is a layout reference, not an accounting source. Its sample figures and broken reference formulas are not imported. Reports continue to use the authorized computed P&L dataset.
+Hotel-scoped Excel exports follow the supplied `Template PL REV.xlsx` schedules: Summary Hotel first, then departments in revenue-to-overhead order, then Hotel Utility. Room, F&B, Pool and overhead sheets use their own source rows, columns, borders, fonts, 15-point row heights and 100% zoom. Headers show the selected month/year. The first six rows and account-name column stay frozen.
 
-The Summary sheet remains the same header/category/subtotal statement as the P&L page. Detailed Hotel sheets follow department order from revenue departments to overhead departments; Catering retains separate location sheets and its own relevant-account layout.
+Only static layout and styles are bundled. Sample amounts, broken formulas and cached errors are excluded. Financial values come from the existing authorized report scope; missing budgets/comparisons remain blank. Percentages use matching-period revenue, with separately identified service-charge distribution compared against service-charge revenue. Combined payroll or utility accounts are never split without source evidence.
 
-Room/Front Office owns the Room Statistic section and Room Revenue heading. F&B uses Food & Beverage Revenue and Food & Beverage Cost. Pool and Laundry use their own revenue headings. Named overhead departments do not inherit hotel room statistics or sections with no related accounts.
+Actual registered accounts absent from the reference remain as additional rows before their subtotal. Summary residuals are explicitly shown rather than hidden. Hotel's reference ends at GOP; real under-expenses add a deduction/NOP bridge. Utility is a supporting schedule, not an additional expense in the summary. No journals, mappings, balances or database records change.
 
-Related account details, including zero balances, remain present. A real revenue or cost account in an overhead department is retained for finance review rather than hidden by the layout. GOI, GOP and NOP continue to include every related category, even when an empty category heading is omitted. No postings, category mappings, allocations, opening balances or comparisons are changed.
-
-MTD and YTD comparisons, unavailable versus zero values, matching revenue percentages, last-month Excel variances, freeze panes, numeric cells and print headings retain their existing behavior. The on-screen P&L remains a summary with account drilldown and no operating-statistics block.
+This patch applies to the Hotel selection only. Catering and Consolidated exports retain their existing layouts pending a separate template review. The on-screen P&L remains a summary with account drilldown.

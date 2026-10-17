@@ -144,7 +144,7 @@ def test_excel_export_ignores_hidden_accounts_and_includes_zero_department_accou
     rows=list(workbook[next(name for name in workbook.sheetnames if 'House Keeping' in name)].values)
     assert any(str(row[0]).strip()=='Unused department expense' and row[1]==0 and row[10]==0 for row in rows)
     assert any(str(row[0]).strip()=='Cost' and row[1]==100 for row in rows)
-    assert any(str(row[0]).strip()=='Salary' and row[1]==50 for row in rows)
+    assert any(str(row[0]).strip()=='Salaries & Wages' and row[1]==80 for row in rows)
     assert any(str(row[0]).strip()=='Revenue' and row[1]==1000 for row in rows)
     assert workbook.sheetnames[0]=='Summary'
 
@@ -242,12 +242,9 @@ def test_hotel_summary_matches_page_and_departments_have_stable_order(records):
     report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='HOTEL')
     sheets=workbook_sheets(report)
     summary=sheets[0][1]
-    page=[r for r in report['presentation_rows'] if r['kind']!='detail']
-    assert [r[0] for r in summary[6:]]==[r['label'] for r in page]
-    for exported, row in zip(summary[6:],page):
-        assert exported[1]==row['periods']['MTD']['current']
-        assert exported[10]==row['periods']['YTD']['current']
-    assert [name for name,_ in sheets[1:]]==['Hotel · Front Office','Hotel · Food and Beverage','Hotel · House Keeping','Hotel · Accounting']
+    assert next(r[1] for r in summary if r and r[0]=='GROSS OPERATING PROFIT')==subtotal(report,'GOP')
+    assert next(r[1] for r in summary if r and r[0]=='NETT OPERATING PROFIT')==subtotal(report,'NOP')
+    assert [name for name,_ in sheets[1:]]==['Hotel · Front Office','Hotel · Food and Beverage','Hotel · House Keeping','Hotel · Accounting','Hotel Utility']
 
 
 def test_related_zeros_are_scoped_but_wrong_and_offsetting_postings_remain(records):

@@ -69,13 +69,23 @@ def related(account, report, values, evidence):
     # Unit-specific revenue families must not leak into another unit's zeros.
     if 'catering' in unit and (code == '400-100' or code.startswith('400-100-')):
         return False
-    if 'hotel' in unit and (code == '400-200' or code.startswith('400-200-')):
+    name = normalized(account.account_name)
+    if 'hotel' in unit and (code == '400-200' or code.startswith('400-200-') or ('catering' in name and 'outsidecatering' not in name)):
         return False
     dept = department_key(labels.get('department_id'))
     if dept is None:
         return True
     owner = REVENUE_DEPARTMENTS.get(code)
+    if account.account_type in ('REVENUE', 'INCOME'):
+        owner = owner or {'roomsales': 'FO', 'roomrebate': 'FO', 'pendapatankamar': 'FO',
+            'foodrevenue': 'FB', 'beveragerevenue': 'FB', 'foodbeveragerevenue': 'FB',
+            'pendapatanmakanan': 'FB', 'pendapatanminuman': 'FB', 'laundry': 'LDY',
+            'swimmingpool': 'SWP'}.get(name)
     prefix = re.match(r'^\s*([A-Za-z&]+)\s*[-–—]\s*', account.account_name)
     if prefix:
         owner = PREFIXES.get(prefix[1].upper(), owner)
+    if account.account_type in ("REVENUE", "INCOME") and owner is None:
+        return False
+    if code.startswith("500-100-") and owner is None and dept != "FB":
+        return False
     return owner is None or owner == dept
