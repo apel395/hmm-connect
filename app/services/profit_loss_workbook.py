@@ -234,6 +234,19 @@ def workbook_sheets(report):
         used.add(name.casefold())
         sheets.append((name, rows))
 
+    if scope == 'HOTEL':
+        from app.services.profit_loss_template import detail_rows, summary_schedule, utility_account
+        from app.services.profit_loss_relevance import department_sort
+        groups = report.get('group_reports', [])
+        add('Summary', summary_schedule(report, 'HOTEL INCOME STATEMENT', groups, as_of))
+        for group in sorted(groups, key=department_sort):
+            add(group['title'], detail_rows(group, group['title'], as_of))
+        utility = {**report, 'department_name': 'Utilities',
+                   'template_revenue': values(report, [a for a in report.get('related_accounts', []) if a['category'] == 'REVENUE']),
+                   'related_accounts': [a for a in report.get('related_accounts', []) if utility_account(a)]}
+        add('Hotel Utility', detail_rows(utility, 'UTILITIES', as_of))
+        return sheets
+
     groups = report.get('group_reports', [])
     add('Summary', summary_rows(report, f'{scope.title()} Income Statement', groups, as_of))
     for unit in report.get('unit_reports', []):
