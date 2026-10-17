@@ -88,11 +88,11 @@ class StatementRows(list):
         ])
         self.styles.update({1: 'title', 2: 'title', 3: 'title', 6: 'header'})
 
-    def statistics(self):
+    def statistics(self, title="OPERATING STATISTICS"):
         statistics = self.statement.get('statistics') or {}
         if not statistics.get('rows'):
             return
-        self.heading('OPERATING STATISTICS')
+        self.heading(title)
         for item in statistics['rows']:
             unit = item.get('unit')
             label = item['label'] + (f' ({unit})' if unit and item['format'] != 'percent' else ' (%)' if item['format'] == 'percent' else '')
@@ -133,20 +133,31 @@ class StatementRows(list):
 
 def department_rows(statement, title, as_of):
     rows = StatementRows(statement, title, as_of)
-    rows.statistics()
+    from app.services.profit_loss_relevance import department_key
+    department_name = statement.get('department_name')
+    if not department_name and statement.get('scope', {}).get('department_id') is not None:
+        department_name = statement.get('scope_labels', {}).get('department_id')
+    department = department_key(department_name) or {'room': 'FO', 'pool': 'SWP'}.get(normalized(department_name or '')) or ('OTHER' if department_name else None)
+    # The supplied Room schedule owns room statistics, not every department.
+    if department in (None, 'FO'):
+        rows.statistics("ROOM STATISTIC" if department == "FO" else "OPERATING STATISTICS")
     revenue = accounts(statement, 'REVENUE')
     sc_revenue = [a for a in revenue if service_charge(a)]
-    rows.heading('REVENUE')
-    rows.detail([a for a in revenue if not service_charge(a)])
-    rows.line('Net Revenue Without Service Charge', values(statement, [a for a in revenue if not service_charge(a)]), 'total')
-    rows.detail(sc_revenue)
-    rows.line('Service Charge Revenue', values(statement, sc_revenue))
-    rows.line('Net Revenue With Service Charge', rows.revenue, 'total')
-    rows.heading('COST OF SALES')
-    cogs = values(statement, accounts(statement, 'COST_OF_REVENUE'))
-    rows.detail(accounts(statement, 'COST_OF_REVENUE'))
-    rows.line('Total Cost of Sales', cogs, 'total')
-    rows.line('Gross Profit', combine((1, rows.revenue), (-1, cogs)), 'total')
+    if revenue or department is None:
+        rows.heading({'FO': 'ROOM REVENUE', 'FB': 'FOOD & BEVERAGE REVENUE',
+                      'SWP': 'SWIMMING POOL REVENUE', 'LDY': 'LAUNDRY REVENUE'}.get(department, 'REVENUE'))
+        rows.detail([a for a in revenue if not service_charge(a)])
+        rows.line('Net Revenue Without Service Charge', values(statement, [a for a in revenue if not service_charge(a)]), 'total')
+        rows.detail(sc_revenue)
+        rows.line('Service Charge Revenue', values(statement, sc_revenue))
+        rows.line('Net Revenue With Service Charge', rows.revenue, 'total')
+    cost_members = accounts(statement, 'COST_OF_REVENUE')
+    cogs = values(statement, cost_members)
+    if cost_members or department is None:
+        rows.heading('FOOD & BEVERAGE COST' if department == 'FB' else 'COST OF SALES')
+        rows.detail(cost_members)
+        rows.line('Total Cost of Sales', cogs, 'total')
+        rows.line('Gross Profit', combine((1, rows.revenue), (-1, cogs)), 'total')
     deductions = [(1, rows.revenue), (-1, cogs)]
     for category, title_, total in (
         ('OPERATING_PAYROLL', 'PAYROLL AND RELATED EXPENSES', 'Total Payroll & Related Expenses With Service Charge'),
@@ -155,18 +166,21 @@ def department_rows(statement, title, as_of):
         ('OVERHEAD_EXPENSE', 'OTHER OVERHEAD EXPENSES', 'Total Other Overhead Expenses'),
         ('UNDER_EXPENSE', 'OTHER DEDUCTIONS / UNDER EXPENSES', 'Total Other Deductions'),
     ):
-        rows.heading(title_)
         members = accounts(statement, category)
-        if category.endswith('PAYROLL'):
+        show_section = bool(members) or department is None
+        if show_section:
+            rows.heading(title_)
+        if show_section and category.endswith('PAYROLL'):
             regular = [a for a in members if not service_charge(a)]
             rows.detail(regular)
             rows.line('Total Payroll & Related Expenses Without Service Charge', values(statement, regular), 'total')
             rows.line('Service Charge Distribution', values(statement, [a for a in members if service_charge(a)]))
             rows.detail([a for a in members if service_charge(a)])
-        else:
+        elif show_section:
             rows.detail(members)
         amount = values(statement, members)
-        rows.line(total, amount, 'total')
+        if show_section:
+            rows.line(total, amount, 'total')
         deductions.append((-1, amount))
         if category in ('OPERATING_EXPENSE', 'OVERHEAD_EXPENSE', 'UNDER_EXPENSE'):
             label = {'OPERATING_EXPENSE': 'Gross Operating Income / Profit / Loss',

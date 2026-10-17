@@ -47,11 +47,11 @@ def test_hotel_and_catering_groups_and_code_validation(db):
     assert {g['name'] for g in hotel} == {'FOOD', 'BEVERAGE', 'ROOM', 'SERVICE'}
     assert {g['name'] for g in catering} == {'FOOD', 'BEVERAGE', 'SERVICE'}
     assert all(g['subgroups'] == [] for g in hotel + catering)
-    assert preview_item_code('S-ROOM', '', 'SELL', db, ADMIN, catalog_type='HOTEL')['code'] == 'S-ROOM-000001'
+    assert preview_item_code('8', '', 'SELL', db, ADMIN, catalog_type='HOTEL')['code'] == '8-000001'
     with pytest.raises(HTTPException):
-        preview_item_code('S-ROOM', '', 'SELL', db, ADMIN, catalog_type='CATERING')
+        preview_item_code('8', '', 'SELL', db, ADMIN, catalog_type='CATERING')
     with pytest.raises(HTTPException):
-        preview_item_code('S-FOOD', 'S-FOOD-1', 'SELL', db, ADMIN, catalog_type='HOTEL')
+        preview_item_code('5', '5-1', 'SELL', db, ADMIN, catalog_type='HOTEL')
 
 
 def test_sell_save_uses_group_sequence_and_edit_keeps_existing_code(db):
@@ -59,7 +59,7 @@ def test_sell_save_uses_group_sequence_and_edit_keeps_existing_code(db):
     from fastapi import HTTPException
     from app.api.v1.products import create_product, update_product
     from app.schemas.product import ProductCreate, ProductUpdate
-    def item(name, catalog='HOTEL', group='S-FOOD', group_name='FOOD', **kwargs):
+    def item(name, catalog='HOTEL', group='5', group_name='FOOD', **kwargs):
         return ProductCreate(name=name, item_type='SELL', catalog_type=catalog,
                              group_code=group, group_name=group_name,
                              subgroup_code='', subgroup_name='',
@@ -67,13 +67,18 @@ def test_sell_save_uses_group_sequence_and_edit_keeps_existing_code(db):
                              tax_category='NON_TAXABLE', **kwargs)
     first = create_product(item('Hotel lunch'), db, ADMIN)
     second = create_product(item('Project lunch', catalog='CATERING'), db, ADMIN)
-    assert first.code == 'S-FOOD-000001'
-    assert second.code == 'S-FOOD-000002'
+    assert first.code == '5-000001'
+    assert second.code == '5-000002'
     assert first.subgroup_code == first.subgroup_name == ''
     ident = first.id
     update_product(first.id, ProductUpdate(name='Hotel lunch revised'), db, ADMIN)
-    assert first.id == ident and first.code == 'S-FOOD-000001'
+    assert first.id == ident and first.code == '5-000001'
     with pytest.raises(HTTPException):
-        create_product(item('Catering room', catalog='CATERING', group='S-ROOM', group_name='ROOM'), db, ADMIN)
+        create_product(item('Catering room', catalog='CATERING', group='8', group_name='ROOM'), db, ADMIN)
     with pytest.raises(HTTPException):
         update_product(first.id, ProductUpdate(subgroup_code='SUB'), db, ADMIN)
+
+
+def test_legacy_selling_group_alias_uses_new_number_without_creating_data(db):
+    assert preview_item_code('S-FOOD', '', 'SELL', db, ADMIN, catalog_type='HOTEL')['code'] == '5-000001'
+    assert db.query(Product).count() == 0

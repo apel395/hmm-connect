@@ -1,3 +1,4 @@
+from app.services.sell_item_groups import SELL_GROUPS, sell_group_code
 from math import ceil
 from decimal import Decimal
 from typing import Annotated
@@ -117,10 +118,11 @@ def _normalize_sell_classification(payload, product=None):
     if payload.get("subgroup_code") or payload.get("subgroup_name"):
         raise HTTPException(422, "Sell items use a group only; leave subgroup empty")
     payload.update(subgroup_code="", subgroup_name="")
+    payload["group_code"] = sell_group_code(payload.get("group_code", getattr(product, "group_code", "")))
     catalog = payload.get("catalog_type", getattr(product, "catalog_type", "CATERING"))
     group = str(payload.get("group_name", getattr(product, "group_name", "")) or "").strip().upper()
     code = str(payload.get("group_code", getattr(product, "group_code", "")) or "").strip().upper()
-    if catalog == "CATERING" and (group in {"ROOM", "ROOMS", "KAMAR"} or code == "S-ROOM"):
+    if catalog == "CATERING" and (group in {"ROOM", "ROOMS", "KAMAR"} or sell_group_code(code) == "8"):
         raise HTTPException(422, "Room selling items belong to the Hotel catalog")
 
 
@@ -188,19 +190,21 @@ def list_products(
 
 def classification_catalog(groups, products, item_type=None, catalog_type=None):
     catalog = {}
-    blocked_groups = {group.code for group in groups if not group.is_active}
+    blocked_groups = {sell_group_code(group.code) if group.item_type == "SELL" else group.code for group in groups if not group.is_active}
     blocked_subgroups = {sub.code for group in groups for sub in group.subgroups if not sub.is_active}
     for group in groups:
         kind = group.item_type or "BUY"
         if not group.is_active or (item_type and kind != item_type):
             continue
-        catalog[(kind, group.code)] = {
-            "id": group.id, "code": group.code, "name": group.name, "item_type": kind,
+        code = sell_group_code(group.code) if kind == "SELL" else group.code
+        catalog[(kind, code)] = {
+            "id": group.id, "code": code, "name": group.name, "item_type": kind,
             "subgroups": {sub.code: {"id": sub.id, "code": sub.code, "name": sub.name}
                          for sub in group.subgroups if sub.is_active},
         }
     for kind, code, name, sub_code, sub_name in sorted(products, key=lambda row: tuple(str(value or "") for value in row)):
         kind = kind or "BUY"
+        code = sell_group_code(code) if kind == "SELL" else code
         if not code or not name or code in blocked_groups or (item_type and kind != item_type):
             continue
         group = catalog.setdefault((kind, code), {
@@ -220,9 +224,8 @@ def classification_catalog(groups, products, item_type=None, catalog_type=None):
             group["name"].strip().upper() for (kind, _), group in catalog.items()
             if kind == "SELL"
         }
-        occupied_codes = {group.code for group in groups} | {code for _, code in catalog}
-        for code, name in (("S-FOOD", "FOOD"), ("S-BEV", "BEVERAGE"),
-                           ("S-ROOM", "ROOM"), ("S-SERVICE", "SERVICE")):
+        occupied_codes = {sell_group_code(group.code) if group.item_type == "SELL" else group.code for group in groups} | {code for _, code in catalog}
+        for code, name in SELL_GROUPS:
             if name in configured_names or code in occupied_codes:
                 continue
             catalog[("SELL", code)] = {
@@ -256,6 +259,8 @@ def lookup_products(catalog_type: Annotated[str | None, Query(pattern="^(CATERIN
 def numbering_classification(db, item_type, group_code, subgroup_code, catalog_type=None):
     if item_type == "SELL" and subgroup_code:
         raise HTTPException(422, "Sell items use a group only; leave subgroup empty")
+    if item_type == "SELL":
+        group_code = sell_group_code(group_code)
     catalog = classification_master(item_type=item_type, catalog_type=catalog_type, db=db)
     group = next((g for g in catalog if g["code"] == group_code), None)
     if not group:
@@ -268,7 +273,7 @@ def numbering_classification(db, item_type, group_code, subgroup_code, catalog_t
 @router.get("/next-code")
 def preview_item_code(group_code: str, subgroup_code: str = "", item_type: Annotated[str, Query(pattern="^(BUY|SELL)$")] = "BUY", db: Session = Depends(get_db), _=Depends(get_current_user), catalog_type: Annotated[str | None, Query(pattern="^(CATERING|HOTEL)$")] = None):
     numbering_classification(db, item_type, group_code, subgroup_code, catalog_type)
-    return {"code": next_item_code(db, group_code, subgroup_code)}
+    return {"code": next_item_code(db, sell_group_code(group_code) if item_type == "SELL" else group_code, subgroup_code)}
 
 @router.get("/departments")
 def item_department_options(catalog_type: Annotated[str, Query(pattern="^(CATERING|HOTEL)$")] = "CATERING", db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -328,9 +333,9 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     automatic = payload.pop("auto_code") or not data.code.strip()
     lock_item_creation(db)
     if automatic:
-        group, sub = numbering_classification(db, data.item_type, data.group_code, data.subgroup_code, data.catalog_type)
+        group, sub = numbering_classification(db, data.item_type, payload["group_code"], data.subgroup_code, data.catalog_type)
         payload.update(group_name=group["name"], subgroup_name=sub["name"] if sub else "")
-    normalized_code = next_item_code(db, data.group_code, data.subgroup_code) if automatic else data.code.strip().upper()
+    normalized_code = next_item_code(db, payload["group_code"], data.subgroup_code) if automatic else data.code.strip().upper()
     normalized_name = " ".join(data.name.strip().lower().split())
     if db.query(Product).filter(func.upper(func.trim(Product.code)) == normalized_code).first():
         raise HTTPException(status_code=409, detail="Product code already exists")
