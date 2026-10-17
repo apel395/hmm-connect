@@ -120,7 +120,7 @@ def test_exact_summary_order_and_drilldown_includes_zero_accounts(records):
     zero=ChartOfAccount(account_number='700-999',account_name='Zero operations expense',account_type='EXPENSE',normal_balance='DEBIT',is_posting=True,financial_statement_group='OPERATING_EXPENSE')
     db.add(zero);db.commit()
     report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='HOTEL')
-    assert [r['key'] for r in report['presentation_rows'] if r['kind']!='detail']==['REVENUE','BEBAN','COST_OF_REVENUE','OPERATING_PAYROLL','OPERATING_EXPENSE','GOI','OVERHEAD_PAYROLL','OVERHEAD_EXPENSE','GOP','UNDER_EXPENSE','NOP']
+    assert [r['key'] for r in report['presentation_rows'] if r['kind']!='detail']==['REVENUE','COST_OF_REVENUE','OPERATING_PAYROLL','OPERATING_EXPENSE','GOI','OVERHEAD_PAYROLL','OVERHEAD_EXPENSE','GOP','UNDER_EXPENSE','NOP']
     row=next(r for r in report['related_accounts'] if r['account_id']==zero.id)
     assert row['periods']['MTD']['current']==0
     assert zero.id in next(r for r in report['presentation_rows'] if r['key']=='OPERATING_EXPENSE')['account_ids']
@@ -325,3 +325,16 @@ def test_catering_service_charge_detail_is_once_and_cannot_inherit_other_locatio
     for (_,rows),expected in zip(sheets[1:],(50,0)):
         assert next(r for r in rows if r and r[0]=='Other Revenue Service Charge')[1]==expected
     assert next(r for r in sheets[1][1] if r and r[0]=='Gross Operating Income / Profit / Loss')[1]==1540
+
+
+def test_removing_beban_statement_row_preserves_executive_expense_card(records):
+    from types import SimpleNamespace
+    from app.api.v1.financial_reports import executive_overview
+    db,*_=records
+    admin=SimpleNamespace(id=1,roles=[SimpleNamespace(name='SYSTEM_ADMINISTRATOR',permissions=[])])
+    overview=executive_overview(as_of_date=date(2026,10,10),db=db,user=admin)
+    expenses=next(r for r in overview['profit_loss']['presentation_rows'] if r['key']=='BEBAN')
+    assert expenses['periods']['MTD']['current']=='1530.00'
+    assert expenses['periods']['MTD']['budget'] is None
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10))
+    assert not any(r['key']=='BEBAN' for r in report['presentation_rows'])

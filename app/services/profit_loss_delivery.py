@@ -59,9 +59,6 @@ def presentation(report, originals, values, accounts, mappings, selected, eviden
     report['related_accounts'] = sorted(related, key=lambda r: r['account_code'])
     result = []
     for code, group in members.items():
-        if code == 'COST_OF_REVENUE':
-            expense_ids = [aid for c, rows in members.items() if c != 'REVENUE' for aid, _ in rows]
-            result.append(dict(key='BEBAN', label='Beban', kind='category', account_ids=expense_ids, periods=amounts(expense_ids)))
         result.append(dict(key=code, label=CATEGORIES[code], kind='category',
             account_ids=[aid for aid, _ in group], periods=totals[code]))
         visible = {}

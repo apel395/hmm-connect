@@ -189,7 +189,17 @@ def executive_overview(as_of_date: date = Query(), location_id: int | None = Non
     balance=service.build(report_type='BALANCE_SHEET',as_of_date=as_of_date,**scope,budget_id=budget_id,kap=True)
     from app.services.executive_dashboard import dashboard_visuals
     visuals=dashboard_visuals(db,service,pnl,balance,as_of_date,scope)
+    # The owner Expenses card is separate from the P&L statement's rows.
+    expenses = [r for r in pnl['presentation_rows'] if r['kind'] == 'category' and r['key'] != 'REVENUE']
+    expense_periods = {}
+    for period in ('MTD', 'YTD'):
+        expense_periods[period] = {}
+        for metric in ('current', 'budget', 'last_month', 'last_year', 'variance'):
+            amounts = [r['periods'][period][metric] for r in expenses]
+            expense_periods[period][metric] = None if any(v is None for v in amounts) else sum(amounts, Decimal('0'))
+    headlines = [{key: row[key] for key in ('key', 'label', 'periods')} for row in pnl['presentation_rows'] if row['key'] in ('REVENUE', 'GOP', 'NOP')]
+    headlines.insert(1, {'key': 'BEBAN', 'label': 'Beban', 'periods': expense_periods})
     return serialize({'dashboard':visuals,'as_of_date':as_of_date,'scope':scope,'scope_labels':balance['scope_labels'],
-                      'profit_loss':{'presentation_rows':[{key:row[key] for key in ('key','label','periods')} for row in pnl['presentation_rows'] if row['key'] in ('REVENUE','BEBAN','GOP','NOP')],
+                      'profit_loss':{'presentation_rows':headlines,
                                      'section_totals':pnl['section_totals']},
                       'balance_sheet':{'section_totals':balance['section_totals']}})
