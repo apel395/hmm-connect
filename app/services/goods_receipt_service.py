@@ -616,7 +616,13 @@ class GoodsReceiptService:
                 raise HTTPException(status_code=409, detail="Warehouse must belong to the receiving work location")
         if not receipt.items:
             raise HTTPException(status_code=409, detail="Goods receipt must contain at least one item before posting")
+        # Serialize posting with Item Master treatment corrections and reload
+        # the current setup instead of trusting a draft's cached product.
+        db.query(Product).filter(Product.id.in_({i.product_id for i in receipt.items})).order_by(Product.id).populate_existing().with_for_update().all()
         cls._validate_item_treatments(receipt)
+        for line in receipt.items:
+            if line.product.inventory_treatment == "DIRECT_USE" and line_destination(receipt,line) == "WAREHOUSE" and not getattr(line,"destination_override_reason",None):
+                raise HTTPException(409, "Item Master now uses Direct Use. Edit the receiving line or enter a warehouse exception reason before posting")
         cls._validate_hotel_expenses(receipt)
         cls._recalculate_totals(receipt)
         if Decimal(receipt.total_amount or 0) <= 0:

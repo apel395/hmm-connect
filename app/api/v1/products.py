@@ -334,10 +334,13 @@ def update_product_tax_profile(product_id: int, data: ProductTaxProfileUpdate, d
 
 @router.patch("/{product_id}")
 def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(get_db), user=Depends(require_permission("products.manage"))):
-    product = db.get(Product, product_id)
+    product = db.query(Product).filter(Product.id == product_id).with_for_update().first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     payload = data.model_dump(exclude_unset=True)
+    correct_stock = payload.pop("correct_existing_stock", False)
+    correction_reason = payload.pop("stock_correction_reason", None)
+    previous_treatment = product.inventory_treatment
     department_changed = "department_id" in payload
     department_id = payload.pop("department_id", None)
     regenerate = payload.pop("regenerate_code", False)
@@ -365,6 +368,14 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     _validate_coa_mappings(db, payload, product)
     _validate_sales_profile(db, payload, product)
     validate_reference_profile(db, payload, product)
+    target_treatment = payload.get("inventory_treatment", product.inventory_treatment)
+    if (previous_treatment == "STOCK" and target_treatment != "STOCK") or (target_treatment == "DIRECT_USE" and correct_stock):
+        has_stock = db.query(Inventory.id).filter(Inventory.product_id == product.id).first() is not None
+        if has_stock:
+            if target_treatment != "DIRECT_USE" or not correct_stock:
+                raise HTTPException(409, "Existing warehouse stock requires an explicit Direct Use stock correction before changing treatment")
+            from app.services.item_treatment_correction import correct_receiving_only_stock
+            correct_receiving_only_stock(db, product, expense_account_id=payload.get("purchase_account_id", product.purchase_account_id), user=user, reason=correction_reason)
     for field, value in payload.items():
         if field != "is_market_item":
             setattr(product, field, value)

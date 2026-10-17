@@ -72,10 +72,14 @@ def test_direct_use_post_does_not_write_inventory_or_movements(monkeypatch):
     class Query:
         def filter(self,*a): return self
         def with_for_update(self): return self
+        def order_by(self,*a): return self
+        def populate_existing(self): return self
+        def all(self): return [line.product]
         def first(self): return doc
     class Db:
         def query(self,model):
-            assert model is GoodsReceipt, "Direct-use posting accessed a stock table"
+            from app.models.product import Product
+            assert model in (GoodsReceipt, Product), "Direct-use posting accessed physical stock"
             return Query()
         def add(self,value): assert not isinstance(value,(Inventory,StockMovement))
         def flush(self): pass
