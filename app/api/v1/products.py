@@ -111,6 +111,19 @@ def _validate_treatment(payload: dict, product: Product | None = None) -> None:
         raise HTTPException(422, "FIXED_ASSET items require a Fixed Asset COA")
 
 
+def _normalize_sell_classification(payload, product=None):
+    if payload.get("item_type", getattr(product, "item_type", "BUY")) != "SELL":
+        return
+    if payload.get("subgroup_code") or payload.get("subgroup_name"):
+        raise HTTPException(422, "Sell items use a group only; leave subgroup empty")
+    payload.update(subgroup_code="", subgroup_name="")
+    catalog = payload.get("catalog_type", getattr(product, "catalog_type", "CATERING"))
+    group = str(payload.get("group_name", getattr(product, "group_name", "")) or "").strip().upper()
+    code = str(payload.get("group_code", getattr(product, "group_code", "")) or "").strip().upper()
+    if catalog == "CATERING" and (group in {"ROOM", "ROOMS", "KAMAR"} or code == "S-ROOM"):
+        raise HTTPException(422, "Room selling items belong to the Hotel catalog")
+
+
 def _validate_sales_profile(db: Session, payload: dict, product: Product | None = None) -> None:
     if Decimal(payload.get("service_charge_rate", getattr(product, "service_charge_rate", 0) if product else 0) or 0) > 0 and payload.get("item_type", getattr(product, "item_type", "BUY") if product else "BUY") != "SELL":
         raise HTTPException(422, "Service charge is for SELL items only")
@@ -173,7 +186,7 @@ def list_products(
     departments = item_departments.payloads(db, [r.id for r in rows])
     return {"items": [{**serialize_item(row, costs.get(row.id)), **departments.get(row.id, {"department_id": None, "department_name": None})} for row in rows], "page": page, "page_size": page_size, "total_items": total, "total_pages": total_pages, "has_next": page < total_pages, "has_previous": page > 1}
 
-def classification_catalog(groups, products, item_type=None):
+def classification_catalog(groups, products, item_type=None, catalog_type=None):
     catalog = {}
     blocked_groups = {group.code for group in groups if not group.is_active}
     blocked_subgroups = {sub.code for group in groups for sub in group.subgroups if not sub.is_active}
@@ -215,18 +228,22 @@ def classification_catalog(groups, products, item_type=None):
             catalog[("SELL", code)] = {
                 "id": 0, "code": code, "name": name, "item_type": "SELL", "subgroups": {},
             }
-    return [{**group, "subgroups": sorted(group["subgroups"].values(), key=lambda sub: sub["code"])}
-            for _, group in sorted(catalog.items())]
+    return [{**group, "subgroups": [] if kind == "SELL" else sorted(group["subgroups"].values(), key=lambda sub: sub["code"])}
+            for (kind, _), group in sorted(catalog.items())
+            if not (kind == "SELL" and catalog_type == "CATERING"
+                    and group["name"].strip().upper() in {"ROOM", "ROOMS", "KAMAR"})]
 
 
 @router.get("/classification-master")
-def classification_master(item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def classification_master(item_type: Annotated[str | None, Query(pattern="^(BUY|SELL)$")] = None, db: Session = Depends(get_db), _=Depends(get_current_user), catalog_type: Annotated[str | None, Query(pattern="^(CATERING|HOTEL)$")] = None):
     # Imported products can predate the separate classification master tables.
     # Include their existing classifications without changing product records.
     groups = db.query(ItemGroup).options(selectinload(ItemGroup.subgroups)).order_by(ItemGroup.code).all()
     products = db.query(Product.item_type, Product.group_code, Product.group_name,
-                        Product.subgroup_code, Product.subgroup_name).filter(Product.is_active.is_(True)).distinct().all()
-    return classification_catalog(groups, products, item_type)
+                        Product.subgroup_code, Product.subgroup_name).filter(Product.is_active.is_(True))
+    if catalog_type and item_type == "SELL":
+        products = products.filter(Product.catalog_type == catalog_type)
+    return classification_catalog(groups, products.distinct().all(), item_type, catalog_type)
 
 @router.get("/lookup")
 def lookup_products(catalog_type: Annotated[str | None, Query(pattern="^(CATERING|HOTEL)$")] = None, item_type: Annotated[str, Query(pattern="^(BUY|SELL)$")] = "BUY", search: Annotated[str, Query(max_length=100)] = "", market_only: bool = False, exclude_market: bool = False, limit: int = Query(default=30, ge=1, le=100), db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -236,8 +253,10 @@ def lookup_products(catalog_type: Annotated[str | None, Query(pattern="^(CATERIN
     price_history = receipt_costs(db, [row.id for row in rows], user)
     return [{"id": row.id, "code": row.code, "name": row.name, "description": row.description, "uom": row.uom, "usage_uom": row.usage_uom, "conversion": row.conversion, "tax_category": row.tax_category, "is_taxable": row.is_taxable, "tax_rate": row.tax_rate, "inventory_treatment": row.inventory_treatment, "inventory_account_id": row.inventory_account_id, "purchase_account_id": row.purchase_account_id, "cogs_account_id": row.cogs_account_id, "asset_account_id": row.asset_account_id, "is_market_item": is_market_list_product(row), "catalog_type": row.catalog_type, "cost_price": row.cost_price, **reference_payload(row, price_history.get(row.id))} for row in rows]
 
-def numbering_classification(db, item_type, group_code, subgroup_code):
-    catalog = classification_master(item_type=item_type, db=db)
+def numbering_classification(db, item_type, group_code, subgroup_code, catalog_type=None):
+    if item_type == "SELL" and subgroup_code:
+        raise HTTPException(422, "Sell items use a group only; leave subgroup empty")
+    catalog = classification_master(item_type=item_type, catalog_type=catalog_type, db=db)
     group = next((g for g in catalog if g["code"] == group_code), None)
     if not group:
         raise HTTPException(422, "Select an active group for this item type")
@@ -247,8 +266,8 @@ def numbering_classification(db, item_type, group_code, subgroup_code):
     return group, sub
 
 @router.get("/next-code")
-def preview_item_code(group_code: str, subgroup_code: str = "", item_type: Annotated[str, Query(pattern="^(BUY|SELL)$")] = "BUY", db: Session = Depends(get_db), _=Depends(get_current_user)):
-    numbering_classification(db, item_type, group_code, subgroup_code)
+def preview_item_code(group_code: str, subgroup_code: str = "", item_type: Annotated[str, Query(pattern="^(BUY|SELL)$")] = "BUY", db: Session = Depends(get_db), _=Depends(get_current_user), catalog_type: Annotated[str | None, Query(pattern="^(CATERING|HOTEL)$")] = None):
+    numbering_classification(db, item_type, group_code, subgroup_code, catalog_type)
     return {"code": next_item_code(db, group_code, subgroup_code)}
 
 @router.get("/departments")
@@ -304,11 +323,12 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     if not is_superuser(user):
         raise HTTPException(status_code=403, detail="Only SYSTEM_ADMINISTRATOR can create new Item Master records")
     payload = data.model_dump()
+    _normalize_sell_classification(payload)
     department_id = payload.pop("department_id", None)
     automatic = payload.pop("auto_code") or not data.code.strip()
     lock_item_creation(db)
     if automatic:
-        group, sub = numbering_classification(db, data.item_type, data.group_code, data.subgroup_code)
+        group, sub = numbering_classification(db, data.item_type, data.group_code, data.subgroup_code, data.catalog_type)
         payload.update(group_name=group["name"], subgroup_name=sub["name"] if sub else "")
     normalized_code = next_item_code(db, data.group_code, data.subgroup_code) if automatic else data.code.strip().upper()
     normalized_name = " ".join(data.name.strip().lower().split())
@@ -358,6 +378,7 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     payload = data.model_dump(exclude_unset=True)
+    _normalize_sell_classification(payload, product)
     correct_stock = payload.pop("correct_existing_stock", False)
     correction_reason = payload.pop("stock_correction_reason", None)
     previous_treatment = product.inventory_treatment
@@ -379,7 +400,7 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
         kind = payload.get("item_type", product.item_type)
         group_code = payload.get("group_code", product.group_code)
         subgroup_code = payload.get("subgroup_code", product.subgroup_code)
-        group, subgroup = numbering_classification(db, kind, group_code, subgroup_code)
+        group, subgroup = numbering_classification(db, kind, group_code, subgroup_code, payload.get("catalog_type", product.catalog_type))
         payload.update(code=next_item_code(db, group_code, subgroup_code), group_name=group["name"], subgroup_name=subgroup["name"] if subgroup else "")
     if str(payload.get("subgroup_name") or "").strip().upper() == "GRESORIS":
         payload["subgroup_name"] = "GROCERIES"
