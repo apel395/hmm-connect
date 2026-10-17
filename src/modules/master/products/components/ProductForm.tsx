@@ -1,3 +1,4 @@
+import { sellItemGroupCode } from "../sellItemGroups";
 import { foodTreatment } from "../itemTreatmentPolicy";
 import { productApi } from "../api/productApi";
 import { useEffect, useId, useMemo, useState } from "react";
@@ -101,8 +102,9 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
     const set = new Map<string, { code: string; name: string; item_type?: ItemType }>();
     groups.filter((item) => (item.item_type ?? "BUY") === form.item_type).forEach((item) => set.set(item.code, { code: item.code, name: item.name, item_type: item.item_type }));
     if (product?.group_code && product.group_name && (product.item_type ?? "BUY") === form.item_type) {
-      set.set(product.group_code, {
-        code: product.group_code,
+      const code = form.item_type === "SELL" ? sellItemGroupCode(product.group_code) : product.group_code;
+      set.set(code, {
+        code,
         name: product.group_name,
         item_type: groups.find((item) => item.code === product.group_code)?.item_type,
       });
@@ -159,7 +161,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
       code: product.code,
       name: product.name,
       item_type: product.item_type ?? "BUY",
-      group_code: product.group_code,
+      group_code: product.item_type === "SELL" ? sellItemGroupCode(product.group_code) : product.group_code,
       group_name: product.group_name,
       subgroup_code: product.subgroup_code,
       subgroup_name: product.subgroup_name === "GRESORIS" ? "GROCERIES" : product.subgroup_name,
