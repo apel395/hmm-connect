@@ -6,4 +6,4 @@ Only static layout and styles are bundled. Sample amounts, broken formulas and c
 
 Actual registered accounts absent from the reference remain as additional rows before their subtotal. Summary residuals are explicitly shown rather than hidden. Hotel's reference ends at GOP; real under-expenses add a deduction/NOP bridge. Utility is a supporting schedule, not an additional expense in the summary. No journals, mappings, balances or database records change.
 
-This patch applies to the Hotel selection only. Catering and Consolidated exports retain their existing layouts pending a separate template review. The on-screen P&L remains a summary with account drilldown.
+Hotel department schedules also retain these templates inside Consolidated exports. Catering now uses PC LIPET for all locations; see catering-pl-template-1017.md. The on-screen P&L remains a summary with account drilldown.
