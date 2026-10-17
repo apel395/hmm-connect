@@ -128,3 +128,14 @@ def test_failure_on_second_receipt_rolls_back_first_receipt_correction(data):
     assert db.get(GoodsReceipt,receipt.id).destination_type=='WAREHOUSE'
     assert db.query(StockMovement).count()==2
     assert {(g.account_id,g.debit,g.credit) for g in db.query(GeneralLedger)}=={(inv.id,D(50),D(0)),(ap.id,D(0),D(50))}
+
+
+def test_provisional_receiving_tax_is_preserved_with_no_ap_or_tax_posting(data):
+    db,p,expense,receipt,journal,inv,ap=data
+    receipt.items[0].is_taxable=True;receipt.items[0].tax_rate=D(10)
+    db.commit()
+    assert receipt.tax_amount==5 and receipt.total_amount==55
+    change(db,p,expense)
+    assert receipt.items[0].is_taxable and receipt.items[0].tax_rate==10 and receipt.items[0].tax_amount==5
+    assert receipt.tax_amount==5 and receipt.total_amount==55
+    assert db.query(GeneralLedger).filter_by(account_id=ap.id).one().credit==50
