@@ -249,7 +249,7 @@ def test_report_api_scopes_reads_and_excel_and_rejects_other_location(db):
     workbook=load_workbook(BytesIO(asyncio.run(collect())))
     assert workbook.sheetnames[0] == "Summary"
     values=list(workbook["Summary"].values)
-    assert any(row[0]=="Pendapatan" and row[1]==100 and row[10]==100 for row in values)
+    assert any(row[0]=="NET REVENUE WITHOUT SERVICE CHARGE" and row[1]==100 and row[10]==100 for row in values)
     assert not any(value==900 for row in values for value in row)
 
 

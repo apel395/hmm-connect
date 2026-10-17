@@ -234,33 +234,23 @@ def workbook_sheets(report):
         used.add(name.casefold())
         sheets.append((name, rows))
 
-    if scope == 'HOTEL':
-        from app.services.profit_loss_template import detail_rows, summary_schedule, utility_account
-        from app.services.profit_loss_relevance import department_sort
-        groups = report.get('group_reports', [])
-        add('Summary', summary_schedule(report, 'HOTEL INCOME STATEMENT', groups, as_of))
-        for group in sorted(groups, key=department_sort):
-            add(group['title'], detail_rows(group, group['title'], as_of))
-        utility = {**report, 'department_name': 'Utilities',
-                   'template_revenue': values(report, [a for a in report.get('related_accounts', []) if a['category'] == 'REVENUE']),
-                   'related_accounts': [a for a in report.get('related_accounts', []) if utility_account(a)]}
-        add('Hotel Utility', detail_rows(utility, 'UTILITIES', as_of))
-        return sheets
-
+    from app.services.profit_loss_template import detail_rows, summary_schedule, utility_account
+    from app.services.profit_loss_relevance import department_sort
     groups = report.get('group_reports', [])
-    add('Summary', summary_rows(report, f'{scope.title()} Income Statement', groups, as_of))
+    add('Summary', summary_schedule(report, f'{scope.upper()} INCOME STATEMENT', groups, as_of))
     for unit in report.get('unit_reports', []):
         unit_groups = [g for g in groups if g['scope']['business_unit_id'] == unit['scope']['business_unit_id']]
-        # A scoped export already has this unit's summary as its first sheet.
         if scope == 'CONSOLIDATED' and len(report['unit_reports']) > 1:
-            add(f"Summary {unit['title']}", summary_rows(unit, unit['title'], unit_groups, as_of))
-    # Stable Hotel order is independent of this month's revenue or erroneous
-    # postings. Catering keeps its existing location order pending its design.
-    from app.services.profit_loss_relevance import department_sort
+            add(f"Summary {unit['title']}", summary_schedule(unit, unit['title'], unit_groups, as_of))
     ordered = sorted(enumerate(groups), key=lambda pair: (
-        0 if 'department_name' in pair[1] else 1,
-        department_sort(pair[1]) if 'department_name' in pair[1] else (0, pair[0], '')))
+        0 if pair[1].get('report_scope') == 'HOTEL' else 1,
+        department_sort(pair[1]) if pair[1].get('report_scope') == 'HOTEL' else (0, pair[0], '')))
     for _, group in ordered:
-        renderer = catering_rows if group.get('report_scope') == 'CATERING' else department_rows
-        add(group['title'], renderer(group, group['title'], as_of))
+        add(group['title'], detail_rows(group, group['title'], as_of))
+    hotel = report if scope == 'HOTEL' else next((u for u in report.get('unit_reports', []) if u.get('report_scope') == 'HOTEL'), None)
+    if hotel:
+        utility = {**hotel, 'department_name': 'Utilities',
+                   'template_revenue': values(hotel, [a for a in hotel.get('related_accounts', []) if a['category'] == 'REVENUE']),
+                   'related_accounts': [a for a in hotel.get('related_accounts', []) if utility_account(a)]}
+        add('Hotel Utility', detail_rows(utility, 'UTILITIES', as_of))
     return sheets

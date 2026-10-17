@@ -64,6 +64,12 @@ class TemplateRows(list):
 
 def profile_for(statement):
     name = statement.get('department_name') or statement.get('scope_labels', {}).get('department_id') or ''
+    if statement.get('report_scope') == 'CATERING':
+        location = statement.get('scope_labels', {}).get('location_id', '')
+        heading = 'PROJECT CATERING DEPARTEMEN'
+        if location:
+            heading += ' — ' + str(location).upper()
+        return 'PROJECT', statement.get('template_title') or heading
     key = department_key(name) or {'room': 'FO', 'pool': 'SWP', 'utilities': 'UTILITY', 'utility': 'UTILITY'}.get(normalized(name))
     if key == 'FO': return 'ROOM', 'ROOM DIVISION DEPARTEMEN'
     if key == 'FB': return 'FB', 'F&B DIVISION DEPARTEMEN'
@@ -200,8 +206,10 @@ def utility_account(account):
 
 
 def summary_schedule(statement, title, groups, as_of):
-    hotel_only = True
-    rows = TemplateRows(statement, 'SUMMARY_HOTEL', title, as_of)
+    if statement.get('report_scope') == 'CATERING':
+        return detail_rows({**statement, 'template_title': title}, title, as_of)
+    hotel_only = statement.get('report_scope') == 'HOTEL'
+    rows = TemplateRows(statement, 'SUMMARY_HOTEL' if hotel_only else 'SUMMARY', title, as_of)
     root_members = statement.get('related_accounts', [])
     buckets = {key: [] for key in ('room', 'fb', 'other', 'rental', 'project', 'ag', 'sm', 'pmc', 'energy')}
     for group in groups:
