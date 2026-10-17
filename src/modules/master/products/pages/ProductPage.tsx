@@ -45,8 +45,8 @@ export default function ProductPage({ catalogType = "CATERING", itemType = "BUY"
 
   const query = useProducts({ catalog_type: catalogType, page, page_size: pageSize, search: debouncedSearch || undefined, item_type: itemTypeFilter || undefined, inventory_treatment: treatmentFilter || undefined, tax_category: taxFilter || undefined });
   const classification = useQuery({
-    queryKey: ["product-classification-master"],
-    queryFn: async () => (await productApi.classificationMaster()).data,
+    queryKey: ["product-classification-master", itemType, catalogType],
+    queryFn: async () => (await productApi.classificationMaster(itemType, catalogType)).data,
   });
   const accountLookup = useQuery({ queryKey: ["product-page-account-lookup", "all-active-posting"], queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }) });
   const createMutation = useCreateProduct();

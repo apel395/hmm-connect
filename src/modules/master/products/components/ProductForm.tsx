@@ -70,8 +70,8 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
   const user = useAuthStore((state) => state.user);
   const repairImportCode = Boolean(product?.code.toUpperCase().startsWith("RBI-") && isSuperuser(user));
   const codePreview = useQuery({
-    queryKey: ["item-next-code", form.item_type, form.group_code, form.subgroup_code],
-    queryFn: async () => (await api.get<{ code: string }>("/products/next-code", { params: { item_type: form.item_type, group_code: form.group_code, subgroup_code: form.subgroup_code } })).data,
+    queryKey: ["item-next-code", catalogType, form.item_type, form.group_code, form.item_type === "SELL" ? "" : form.subgroup_code],
+    queryFn: async () => (await api.get<{ code: string }>("/products/next-code", { params: { catalog_type: catalogType, item_type: form.item_type, group_code: form.group_code, subgroup_code: form.item_type === "SELL" ? "" : form.subgroup_code } })).data,
     enabled: open && (!product || repairImportCode) && Boolean(form.group_code) && (form.item_type === "SELL" || Boolean(form.subgroup_code)),
     staleTime: 0,
     retry: 1,
@@ -304,7 +304,8 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
       ...(cogs_account_id !== (product?.cogs_account_id ?? null) ? { cogs_account_id } : {}),
       code: displayedCode.trim(),
       name: form.name.trim(),
-      subgroup_name: form.subgroup_name === "GRESORIS" ? "GROCERIES" : form.subgroup_name,
+      subgroup_code: form.item_type === "SELL" ? "" : form.subgroup_code,
+      subgroup_name: form.item_type === "SELL" ? "" : form.subgroup_name === "GRESORIS" ? "GROCERIES" : form.subgroup_name,
       uom: form.uom.trim(),
       usage_uom: form.usage_uom.trim(),
       conversion: Number(form.conversion),
@@ -343,15 +344,15 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
           </div>}
 
           <label className="col-span-2 text-sm font-medium">Product Code
-            <Input className="mt-1" readOnly maxLength={20} value={displayedCode} placeholder={codePreview.isFetching ? "Generating code…" : "Select group and subgroup"} title="Generated automatically; finalized when saved" />
+            <Input className="mt-1" readOnly maxLength={20} value={displayedCode} placeholder={codePreview.isFetching ? "Generating code…" : form.item_type === "SELL" ? "Select group" : "Select group and subgroup"} title="Generated automatically; finalized when saved" />
             {(!product || repairImportCode) && codePreview.isError && <span role="alert" className="mt-1 flex items-center gap-2 text-xs text-red-700">Item code could not be generated.<Button type="button" size="xs" variant="outline" onClick={() => codePreview.refetch()}>Retry</Button></span>}
           </label>
           <label className="col-span-2 text-sm font-medium">Product Name
             <Input className="mt-1" value={form.name} onChange={(event) => update("name", event.target.value)} />
           </label>
 
-          <SearchableSelect label="Group" value={form.group_code || undefined} required placeholder="Type group code or name..." options={groupOptions} onChange={updateGroup} />
-          <SearchableSelect label="Sub Group" value={form.subgroup_code || undefined} required={subgroupRequired} disabled={!form.group_code} placeholder={form.group_code ? "Type subgroup code or name..." : "Select Group first"} options={subGroupOptions} onChange={updateSubgroup} />
+          <div className={form.item_type === "SELL" ? "col-span-2" : ""}><SearchableSelect label="Group" value={form.group_code || undefined} required placeholder="Type group code or name..." options={groupOptions} onChange={updateGroup} /></div>
+          {form.item_type === "BUY" && <SearchableSelect label="Sub Group" value={form.subgroup_code || undefined} required={subgroupRequired} disabled={!form.group_code} placeholder={form.group_code ? "Type subgroup code or name..." : "Select Group first"} options={subGroupOptions} onChange={updateSubgroup} />}
 
           <div className="col-span-2"><SearchableSelect label="Department" value={form.department_id ?? undefined} options={departments.data?.items ?? []} disabled={!departments.data?.available} placeholder={departments.data?.available ? "Shared / no default department" : "Department setup awaiting database update"} onChange={id => setForm({...form, department_id: id ?? null})}/></div>
           {form.item_type === "BUY" && form.subgroup_name.trim().toUpperCase() === "MEAT" && <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_market_item} onChange={e => setForm({...form, is_market_item: e.target.checked})}/>Eligible for Market List (fresh meat). Leave off for normal warehouse purchases.</label>}
@@ -363,7 +364,6 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
           {form.item_type === "SELL" && <div className="col-span-2 grid gap-4 rounded-lg border border-blue-200 bg-blue-50/30 p-4 md:grid-cols-2">
             <div className="md:col-span-2">
               <div className="font-semibold">Selling item</div>
-              <p className="text-xs text-slate-500">Numeric Product ID is assigned when saved. Choose Food, Beverage, Room, or Service as the group.</p>
             </div>
             <label className="text-sm font-medium">Service
               <Input className="mt-1" maxLength={120} value={form.sales_service_name} onChange={(event) => update("sales_service_name", event.target.value)} />
