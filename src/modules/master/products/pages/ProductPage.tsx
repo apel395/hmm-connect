@@ -1,7 +1,8 @@
+import { toast } from "sonner";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "@/components/common/PageHeader";
 import Pagination from "@/components/datatable/Pagination";
 import Input from "@/components/ui/Input";
@@ -24,6 +25,7 @@ const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
 const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function ProductPage({ catalogType = "CATERING", itemType = "BUY" }: { catalogType?: "CATERING" | "HOTEL"; itemType?: ItemType }) {
+  const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const canCreateProduct = isSuperuser(user);
   const [formOpen, setFormOpen] = useState(false);
@@ -135,10 +137,16 @@ export default function ProductPage({ catalogType = "CATERING", itemType = "BUY"
   const handleCreate = () => { setSelected(null); setFormOpen(true); };
   const handleEdit = (product: Product) => { setSelected(product); setFormOpen(true); };
   const handleSubmit = async (payload: any) => {
-    if (selected) await updateMutation.mutateAsync({ id: selected.id, payload });
-    else await createMutation.mutateAsync(payload);
-    setFormOpen(false);
-    setSelected(null);
+    try {
+      if (selected) await updateMutation.mutateAsync({ id: selected.id, payload });
+      else await createMutation.mutateAsync(payload);
+      if (payload.correct_existing_stock) await queryClient.invalidateQueries();
+      setFormOpen(false);
+      setSelected(null);
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Unable to save item");
+    }
   };
 
   const handleExport = async () => {
