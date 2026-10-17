@@ -9,6 +9,7 @@ export type InventoryListParams = {
   location_id?: number;
   business_unit_id?:number;
   as_of?: string;
+  show_empty?: boolean;
   health?: "HEALTHY" | "LOW_STOCK";
   movement_class?: "FAST" | "SLOW" | "DEAD";
 };

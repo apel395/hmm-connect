@@ -115,6 +115,7 @@ export default function InventoryPage() {
       : params.get("health") === "HEALTHY"
         ? "HEALTHY"
         : undefined;
+  const showEmpty = params.get("show_empty") === "true";
   const dateFrom = params.get("date_from") ?? "",
     dateTo = params.get("date_to") ?? "";
   const page = id(params.get("page")) ?? 1;
@@ -194,6 +195,7 @@ export default function InventoryPage() {
   const filters: import("../api").InventoryListParams = {
     search: searchParam || undefined,
     health,
+    show_empty: showEmpty,
     account_id: accountId,
     warehouse_id: warehouseId,
   };
@@ -237,6 +239,7 @@ export default function InventoryPage() {
           label: health === "LOW_STOCK" ? "Reorder needed" : "Healthy stock",
         }
       : null,
+    showEmpty ? { key: "show_empty", label: "Including empty stock" } : null,
     dateFrom ? { key: "date_from", label: `From ${dateFrom}` } : null,
     dateTo ? { key: "date_to", label: `To ${dateTo}` } : null,
   ].filter((f): f is { key: string; label: string } => !!f);
@@ -250,7 +253,7 @@ export default function InventoryPage() {
     const key = String(row.account_id ?? "unmapped");
     comparison.set(key, { ...comparison.get(key), opening: row });
   }
-  const context = `${dateTo ? `As of ${dateTo}` : "Current stock"}${dateFrom ? ` · From ${dateFrom}` : ""} · Search: ${searchParam || "All"} · ${warehouse?.name ?? "All accessible warehouses"}${account ? ` · ${account.account_number} ${account.account_name}` : ""}${health ? ` · ${health}` : ""}`;
+  const context = `${dateTo ? `As of ${dateTo}` : "Current stock"}${dateFrom ? ` · From ${dateFrom}` : ""} · Search: ${searchParam || "All"} · ${warehouse?.name ?? "All accessible warehouses"}${account ? ` · ${account.account_number} ${account.account_name}` : ""}${health ? ` · ${health}` : ""}${showEmpty ? " · Including empty stock" : ""}`;
   const refresh = async () => {
     const results = await Promise.all([
       closing.refetch(),
@@ -510,6 +513,14 @@ export default function InventoryPage() {
                 onChange={(e) => update({ date_to: e.target.value })}
               />,
             )}
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={showEmpty}
+                onChange={(e) => update({ show_empty: e.target.checked ? "true" : undefined })}
+              />
+              Show empty stock
+            </label>
             <button
               className="stock-filter-clear"
               onClick={() =>
@@ -519,6 +530,7 @@ export default function InventoryPage() {
                   health: undefined,
                   date_from: undefined,
                   date_to: undefined,
+                  show_empty: undefined,
                 })
               }
             >
@@ -548,6 +560,7 @@ export default function InventoryPage() {
                   health: undefined,
                   date_from: undefined,
                   date_to: undefined,
+                  show_empty: undefined,
                 })
               }
             >
