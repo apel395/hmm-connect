@@ -294,7 +294,9 @@ class FinancialReportingService:
             report["include_zero"] = include_zero
             from app.services.profit_loss_relevance import scoped_usage
             evidence = scoped_usage(self.db, scope, as_of_date)
-            report["presentation_rows"] = presentation(report, originals, values, all_accounts, self._category_mappings, selected, evidence)
+            from app.services.hotel_pl_attribution import attribute
+            report["presentation_rows"] = presentation(report, originals, values, all_accounts, self._category_mappings, selected, evidence,
+                attributor=lambda records: attribute(self, report, records, self._category_mappings))
             from app.services.report_statistics import build_statistics
             report["statistics"] = build_statistics(self, report, budget_id)
         return report

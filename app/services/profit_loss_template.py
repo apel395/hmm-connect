@@ -98,7 +98,8 @@ def detail_rows(statement, title, as_of):
         'cost': [a for a in members if a['category'] == 'COST_OF_REVENUE'],
         'payroll': [a for a in members if a['category'] in ('OPERATING_PAYROLL', 'OVERHEAD_PAYROLL') and not service_charge(a)],
         'sc_payroll': [a for a in members if a['category'] in ('OPERATING_PAYROLL', 'OVERHEAD_PAYROLL') and service_charge(a)],
-        'expense': [a for a in members if a['category'] not in ('REVENUE', 'COST_OF_REVENUE', 'OPERATING_PAYROLL', 'OVERHEAD_PAYROLL', 'NONOPERATING_INCOME')],
+        'expense': [a for a in members if a['category'] not in ('REVENUE', 'COST_OF_REVENUE', 'OPERATING_PAYROLL', 'OVERHEAD_PAYROLL', 'NONOPERATING_INCOME', *(['UNDER_EXPENSE'] if statement.get('report_scope')=='HOTEL' else []))],
+        'under': [a for a in members if a['category'] == 'UNDER_EXPENSE' and statement.get('report_scope')=='HOTEL'],
         'nonoperating': [a for a in members if a['category'] == 'NONOPERATING_INCOME'],
     }
     section, slots, section_rows = None, {}, {}
@@ -196,11 +197,17 @@ def detail_rows(statement, title, as_of):
             rows.line(label, item['periods'] if item else empty, index, statistic=True)
         else:
             rows.add([label] if label else [], index)
-    if groups['nonoperating']:
-        rows.add(['NON-OPERATING INCOME'], detail_style)
-        for account in groups['nonoperating']:
-            rows.line('   ' + account['account_name'], values(statement, [account]), detail_style)
-        rows.line('NET RESULT', combine((1, sums['net']), (1, sums['nonoperating'])), max(totals, default=detail_style))
+    if any(nonzero(a) for a in [*groups['nonoperating'],*groups['under']]):
+        rows.line('GROSS OPERATING PROFIT', sums['net'], max(totals, default=detail_style))
+        for kind,heading in [('nonoperating','NON-OPERATING INCOME'),('under','OTHER DEDUCTIONS')]:
+            if not groups[kind]:continue
+            rows.add([heading],detail_style)
+            by_label={}
+            for account in groups[kind]:by_label.setdefault(account['account_name'],[]).append(account)
+            for label,accounts_ in by_label.items():
+                rows.line('   '+label,values(statement,accounts_),detail_style)
+            rows.line('Total '+heading.title(),sums[kind],max(totals,default=detail_style))
+        rows.line('NET RESULT',combine((1,sums['net']),(1,sums['nonoperating']),(-1,sums['under'])),max(totals,default=detail_style))
     return rows
 
 

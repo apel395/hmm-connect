@@ -44,15 +44,9 @@ def category(account, mappings, report=None):
     return group if group in CATEGORIES else 'UNCLASSIFIED'
 
 
-def presentation(report, originals, values, accounts, mappings, selected, evidence=frozenset()):
-    """Summary layout plus complete related accounts, including zero values."""
+def presentation(report, originals, values, accounts, mappings, selected, evidence=frozenset(), attributor=None):
+    """Complete categories and account slices, with source-safe drilldown keys."""
     from app.services.profit_loss_relevance import related
-    members = {key: [] for key in CATEGORIES if key != 'UNCLASSIFIED'}
-    for aid in originals:
-        account = accounts.get(aid)
-        if account and related(account, report, values, evidence):
-            code = category(account, mappings, report)
-            members['UNDER_EXPENSE' if code == 'UNCLASSIFIED' else code].append((aid, account))
     def amounts(ids):
         result = {}
         for period in ('MTD', 'YTD'):
@@ -63,46 +57,60 @@ def presentation(report, originals, values, accounts, mappings, selected, eviden
             v = result[period]
             v['variance'] = v['current'] - v['budget'] if v['budget'] is not None else None
         return result
-    totals = {code: amounts([aid for aid, _ in group]) for code, group in members.items()}
-    related = []
-    for code, group in members.items():
-        for aid, account in group:
-            related.append(dict(account_id=aid, account_code=account.account_number,
-                account_name=account.account_name, category=code, periods=amounts([aid]), has_posted_activity=aid in evidence))
-    report['related_accounts'] = sorted(related, key=lambda r: r['account_code'])
-    result = []
-    for code, group in members.items():
-        result.append(dict(key=code, label=CATEGORIES[code], kind='category',
-            account_ids=[aid for aid, _ in group], periods=totals[code]))
-        visible = {}
-        for aid, account in group:
-            ancestors, current = set(), account
+    records=[]
+    for aid in originals:
+        account=accounts.get(aid)
+        if account and related(account,report,values,evidence):
+            code=category(account,mappings,report)
+            records.append(dict(account_id=aid,account_code=account.account_number,account_name=account.account_name,
+                category='UNDER_EXPENSE' if code=='UNCLASSIFIED' else code,periods=amounts([aid]),has_posted_activity=aid in evidence,presentation_key=str(aid)))
+    if attributor:records=attributor(records)
+    report['related_accounts']=sorted(records,key=lambda r:(r['account_code'],r['category'],r['account_name']))
+    members={code:[r for r in records if r['category']==code] for code in CATEGORIES if code!='UNCLASSIFIED'}
+    def aggregate(group, category_total=False):
+        result={p:{} for p in ('MTD','YTD')}
+        for p in result:
+            for m in METRICS[:-1]:
+                source=[r for r in group if not (category_total and m=='budget' and r.get('source_slice'))]
+                unavailable=(m=='budget' and not report['budget_available'][p]) or report['comparison_available'][p].get(m) is False
+                entries=[r['periods'][p][m] for r in source]
+                result[p][m]=None if unavailable or any(v is None for v in entries) else sum(entries,ZERO)
+            v=result[p];v['variance']=v['current']-v['budget'] if v['budget'] is not None else None
+        return result
+    totals={code:aggregate(group,True) for code,group in members.items()}
+    def identity(group):
+        return dict(account_ids=sorted({r['account_id'] for r in group}),member_keys=[r['presentation_key'] for r in group])
+    result=[]
+    for code,group in members.items():
+        result.append(dict(key=code,label=CATEGORIES[code],kind='category',periods=totals[code],**identity(group)))
+        visible={}
+        for item in group:
+            account=accounts[item['account_id']]
+            ancestors,current=set(),account
             while current and current.id not in ancestors:
-                ancestors.add(current.id); current = accounts.get(current.parent_account_id)
-            if selected is not None and not selected.intersection(ancestors):
-                continue
-            parent = accounts.get(account.parent_account_id) if report['header_only'] else None
-            name = CATEGORIES[code] if code == 'REVENUE' else parent.account_name if parent else CATEGORIES[code] if report['header_only'] else account.account_name
-            visible.setdefault(name, []).append(aid)
-        for name, ids in sorted(visible.items()):
-            data = amounts(ids)
-            if report.get('include_zero') or any(v not in (ZERO, None) for p in data.values() for v in p.values()):
-                result.append(dict(key=f'{code}:{name}', label=name, kind='detail', account_ids=ids, periods=data))
-        if code in ('OPERATING_EXPENSE', 'OVERHEAD_EXPENSE', 'UNDER_EXPENSE'):
-            deductions = ['COST_OF_REVENUE', 'OPERATING_PAYROLL', 'OPERATING_EXPENSE']
-            key, label = 'GOI', 'Gross Operating Income / Profit / Loss'
-            if code in ('OVERHEAD_EXPENSE', 'UNDER_EXPENSE'):
-                deductions += ['OVERHEAD_PAYROLL', 'OVERHEAD_EXPENSE']; key, label = 'GOP', 'GOP / GOL'
-            if code == 'UNDER_EXPENSE':
-                deductions += ['UNDER_EXPENSE']; key, label = 'NOP', 'NOP'
-            data = {p: {} for p in ('MTD', 'YTD')}
+                ancestors.add(current.id);current=accounts.get(current.parent_account_id)
+            if selected is not None and not selected.intersection(ancestors):continue
+            parent=accounts.get(account.parent_account_id) if report['header_only'] else None
+            name=CATEGORIES[code] if code=='REVENUE' else parent.account_name if parent else CATEGORIES[code] if report['header_only'] else item['account_name']
+            visible.setdefault(name,[]).append(item)
+        for name,items in sorted(visible.items()):
+            data=aggregate(items)
+            if report.get('include_zero') or any(v not in (ZERO,None) for p in data.values() for v in p.values()):
+                result.append(dict(key=f'{code}:{name}',label=name,kind='detail',periods=data,**identity(items)))
+        if code in ('OPERATING_EXPENSE','OVERHEAD_EXPENSE','UNDER_EXPENSE'):
+            deductions=['COST_OF_REVENUE','OPERATING_PAYROLL','OPERATING_EXPENSE']
+            key,label='GOI','Gross Operating Income / Profit / Loss'
+            if code in ('OVERHEAD_EXPENSE','UNDER_EXPENSE'):
+                deductions+=['OVERHEAD_PAYROLL','OVERHEAD_EXPENSE'];key,label='GOP','GOP / GOL'
+            if code=='UNDER_EXPENSE':deductions+=['UNDER_EXPENSE'];key,label='NOP','NOP'
+            cats=['REVENUE',*deductions,*(['NONOPERATING_INCOME'] if key=='NOP' else [])]
+            data={p:{} for p in ('MTD','YTD')}
             for p in data:
                 for m in METRICS:
-                    vs = [totals[c][p][m] for c in ['REVENUE', *deductions]]
-                    income = totals['NONOPERATING_INCOME'][p][m] if key == 'NOP' else ZERO
-                    data[p][m] = None if any(v is None for v in [*vs, income]) else vs[0] - sum(vs[1:]) + income
-            result.append(dict(key=key, label=label, kind='subtotal', periods=data,
-                account_ids=[aid for c in ['REVENUE', *deductions, *(['NONOPERATING_INCOME'] if key == 'NOP' else [])] for aid, _ in members[c]]))
+                    vs=[totals[c][p][m] for c in ['REVENUE',*deductions]]
+                    income=totals['NONOPERATING_INCOME'][p][m] if key=='NOP' else ZERO
+                    data[p][m]=None if any(v is None for v in [*vs,income]) else vs[0]-sum(vs[1:])+income
+            result.append(dict(key=key,label=label,kind='subtotal',periods=data,**identity([r for c in cats for r in members[c]])))
     return result
 
 
