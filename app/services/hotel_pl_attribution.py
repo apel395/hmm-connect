@@ -26,6 +26,8 @@ LEGACY = {
     '512037': ('OPERATING_EXPENSE','Fruit Basket, Welcome Drink, Birthday Cake'),
     '522023': ('OPERATING_EXPENSE','Food Testing'),
     '532023': ('OPERATING_EXPENSE','Food Test'),
+    **{c: ('OPERATING_EXPENSE', 'Officer Check Dept. Head') for c in ('512050','514050','522050','532050')},
+    **{c: ('OVERHEAD_EXPENSE', 'Officer Check Dept. Head') for c in ('542050','544050','546022','548049')},
     '591007': ('UNDER_EXPENSE','BOD - Owner Expenses'),
     '591050': ('UNDER_EXPENSE','BOD - Officer Check / Complimentary BOD'),
     '602070': ('UNDER_EXPENSE','Bank administration'),

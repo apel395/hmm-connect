@@ -1,5 +1,6 @@
 """Verified import semantics split shared COA amounts without accounting writes."""
 from datetime import date
+import pytest
 from decimal import Decimal
 from app.models import Base
 from app.models.chart_of_account import ChartOfAccount
@@ -119,3 +120,46 @@ def test_owner_loan_asset_credit_is_never_reintroduced_as_expense(db):
     assert amounts(r,'UNDER_EXPENSE')==39
     assert amounts(r,'NOP')==1066
     assert not any(a['account_id']==1 for a in r['related_accounts'])
+
+
+@pytest.mark.parametrize('legacy,department_name,target,payroll', [
+    ('512050','Front Office','OPERATING_EXPENSE','OPERATING_PAYROLL'),
+    ('514050','House Keeping','OPERATING_EXPENSE','OPERATING_PAYROLL'),
+    ('522050','Food and Beverage','OPERATING_EXPENSE','OPERATING_PAYROLL'),
+    ('532050','Food and Beverage','OPERATING_EXPENSE','OPERATING_PAYROLL'),
+    ('542050','Sales and Marketing','OVERHEAD_EXPENSE','OVERHEAD_PAYROLL'),
+    ('544050','Admin and General','OVERHEAD_EXPENSE','OVERHEAD_PAYROLL'),
+    ('546022','Human Resources','OVERHEAD_EXPENSE','OVERHEAD_PAYROLL'),
+    ('548049','Pomec','OVERHEAD_EXPENSE','OVERHEAD_PAYROLL'),
+])
+def test_officer_check_is_other_expense_and_employee_meals_remain_payroll(db,legacy,department_name,target,payroll):
+    fixture(db)
+    department=db.query(Department).filter(Department.name==department_name).first()
+    if department is None:
+        department=Department(id=30,code='TEST',name=department_name,business_unit_id=1)
+        db.add(department);db.flush()
+    j=JournalEntry(id=101,journal_number='JAN-OFFICER',posting_date=date(2026,1,10),status='POSTED',reference_type='MANUAL',reference_id=0,source_type='JOURNAL_IMPORT',external_reference='HOTEL-JAN2026-REG-2',import_batch_id=1,business_unit_id=1,location_id=1)
+    # Identical COA, amount and department must still distinguish Officer Check
+    # from an ordinary employee meal using the verified import line identity.
+    for number,code in enumerate((legacy,'511007'),1):
+        j.lines.append(JournalLine(line_number=number,account_id=21,debit=50,credit=0,business_unit_id=1,location_id=1,department_id=department.id))
+        n=dict(account_id=21,department_id=department.id,legacy_code=code,debit='50',credit='0')
+        db.add(ImportRow(id=9+number,import_batch_id=1,row_number=9+number,document_type='JOURNAL',raw_data_json={**n,'source_sha256':SOURCE_HASH},normalized_data_json=n,status='IMPORTED',entity_type='JOURNAL_ENTRY',entity_id=101))
+    db.add(j);db.commit()
+    r=deliver(FinancialReportingService(db),as_of_date=date(2026,1,31),report_scope='HOTEL')
+    officer=next(a for a in r['related_accounts'] if legacy in a.get('legacy_codes',[]))
+    assert officer['category']==target
+    assert officer['account_name']=='Officer Check Dept. Head'
+    assert officer['periods']['YTD']['current']==50
+    assert amounts(r,payroll)==50
+    assert amounts(r,'GOP')==995 and amounts(r,'NOP')==966
+    selected=next(row for row in r['presentation_rows'] if row['key']==target)['member_keys']
+    assert officer['presentation_key'] in selected
+    group=next(g for g in r['group_reports'] if g['department_id']==department.id)
+    rows=detail_rows(group,department_name,'2026-01-31')
+    assert next(row[1] for row in rows if row and row[0].strip()=='Officer Check Dept. Head')==50
+    from test_profit_loss_formulas import verify_formulas
+    from app.services.profit_loss_delivery import workbook_sheets
+    verify_formulas(workbook_sheets(r))
+    assert [(line.account_id,line.debit,line.credit) for line in j.lines]==[(21,Decimal(50),Decimal(0))]*2
+    assert db.query(JournalEntry).count()==2
