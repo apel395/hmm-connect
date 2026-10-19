@@ -11,6 +11,8 @@ lines, not hardcoded source workbook totals.
 | 401102 / 401160 / 401402 | Beverage Cost |
 | 401309 / 401602 | Other Cost |
 | 512037 / 522023 / 532023 | Department operating expenses |
+| 512050 / 514050 / 522050 / 532050 | Department-head Officer Check: operating expenses |
+| 542050 / 544050 / 546022 / 548049 | Department-head Officer Check: overhead expenses |
 | 591007 / 591050 | BOD deductions, below GOP |
 | 602070 | Bank administration, below GOP |
 | 301* registered room revenue codes | Room Sales |
@@ -35,6 +37,14 @@ Comparisons use their own date ranges and current posted evidence. Budgets stay
 in their registered COA classification; unallocated source-slice budgets remain
 blank rather than being distributed. The approved owner-loan receivable mapping
 stays outside P&L. Bank interest increases the final result below GOP.
+
+The January P&L source places department-head Officer Check under each
+department's other expenses, separately from Employee Meal in payroll. Although
+both currently share `600-100-107 Makan Karyawan`, verified Officer Check import
+lines are shown as expenses in page categories, drilldowns, department schedules
+and Excel totals. Ordinary employee meals stay in payroll. The eight source
+codes total Rp1,459,552 (Rp446,021 operating and Rp1,013,531 overhead). Reclassifying
+the report slices preserves GOP, NOP and every journal/GL amount.
 
 Run the read-only production check on EC2 with:
 
