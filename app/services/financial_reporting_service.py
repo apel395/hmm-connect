@@ -277,6 +277,15 @@ class FinancialReportingService:
                     "display_selection_only": selected is not None, "totals_scope": "COMPLETE_REPORT",
                     "budget_basis": "FULL_MONTH_PLAN" if report_type == "PROFIT_LOSS" else "MONTH_END_BALANCE_TARGET",
                     "closing_entries_excluded_from_profit_loss": True}}
+        if report_type == "BALANCE_SHEET":
+            position = {section: totals[section]["YTD"]["current"] for section in ("ASSETS", "LIABILITIES", "EQUITY")}
+            financing = position["LIABILITIES"] + position["EQUITY"]
+            difference = position["ASSETS"] - financing
+            report["balance_control"] = {
+                "assets": position["ASSETS"], "liabilities_and_equity": financing,
+                "difference": difference, "is_balanced": difference == ZERO,
+                "basis": "COMPLETE_REPORT", "as_of_date": as_of_date,
+            }
         if report_type == "PROFIT_LOSS":
             from app.models.accounting_setting import AccountingSetting
             from app.services.profit_loss_delivery import SETTING_PREFIX, presentation
