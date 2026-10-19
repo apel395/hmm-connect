@@ -99,7 +99,7 @@ def build_xlsx(sheets, *, first_column_width=None):
         "".join(f'<Override PartName="/xl/worksheets/sheet{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' for i in range(1,len(sheets)+1)) + '</Types>'
     workbook = XML + f'<workbook xmlns="{NS}" xmlns:r="{DOC_REL}"><sheets>' +\
         "".join(f'<sheet name={quoteattr(title)} sheetId="{i}" r:id="rId{i}"/>' for i,(title,_) in enumerate(sheets,1)) + '</sheets>' +\
-        '<definedNames>' + ''.join(f'<definedName name="_xlnm.Print_Titles" localSheetId="{i}">{escape(chr(39)+title.replace(chr(39),chr(39)*2)+chr(39))}!$1:$6</definedName>' for i,(title,rows) in enumerate(sheets) if hasattr(rows,'styles') or hasattr(rows,'template_profile')) + '</definedNames></workbook>'
+        '<definedNames>' + ''.join(f'<definedName name="_xlnm.Print_Titles" localSheetId="{i}">{escape(chr(39)+title.replace(chr(39),chr(39)*2)+chr(39))}!$1:$6</definedName>' for i,(title,rows) in enumerate(sheets) if hasattr(rows,'styles') or hasattr(rows,'template_profile')) + '</definedNames><calcPr calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1"/></workbook>'
     relationships = XML + f'<Relationships xmlns="{REL}">' +\
         "".join(f'<Relationship Id="rId{i}" Type="{DOC_REL}/worksheet" Target="worksheets/sheet{i}.xml"/>' for i in range(1,len(sheets)+1)) +\
         f'<Relationship Id="styles" Type="{DOC_REL}/styles" Target="styles.xml"/></Relationships>'

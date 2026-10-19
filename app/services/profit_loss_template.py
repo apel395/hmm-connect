@@ -29,6 +29,7 @@ class TemplateRows(list):
         super().__init__()
         self.template_profile = layouts()[profile]
         self.cell_styles, self.row_heights = {}, {}
+        self.formulas = {}
         self.headers = [c.get('label', '') for _, c in sorted(self.template_profile['rows']['6']['cells'].items(), key=lambda pair: col_number(pair[0]))]
         self.headers = self.headers[:max(i + 1 for i, label in enumerate(self.headers) if label)]
         self.statement = statement
@@ -43,7 +44,7 @@ class TemplateRows(list):
         self.cell_styles[len(self)] = {col_number(c): v['style'] for c, v in source.get('cells', {}).items()}
         self.row_heights[len(self)] = source.get('height', 15)
 
-    def line(self, label, amounts, source_row, *, statistic=False, denominator=None):
+    def line(self, label, amounts, source_row, *, statistic=False, denominator=None, terms=None):
         row, last = [label], None
         for header in self.headers[1:]:
             if header == '%':
@@ -60,6 +61,31 @@ class TemplateRows(list):
                 row.append(amounts[period][metric])
             last = period, metric
         self.add(row, source_row)
+        index = len(self)
+        if terms is not None:
+            self.total(index, terms)
+        return index
+
+    def total(self, index, terms):
+        """Formula references follow emitted rows, including extra real accounts."""
+        from app.services.profit_loss_template_xml import column_name
+        terms = list(terms)
+        for col, header in enumerate(self.headers[1:], 2):
+            if header == '%' or 'Variance' in header or self[index-1][col-1] is None:
+                continue
+            # A missing comparison must stay unavailable, not become SUM(blank)=0.
+            refs = [(sign, f'{column_name(col)}{row}') for sign, row in terms]
+            expression = '+'.join(('' if sign == 1 else '-') + ref for sign, ref in refs).replace('+-', '-') or '0'
+            self.formulas[(index, col)] = expression
+        # Variance is calculated from this row's own current and prior-month cells.
+        for col, header in enumerate(self.headers[1:], 2):
+            if 'Variance' not in header or self[index-1][col-1] is None:
+                continue
+            period = 'YTD' if header.startswith('YTD') else 'MTD'
+            current = next((i for i,h in enumerate(self.headers,1) if h == period+' Current'), None)
+            previous = next((i for i,h in enumerate(self.headers,1) if h == period+' Last Month'), None)
+            if current and previous:
+                self.formulas[(index,col)] = f'{column_name(current)}{index}-{column_name(previous)}{index}'
 
 
 def profile_for(statement):
@@ -165,6 +191,15 @@ def detail_rows(statement, title, as_of):
     empty = {p: {m: None for m in METRICS} for p in PERIODS}
     detail_style = next(iter(slots), 8)
     emitted = set()
+    component_rows = {kind: [] for kind in groups}
+    total_rows = {}
+    dependencies = {
+        'all_revenue': [('revenue',1),('sc_revenue',1)],
+        'all_payroll': [('payroll',1),('sc_payroll',1)],
+        'gross': [('all_revenue',1),('cost',-1)],
+        'net': [('gross',1),('all_payroll',-1),('expense',-1)],
+    }
+    deferred = []
     # Unusual real accounts never disappear just because the reference has no slot.
     def extras(kind, before):
         if kind in emitted: return
@@ -175,9 +210,9 @@ def detail_rows(statement, title, as_of):
             if missing:
                 rows.add([{'revenue': 'REVENUE', 'cost': 'COST OF SALES', 'payroll': 'Payroll & Related Expenses', 'expense': 'Other Expenses'}[kind]], before)
         for account in missing:
-            rows.line('   ' + account['account_name'], values(statement, [account]), detail_style)
+            component_rows[kind].append(rows.line('   ' + account['account_name'], values(statement, [account]), detail_style))
         if missing and kind not in section_rows:
-            rows.line('Total ' + {'revenue': 'Revenue', 'cost': 'Cost of Sales', 'payroll': 'Payroll', 'expense': 'Other Expenses'}[kind], values(statement, missing), before)
+            total_rows[kind] = rows.line('Total ' + {'revenue': 'Revenue', 'cost': 'Cost of Sales', 'payroll': 'Payroll', 'expense': 'Other Expenses'}[kind], values(statement, missing), before, terms=[(1,r) for r in component_rows[kind]])
     for index in range(7, max(labels) + 1):
         label = labels.get(index, '')
         key = normalized(label)
@@ -188,26 +223,39 @@ def detail_rows(statement, title, as_of):
         if role in ('revenue', 'cost', 'payroll', 'expense'): extras(role, index)
         if role:
             base = sums['revenue'] if role in ('revenue', 'sc_revenue', 'payroll', 'cost') else sums['sc_revenue'] if role == 'sc_payroll' else sums['all_revenue']
-            rows.line(label, sums[role], index, denominator=base)
+            target = rows.line(label, sums[role], index, denominator=base)
+            total_rows[role] = target
+            if role in dependencies and not (profile == 'UTILITY' and role == 'all_revenue'):
+                deferred.append((target,dependencies[role]))
+            elif role in ('revenue','cost','payroll','expense'):
+                rows.total(target,[(1,r) for r in component_rows[role]])
         elif index in slots:
             base = sums['revenue'] if slots[index] in ('revenue', 'payroll') else sums['all_revenue']
-            rows.line(label, values(statement, assignments[index]), index, denominator=base)
+            component_rows[slots[index]].append(rows.line(label, values(statement, assignments[index]), index, denominator=base))
         elif key in stats_keys:
             item = stats.get(stats_keys[key])
             rows.line(label, item['periods'] if item else empty, index, statistic=True)
         else:
             rows.add([label] if label else [], index)
     if any(nonzero(a) for a in [*groups['nonoperating'],*groups['under']]):
-        rows.line('GROSS OPERATING PROFIT', sums['net'], max(totals, default=detail_style))
+        gop_row = rows.line('GROSS OPERATING PROFIT', sums['net'], max(totals, default=detail_style))
+        deferred.append((gop_row,[('net',1)]))
         for kind,heading in [('nonoperating','NON-OPERATING INCOME'),('under','OTHER DEDUCTIONS')]:
             if not groups[kind]:continue
             rows.add([heading],detail_style)
             by_label={}
             for account in groups[kind]:by_label.setdefault(account['account_name'],[]).append(account)
             for label,accounts_ in by_label.items():
-                rows.line('   '+label,values(statement,accounts_),detail_style)
-            rows.line('Total '+heading.title(),sums[kind],max(totals,default=detail_style))
-        rows.line('NET RESULT',combine((1,sums['net']),(1,sums['nonoperating']),(-1,sums['under'])),max(totals,default=detail_style))
+                component_rows[kind].append(rows.line('   '+label,values(statement,accounts_),detail_style))
+            total_rows[kind] = rows.line('Total '+heading.title(),sums[kind],max(totals,default=detail_style),terms=[(1,r) for r in component_rows[kind]])
+        target = rows.line('NET RESULT',combine((1,sums['net']),(1,sums['nonoperating']),(-1,sums['under'])),max(totals,default=detail_style))
+        deferred.append((target,[('net',1),('nonoperating',1),('under',-1)]))
+    def expand(key, sign=1):
+        if key in total_rows:
+            return [(sign,total_rows[key])]
+        return [term for child,weight in dependencies.get(key,[]) for term in expand(child,sign*weight)]
+    for target,terms in deferred:
+        rows.total(target,[term for key,sign in terms for term in expand(key,sign)])
     return rows
 
 
@@ -221,9 +269,18 @@ def utility_account(account):
 def summary_schedule(statement, title, groups, as_of):
     if statement.get('report_scope') == 'CATERING':
         rows = TemplateRows(statement, 'PROJECT', title, as_of)
+        anchors = {}
+        dependencies = {
+            'GOI': [('REVENUE',1),('COST_OF_REVENUE',-1),('OPERATING_PAYROLL',-1),('OPERATING_EXPENSE',-1)],
+            'GOP': [('GOI',1),('OVERHEAD_PAYROLL',-1),('OVERHEAD_EXPENSE',-1)],
+            'NOP': [('GOP',1),('NONOPERATING_INCOME',1),('UNDER_EXPENSE',-1)],
+        }
         for item in statement.get('presentation_rows', []):
             if item['kind'] != 'detail':
-                rows.line(item['label'], item['periods'], 82 if item['kind'] == 'subtotal' else 80)
+                anchors[item['key']] = rows.line(item['label'], item['periods'], 82 if item['kind'] == 'subtotal' else 80)
+        for key,terms in dependencies.items():
+            if key in anchors:
+                rows.total(anchors[key],[(sign,anchors[k]) for k,sign in terms if k in anchors])
         return rows
     hotel_only = statement.get('report_scope') == 'HOTEL'
     rows = TemplateRows(statement, 'SUMMARY_HOTEL' if hotel_only else 'SUMMARY', title, as_of)
@@ -267,8 +324,23 @@ def summary_schedule(statement, title, groups, as_of):
     all_expenses=values(statement,[a for a in root_members if expense(a)])
     amounts['gop']=combine((1,amounts['all_revenue']),(-1,amounts['cost']),(-1,all_payroll),(-1,all_expenses))
     amounts['nop']=combine((1,amounts['gop']),(1,amounts['nonoperating']),(-1,amounts['under']))
+    amounts['unassigned_costs']=combine((1,all_payroll),(1,all_expenses),(-1,amounts['op_costs']),(-1,amounts['overhead_costs']))
     section, is_overhead = None, False
     displayed = []
+    displayed_rows = []
+    anchors = {}
+    bucket_rows = {}
+    income_rows = []
+    summary_dependencies = {
+        'all_revenue': [('revenue',1),('sc_revenue',1)],
+        'op_all_payroll': [('op_payroll',1),('op_sc',1)],
+        'oh_all_payroll': [('oh_payroll',1),('oh_sc',1)],
+        'op_costs': [('op_all_payroll',1),('op_expense',1)],
+        'overhead_costs': [('oh_all_payroll',1),('oh_expense',1)],
+        'gop': [('all_revenue',1),('cost',-1),('op_costs',-1),('overhead_costs',-1),('unassigned_costs',-1)],
+        'nop': [('gop',1),('nonoperating',1),('under',-1)],
+    }
+    deferred = []
     stats={r['key']:r for r in (statement.get('statistics') or {}).get('rows',[])}
     stat_keys={'totalroomavailable':'ROOM_AVAILABLE','totalroomsaleable':'ROOM_SALEABLE','totalroomoccupied':'ROOM_OCCUPIED','percentageofoccupancy':'OCCUPANCY','averageroomraterp':'ADR','numberofguest':'GUESTS'}
     empty={p:{m:None for m in METRICS} for p in PERIODS}
@@ -280,6 +352,7 @@ def summary_schedule(statement, title, groups, as_of):
         if key in headings:
             section = headings[key]
             displayed = []
+            displayed_rows = []
             rows.add([label], index)
             continue
         totals={'netrevenuewithoutservicecharge':'revenue','netrevenuewithservicecharge':'all_revenue','totalcostofsales':'cost',
@@ -292,22 +365,33 @@ def summary_schedule(statement, title, groups, as_of):
             if section=='income':
                 value = combine((1,amounts['sc_revenue']),(-1,amounts['op_sc']))
                 displayed.append(value)
-                rows.line(label,value,index)
+                target = rows.line(label,value,index)
+                displayed_rows.append(target)
+                deferred.append((target,[('sc_revenue',1),('op_sc',-1)]))
                 continue
             role='sc_revenue' if section=='revenue' else None
         if key=='servicechargeexpenses':role='oh_sc' if is_overhead else 'op_sc'
         if role:
+            if role == 'gop' and any(v not in (None,0) for p in amounts['unassigned_costs'].values() for v in p.values()):
+                anchors['unassigned_costs'] = rows.line('   Other / unassigned operating costs',amounts['unassigned_costs'],index)
             if role == 'cost':
                 room_cost = aggregate(('room',), cost)
-                rows.line('Rooms', room_cost, index)
+                target = rows.line('Rooms', room_cost, index)
+                displayed_rows.append(target)
+                bucket_rows[('cost','room')] = target
                 displayed.append(room_cost)
             if role in ('revenue', 'cost', 'op_payroll', 'oh_payroll', 'op_expense', 'oh_expense', 'department_income'):
                 difference = combine((1, amounts[role]), *[(-1, value) for value in displayed])
                 if any(v not in (None, 0) for period in difference.values() for v in period.values()):
-                    rows.line('   Other / unassigned ' + section, difference, index)
+                    displayed_rows.append(rows.line('   Other / unassigned ' + section, difference, index))
             if role == 'nop' and any(v not in (None,0) for p in amounts['nonoperating'].values() for v in p.values()):
-                rows.line('NON-OPERATING INCOME', amounts['nonoperating'], index)
-            rows.line(label,amounts[role],index,denominator=amounts['sc_revenue'] if role in ('oh_sc','op_sc') else amounts['all_revenue']);continue
+                anchors['nonoperating'] = rows.line('NON-OPERATING INCOME', amounts['nonoperating'], index)
+            anchors[role] = rows.line(label,amounts[role],index,denominator=amounts['sc_revenue'] if role in ('oh_sc','op_sc') else amounts['all_revenue'])
+            if role in summary_dependencies:
+                deferred.append((anchors[role],summary_dependencies[role]))
+            elif role not in ('sc_revenue','op_sc','oh_sc'):
+                rows.total(anchors[role],[(1,r) for r in displayed_rows])
+            continue
         if key in stat_keys:
             rows.line(label,stats.get(stat_keys[key],{}).get('periods',empty),index,statistic=True);continue
         names={'room':'room','rooms':'room','foodandbeverage':'fb','otheroperateddepartements':'other','otheroperateddepartement':'other','rentalsotherincome':'rental','projectcateringincome':'project','projectcatering':'project',
@@ -322,18 +406,27 @@ def summary_schedule(statement, title, groups, as_of):
             else:
                 value=combine((1,aggregate(selected,revenue)),(-1,aggregate(selected,cost)),(-1,aggregate(selected,payroll)),(-1,aggregate(selected,expense)))
             displayed.append(value)
-            rows.line(label,value,index);continue
+            target = rows.line(label,value,index)
+            displayed_rows.append(target)
+            bucket_rows[(section,bucket)] = target
+            if section == 'income': income_rows.append((target,bucket))
+            continue
         if section=='under' and key and key not in headings:
             aliases={'directorexpenses':r'director|direksi|bod','pajakpendapatanbungabank':r'pajak.*bunga','bebanbunga':r'beban.*bunga|interest','biayakorporasi':r'korporasi|corporat','biayalainlainnya':r'.*'}
             if key in aliases:
                 match=[a for a in root_members if a['category']=='UNDER_EXPENSE' and re.search(aliases[key],a['account_name'],re.I)]
                 if key=='biayalainlainnya':match=[a for a in match if not re.search(r'director|direksi|bod|pajak.*bunga|beban.*bunga|interest|korporasi|corporat',a['account_name'],re.I)]
-                rows.line(label,values(statement,match),index);continue
+                displayed_rows.append(rows.line(label,values(statement,match),index));continue
         rows.add([label] if label else [],index)
     # Hotel's source schedule ends at GOP. Include real under-expense evidence so
     # the final export still exposes the complete NOP when such postings exist.
     if hotel_only and any(v not in (None,0) for key in ('under','nonoperating') for p in amounts[key].values() for v in p.values()):
-        rows.line('NON-OPERATING INCOME',amounts['nonoperating'],73)
-        rows.line('OTHER DEDUCTIONS',amounts['under'],73)
-        rows.line('NETT OPERATING PROFIT',amounts['nop'],73)
+        anchors['nonoperating'] = rows.line('NON-OPERATING INCOME',amounts['nonoperating'],73)
+        anchors['under'] = rows.line('OTHER DEDUCTIONS',amounts['under'],73)
+        target = rows.line('NETT OPERATING PROFIT',amounts['nop'],73)
+        deferred.append((target,summary_dependencies['nop']))
+    for target,bucket in income_rows:
+        rows.total(target,[(sign,bucket_rows[(section,bucket)]) for section,sign in [('revenue',1),('cost',-1),('payroll',-1),('expense',-1)] if (section,bucket) in bucket_rows])
+    for target,terms in deferred:
+        rows.total(target,[(sign,anchors[key]) for key,sign in terms if key in anchors])
     return rows

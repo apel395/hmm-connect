@@ -50,7 +50,7 @@ def test_fb_columns_real_account_extensions_and_service_charge_once():
     assert str(sheet.merged_cells) == "A1:M1 A2:M2 A3:M3 A4:M4"
     for row in sheet:
         for cell in row:
-            assert cell.data_type not in ('f', 'e')
+            assert cell.data_type != 'e'
             if cell.column > 1 and rows.headers[cell.column - 1] == '%' and cell.value is not None:
                 assert '%' in cell.number_format
 

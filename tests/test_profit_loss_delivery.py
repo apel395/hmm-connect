@@ -223,7 +223,7 @@ def test_template_excel_layout_print_and_numeric_formats(records, tmp_path):
             for cell in row:
                 assert cell.data_type != 'e'
         revenue=next(row for row in sheet if row[0].value in ('NET REVENUE WITH SERVICE CHARGE', 'Net Revenue With SC', 'Total Revenue', 'Pendapatan'))
-        assert revenue[1].data_type=='n'
+        assert revenue[1].data_type in ('n','f')
         if revenue[2].value is not None:
             assert '%' in revenue[2].number_format
     # Build the real production bytes for optional read-only visual QA.
@@ -304,7 +304,9 @@ def test_consolidated_export_dispatches_hotel_and_catering_layouts_separately(re
     from openpyxl import load_workbook
     db,*_=records
     report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10))
-    workbook=load_workbook(BytesIO(build_xlsx(workbook_sheets(report))))
+    from test_profit_loss_formulas import verify_formulas
+    verify_formulas(workbook_sheets(report))
+    workbook=load_workbook(BytesIO(build_xlsx(workbook_sheets(report))),data_only=True)
     hotel=workbook[next(n for n in workbook.sheetnames if 'House Keeping' in n)]
     location=workbook[next(n for n in workbook.sheetnames if 'Location one' in n)]
     assert hotel['A3'].value=='HOUSE KEEPING DEPARTEMEN'

@@ -57,6 +57,9 @@ def worksheet(rows):
             ref = column_name(col) + str(index)
             if value is None:
                 cells.append(f'<c r="{ref}" s="{style}"/>')
+            elif (index, col) in rows.formulas:
+                formula = escape(rows.formulas[(index, col)])
+                cells.append(f'<c r="{ref}" s="{style}"><f>{formula}</f><v>{value}</v></c>')
             elif isinstance(value, (Decimal, int, float)) and not isinstance(value, bool):
                 cells.append(f'<c r="{ref}" s="{style}" t="n"><v>{value}</v></c>')
             else:

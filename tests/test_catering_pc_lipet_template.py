@@ -41,13 +41,15 @@ def test_catering_export_summary_equals_locations_and_consolidated_keeps_same_la
         summary_net=next(r for r in sheets[0][1] if r and r[0]=='NOP')
         assert summary_net[col]==sum(final(rows)[col] for _,rows in sheets[1:])
     assert not any(r and r[0].strip()=='Salaries & Wages' for r in sheets[0][1])
+    from test_profit_loss_formulas import verify_formulas
+    verify_formulas(sheets)
     wb=load_workbook(BytesIO(build_xlsx(sheets)))
     for sheet in wb:
         assert sheet.freeze_panes=='B7'
         assert sheet.sheet_view.zoomScale==100
         assert sheet.row_dimensions[1].height == 30
         assert sheet.sheet_view.showGridLines is False
-        assert all(cell.data_type not in ('e','f') for row in sheet for cell in row)
+        assert all(cell.data_type != 'e' for row in sheet for cell in row)
     report=deliver(service,as_of_date=date(2026,10,10))
     combined=workbook_sheets(report)
     for name,rows in combined:
