@@ -19,6 +19,14 @@ def rows_for(report, title, details):
         for row in details:
             if row['section']==section:
                 rows.append([row['account_name'],*[row['periods'][p][m] for p in PERIODS for m in METRICS]])
+    control = report.get('balance_control')
+    if control:
+        rows.extend([[], ['Total liabilities + equity', *[
+            None if report['section_totals']['LIABILITIES'][p][m] is None or report['section_totals']['EQUITY'][p][m] is None
+            else report['section_totals']['LIABILITIES'][p][m] + report['section_totals']['EQUITY'][p][m]
+            for p in PERIODS for m in METRICS]],
+            ['Balance status', 'Balanced' if control['is_balanced'] else 'Out of balance'],
+            ['Difference', control['difference']]])
     return rows
 
 
