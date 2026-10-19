@@ -19,14 +19,16 @@ def dashboard_visuals(db, service, pnl, balance, as_of_date, scope):
     unit=effective_business_unit(func.coalesce(JournalLine.business_unit_id,JournalEntry.business_unit_id),location)
     department=func.coalesce(JournalLine.department_id,JournalEntry.department_id)
     month=func.extract('month',JournalEntry.posting_date)
-    q=db.query(month,unit,location,department,ChartOfAccount.account_type,func.sum(JournalLine.debit-JournalLine.credit)).join(JournalEntry,JournalEntry.id==JournalLine.journal_entry_id).join(ChartOfAccount,ChartOfAccount.id==JournalLine.account_id).filter(JournalEntry.status=='POSTED',JournalEntry.posting_date.between(date(as_of_date.year,1,1),as_of_date),ChartOfAccount.account_type.in_(('REVENUE','INCOME','EXPENSE')),func.coalesce(JournalEntry.reference_type,'').notin_(('OPENING_BALANCE','OPENING_BALANCE_ADJUSTMENT','PERIOD_CLOSE','YEAR_END')))
+    q=db.query(month,unit,location,department,ChartOfAccount.account_type,func.sum(JournalLine.debit-JournalLine.credit),ChartOfAccount.account_number,ChartOfAccount.financial_statement_group).join(JournalEntry,JournalEntry.id==JournalLine.journal_entry_id).join(ChartOfAccount,ChartOfAccount.id==JournalLine.account_id).filter(JournalEntry.status=='POSTED',JournalEntry.posting_date.between(date(as_of_date.year,1,1),as_of_date),ChartOfAccount.account_type.in_(('REVENUE','INCOME','EXPENSE')),func.coalesce(JournalEntry.reference_type,'').notin_(('OPENING_BALANCE','OPENING_BALANCE_ADJUSTMENT','PERIOD_CLOSE','YEAR_END')))
     for key,column in (('location_id',location),('business_unit_id',unit),('department_id',department)):
         if scope[key] is not None:q=q.filter(column.is_(None) if key=='department_id' and scope[key]==0 else column==scope[key])
-    rows=q.group_by(month,unit,location,department,ChartOfAccount.account_type).all()
+    rows=q.group_by(month,unit,location,department,ChartOfAccount.account_type,ChartOfAccount.account_number,ChartOfAccount.financial_statement_group).all()
     def metrics(values):
-        revenue=sum((-Decimal(r[5] or 0) for r in values if r[4] in ('REVENUE','INCOME')),ZERO)
+        income=[r for r in values if r[4] in ('REVENUE','INCOME')]
+        nonoperating=sum((-Decimal(r[5] or 0) for r in income if r[7]=='OTHER_REVENUE' or r[6].startswith('760-100-')),ZERO)
+        revenue=sum((-Decimal(r[5] or 0) for r in income),ZERO)-nonoperating
         expenses=sum((Decimal(r[5] or 0) for r in values if r[4]=='EXPENSE'),ZERO)
-        return {'revenue':revenue,'expenses':expenses,'net_profit':revenue-expenses}
+        return {'revenue':revenue,'expenses':expenses,'nonoperating_income':nonoperating,'net_profit':revenue+nonoperating-expenses}
     trend=[{'month':f'{as_of_date.year}-{m:02d}',**metrics([r for r in rows if int(r[0])==m])} for m in range(1,as_of_date.month+1)]
     units={u.id:u for u in db.query(BusinessUnit).all()}
     locations={x.id:x.name for x in db.query(Location).all()}
@@ -41,7 +43,7 @@ def dashboard_visuals(db, service, pnl, balance, as_of_date, scope):
         performance.append({'name':name,'unit':units[uid].name if uid in units else 'Unassigned unit','dimension':dimension,
                             'MTD':metrics([r for r in values if int(r[0])==as_of_date.month]),'YTD':metrics(values)})
     performance.sort(key=lambda r:(r['unit'],r['name']))
-    expenses={p:[{'name':r['label'],'amount':r['periods'][p]['current']} for r in pnl['presentation_rows'] if r['kind']=='category' and r['key'] not in ('BEBAN','REVENUE')] for p in ('MTD','YTD')}
+    expenses={p:[{'name':r['label'],'amount':r['periods'][p]['current']} for r in pnl['presentation_rows'] if r['kind']=='category' and r['key'] not in ('BEBAN','REVENUE','NONOPERATING_INCOME')] for p in ('MTD','YTD')}
     cash_ids={a.id for a in db.query(ChartOfAccount).filter(ChartOfAccount.account_type=='ASSET',ChartOfAccount.account_subtype.in_(('CASH','BANK','PETTY_CASH','CASH_AND_BANK'))).all()}
     actual,_=service._actual('BALANCE_SHEET',as_of_date,as_of_date,scope)
     cash=sum((r['amount'] for r in actual.values() if r.get('account_id') in cash_ids),ZERO) if cash_ids else None

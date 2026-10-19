@@ -44,7 +44,10 @@ def test_fb_columns_real_account_extensions_and_service_charge_once():
     sheet = wb.active
     assert sheet.freeze_panes == 'B7'
     assert sheet.sheet_view.zoomScale == 100
-    assert all(row.height == 15 for row in sheet.row_dimensions.values())
+    assert sheet.row_dimensions[1].height == 30
+    assert sheet.row_dimensions[6].height == 42
+    assert sheet.sheet_view.showGridLines is False
+    assert str(sheet.merged_cells) == "A1:M1 A2:M2 A3:M3 A4:M4"
     for row in sheet:
         for cell in row:
             assert cell.data_type not in ('f', 'e')
@@ -79,11 +82,11 @@ def test_utility_preserves_combined_actual_without_inventing_split():
 
 
 def test_summary_unassigned_actual_cost_is_explicit_before_total():
-    # The reference has no Room COGS slot; retain this real posting visibly.
+    # Show Rooms cost explicitly without creating an unassigned remainder.
     room = hotel('Front Office', [('Room Sales','REVENUE',1000), ('Unexpected room cost','COST_OF_REVENUE',20)])
     rows = summary_schedule(room, 'Hotel', [room], '2026-01-31')
     labels = [r[0] if r else '' for r in rows]
-    residual = labels.index('   Other / unassigned cost')
+    residual = next(i for i,r in enumerate(rows) if r and r[0] == 'Rooms' and r[1] == 20)
     assert rows[residual][1] == 20
     assert residual < labels.index('TOTAL COST OF SALES')
     assert next(r[1] for r in rows if r and r[0] == 'GROSS OPERATING PROFIT') == 980

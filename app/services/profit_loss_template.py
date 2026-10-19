@@ -98,7 +98,8 @@ def detail_rows(statement, title, as_of):
         'cost': [a for a in members if a['category'] == 'COST_OF_REVENUE'],
         'payroll': [a for a in members if a['category'] in ('OPERATING_PAYROLL', 'OVERHEAD_PAYROLL') and not service_charge(a)],
         'sc_payroll': [a for a in members if a['category'] in ('OPERATING_PAYROLL', 'OVERHEAD_PAYROLL') and service_charge(a)],
-        'expense': [a for a in members if a['category'] not in ('REVENUE', 'COST_OF_REVENUE', 'OPERATING_PAYROLL', 'OVERHEAD_PAYROLL')],
+        'expense': [a for a in members if a['category'] not in ('REVENUE', 'COST_OF_REVENUE', 'OPERATING_PAYROLL', 'OVERHEAD_PAYROLL', 'NONOPERATING_INCOME')],
+        'nonoperating': [a for a in members if a['category'] == 'NONOPERATING_INCOME'],
     }
     section, slots, section_rows = None, {}, {}
     totals = {}
@@ -136,17 +137,17 @@ def detail_rows(statement, title, as_of):
             match = next((i for i in candidates if normalized(labels[i]) == name), None)
             if match is None and kind == 'payroll':
                 benefit = re.search(r'benefit|tunjangan|bpjs|thr\b|bonus', account_label(account), re.I)
-                salary = re.search(r'salar|wages|gaji|casual', account_label(account), re.I)
+                salary = re.search(r'salar|wages|gaji|casual|casusal|upah|overtime', account_label(account), re.I)
                 target = 'employeebenefit' if benefit else 'salarieswages' if salary else None
                 match = next((i for i in candidates if normalized(labels[i]) == target), None)
-            if match is None and kind == 'cost':
+            if match is None and kind == 'cost' and account['account_code'] != '500-100-101':
                 code = account['account_code']
                 target = 'foodcost' if code == '500-100-100' or 'makanan' in name else 'beveragecost' if code == '500-100-102' or 'minuman' in name else 'otherscost'
                 match = next((i for i in candidates if normalized(labels[i]) == target), None)
             if match is None and kind == 'revenue':
                 aliases = {'pendapatankamar': 'roomsales', 'roomrevenue': 'roomsales',
                            'pendapatanmakanan': 'foodrevenue', 'pendapatanminuman': 'beveragerevenue',
-                           'pendapatanlaundry': 'laundry', 'pendapatankolamrenang': 'swimmingpool'}
+                           'pendapatanlaundry': 'laundry', 'pendapatankolamrenang': 'swimmingpool', 'kolamrenang': 'swimmingpool'}
                 match = next((i for i in candidates if normalized(labels[i]) == aliases.get(name)), None)
             (assignments[match] if match is not None else unassigned[kind]).append(account)
     sums = {kind: values(statement, accounts_) for kind, accounts_ in groups.items()}
@@ -195,6 +196,11 @@ def detail_rows(statement, title, as_of):
             rows.line(label, item['periods'] if item else empty, index, statistic=True)
         else:
             rows.add([label] if label else [], index)
+    if groups['nonoperating']:
+        rows.add(['NON-OPERATING INCOME'], detail_style)
+        for account in groups['nonoperating']:
+            rows.line('   ' + account['account_name'], values(statement, [account]), detail_style)
+        rows.line('NET RESULT', combine((1, sums['net']), (1, sums['nonoperating'])), max(totals, default=detail_style))
     return rows
 
 
@@ -240,6 +246,7 @@ def summary_schedule(statement, title, groups, as_of):
         'cost':values(statement,[a for a in root_members if cost(a)]),
         'op_payroll':aggregate(op,payroll),'op_sc':aggregate(op,sc_payroll),'op_expense':aggregate(op,expense),
         'oh_payroll':aggregate(overhead,payroll),'oh_sc':aggregate(overhead,sc_payroll),'oh_expense':aggregate(overhead,expense),
+        'nonoperating':values(statement,[a for a in root_members if a['category']=='NONOPERATING_INCOME']),
         'under':values(statement,[a for a in root_members if a['category']=='UNDER_EXPENSE']),
     }
     amounts['all_revenue']=combine((1,amounts['revenue']),(1,amounts['sc_revenue']))
@@ -252,7 +259,7 @@ def summary_schedule(statement, title, groups, as_of):
     all_payroll=values(statement,[a for a in root_members if a['category'] in ('OPERATING_PAYROLL','OVERHEAD_PAYROLL')])
     all_expenses=values(statement,[a for a in root_members if expense(a)])
     amounts['gop']=combine((1,amounts['all_revenue']),(-1,amounts['cost']),(-1,all_payroll),(-1,all_expenses))
-    amounts['nop']=combine((1,amounts['gop']),(-1,amounts['under']))
+    amounts['nop']=combine((1,amounts['gop']),(1,amounts['nonoperating']),(-1,amounts['under']))
     section, is_overhead = None, False
     displayed = []
     stats={r['key']:r for r in (statement.get('statistics') or {}).get('rows',[])}
@@ -283,10 +290,16 @@ def summary_schedule(statement, title, groups, as_of):
             role='sc_revenue' if section=='revenue' else None
         if key=='servicechargeexpenses':role='oh_sc' if is_overhead else 'op_sc'
         if role:
+            if role == 'cost':
+                room_cost = aggregate(('room',), cost)
+                rows.line('Rooms', room_cost, index)
+                displayed.append(room_cost)
             if role in ('revenue', 'cost', 'op_payroll', 'oh_payroll', 'op_expense', 'oh_expense', 'department_income'):
                 difference = combine((1, amounts[role]), *[(-1, value) for value in displayed])
                 if any(v not in (None, 0) for period in difference.values() for v in period.values()):
                     rows.line('   Other / unassigned ' + section, difference, index)
+            if role == 'nop' and any(v not in (None,0) for p in amounts['nonoperating'].values() for v in p.values()):
+                rows.line('NON-OPERATING INCOME', amounts['nonoperating'], index)
             rows.line(label,amounts[role],index,denominator=amounts['sc_revenue'] if role in ('oh_sc','op_sc') else amounts['all_revenue']);continue
         if key in stat_keys:
             rows.line(label,stats.get(stat_keys[key],{}).get('periods',empty),index,statistic=True);continue
@@ -312,7 +325,8 @@ def summary_schedule(statement, title, groups, as_of):
         rows.add([label] if label else [],index)
     # Hotel's source schedule ends at GOP. Include real under-expense evidence so
     # the final export still exposes the complete NOP when such postings exist.
-    if hotel_only and any(v not in (None,0) for p in amounts['under'].values() for v in p.values()):
+    if hotel_only and any(v not in (None,0) for key in ('under','nonoperating') for p in amounts[key].values() for v in p.values()):
+        rows.line('NON-OPERATING INCOME',amounts['nonoperating'],73)
         rows.line('OTHER DEDUCTIONS',amounts['under'],73)
         rows.line('NETT OPERATING PROFIT',amounts['nop'],73)
     return rows

@@ -12,23 +12,36 @@ CATEGORIES = {
     'REVENUE': 'Pendapatan', 'COST_OF_REVENUE': 'HPP',
     'OPERATING_PAYROLL': 'Gaji operasional', 'OPERATING_EXPENSE': 'Beban operasional',
     'OVERHEAD_PAYROLL': 'Gaji overhead', 'OVERHEAD_EXPENSE': 'Beban overhead',
-    'UNDER_EXPENSE': 'Under expenses', 'UNCLASSIFIED': 'Beban belum diklasifikasikan',
+    'NONOPERATING_INCOME': 'Pendapatan di luar operasional', 'UNDER_EXPENSE': 'Under expenses', 'UNCLASSIFIED': 'Beban belum diklasifikasikan',
 }
 SETTING_PREFIX = 'PL_CATEGORY:'
 
 
-def category(account, mappings):
+def category(account, mappings, report=None):
+    """Classify registered COA families without changing source accounting."""
+    from app.services.profit_loss_relevance import department_key
+    code, group = account.account_number, account.financial_statement_group
+    # Account type prevents tax assets/liabilities from becoming income by name.
     if account.account_type in ('REVENUE', 'INCOME'):
-        return 'REVENUE'
+        return 'NONOPERATING_INCOME' if group == 'OTHER_REVENUE' or code.startswith('760-100-') else 'REVENUE'
     configured = mappings.get(account.id)
-    if configured in CATEGORIES:
+    if configured in CATEGORIES and configured not in ('REVENUE', 'NONOPERATING_INCOME'):
         return configured
-    group = account.financial_statement_group
+    dept = department_key((report or {}).get('scope_labels', {}).get('department_id'))
+    overhead = dept in ('AG', 'ACC', 'HR', 'SM', 'PMC', 'BOD')
+    if code.startswith('500-100-'):
+        return 'COST_OF_REVENUE'
+    if code.startswith('600-100-'):
+        return 'OVERHEAD_PAYROLL' if overhead else 'OPERATING_PAYROLL'
+    if code.startswith('750-100-'):
+        return 'OVERHEAD_PAYROLL' if code == '750-100-100' else 'OVERHEAD_EXPENSE'
+    if code.startswith('700-500-'):
+        return 'OVERHEAD_EXPENSE' if overhead else 'OPERATING_EXPENSE'
+    if code.startswith('760-100-') or group == 'OTHER_EXPENSE':
+        return 'UNDER_EXPENSE'
     if group == 'OPERATING_EXPENSE' and re.search(r'\b(gaji|salary|salaries|payroll)\b', account.account_name, re.I):
-        return 'OPERATING_PAYROLL'
-    if group in CATEGORIES:
-        return group
-    return 'UNDER_EXPENSE' if group == 'OTHER_EXPENSE' else 'UNCLASSIFIED'
+        return 'OVERHEAD_PAYROLL' if overhead else 'OPERATING_PAYROLL'
+    return group if group in CATEGORIES else 'UNCLASSIFIED'
 
 
 def presentation(report, originals, values, accounts, mappings, selected, evidence=frozenset()):
@@ -38,7 +51,7 @@ def presentation(report, originals, values, accounts, mappings, selected, eviden
     for aid in originals:
         account = accounts.get(aid)
         if account and related(account, report, values, evidence):
-            code = category(account, mappings)
+            code = category(account, mappings, report)
             members['UNDER_EXPENSE' if code == 'UNCLASSIFIED' else code].append((aid, account))
     def amounts(ids):
         result = {}
@@ -86,9 +99,10 @@ def presentation(report, originals, values, accounts, mappings, selected, eviden
             for p in data:
                 for m in METRICS:
                     vs = [totals[c][p][m] for c in ['REVENUE', *deductions]]
-                    data[p][m] = None if any(v is None for v in vs) else vs[0] - sum(vs[1:])
+                    income = totals['NONOPERATING_INCOME'][p][m] if key == 'NOP' else ZERO
+                    data[p][m] = None if any(v is None for v in [*vs, income]) else vs[0] - sum(vs[1:]) + income
             result.append(dict(key=key, label=label, kind='subtotal', periods=data,
-                account_ids=[aid for c in ['REVENUE', *deductions] for aid, _ in members[c]]))
+                account_ids=[aid for c in ['REVENUE', *deductions, *(['NONOPERATING_INCOME'] if key == 'NOP' else [])] for aid, _ in members[c]]))
     return result
 
 
