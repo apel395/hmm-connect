@@ -21,7 +21,7 @@ DEPARTMENTS = {
     'housekeeping': 'HK', 'laundry': 'LDY', 'swimmingpool': 'SWP',
     'adminandgeneral': 'AG', 'administrativeandgeneral': 'AG',
     'accounting': 'ACC', 'humanresources': 'HR', 'salesandmarketing': 'SM',
-    'pomec': 'PMC', 'boardofdirectors': 'BOD', 'bod': 'BOD',
+    'pomec': 'PMC', 'boardofdirectors': 'BOD', 'boardofdirectur': 'BOD', 'bod': 'BOD',
 }
 PREFIXES = {'FO': 'FO', 'FBS': 'FB', 'FBP': 'FB', 'FB': 'FB', 'HK': 'HK',
             'LDY': 'LDY', 'SWP': 'SWP', 'A&G': 'AG', 'ACC': 'ACC',
@@ -70,7 +70,7 @@ def related(account, report, values, evidence):
     if 'catering' in unit and (code == '400-100' or code.startswith('400-100-')):
         return False
     name = normalized(account.account_name)
-    if 'hotel' in unit and (code == '400-200' or code.startswith('400-200-') or ('catering' in name and 'outsidecatering' not in name)):
+    if 'hotel' in unit and (code == '400-110' or code.startswith('400-110-') or code == '400-200' or code.startswith('400-200-') or ('catering' in name and 'outsidecatering' not in name and 'outsitecatering' not in name)):
         return False
     dept = department_key(labels.get('department_id'))
     if dept is None:

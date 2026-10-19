@@ -45,7 +45,8 @@ def test_catering_export_summary_equals_locations_and_consolidated_keeps_same_la
     for sheet in wb:
         assert sheet.freeze_panes=='B7'
         assert sheet.sheet_view.zoomScale==100
-        assert all(row.height==15 for row in sheet.row_dimensions.values())
+        assert sheet.row_dimensions[1].height == 30
+        assert sheet.sheet_view.showGridLines is False
         assert all(cell.data_type not in ('e','f') for row in sheet for cell in row)
     report=deliver(service,as_of_date=date(2026,10,10))
     combined=workbook_sheets(report)

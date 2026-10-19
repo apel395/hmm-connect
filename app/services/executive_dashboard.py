@@ -41,7 +41,7 @@ def dashboard_visuals(db, service, pnl, balance, as_of_date, scope):
         performance.append({'name':name,'unit':units[uid].name if uid in units else 'Unassigned unit','dimension':dimension,
                             'MTD':metrics([r for r in values if int(r[0])==as_of_date.month]),'YTD':metrics(values)})
     performance.sort(key=lambda r:(r['unit'],r['name']))
-    expenses={p:[{'name':r['label'],'amount':r['periods'][p]['current']} for r in pnl['presentation_rows'] if r['kind']=='category' and r['key'] not in ('BEBAN','REVENUE')] for p in ('MTD','YTD')}
+    expenses={p:[{'name':r['label'],'amount':r['periods'][p]['current']} for r in pnl['presentation_rows'] if r['kind']=='category' and r['key'] not in ('BEBAN','REVENUE','NONOPERATING_INCOME')] for p in ('MTD','YTD')}
     cash_ids={a.id for a in db.query(ChartOfAccount).filter(ChartOfAccount.account_type=='ASSET',ChartOfAccount.account_subtype.in_(('CASH','BANK','PETTY_CASH','CASH_AND_BANK'))).all()}
     actual,_=service._actual('BALANCE_SHEET',as_of_date,as_of_date,scope)
     cash=sum((r['amount'] for r in actual.values() if r.get('account_id') in cash_ids),ZERO) if cash_ids else None

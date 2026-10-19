@@ -91,7 +91,7 @@ def save_setup(data: ReportSetupInput, report_type: str, db: Session = Depends(g
             raise HTTPException(422, "P&L categories apply only to Profit & Loss")
         for aid, code in data.profit_loss_categories.items():
             account = db.get(ChartOfAccount, aid)
-            if not account or not account.is_posting or account.account_type != "EXPENSE" or code not in CATEGORIES or code == "REVENUE":
+            if not account or not account.is_posting or account.account_type != "EXPENSE" or code not in CATEGORIES or code in ("REVENUE", "NONOPERATING_INCOME"):
                 raise HTTPException(422, "Choose a valid expense account and P&L category")
         existing = db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).with_for_update().all()
         for mapping in existing:
@@ -190,7 +190,7 @@ def executive_overview(as_of_date: date = Query(), location_id: int | None = Non
     from app.services.executive_dashboard import dashboard_visuals
     visuals=dashboard_visuals(db,service,pnl,balance,as_of_date,scope)
     # The owner Expenses card is separate from the P&L statement's rows.
-    expenses = [r for r in pnl['presentation_rows'] if r['kind'] == 'category' and r['key'] != 'REVENUE']
+    expenses = [r for r in pnl['presentation_rows'] if r['kind'] == 'category' and r['key'] not in ('REVENUE', 'NONOPERATING_INCOME')]
     expense_periods = {}
     for period in ('MTD', 'YTD'):
         expense_periods[period] = {}
