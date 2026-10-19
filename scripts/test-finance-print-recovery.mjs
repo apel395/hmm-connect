@@ -138,3 +138,11 @@ const balancedPrint = renderToStaticMarkup(createElement(FinancialStatementPrint
 assert.match(balancedPrint, />Balanced</);
 assert.doesNotMatch(balancedPrint, /Out of balance/);
 console.log("Balance status: balanced KAP and unbalanced detail print evidence passed.");
+
+const { selectRelatedAccounts } = await compile("src/modules/finance/financial-statements/reportAttribution.ts");
+const sharedCoa=[{account_id:20,presentation_key:"food",category:"COST_OF_REVENUE"},{account_id:20,presentation_key:"testing",category:"OPERATING_EXPENSE"}];
+assert.deepEqual(selectRelatedAccounts(sharedCoa,{account_ids:[20],member_keys:["food"]}),[sharedCoa[0]]);
+assert.deepEqual(selectRelatedAccounts(sharedCoa,{account_ids:[20],member_keys:["testing"]}),[sharedCoa[1]]);
+assert.deepEqual(selectRelatedAccounts(sharedCoa,{account_ids:[20]}),sharedCoa);
+assert.deepEqual(selectRelatedAccounts(sharedCoa,null),[]);
+console.log("P&L attribution drilldown: same COA split by category, subtotal membership and legacy API compatibility passed.");
