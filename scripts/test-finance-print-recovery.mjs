@@ -129,3 +129,12 @@ const managementData = { ...departmentData, report_scope: "HOTEL", balance_contr
 const managementPrint = renderToStaticMarkup(createElement(FinancialStatementPrint,{kind:"PROFIT_LOSS",data:managementData,asOf:"2026-10-06"}));
 assert.match(managementPrint,/Gross Operating Income/);assert.match(managementPrint,/Net Operating Profit/);assert.doesNotMatch(managementPrint,/Not balanced/);assert.doesNotMatch(managementPrint,/House Keeping/);assert.doesNotMatch(managementPrint,/100-600-104/);
 console.log("Management P&L print PASS: single statement, management subtotals without balance notices.");
+
+const unbalancedPrint = renderToStaticMarkup(createElement(FinancialStatementPrint, { kind: "BALANCE_SHEET", data: { ...data, balance_control: { difference: "5525000", is_balanced: false } }, asOf: "2026-10-06" }));
+assert.match(unbalancedPrint, /Out of balance/);
+assert.match(unbalancedPrint, /5\.525\.000/);
+assert.doesNotMatch(unbalancedPrint, />Balanced</);
+const balancedPrint = renderToStaticMarkup(createElement(FinancialStatementPrint, { kind: "BALANCE_SHEET", data: { ...data, header_only: true, balance_control: { difference: "0", is_balanced: true } }, asOf: "2026-10-06" }));
+assert.match(balancedPrint, />Balanced</);
+assert.doesNotMatch(balancedPrint, /Out of balance/);
+console.log("Balance status: balanced KAP and unbalanced detail print evidence passed.");

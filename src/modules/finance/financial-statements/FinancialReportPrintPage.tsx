@@ -1,3 +1,4 @@
+import BalanceStatus from "./BalanceStatus";
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -31,7 +32,7 @@ const css = `
 .statement-print .group { font-weight:bold; border-top:1px solid #222; background:#f3f3f3; }.statement-print .total { font-weight:bold; border-top:1px solid #222; }.statement-print .grand-total { font-weight:bold; border-top:2px solid #222; border-bottom:3px double #222; }
 .statement-t { table-layout:fixed; }.statement-t .gutter { border:0; padding:0; }.statement-t .paired-totals td:not(.gutter) { white-space:nowrap; }.statement-print .comparison-page { break-before:page; page-break-before:always; margin-top:10mm; }
 .statement-print .print-meta { font-size:8pt; margin-top:4mm; }.statement-print .period-range { font-size:7pt; font-weight:normal; display:block; white-space:nowrap; }
-.statement-summary { display:flex; justify-content:space-between; gap:5mm; border-bottom:1px solid #aaa; padding:2mm 0; margin-bottom:3mm; font-size:8pt; }.statement-summary > div { white-space:nowrap; }.statement-summary b { margin-left:2mm; font-variant-numeric:tabular-nums; }
+.statement-summary { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5mm; border-bottom:1px solid #aaa; padding:2mm 0; margin-bottom:3mm; font-size:8pt; }.statement-summary > div { white-space:nowrap; }.statement-summary b { margin-left:2mm; font-variant-numeric:tabular-nums; }
 @media print { html,body,#root { background:white!important; margin:0!important; padding:0!important; overflow:visible!important; height:auto!important; }.statement-print { padding:0; }.statement-print .comparison-page { margin-top:0; } }
 `;
 
@@ -70,7 +71,7 @@ export function FinancialStatementPrint({ kind, data, asOf, printedBy }: { kind:
   const comparisons = [...metrics, "movement" as const];
   const metadata = <div className="print-meta">{printedBy ? `Dicetak oleh ${printedBy} · ` : ""}{new Date().toLocaleString("id-ID")} · MMH-Connect</div>;
   return <article className="statement-print print-document" data-print-ready="true"><style>{kind === "BALANCE_SHEET" && data.header_only ? css.replace("A4 landscape", "A4 portrait") : css}</style><ReportHeader kind={kind} data={data} asOf={asOf} />
-    {kind === "BALANCE_SHEET" && <div className="statement-summary">{["ASSETS", "LIABILITIES", "EQUITY"].map(section => <div key={section}>{labels[section]}<b>{money(data.section_totals[section]?.YTD.current)}</b></div>)}</div>}
+    {kind === "BALANCE_SHEET" && <div className="statement-summary">{["ASSETS", "LIABILITIES", "EQUITY"].map(section => <div key={section}>{labels[section]}<b>{money(data.section_totals[section]?.YTD.current)}</b></div>)}<BalanceStatus control={data.balance_control} /></div>}
     {kind === "PROFIT_LOSS" && <ReportStatisticsTable data={data.statistics} periods={["MTD","YTD"]} printable />}
     {kind === "PROFIT_LOSS" ? data.presentation_rows ? <ProfitLossTable data={data} periods={["MTD", "YTD"]} asOf={asOf} printable /> : <table><thead><tr><th className="account" rowSpan={2}>Akun</th>{(["MTD", "YTD"] as const).map(period => <th key={period} colSpan={metrics.length}>{period}<span className="period-range">{data.periods[period].current?.join(" — ")}</span></th>)}</tr><tr>{["MTD", "YTD"].flatMap(period => metricNames.map(name => <th className="amount" key={`${period}-${name}`}>{name}</th>))}</tr></thead><tbody>
       <SectionRows data={data} sections={["REVENUE", "COST_OF_REVENUE", "EXPENSES"]} periods={["MTD", "YTD"]} columns={metrics} />
