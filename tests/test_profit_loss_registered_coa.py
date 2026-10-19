@@ -44,6 +44,11 @@ def test_bank_interest_below_gop_with_unchanged_net_and_no_writes(records):
  assert subtotal(r,'GOP')==760
  assert subtotal(r,'NOP')==845
  assert a.id in next(x for x in r['presentation_rows'] if x['key']=='NOP')['account_ids']
+ from app.services.executive_dashboard import dashboard_visuals
+ visuals=dashboard_visuals(db,FinancialReportingService(db),r,{},date(2026,10,10),r['scope'])
+ assert visuals['monthly'][-1]['revenue']==1000
+ assert visuals['monthly'][-1]['nonoperating_income']==100
+ assert visuals['monthly'][-1]['net_profit']==845
  assert db.query(JournalEntry).count()==4
  rows=summary_schedule(r,'Hotel',r['group_reports'],'2026-10-10')
  assert next(x[1] for x in rows if x and x[0]=='NETT OPERATING PROFIT')==845
