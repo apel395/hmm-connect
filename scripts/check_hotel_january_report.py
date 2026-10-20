@@ -25,11 +25,10 @@ def main():
             totals={r['key']:r['periods']['YTD']['current'] for r in report['presentation_rows'] if r['kind']!='detail'}
             sections=report['section_totals']
             ledger_net=sections['REVENUE']['YTD']['current']-sections['COST_OF_REVENUE']['YTD']['current']-sections['EXPENSES']['YTD']['current']
-            adjustment=report['metadata'].get('nop_reconciliation',{}).get('source_format_adjustment',{}).get('YTD',{}).get('current',0)
             result=dict(as_of=args.as_of,scope=report['scope'],attribution=report['metadata']['hotel_attribution'],YTD=totals,
-                        net_control=dict(ledger_net=ledger_net,source_format_adjustment=adjustment,report_net=totals['NOP'],match=ledger_net+adjustment==totals['NOP']))
+                        net_control=dict(ledger_net=ledger_net,report_net=totals['NOP'],match=ledger_net==totals['NOP']))
             print(json.dumps(serialize(result),indent=2))
-            if ledger_net+adjustment!=totals['NOP']:raise SystemExit('Report net differs from ledger; inspection required')
+            if ledger_net!=totals['NOP']:raise SystemExit('Report net differs from ledger; inspection required')
     print('READ ONLY: no journals, GL, COA or opening balances changed.')
 
 
