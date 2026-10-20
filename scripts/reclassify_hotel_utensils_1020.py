@@ -69,11 +69,11 @@ def no_item_activity(db,product):
                     raise ValueError(f'Item {product.id} has activity in {table.name}; no repair applied')
 
 
-def repair(db):
+def repair(db, targets=TARGETS):
     lock_item_creation(db)
     # Validate the entire batch before creating classifications or changing rows.
     rows=[];done=[]
-    for pid,old_code,name,aid,old_account in TARGETS:
+    for pid,old_code,name,aid,old_account in targets:
         product=db.query(Product).filter_by(id=pid).with_for_update().one_or_none()
         if not product or product.name!=name or product.item_type!='BUY' or product.catalog_type!='HOTEL' or not product.is_active:
             raise ValueError(f'Item {pid} no longer matches the inspected active Hotel BUY item')

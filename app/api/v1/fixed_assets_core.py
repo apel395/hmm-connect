@@ -5,7 +5,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
 from app.models.product import Product
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
@@ -16,6 +16,7 @@ from app.services.document_number import next_document_number
 from app.services.fixed_asset_service import DepreciationRunService, FixedAssetService, ZERO
 from app.services.invoice_asset_registration import sync_posted_invoice_assets
 from app.services.organization_access import resolve_organization_access
+from app.services.asset_useful_life import useful_life_review
 
 
 router = APIRouter(prefix="/fixed-assets", tags=["Fixed Assets"])
@@ -215,9 +216,9 @@ def write_off(asset_id: int, data: WriteOffInput, db: Session = Depends(get_db),
     access(user); service = FixedAssetService(db); result = service.dispose(scoped_asset(service,asset_id,user,lock=True), data, user, True); db.commit(); return {"asset": service.serialize(scoped_asset(service,asset_id,user,lock=True)), "journal_entry_id": result["journal"].id}
 
 
-def scoped_asset_query(db, user, query, business_unit_id=None):
+def scoped_asset_query(db, user, query, business_unit_id=None, location_id=None, department_id=None):
     from app.services.organization_access import effective_business_unit
-    scope = resolve_organization_access(db, user, business_unit_id=business_unit_id)
+    scope = resolve_organization_access(db, user, business_unit_id=business_unit_id, location_id=location_id, department_id=department_id)
     for key, value in scope.items():
         if value is not None:
             column = effective_business_unit(FixedAsset.business_unit_id, FixedAsset.location_id) if key == "business_unit_id" else getattr(FixedAsset, key)
@@ -225,19 +226,82 @@ def scoped_asset_query(db, user, query, business_unit_id=None):
     return query
 
 
-def asset_report(db: Session, user, business_unit_id=None):
-    return [{"id": item.id, "asset_number": item.asset_number, "asset_name": item.asset_name, "category": item.category.name if item.category else "Category setup required", "acquisition_date": item.acquisition_date, "capitalization_date": item.capitalization_date, "acquisition_cost": item.acquisition_cost, "accumulated_depreciation": item.accumulated_depreciation, "net_book_value": item.net_book_value, "residual_value": item.residual_value, "status": item.status} for item in scoped_asset_query(db,user,db.query(FixedAsset).filter(FixedAsset.status != "PENDING_REGISTRATION"),business_unit_id=business_unit_id).all()]
+def asset_report(db: Session, user, business_unit_id=None, location_id=None, department_id=None, category_id=None):
+    query = scoped_asset_query(db, user, db.query(FixedAsset).options(joinedload(FixedAsset.category)).filter(FixedAsset.status != "PENDING_REGISTRATION"), business_unit_id, location_id, department_id)
+    if category_id is not None: query = query.filter(FixedAsset.asset_category_id == category_id)
+    return [{"id": a.id, "asset_number": a.asset_number, "asset_name": a.asset_name,
+        "category": a.category.name if a.category else "Category setup required", "category_id": a.asset_category_id,
+        "acquisition_date": a.acquisition_date, "capitalization_date": a.capitalization_date,
+        "acquisition_cost": a.acquisition_cost, "accumulated_depreciation": a.accumulated_depreciation,
+        "net_book_value": a.net_book_value, "residual_value": a.residual_value, "status": a.status,
+        "useful_life_months": a.useful_life_months, "business_unit_id": a.business_unit_id,
+        "location_id": a.location_id, "department_id": a.department_id,
+        "policy_review": useful_life_review(a.useful_life_months, depreciable=a.depreciation_method != "NONE")}
+        for a in query.order_by(FixedAsset.asset_number).all()]
 
 
 @reports_router.get("/fixed-assets")
-def fixed_asset_report(db: Session = Depends(get_db), user=Depends(get_current_user), business_unit_id: int | None = None):
-    access(user); items = asset_report(db,user,business_unit_id); return {"items": items, "totals": {"acquisition_cost": sum((item["acquisition_cost"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO), "accumulated_depreciation": sum((item["accumulated_depreciation"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO), "net_book_value": sum((item["net_book_value"] for item in items if item["status"] not in ("DISPOSED","WRITTEN_OFF","INACTIVE")), ZERO)}}
+def fixed_asset_report(db: Session = Depends(get_db), user=Depends(get_current_user), business_unit_id: int | None = None,
+                       location_id: int | None = None, department_id: int | None = None, category_id: int | None = None):
+    access(user)
+    items = asset_report(db, user, business_unit_id, location_id, department_id, category_id)
+    keys = ("acquisition_cost", "accumulated_depreciation", "net_book_value")
+    totals = {key: sum((item[key] or ZERO for item in items if item['status'] not in ('DISPOSED', 'WRITTEN_OFF', 'INACTIVE')), ZERO) for key in keys}
+    groups = {}
+    for item in items:
+        group = groups.setdefault(item['category'], {"category": item['category'], "count": 0, **{k: ZERO for k in keys}})
+        group['count'] += 1
+        if item['status'] not in ('DISPOSED', 'WRITTEN_OFF', 'INACTIVE'):
+            for key in keys: group[key] += item[key] or ZERO
+    return {"items": items, "totals": totals, "categories": list(groups.values()), "minimum_useful_life_months": 48}
 
 
 @reports_router.get("/depreciation")
-def depreciation_report(date_from: date | None = None, date_to: date | None = None, business_unit_id: int | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    access(user); query = scoped_asset_query(db,user,db.query(FixedAssetDepreciationSchedule).join(FixedAsset),business_unit_id=business_unit_id)
+def depreciation_report(date_from: date | None = None, date_to: date | None = None, business_unit_id: int | None = None,
+                        db: Session = Depends(get_db), user=Depends(get_current_user), location_id: int | None = None,
+                        department_id: int | None = None, category_id: int | None = None, status: str | None = None):
+    access(user)
+    if date_from and date_to and date_from > date_to: raise HTTPException(422, "From date must be before To date")
+    if status and status not in ('POSTED', 'PLANNED', 'GENERATED', 'SKIPPED'): raise HTTPException(422, "Invalid schedule status")
+    query = scoped_asset_query(db, user, db.query(FixedAssetDepreciationSchedule).options(joinedload(FixedAssetDepreciationSchedule.asset).joinedload(FixedAsset.category)).join(FixedAsset), business_unit_id, location_id, department_id)
     if date_from: query = query.filter(FixedAssetDepreciationSchedule.period_end >= date_from)
-    if date_to: query = query.filter(FixedAssetDepreciationSchedule.period_start <= date_to)
-    items = [{"asset_id": row.fixed_asset_id, "asset_number": row.asset.asset_number, "asset_name": row.asset.asset_name, "period": f"{row.period_year}-{row.period_month:02d}", "opening_book_value": row.opening_book_value, "depreciation_amount": row.depreciation_amount, "accumulated_depreciation": row.accumulated_depreciation, "closing_book_value": row.closing_book_value, "journal_entry_id": row.journal_entry_id, "status": row.status} for row in query.all()]
-    return {"items": items, "total_depreciation": sum((item["depreciation_amount"] for item in items), ZERO), "generated_at": datetime.now(timezone.utc)}
+    if date_to: query = query.filter(FixedAssetDepreciationSchedule.period_end <= date_to)
+    if category_id is not None: query = query.filter(FixedAsset.asset_category_id == category_id)
+    if status: query = query.filter(FixedAssetDepreciationSchedule.status == status)
+    items = [{"asset_id": row.fixed_asset_id, "asset_number": row.asset.asset_number, "asset_name": row.asset.asset_name,
+        "category": row.asset.category.name if row.asset.category else "Category setup required",
+        "period": f"{row.period_year}-{row.period_month:02d}", "opening_book_value": row.opening_book_value,
+        "depreciation_amount": row.depreciation_amount, "accumulated_depreciation": row.accumulated_depreciation,
+        "closing_book_value": row.closing_book_value, "journal_entry_id": row.journal_entry_id, "status": row.status}
+        for row in query.order_by(FixedAssetDepreciationSchedule.period_end, FixedAsset.asset_number).all()]
+    posted = sum((i['depreciation_amount'] for i in items if i['status'] == 'POSTED'), ZERO)
+    planned = sum((i['depreciation_amount'] for i in items if i['status'] in ('PLANNED', 'GENERATED')), ZERO)
+    return {"items": items, "total_depreciation": posted, "posted_depreciation": posted, "planned_depreciation": planned, "generated_at": datetime.now(timezone.utc)}
+
+
+@reports_router.get("/fixed-assets/export")
+def export_fixed_assets(db: Session = Depends(get_db), user=Depends(get_current_user), business_unit_id: int | None = None,
+                        location_id: int | None = None, department_id: int | None = None, category_id: int | None = None):
+    from app.services.asset_report_export import excel_response
+    report = fixed_asset_report(db=db, user=user, business_unit_id=business_unit_id, location_id=location_id, department_id=department_id, category_id=category_id)
+    summary = [['MMH — Fixed assets by category'], ['Category', 'Records', 'Acquisition cost', 'Accumulated depreciation', 'Net book value']]
+    summary += [[g['category'], g['count'], g['acquisition_cost'], g['accumulated_depreciation'], g['net_book_value']] for g in report['categories']]
+    t = report['totals']; summary.append(['TOTAL', len(report['items']), t['acquisition_cost'], t['accumulated_depreciation'], t['net_book_value']])
+    headers = ['Asset number', 'Description', 'Category', 'Acquired', 'Life (months)', 'Cost', 'Accumulated depreciation', 'Net book value', 'Residual', 'Status', 'Policy review']
+    keys = ['asset_number', 'asset_name', 'category', 'acquisition_date', 'useful_life_months', 'acquisition_cost', 'accumulated_depreciation', 'net_book_value', 'residual_value', 'status', 'policy_review']
+    detail = [['MMH — Asset register'], headers] + [[r.get(k) for k in keys] for r in report['items']]
+    return excel_response('fixed-assets.xlsx', [('Summary', summary), ('Asset detail', detail)])
+
+
+@reports_router.get("/depreciation/export")
+def export_depreciation(date_from: date | None = None, date_to: date | None = None, business_unit_id: int | None = None,
+                        db: Session = Depends(get_db), user=Depends(get_current_user), location_id: int | None = None,
+                        department_id: int | None = None, category_id: int | None = None, status: str | None = None):
+    from app.services.asset_report_export import excel_response
+    report = depreciation_report(date_from=date_from, date_to=date_to, business_unit_id=business_unit_id, db=db, user=user,
+        location_id=location_id, department_id=department_id, category_id=category_id, status=status)
+    headers = ['Asset number', 'Description', 'Category', 'Period', 'Opening', 'Depreciation', 'Accumulated', 'Closing', 'Status', 'Journal ID']
+    keys = ['asset_number', 'asset_name', 'category', 'period', 'opening_book_value', 'depreciation_amount', 'accumulated_depreciation', 'closing_book_value', 'status', 'journal_entry_id']
+    summary = [['MMH — Depreciation'], ['Posting status', 'Amount'], ['POSTED', report['posted_depreciation']], ['PLANNED / GENERATED', report['planned_depreciation']]]
+    detail = [['MMH — Monthly depreciation'], headers] + [[r.get(k) for k in keys] for r in report['items']]
+    return excel_response('depreciation.xlsx', [('Summary', summary), ('Schedule detail', detail)])
