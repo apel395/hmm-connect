@@ -65,14 +65,14 @@ def test_scoped_unit_report_includes_legacy_posting_without_unit_id(db):
 
 
 def test_prepaid_amortization_posts_expense_and_direct_asset_credit_with_gl(db):
-    data=AmortizationCreate(name='Prepaid rent',start_date=date(2026,10,1),original_cost=120,useful_life_months=12,business_unit_id=1,location_id=1,department_id=1,asset_account_id=1,accumulated_amortization_account_id=1,amortization_expense_account_id=2)
+    data=AmortizationCreate(name='Prepaid rent',start_date=date(2026,10,1),original_cost=480,useful_life_months=48,business_unit_id=1,location_id=1,department_id=1,asset_account_id=1,accumulated_amortization_account_id=1,amortization_expense_account_id=2)
     created=amortizations.create_amortization(data,db,ADMIN)
     result=amortizations.post_next_amortization(created['id'],db,ADMIN)
     assert result['posted_amount']==10
     lines=db.query(GeneralLedger).order_by(GeneralLedger.id).all()
     assert [(r.account_id,r.debit,r.credit) for r in lines]==[(2,Decimal(10),Decimal(0)),(1,Decimal(0),Decimal(10))]
     assert len(build_ledger_query(db,location_id=1,department_id=1).all())==2
-    assert db.query(Amortization).one().net_book_value==110
+    assert db.query(Amortization).one().net_book_value==470
     assert db.query(JournalEntry).one().posted_at is not None
 
 

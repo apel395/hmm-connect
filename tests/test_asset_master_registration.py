@@ -101,11 +101,11 @@ def test_complete_registration_retains_identity_without_journal(db):
     db.add(ChartOfAccount(id=2,account_number='100-800-103',account_name='Accumulated depreciation',account_type='ASSET',normal_balance='CREDIT',is_active=True,is_posting=True))
     db.add(ChartOfAccount(id=3,account_number='700-500-133',account_name='Depreciation expense',account_type='EXPENSE',normal_balance='DEBIT',is_active=True,is_posting=True))
     db.add(FixedAssetCategory(id=1,code='LINEN',name='Linen',asset_account_id=1,accumulated_depreciation_account_id=2,
-        depreciation_expense_account_id=3,default_useful_life_months=36,is_active=True))
+        depreciation_expense_account_id=3,default_useful_life_months=48,is_active=True))
     db.commit()
     p = item(db); asset = db.query(FixedAsset).one(); original_id = asset.id
     value = AssetInput(product_id=p.id,asset_name=p.name,asset_category_id=1,acquisition_date=date(2026,1,8),
-        acquisition_cost=500,useful_life_months=36,business_unit_id=1,asset_account_id=1,
+        acquisition_cost=500,useful_life_months=48,business_unit_id=1,asset_account_id=1,
         accumulated_depreciation_account_id=2,depreciation_expense_account_id=3)
     FixedAssetService(db).complete_registration(asset,value,SimpleNamespace(id=1)); db.commit()
     assert asset.id == original_id and asset.status == 'DRAFT' and asset.acquisition_cost == Decimal('500')

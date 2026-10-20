@@ -10,7 +10,7 @@ class AmortizationCreate(BaseModel):
     description: str | None = None
     start_date: date
     original_cost: Decimal = Field(gt=0, decimal_places=2, max_digits=18)
-    useful_life_months: int = Field(gt=0)
+    useful_life_months: int = Field(default=48, ge=48)
     business_unit_id: int
     location_id: int | None = None
     department_id: int | None = None

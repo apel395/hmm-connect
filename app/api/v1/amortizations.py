@@ -70,6 +70,7 @@ def serialize(item: Amortization):
         "accumulated_amortization_account_id": item.accumulated_amortization_account_id,
         "amortization_expense_account_id": item.amortization_expense_account_id,
         "notes": item.notes,
+        "policy_review": "BELOW_MINIMUM_LIFE" if item.useful_life_months < 48 else None,
         "last_posted_at": item.last_posted_at,
         "next_posting_date": posting_date(item) if item.months_posted < item.useful_life_months else None,
         "next_posted_amount": monthly_amount(item) if item.status == "ACTIVE" else ZERO,
@@ -122,6 +123,16 @@ def create_amortization(data: AmortizationCreate, db: Session = Depends(get_db),
     db.commit()
     db.refresh(item)
     return serialize(item)
+
+
+@router.get("/report/export")
+def export_amortizations(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from app.services.asset_report_export import excel_response
+    items = list_amortizations(db=db, user=user)
+    headers = ['Number', 'Description', 'Category', 'Start date', 'Useful life (months)', 'Cost', 'Accumulated amortization', 'Net book value', 'Months posted', 'Status', 'Policy review']
+    keys = ['amortization_number', 'name', 'category', 'start_date', 'useful_life_months', 'original_cost', 'accumulated_amortization', 'net_book_value', 'months_posted', 'status', 'policy_review']
+    rows = [['MMH — Amortization register'], headers] + [[item.get(k) for k in keys] for item in items]
+    return excel_response('amortization-register.xlsx', [('Amortization', rows)])
 
 
 @router.patch("/{amortization_id}")

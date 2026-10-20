@@ -1,12 +1,19 @@
 from datetime import date
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 class CategoryInput(BaseModel):
+    @model_validator(mode='before')
+    @classmethod
+    def non_depreciable_default(cls, values):
+        if isinstance(values, dict) and values.get('is_depreciable') is False and 'default_useful_life_months' not in values:
+            return {**values, 'default_useful_life_months': None}
+        return values
+
     code: str = Field(min_length=1, max_length=30)
     name: str = Field(min_length=1, max_length=120)
     is_depreciable: bool = True
-    default_useful_life_months: int | None = Field(default=None, gt=0)
+    default_useful_life_months: int | None = Field(default=48, gt=0)
     default_residual_percentage: Decimal = Field(default=Decimal("0"), ge=0, lt=100)
     asset_account_id: int
     accumulated_depreciation_account_id: int | None = None

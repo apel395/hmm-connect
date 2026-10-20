@@ -12,6 +12,7 @@ from app.models.journal_line import JournalLine
 from app.services.document_number import next_document_number
 from app.services.asset_item_master import link_asset_item
 from app.services.organization_dimensions import validate_dimensions
+from app.services.asset_useful_life import validate_useful_life
 
 ZERO = Decimal("0.00")
 CENT = Decimal("0.01")
@@ -39,6 +40,8 @@ class FixedAssetService:
 
     def validate_accounts(self, value):
         account = self.account(value.asset_account_id, "ASSET", "Asset account")
+        if account.account_number in ('100-900-101', '100-900-102', '100-900-103'):
+            raise HTTPException(422, 'MMH utensils policy excludes chinaware, silverware and glassware from fixed assets')
         if not account.account_number.startswith(("100-600-", "100-900-")) or account.normal_balance != "DEBIT":
             raise HTTPException(422, "Select a debit fixed asset or operating-equipment account")
         depreciable = getattr(value, "is_depreciable", value.depreciation_method != "NONE" if hasattr(value, "depreciation_method") else True)
@@ -47,6 +50,7 @@ class FixedAssetService:
         if depreciable:
             life = getattr(value, "default_useful_life_months", getattr(value, "useful_life_months", None))
             if not life: raise HTTPException(422, "Depreciable assets require useful life")
+            validate_useful_life(life)
             self.account(value.accumulated_depreciation_account_id, "ASSET", "Accumulated depreciation", True)
             expense = self.account(value.depreciation_expense_account_id, "EXPENSE", "Depreciation expense")
             if expense.normal_balance != "DEBIT": raise HTTPException(422, "Depreciation expense must be debit balance")
@@ -116,6 +120,7 @@ class FixedAssetService:
             raise HTTPException(422, "Active asset category is required")
         if category.asset_account_id != asset.asset_account_id:
             raise HTTPException(422, "Asset category must use the already posted asset COA")
+        self.validate_accounts(category)
         asset.asset_category_id = category.id
         asset.useful_life_months = category.default_useful_life_months
         asset.depreciation_method = "STRAIGHT_LINE" if category.is_depreciable else "NONE"
