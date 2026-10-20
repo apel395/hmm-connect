@@ -5,7 +5,7 @@ import Dialog, { DialogContent, DialogTitle, DialogDescription } from "../../../
 import type { Amounts, Period, Report } from "./FinancialReportPage";
 
 export type PresentationRow = { key: string; label: string; kind: "category" | "detail" | "subtotal"; account_ids: number[]; member_keys?: string[]; periods: Record<Period, Amounts> };
-export type RelatedAccount = { presentation_key?: string; coa_account_name?: string; legacy_codes?: string[]; source_slice?: boolean; nop_deduction?: boolean; account_id: number; account_code: string; account_name: string; category: string; periods: Record<Period, Amounts> };
+export type RelatedAccount = { presentation_key?: string; coa_account_name?: string; legacy_codes?: string[]; source_slice?: boolean; account_id: number; account_code: string; account_name: string; category: string; periods: Record<Period, Amounts> };
 const metrics = ["current", "budget", "last_month", "last_year", "variance"] as const;
 const names = ["Current", "Budget", "Last month", "Last year", "Variance"];
 const money = (value: string | number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { maximumFractionDigits: 2 });

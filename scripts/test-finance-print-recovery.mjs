@@ -148,7 +148,7 @@ assert.deepEqual(selectRelatedAccounts(sharedCoa,null),[]);
 console.log("P&L attribution drilldown: same COA split by category, subtotal membership and legacy API compatibility passed.");
 
 for (const [account,nop,deduction] of [
-  [{category:"NONOPERATING_INCOME",nop_deduction:true},-1,1],
+  [{category:"NONOPERATING_INCOME",legacy_codes:["601001"]},1,-1],
   [{category:"NONOPERATING_INCOME"},1,-1],
   [{category:"UNDER_EXPENSE"},-1,1],
 ]) {
@@ -156,4 +156,4 @@ for (const [account,nop,deduction] of [
   assert.equal(contribution(account,{kind:"subtotal",key:"TOTAL_DEDUCTIONS"}),deduction);
   assert.equal(contribution(account,{kind:"category",key:account.category}),1);
 }
-console.log("P&L NOP bridge: source-format deductions and ordinary income signs passed.");
+console.log("P&L NOP bridge: under expenses less income signs passed.");
