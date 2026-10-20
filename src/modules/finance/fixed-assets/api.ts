@@ -20,3 +20,11 @@ export const unpostLastAmortization = async (item: {id:number;months_posted:numb
 export const getAmortizationSchedule = async (id:number) => (await api.get(`/amortizations/${id}/schedule`)).data;
 
 export const syncInvoiceAssets = async () => (await api.post<{ registered: number }>("/fixed-assets/sync-invoice-assets")).data;
+
+export async function downloadAssetReport(path: string, params: Record<string, unknown>, filename: string) {
+  const response = await api.get(path, { params, responseType: "blob" });
+  const url = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url; link.download = filename; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

@@ -16,7 +16,7 @@ const empty = {
   code: "",
   name: "",
   is_depreciable: true,
-  default_useful_life_months: "",
+  default_useful_life_months: 48,
   default_residual_percentage: 0,
   asset_account_id: "",
   accumulated_depreciation_account_id: "",
@@ -84,7 +84,7 @@ export default function AssetCategoryPage() {
     </label>
   );
 
-  const ready = Boolean(form.code.trim() && form.name.trim() && form.asset_account_id && (!form.is_depreciable || (Number(form.default_useful_life_months) > 0 && form.accumulated_depreciation_account_id && form.depreciation_expense_account_id)));
+  const ready = Boolean(form.code.trim() && form.name.trim() && form.asset_account_id && (!form.is_depreciable || (Number(form.default_useful_life_months) >= 48 && form.accumulated_depreciation_account_id && form.depreciation_expense_account_id)));
 
   return (
     <div className="space-y-4">
@@ -102,10 +102,10 @@ export default function AssetCategoryPage() {
           <span className="font-medium">Category name</span>
           <input className={input} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} />
         </label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_depreciable} onChange={e=>setForm({...form,is_depreciable:e.target.checked,...(!e.target.checked?{default_useful_life_months:"",accumulated_depreciation_account_id:"",depreciation_expense_account_id:""}:{})})}/>Depreciable</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_depreciable} onChange={e=>setForm({...form,is_depreciable:e.target.checked,...(!e.target.checked?{default_useful_life_months:"",accumulated_depreciation_account_id:"",depreciation_expense_account_id:""}:{default_useful_life_months:48})})}/>Depreciable</label>
         {form.is_depreciable && <label className="space-y-1 text-sm">
-          <span className="font-medium">Useful life (months)</span>
-          <input className={input} type="number" min={1} value={form.default_useful_life_months}
+          <span className="font-medium">Useful life (months, minimum 48)</span>
+          <input className={input} type="number" min={48} value={form.default_useful_life_months}
             onChange={event => setForm({ ...form, default_useful_life_months: Number(event.target.value) })} />
         </label>}
         {accountField("asset_account_id", "Fixed asset account", assetAccounts)}
