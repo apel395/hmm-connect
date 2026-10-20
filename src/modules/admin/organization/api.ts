@@ -11,6 +11,9 @@ export interface BusinessUnit {
 }
 
 export interface Department {
+  parent_department_id?: number | null;
+  parent_department_name?: string | null;
+  display_name?: string;
   id: number;
   code: string;
   name: string;
@@ -33,6 +36,7 @@ export interface Location extends Department {
 
 export type OrganizationRecord = BusinessUnit | Department | Location;
 export interface OrganizationPayload {
+  parent_department_id?: number | null;
   department_ids?: number[];
   code: string; name: string; description?: string | null; business_unit_id?: number | null;
   location_type?: string; address?: string | null; city?: string | null; province?: string | null;

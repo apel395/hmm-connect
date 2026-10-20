@@ -10,6 +10,7 @@ import Loading from "@/components/ui/Loading";
 import DateRangeFilter from "@/components/common/DateRangeFilter";
 import useAuthorization from "@/hooks/useAuthorization";
 import { exportCsv } from "@/utils/exportCsv";
+import PurchasingExceptionPanel from "../../reports/PurchasingExceptionPanel";
 import PurchaseOrderTable from "../components/PurchaseOrderTable";
 import PurchaseOrderForm from "../components/PurchaseOrderForm";
 import { useCreatePurchaseOrder, usePurchaseOrders } from "../hooks/usePurchaseOrders";
@@ -60,6 +61,7 @@ export default function PurchaseOrderListPage() {
   return <><div className="space-y-6">
     <PageHeader title="Purchase Orders" description="Manage supplier orders and receiving progress." actions={<div className="flex flex-wrap gap-2">{canCreate && <Button onClick={() => setOpen(true)}><Plus size={16}/> Create</Button>}<div className="flex"><Button variant={scope === "all" ? "secondary" : "outline"} onClick={() => setScope("all")}>All</Button><Button variant={scope === "active" ? "secondary" : "outline"} onClick={() => setScope("active")}>Active</Button><Button variant={scope === "history" ? "secondary" : "outline"} onClick={() => setScope("history")}>History</Button></div>  <Button variant="outline" size="sm" onClick={() => window.print()} title="Print purchase orders"><Printer size={16}/><span className="sr-only">Print</span></Button>
 </div>}/>
+    <PurchasingExceptionPanel dateFrom="" dateTo="" />
     <ModuleSummary metrics={[{label:"Waiting Approval",value:count("PENDING_APPROVAL")},{label:"Approved",value:count("APPROVED")},{label:"Partially Received",value:count("PARTIALLY_RECEIVED")},{label:"Fully Received",value:count("RECEIVED")}]}/>
     <Card className="overflow-hidden p-0"><div className="p-3"><ListToolbar search={search} searchPlaceholder="Search PO number, supplier, or reference..." onSearch={setSearch} filters={statusSelect} advancedOpen={advanced} onAdvancedToggle={() => setAdvanced(!advanced)} advancedFilters={<div className="space-y-3"><div className="max-w-xs">{statusSelect}</div>{dateFilter}</div>} onExport={csv} onRefresh={() => query.refetch()} footer={<div className="text-xs text-slate-500">Showing {rows.length} of {result?.total_items ?? 0} purchase orders</div>}/></div>
       {query.isLoading ? <div className="py-12"><Loading/></div> : query.isError ? <div role="alert" className="m-5 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700"><div className="font-semibold">Purchase orders could not be loaded</div><div className="mt-1">{errorMessage(query.error)}</div><Button className="mt-3" size="sm" variant="outline" onClick={() => query.refetch()}>Try again</Button></div> : <PurchaseOrderTable rows={rows} onView={(row) => navigate(`/purchase-orders/${row.id}`)}/>}
