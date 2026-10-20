@@ -160,7 +160,7 @@
     "548048": "700-500-115",
     "542011": "700-500-120"
   },
-  "policy": "User authorized seeding for correction in app. Create MANUAL historical journals and post when requested; user authorized unpost/edit correction. Use existing accounts, preserve every nonzero source debit/credit/date and the Rp45000 difference; no automatic contra, source documents or opening changes. GL follows the normal app posting function. DANA PROYEK uses Piutang Direksi provisionally per owner repayment explanation; source directions retained. Registered broad accounts used where no exact legacy account exists; retain review notes for finance.",
+  "policy": "User authorized seeding for correction in app. Create MANUAL historical journals and post when requested; user authorized unpost/edit correction. Use existing accounts, preserve every nonzero source debit/credit/date and the Rp45000 difference; no automatic contra, source documents or opening changes. GL follows the normal app posting function. User revised DANA PROYEK to Biaya Operasional Direksi 750-100-104 on 2026-10-20 to follow the original January P&L; source debit/credit directions and bank lines retained. Registered broad accounts used where no exact legacy account exists; retain review notes for finance.",
   "department_names": {
     "BOD": "Board of Directur",
     "SWP": "Swimming Pool"
@@ -173,11 +173,11 @@
     "401402": "Swimming Pool"
   },
   "line_accounts": {
-    "24372": "100-210-102",
-    "24375": "100-210-102",
-    "24376": "100-210-102",
-    "24377": "100-210-102",
-    "26448": "100-210-102",
+    "24372": "750-100-104",
+    "24375": "750-100-104",
+    "24376": "750-100-104",
+    "24377": "750-100-104",
+    "26448": "750-100-104",
     "24347": "600-100-100",
     "24348": "600-100-100",
     "24357": "600-100-100",
