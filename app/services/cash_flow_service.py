@@ -114,10 +114,10 @@ class CashFlowService:
         for key,label in (("OPERATING","operating"),("INVESTING","investing"),("FINANCING","financing"),("UNCLASSIFIED","unclassified")):
             data[f"{label}_inflow"]=totals[key]["inflow"];data[f"{label}_outflow"]=totals[key]["outflow"];data[f"{label}_net"]=totals[key]["inflow"]-totals[key]["outflow"]
         data["unclassified_count"]=sum(m["category"]=="UNCLASSIFIED" and m["direction"]!="TRANSFER" for m in items);return data
-    def accounts_summary(self,date_from=None,date_to=None,location_id=None,business_unit_id=None):
+    def accounts_summary(self,date_from=None,date_to=None,location_id=None,business_unit_id=None,department_id=None):
         result=[]
         for account in self.cash_accounts():
-            opening=self.opening(date_from,account.id,location_id=location_id,business_unit_id=business_unit_id);items=self.movements(date_from,date_to,account.id,location_id=location_id,business_unit_id=business_unit_id);inflow=sum((m["inflow"] for m in items),ZERO);outflow=sum((m["outflow"] for m in items),ZERO)
+            opening=self.opening(date_from,account.id,location_id=location_id,business_unit_id=business_unit_id,department_id=department_id);items=self.movements(date_from,date_to,account.id,location_id=location_id,business_unit_id=business_unit_id,department_id=department_id);inflow=sum((m["inflow"] for m in items),ZERO);outflow=sum((m["outflow"] for m in items),ZERO)
             result.append({"account_id":account.id,"account_code":account.account_number,"account_name":account.account_name,"account_subtype":account.account_subtype,"opening_balance":opening,"total_inflow":inflow,"total_outflow":outflow,"closing_balance":opening+inflow-outflow,"last_transaction_date":max((m["date"] for m in items),default=None)})
         return result
     def activity(self,account_id,page=1,page_size=20,date_from=None,date_to=None,search=None,direction=None,reference_type=None,category=None,location_id=None,department_id=None,business_unit_id=None):
