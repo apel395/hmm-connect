@@ -184,7 +184,9 @@ def update(entry_id: int, data: CashEntry, db: Session = Depends(get_db), user=D
 def validate_cashier_journal(db, journal, user):
     data = entry_data(journal)
     validate_accounts(db, data)
-    resolve_organization_access(db, user, location_id=data.location_id, business_unit_id=data.business_unit_id, department_id=data.department_id)
+    scope = resolve_organization_access(db, user, location_id=data.location_id, business_unit_id=data.business_unit_id, department_id=data.department_id)
+    if scope['department_id'] is not None and data.department_id != scope['department_id']:
+        raise HTTPException(404, 'Cashier entry not found')
     if any(any(getattr(line,k) != getattr(journal,k) for k in ('location_id','business_unit_id','department_id')) for line in journal.lines):
         raise HTTPException(409, 'Cashier line organization differs from its source')
     if db.query(GeneralLedger.id).filter(GeneralLedger.reference_type == SOURCE, GeneralLedger.reference_id == journal.id).first():

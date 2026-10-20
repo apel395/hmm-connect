@@ -110,3 +110,12 @@ def test_closed_period_blocks_edit_without_changing_draft(db):
     s.rollback()
     assert cashier.detail(created['id'],s,ADMIN)['total_debit']==30
     assert not s.query(GeneralLedger).count()
+
+
+def test_generic_journal_route_cannot_post_unassigned_cashier_for_department_user(db):
+    s,u,l,d,a=db
+    value=data(db).model_copy(update={'department_id':None})
+    created=cashier.create(value,s,ADMIN)
+    restricted=SimpleNamespace(id=2,roles=[SimpleNamespace(name='DEPARTMENT')],default_location_id=l.id,default_department_id=d.id)
+    with pytest.raises(HTTPException):journals.post_locked_journal(s,journal=s.get(JournalEntry,created['id']),user=restricted)
+    assert not s.query(GeneralLedger).count()
