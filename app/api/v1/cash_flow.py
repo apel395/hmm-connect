@@ -20,13 +20,18 @@ def legacy(posting_date_from:date|None=None,posting_date_to:date|None=None,db:Se
 
 @router.get("/accounts")
 def accounts(date_from:date|None=None,date_to:date|None=None,location_id:int|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    access(user);location_id=resolve_location_id(user,location_id);return CashFlowService(db).accounts_summary(date_from,date_to,location_id)
+    access(user)
+    if date_from and date_to and date_from > date_to: raise HTTPException(422,'From date must be before To date')
+    from app.services.organization_access import resolve_organization_access
+    scope=resolve_organization_access(db,user,location_id=location_id)
+    return CashFlowService(db).accounts_summary(date_from,date_to,**scope)
 
 @router.get("/accounts/{account_id}/activity")
 def activity(account_id:int,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),date_from:date|None=None,date_to:date|None=None,search:str|None=None,direction:str|None=None,reference_type:str|None=None,cash_flow_category:str|None=None,db:Session=Depends(get_db),user=Depends(get_current_user)):
     access(user)
-    location_id=resolve_location_id(user,None)
-    try:return CashFlowService(db).activity(account_id,page,page_size,date_from,date_to,search,direction,reference_type,cash_flow_category,location_id=location_id)
+    from app.services.organization_access import resolve_organization_access
+    scope=resolve_organization_access(db,user)
+    try:return CashFlowService(db).activity(account_id,page,page_size,date_from,date_to,search,direction,reference_type,cash_flow_category,**scope)
     except ValueError as exc:raise HTTPException(404,str(exc)) from exc
 
 @router.get("/summary")

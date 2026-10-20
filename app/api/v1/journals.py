@@ -182,6 +182,10 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
             allowed_liability_debit_ids=allowed_liability_debit_ids,
         )
 
+    if source_type == "GENERAL_CASHIER":
+        from app.api.v1.cashier import validate_cashier_journal
+        validate_cashier_journal(db, journal, user)
+
     if source_type == "SUPPLIER_PAYMENT":
         from app.api.v1.payments import validate_payment_journal_integrity
         from app.models.payment import Payment
