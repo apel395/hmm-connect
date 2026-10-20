@@ -139,10 +139,21 @@ assert.match(balancedPrint, />Balanced</);
 assert.doesNotMatch(balancedPrint, /Out of balance/);
 console.log("Balance status: balanced KAP and unbalanced detail print evidence passed.");
 
-const { selectRelatedAccounts } = await compile("src/modules/finance/financial-statements/reportAttribution.ts");
+const { selectRelatedAccounts, contribution } = await compile("src/modules/finance/financial-statements/reportAttribution.ts");
 const sharedCoa=[{account_id:20,presentation_key:"food",category:"COST_OF_REVENUE"},{account_id:20,presentation_key:"testing",category:"OPERATING_EXPENSE"}];
 assert.deepEqual(selectRelatedAccounts(sharedCoa,{account_ids:[20],member_keys:["food"]}),[sharedCoa[0]]);
 assert.deepEqual(selectRelatedAccounts(sharedCoa,{account_ids:[20],member_keys:["testing"]}),[sharedCoa[1]]);
 assert.deepEqual(selectRelatedAccounts(sharedCoa,{account_ids:[20]}),sharedCoa);
 assert.deepEqual(selectRelatedAccounts(sharedCoa,null),[]);
 console.log("P&L attribution drilldown: same COA split by category, subtotal membership and legacy API compatibility passed.");
+
+for (const [account,nop,deduction] of [
+  [{category:"NONOPERATING_INCOME",nop_deduction:true},-1,1],
+  [{category:"NONOPERATING_INCOME"},1,-1],
+  [{category:"UNDER_EXPENSE"},-1,1],
+]) {
+  assert.equal(contribution(account,{kind:"subtotal",key:"NOP"}),nop);
+  assert.equal(contribution(account,{kind:"subtotal",key:"TOTAL_DEDUCTIONS"}),deduction);
+  assert.equal(contribution(account,{kind:"category",key:account.category}),1);
+}
+console.log("P&L NOP bridge: source-format deductions and ordinary income signs passed.");
