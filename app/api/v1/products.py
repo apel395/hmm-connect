@@ -96,8 +96,12 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
             raise HTTPException(422, "Item fixed asset COA must be a debit-balance non-cash asset")
 
 def _validate_treatment(payload: dict, product: Product | None = None) -> None:
+    from app.services.item_asset_policy import validate_asset_item
+    validate_asset_item({key:payload.get(key,getattr(product,key,None)) for key in ('inventory_treatment','name','subgroup_name')})
     treatment = payload.get("inventory_treatment", getattr(product, "inventory_treatment", "REVIEW_REQUIRED") if product else "REVIEW_REQUIRED")
     item_type = payload.get("item_type", getattr(product, "item_type", "BUY") if product else "BUY")
+    if item_type == "SELL" and treatment != "NON_STOCK":
+        raise HTTPException(422, "Sell items use NON_STOCK treatment; warehouse stock belongs to BUY items")
     if item_type == "BUY" and str(payload.get("group_name", getattr(product, "group_name", ""))).strip().upper() == "ASSET" and treatment != "FIXED_ASSET":
         raise HTTPException(422, "ASSET group items must use Fixed Asset treatment")
     inventory_account_id = payload.get("inventory_account_id", product.inventory_account_id if product else None)
@@ -124,6 +128,8 @@ def _normalize_sell_classification(payload, product=None):
     code = str(payload.get("group_code", getattr(product, "group_code", "")) or "").strip().upper()
     if catalog == "CATERING" and (group in {"ROOM", "ROOMS", "KAMAR"} or sell_group_code(code) == "8"):
         raise HTTPException(422, "Room selling items belong to the Hotel catalog")
+    if code in dict(SELL_GROUPS):
+        payload["group_name"] = dict(SELL_GROUPS)[code]
 
 
 def _validate_sales_profile(db: Session, payload: dict, product: Product | None = None) -> None:

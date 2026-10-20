@@ -5,6 +5,8 @@ from fastapi import HTTPException
 
 
 def register_master_asset(db, product):
+    from app.services.item_asset_policy import validate_asset_item
+    validate_asset_item(product)
     from app.models.fixed_asset import FixedAsset
     from app.models.chart_of_account import ChartOfAccount
     from app.models.audit_log import AuditLog

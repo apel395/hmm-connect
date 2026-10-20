@@ -215,6 +215,7 @@ def list_purchase_orders(
         PurchaseOrder.location_id,
         user,
     )
+    base_query = base_query.filter(PurchaseOrder.status != "ARCHIVED")
     if scope == "active":
         base_query = base_query.filter(PurchaseOrder.status.in_(ACTIVE_STATUSES))
     elif scope == "history":

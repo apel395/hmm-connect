@@ -82,3 +82,15 @@ def test_sell_save_uses_group_sequence_and_edit_keeps_existing_code(db):
 def test_legacy_selling_group_alias_uses_new_number_without_creating_data(db):
     assert preview_item_code('S-FOOD', '', 'SELL', db, ADMIN, catalog_type='HOTEL')['code'] == '5-000001'
     assert db.query(Product).count() == 0
+
+
+def test_sell_group_numbers_control_names_and_stock_treatment_cannot_leak():
+    import pytest
+    from fastapi import HTTPException
+    from app.api.v1.products import _normalize_sell_classification, _validate_treatment
+    data={'item_type':'SELL','catalog_type':'HOTEL','group_code':'6','group_name':'FOOD','inventory_treatment':'NON_STOCK'}
+    _normalize_sell_classification(data)
+    assert data['group_name']=='BEVERAGE'
+    for treatment in ('STOCK','DIRECT_USE','FIXED_ASSET'):
+        with pytest.raises(HTTPException):
+            _validate_treatment({**data,'inventory_treatment':treatment,'inventory_account_id':1,'asset_account_id':1,'purchase_account_id':1})

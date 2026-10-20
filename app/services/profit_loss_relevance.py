@@ -33,7 +33,7 @@ DEPARTMENT_ORDER = ('FO', 'FB', 'SWP', 'LDY', 'HK', 'AG', 'ACC', 'HR', 'SM', 'PM
 
 
 def department_key(name):
-    return DEPARTMENTS.get(normalized(name))
+    return DEPARTMENTS.get(normalized((name or "").split(" / ",1)[0]))
 
 
 def department_sort(group):

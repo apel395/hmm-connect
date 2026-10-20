@@ -16,6 +16,7 @@ from app.schemas.organization_dimensions import (
     BusinessUnitCreate, BusinessUnitUpdate, DepartmentCreate, DepartmentUpdate,
     LocationCreate, LocationUpdate,
 )
+from app.services import department_outlets
 from app.services.audit import record_audit
 from app.services.location_access import assigned_location_id
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
@@ -93,8 +94,8 @@ def business_unit_row(value: BusinessUnit) -> dict:
     return {"id": value.id, "code": value.code, "name": value.name, "description": value.description, "is_active": value.is_active, "created_at": value.created_at, "updated_at": value.updated_at}
 
 
-def department_row(value: Department) -> dict:
-    return {"id": value.id, "code": value.code, "name": value.name, "business_unit_id": value.business_unit_id, "business_unit_name": value.business_unit.name if value.business_unit else None, "is_active": value.is_active, "created_at": value.created_at, "updated_at": value.updated_at}
+def department_row(value: Department, db=None) -> dict:
+    return {"id": value.id, "code": value.code, "name": value.name, "business_unit_id": value.business_unit_id, "business_unit_name": value.business_unit.name if value.business_unit else None, "is_active": value.is_active, "created_at": value.created_at, "updated_at": value.updated_at, **(department_outlets.payload(db,value) if db is not None else {})}
 
 
 def location_row(value: Location) -> dict:
@@ -179,12 +180,12 @@ def list_departments(business_unit_id: int | None = None, location_id: int | Non
     if is_active is not None: query = query.filter(Department.is_active.is_(is_active))
     if search:
         term = f"%{search.strip()}%"; query = query.filter(or_(Department.code.ilike(term), Department.name.ilike(term)))
-    return [department_row(value) for value in query.order_by(Department.code)]
+    return [department_row(value,db) for value in query.order_by(Department.code)]
 
 
 @router.post("/departments", status_code=201)
 def create_department(data: DepartmentCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    require_access(user, manage=True); validate_business_unit(db, data.business_unit_id, required=False); values=data.model_dump(); values["code"]=normalize_code(data.code); values["name"]=normalize_name(data.name); reject_duplicate(db, Department, values["code"], values["name"]); value=Department(**values); db.add(value); db.flush(); record_audit(db,user,"DEPARTMENT_CREATED","DEPARTMENT",f"Created {value.code}",entity_id=value.id); commit_or_conflict(db); return department_row(db.query(Department).options(joinedload(Department.business_unit)).filter(Department.id==value.id).one())
+    require_access(user, manage=True); validate_business_unit(db, data.business_unit_id, required=False); values=data.model_dump(); parent_id=values.pop("parent_department_id",None); values["code"]=normalize_code(data.code); values["name"]=normalize_name(data.name); reject_duplicate(db, Department, values["code"], values["name"]); value=Department(**values); db.add(value); db.flush(); department_outlets.assign(db,value,parent_id); record_audit(db,user,"DEPARTMENT_CREATED","DEPARTMENT",f"Created {value.code}",entity_id=value.id); commit_or_conflict(db); return department_row(db.query(Department).options(joinedload(Department.business_unit)).filter(Department.id==value.id).one(),db)
 
 
 @router.get("/departments/{department_id}")
@@ -192,7 +193,7 @@ def get_department(department_id:int,db:Session=Depends(get_db),user=Depends(get
     require_access(user); value=db.query(Department).options(joinedload(Department.business_unit)).filter(Department.id==department_id).first()
     if not value: raise HTTPException(404,"Department not found")
     resolve_organization_access(db, user, department_id=value.id)
-    return department_row(value)
+    return department_row(value,db)
 
 
 @router.patch("/departments/{department_id}")
@@ -200,11 +201,16 @@ def update_department(department_id:int,data:DepartmentUpdate,db:Session=Depends
     require_access(user,manage=True); value=db.get(Department,department_id)
     if not value: raise HTTPException(404,"Department not found")
     changes=data.model_dump(exclude_unset=True)
+    parent_changed="parent_department_id" in changes
+    parent_id=changes.pop("parent_department_id",None)
     if "business_unit_id" in changes: validate_business_unit(db,changes["business_unit_id"],required=False)
     if "code" in changes: changes["code"]=normalize_code(changes["code"])
     if "name" in changes: changes["name"]=normalize_name(changes["name"])
     reject_duplicate(db,Department,changes.get("code"),changes.get("name"),value.id); deactivated=changes.get("is_active") is False and value.is_active
     for key,item in changes.items(): setattr(value,key,item)
+    if parent_changed: department_outlets.assign(db,value,parent_id)
+    department_outlets.validate_parent_change(db,value)
+    db.info.pop("department_outlet_labels",None)
     action="DEPARTMENT_DEACTIVATED" if deactivated else "DEPARTMENT_UPDATED"; record_audit(db,user,action,"DEPARTMENT",f"{'Deactivated' if deactivated else 'Updated'} {value.code}",entity_id=value.id); commit_or_conflict(db); return get_department(value.id,db,user)
 
 
@@ -212,7 +218,7 @@ def update_department(department_id:int,data:DepartmentUpdate,db:Session=Depends
 def deactivate_department(department_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
     require_access(user,manage=True); value=db.get(Department,department_id)
     if not value: raise HTTPException(404,"Department not found")
-    if value.is_active: value.is_active=False; record_audit(db,user,"DEPARTMENT_DEACTIVATED","DEPARTMENT",f"Deactivated {value.code}",entity_id=value.id); db.commit()
+    if value.is_active: value.is_active=False; department_outlets.validate_parent_change(db,value); record_audit(db,user,"DEPARTMENT_DEACTIVATED","DEPARTMENT",f"Deactivated {value.code}",entity_id=value.id); db.commit()
     return get_department(value.id,db,user)
 
 
