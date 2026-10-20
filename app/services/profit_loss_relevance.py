@@ -9,6 +9,7 @@ from sqlalchemy import func
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.services.organization_access import effective_business_unit
+from app.services.hotel_department_accounts import SUPPORT_DEPARTMENTS, is_hotel_report, zero_account_departments
 
 
 def normalized(value):
@@ -84,6 +85,8 @@ def related(account, report, values, evidence):
     prefix = re.match(r'^\s*([A-Za-z&]+)\s*[-–—]\s*', account.account_name)
     if prefix:
         owner = PREFIXES.get(prefix[1].upper(), owner)
+    if owner is None and dept in SUPPORT_DEPARTMENTS and is_hotel_report(report):
+        return dept in zero_account_departments(account)
     if account.account_type in ("REVENUE", "INCOME") and owner is None:
         return False
     if code.startswith("500-100-") and owner is None and dept != "FB":

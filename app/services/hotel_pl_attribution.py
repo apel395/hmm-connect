@@ -96,7 +96,6 @@ def load_evidence(service, as_of, scope):
 
 def attribute(service, report, records, mappings):
     from app.services.profit_loss_delivery import category
-    from app.services.profit_loss_relevance import department_key
     from datetime import date as date_type
     as_of=report['as_of_date']
     if not isinstance(as_of,date_type):as_of=date_type.fromisoformat(as_of)
@@ -114,7 +113,7 @@ def attribute(service, report, records, mappings):
         if base is None:continue
         # Hotel policy is scoped to the actual unit, never applied to Catering.
         if unit not in service._hotel_pl_unit_ids:continue
-        target=category(account,mappings,{'scope_labels':{'department_id':department_name}})
+        target=category(account,mappings,{'scope_labels':{'department_id':department_name,'business_unit_id':'Hotel'}})
         if target=='UNCLASSIFIED':target='UNDER_EXPENSE'
         label=account.account_name
         key=signature(account.id,line.debit,line.credit,unit,location,department)
@@ -123,8 +122,6 @@ def attribute(service, report, records, mappings):
         if legacy in LEGACY:
             target,label=LEGACY[legacy]
             matched+=1
-        # Other BOD operating costs are also below GOP, including native entries.
-        elif department_key(department_name)=='BOD' and account.account_type=='EXPENSE':target='UNDER_EXPENSE'
         if (target,label)==(base['category'],base['account_name']):continue
         token=f'{account.id}:{target}:{label}'
         if token not in slices:
