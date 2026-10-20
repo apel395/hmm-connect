@@ -269,6 +269,9 @@ class FinancialReportingService:
         for dimension, model, default in (("location_id", Location, "Consolidated"), ("business_unit_id", BusinessUnit, "All units"), ("department_id", Department, "All departments")):
             record = self.db.get(model, scope[dimension]) if scope[dimension] is not None else None
             scope_labels[dimension] = "Unassigned department" if dimension == "department_id" and scope[dimension] == 0 else record.name if record else default
+        from app.services.department_outlets import labels as outlet_labels
+        if scope["department_id"] in outlet_labels(self.db):
+            scope_labels["department_id"] = outlet_labels(self.db)[scope["department_id"]]["display_name"]
         report = {"report_type": report_type, "as_of_date": as_of_date, "scope": scope, "scope_labels": scope_labels,
                 "periods": calendar, "rows": rows, "executive_rows": executive_rows, "section_totals": totals, "summary": summaries,
                 "header_only": header_only, "budget_available": budget_available, "comparison_available": comparison_available,
@@ -344,6 +347,8 @@ class FinancialReportingService:
                         budgets = budgets.filter(dimension == scope[name])
                 ids.update(row[0] or 0 for row in budgets.distinct().all())
         names = {row.id: row.name for row in self.db.query(Department).filter(Department.id.in_(ids)).all()}
+        from app.services.department_outlets import labels as outlet_labels
+        names.update({did:data["display_name"] for did,data in outlet_labels(self.db).items() if did in ids})
         result = []
         for dept_id in sorted(ids, key=lambda value: (value == 0, names.get(value, ""))):
             child = self.build(report_type=kind, as_of_date=report["as_of_date"],

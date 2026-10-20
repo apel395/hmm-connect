@@ -14,6 +14,8 @@ from app.services.audit import record_audit
 
 
 def ensure_asset_item(db, *, name, account_id, user, product_id=None, uom="SET", subgroup_code=None):
+    from app.services.item_asset_policy import validate_asset_item
+    validate_asset_item({"name":name,"inventory_treatment":"FIXED_ASSET"})
     lock_item_creation(db)
     account = db.get(ChartOfAccount, account_id)
     if not account or not account.is_active or not account.is_posting or not account.account_number.startswith(("100-600-", "100-900-")) or account.account_type != "ASSET" or account.normal_balance != "DEBIT":

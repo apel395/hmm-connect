@@ -68,7 +68,17 @@ def archive_document(db,user,kind,document_id,reason,restore=False):
         evidence=db.query(AuditLog).filter_by(entity_type=kind,entity_id=document_id,action='ARCHIVE').order_by(AuditLog.id.desc()).first()
         previous=(evidence.details or {}).get('previous_status') if evidence else None
         if not previous: raise HTTPException(409,'Archive history is missing')
-        document.status=previous
+        if (evidence.details or {}).get('policy')=='PURCHASING_AGE':
+            from app.services.purchasing_retention import approval_snapshot, validate_po_restore
+            if kind=="PURCHASE_ORDER":validate_po_restore(db,document)
+            request=get_request(db,kind,document_id)
+            if request:
+                ActivityService.log(db=db,user=user,action='APPROVAL_RESET',entity_type=kind,entity_id=document_id,
+                    summary=f'Reset expired approval for {getattr(document,number)}',details={'approval':approval_snapshot(request)})
+                db.delete(request)
+            document.status='DRAFT'
+        else:
+            document.status=previous
     else:
         request=get_request(db,kind,document_id)
         if old not in {'REJECTED','CANCELLED','VOID'} and not (old=='DRAFT' and request and request.status=='REJECTED'):

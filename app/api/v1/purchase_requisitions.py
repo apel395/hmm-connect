@@ -53,6 +53,7 @@ def _organization_context(db: Session, requisition: PurchaseRequisition) -> dict
 
 
 def _apply_scope(query, scope: str):
+    query = query.filter(PurchaseRequisition.status != "ARCHIVED")
     if scope == "active":
         return query.filter(PurchaseRequisition.status.in_(ACTIVE_STATUSES))
     if scope == "history":

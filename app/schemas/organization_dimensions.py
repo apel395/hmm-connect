@@ -28,6 +28,7 @@ class BusinessUnitResponse(BaseModel):
 
 
 class DepartmentCreate(BaseModel):
+    parent_department_id: int | None = None
     code: str = Field(min_length=1, max_length=30)
     name: str = Field(min_length=1, max_length=100)
     business_unit_id: int | None = None
@@ -35,6 +36,7 @@ class DepartmentCreate(BaseModel):
 
 
 class DepartmentUpdate(BaseModel):
+    parent_department_id: int | None = None
     code: str | None = Field(default=None, min_length=1, max_length=30)
     name: str | None = Field(default=None, min_length=1, max_length=100)
     business_unit_id: int | None = None
