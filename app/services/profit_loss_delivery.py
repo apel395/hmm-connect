@@ -27,6 +27,8 @@ def category(account, mappings, report=None):
     configured = mappings.get(account.id)
     if configured in CATEGORIES and configured not in ('REVENUE', 'NONOPERATING_INCOME'):
         return configured
+    from app.services.hotel_department_accounts import is_hotel_report, owner_expense
+    if is_hotel_report(report) and owner_expense(account): return 'UNDER_EXPENSE'
     dept = department_key((report or {}).get('scope_labels', {}).get('department_id'))
     overhead = dept in ('AG', 'ACC', 'HR', 'SM', 'PMC', 'BOD')
     if code.startswith('500-100-'):

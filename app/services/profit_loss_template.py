@@ -114,6 +114,8 @@ def nonzero(account):
 
 def detail_rows(statement, title, as_of):
     profile, heading = profile_for(statement)
+    from app.services.hotel_department_accounts import SUPPORT_DEPARTMENTS
+    support_schedule = statement.get('report_scope') == 'HOTEL' and department_key(statement.get('department_name') or statement.get('scope_labels', {}).get('department_id')) in SUPPORT_DEPARTMENTS
     rows = TemplateRows(statement, profile, heading, as_of)
     source = rows.template_profile['rows']
     labels = {int(i): record['cells'].get('A', {}).get('label', '') for i, record in source.items() if int(i) >= 7}
@@ -149,7 +151,7 @@ def detail_rows(statement, title, as_of):
         elif key in ('totalotherexpenses', 'totalenergycost'): role = 'expense'
         elif key == 'grossprofit': role = 'gross'
         elif key == 'grossoperatingincomeprofitloss': role = 'net'
-        elif key == 'totalrevenue': role = 'all_revenue'
+        elif key == 'totalrevenue': role = 'department_expenses' if support_schedule else 'all_revenue'
         if role:
             totals[index] = role
             if role in ('revenue', 'cost', 'payroll', 'expense'): section_rows.setdefault(role, index)
@@ -182,6 +184,7 @@ def detail_rows(statement, title, as_of):
     if profile == 'UTILITY':
         sums['all_revenue'] = rows.revenue
     sums['all_payroll'] = combine((1, sums['payroll']), (1, sums['sc_payroll']))
+    sums['department_expenses'] = combine((1, sums['cost']), (1, sums['all_payroll']), (1, sums['expense']), (1, sums['under']))
     sums['gross'] = combine((1, sums['all_revenue']), (-1, sums['cost']))
     sums['net'] = combine((1, sums['gross']), (-1, sums['all_payroll']), (-1, sums['expense']))
     stats = {r['key']: r for r in (statement.get('statistics') or {}).get('rows', [])}
@@ -198,6 +201,7 @@ def detail_rows(statement, title, as_of):
         'all_payroll': [('payroll',1),('sc_payroll',1)],
         'gross': [('all_revenue',1),('cost',-1)],
         'net': [('gross',1),('all_payroll',-1),('expense',-1)],
+        'department_expenses': [('cost',1),('all_payroll',1),('expense',1),('under',1)],
     }
     deferred = []
     # Unusual real accounts never disappear just because the reference has no slot.
@@ -223,6 +227,7 @@ def detail_rows(statement, title, as_of):
         if role in ('revenue', 'cost', 'payroll', 'expense'): extras(role, index)
         if role:
             base = sums['revenue'] if role in ('revenue', 'sc_revenue', 'payroll', 'cost') else sums['sc_revenue'] if role == 'sc_payroll' else sums['all_revenue']
+            if role == 'department_expenses': label = 'TOTAL DEPARTMENT EXPENSES'
             target = rows.line(label, sums[role], index, denominator=base)
             total_rows[role] = target
             if role in dependencies and not (profile == 'UTILITY' and role == 'all_revenue'):
@@ -230,6 +235,7 @@ def detail_rows(statement, title, as_of):
             elif role in ('revenue','cost','payroll','expense'):
                 rows.total(target,[(1,r) for r in component_rows[role]])
         elif index in slots:
+            if support_schedule and not assignments[index]: continue
             base = sums['revenue'] if slots[index] in ('revenue', 'payroll') else sums['all_revenue']
             component_rows[slots[index]].append(rows.line(label, values(statement, assignments[index]), index, denominator=base))
         elif key in stats_keys:
