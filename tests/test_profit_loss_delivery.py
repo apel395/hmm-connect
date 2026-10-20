@@ -120,7 +120,7 @@ def test_exact_summary_order_and_drilldown_includes_zero_accounts(records):
     zero=ChartOfAccount(account_number='700-999',account_name='Zero operations expense',account_type='EXPENSE',normal_balance='DEBIT',is_posting=True,financial_statement_group='OPERATING_EXPENSE')
     db.add(zero);db.commit()
     report=deliver(FinancialReportingService(db),as_of_date=date(2026,10,10),report_scope='HOTEL')
-    assert [r['key'] for r in report['presentation_rows'] if r['kind']!='detail']==['REVENUE','COST_OF_REVENUE','OPERATING_PAYROLL','OPERATING_EXPENSE','GOI','OVERHEAD_PAYROLL','OVERHEAD_EXPENSE','GOP','NONOPERATING_INCOME','UNDER_EXPENSE','NOP']
+    assert [r['key'] for r in report['presentation_rows'] if r['kind']!='detail']==['REVENUE','COST_OF_REVENUE','OPERATING_PAYROLL','OPERATING_EXPENSE','GOI','OVERHEAD_PAYROLL','OVERHEAD_EXPENSE','GOP','NONOPERATING_INCOME','UNDER_EXPENSE','TOTAL_DEDUCTIONS','NOP']
     row=next(r for r in report['related_accounts'] if r['account_id']==zero.id)
     assert row['periods']['MTD']['current']==0
     assert zero.id in next(r for r in report['presentation_rows'] if r['key']=='OPERATING_EXPENSE')['account_ids']
