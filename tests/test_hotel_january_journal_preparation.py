@@ -117,7 +117,8 @@ def test_user_authorized_manifest_uses_registered_accounts_and_preserves_directi
     assert mapping["accounts"]["202014"].startswith("200-")  # Tax payable stays a liability.
     assert mapping["department_names"]["SWP"] == "Swimming Pool"
     assert mapping["department_names"]["BOD"] == "Board of Directur"
-    assert mapping["line_accounts"]["26448"] == "100-210-102"
+    for row in ("24372","24375","24376","24377","26448"):
+        assert mapping["line_accounts"][row] == "750-100-104"
     assert mapping["departments"]["LDY"] == 14
 
 

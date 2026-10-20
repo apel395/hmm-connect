@@ -78,10 +78,12 @@ creates and posts manual journals through `post_locked_journal`.
   source register/row evidence and existing column-F mappings remain traceable.
 - The source credit excess Rp45,000 is intentionally posted as a one-sided manual
   journal. No contra, opening balance adjustment or balancing line is generated.
-- DANA PROYEK source rows24372/24375/24376/24377/26448 provisionally use registered
-  Piutang Direksi100-210-102 per the owner-repayment explanation, retaining debit
-  and credit directions. Finance can unpost/reclassify if the business meaning
-  differs. Other BOD expenses use750-100-104; payroll rows retain payroll purpose.
+- DANA PROYEK source rows24372/24375/24376/24377/26448 now use registered
+  Biaya Operasional Direksi750-100-104 following the user revision on 2026-10-20.
+  This supersedes the provisional Piutang Direksi100-210-102 mapping. Source
+  debit/credit directions and bank counterparts remain unchanged. The guarded
+  `scripts/remap_hotel_january_dana_proyek.py` corrects existing posted journals
+  atomically. Other BOD payroll rows retain their payroll account mapping.
 - SWP and BOD resolve by exact active department names Swimming Pool / Board of
   Directur within Hotel, then validate their work-location links. Display codes
   010/011 are never assumed to be database IDs. No department or account is added.
@@ -120,3 +122,24 @@ The JSON result defaults to /tmp/hotel-january-seed-result.json and records exac
 created IDs, already-present entries, skipped references, totals and source
 differences. `committed: true` plus the COMMITTED console message confirms the
 DB commit. Application unpost is supported while its accounting period is open.
+
+
+## Apply the revised Dana Proyek mapping
+
+The user revised the provisional receivable mapping on 2026-10-20. Existing
+posted journals 4417 (register 1153653) and 4660 (register 1153977) are corrected
+with `scripts/remap_hotel_january_dana_proyek.py`. The default simulates and
+rolls back; `--apply` commits both journals in one transaction. The command
+requires exact original source identities/amounts, current journal-to-GL
+agreement and the original Hotel scope. It unposts/reposts through the app
+functions, so closed periods remain locked. Raw source data is unchanged;
+normalized account mappings retain `original_account_id` and a revision marker,
+with before/after audit evidence. Repeating a completed correction verifies
+existing postings without recreating their GL.
+
+The change increases NOP by Rp21,159,848, from the verified Rp69,292,329.66 to
+Rp90,452,177.66 if other January activity is unchanged. The original report's
+Rp89,089,502.88 still differs by Rp1,362,674.78 because it subtracts Jasa Giro
+Rp681,337.39 instead of adding the recorded income. Changing an account mapping
+without reversing amounts/bank directions cannot reproduce that subtraction.
+The command does not change the seven bank-interest receipts or their signs.

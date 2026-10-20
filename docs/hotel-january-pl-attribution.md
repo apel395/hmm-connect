@@ -35,8 +35,13 @@ is a separate accounting account. Retained original zeros remain available.
 
 Comparisons use their own date ranges and current posted evidence. Budgets stay
 in their registered COA classification; unallocated source-slice budgets remain
-blank rather than being distributed. The approved owner-loan receivable mapping
-stays outside P&L. Bank interest increases the final result below GOP.
+blank rather than being distributed. Dana Proyek initially used a provisional
+receivable mapping; the user revised it on 2026-10-20 to registered BOD expense
+account 750-100-104. The remapping command updates posted journal/GL and normalized
+import account evidence, with raw source records and bank counterparts preserved.
+Reports continue using the currently posted accounts. Bank interest increases
+the final result below GOP; the original XLS subtracts it, an arithmetic/sign
+difference that is not fixed by changing a journal account.
 
 The January P&L source places department-head Officer Check under each
 department's other expenses, separately from Employee Meal in payroll. Although
