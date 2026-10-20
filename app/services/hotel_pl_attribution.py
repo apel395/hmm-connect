@@ -31,6 +31,7 @@ LEGACY = {
     '591007': ('UNDER_EXPENSE','BOD - Owner Expenses'),
     '591050': ('UNDER_EXPENSE','BOD - Officer Check / Complimentary BOD'),
     '602070': ('UNDER_EXPENSE','Bank administration'),
+    '601001': ('NONOPERATING_INCOME','Jasa Giro'),
     **{c: ('REVENUE','Room Sales') for c in ('301001','301002','301005','301006')},
     **{c: ('REVENUE','Food Revenue') for c in ('303001','303004','304001','305001')},
     **{c: ('REVENUE','Beverage Revenue') for c in ('303002','304002')},
@@ -129,7 +130,7 @@ def attribute(service, report, records, mappings):
         if token not in slices:
             item=deepcopy(base)
             item.update(category=target,account_name=label,coa_account_name=account.account_name,
-                        presentation_key=token,source_slice=True,legacy_codes=[])
+                        presentation_key=token,source_slice=True,legacy_codes=[],nop_deduction=(legacy=='601001'))
             item['periods']={p:{m:None if v is None or m in ('budget','variance') else ZERO for m,v in amounts.items()} for p,amounts in base['periods'].items()}
             slices[token]=item
         item=slices[token]

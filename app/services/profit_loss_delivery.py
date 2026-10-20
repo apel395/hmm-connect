@@ -78,6 +78,7 @@ def presentation(report, originals, values, accounts, mappings, selected, eviden
             v=result[p];v['variance']=v['current']-v['budget'] if v['budget'] is not None else None
         return result
     totals={code:aggregate(group,True) for code,group in members.items()}
+    source_income=aggregate([r for r in records if r.get('nop_deduction')],True)
     def identity(group):
         return dict(account_ids=sorted({r['account_id'] for r in group}),member_keys=[r['presentation_key'] for r in group])
     result=[]
@@ -110,6 +111,20 @@ def presentation(report, originals, values, accounts, mappings, selected, eviden
                     vs=[totals[c][p][m] for c in ['REVENUE',*deductions]]
                     income=totals['NONOPERATING_INCOME'][p][m] if key=='NOP' else ZERO
                     data[p][m]=None if any(v is None for v in [*vs,income]) else vs[0]-sum(vs[1:])+income
+            if key=='NOP':
+                ledger_net={p:dict(v) for p,v in data.items()}
+                remaining={p:{} for p in data}
+                adjustment={p:{} for p in data}
+                for p in data:
+                    for m in METRICS:
+                        income=totals['NONOPERATING_INCOME'][p][m]
+                        expense=totals['UNDER_EXPENSE'][p][m]
+                        source=source_income[p][m]
+                        remaining[p][m]=None if any(v is None for v in (income,expense,source)) else expense-income+2*source
+                        adjustment[p][m]=None if source is None else -2*source
+                        data[p][m]=None if data[p][m] is None or source is None else data[p][m]-2*source
+                result.append(dict(key='TOTAL_DEDUCTIONS',label='Total expenses below GOP',kind='subtotal',periods=remaining,**identity([*members['UNDER_EXPENSE'],*members['NONOPERATING_INCOME']])))
+                report['metadata']['nop_reconciliation']=dict(basis='GOP_MINUS_TOTAL_DEDUCTIONS',ledger_net=ledger_net,source_format_adjustment=adjustment,report_net=data)
             result.append(dict(key=key,label=label,kind='subtotal',periods=data,**identity([r for c in cats for r in members[c]])))
     return result
 

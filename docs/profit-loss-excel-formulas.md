@@ -2,7 +2,7 @@
 
 Hotel, Catering and consolidated exports retain their existing report layouts and monetary values. Monetary total and subtotal cells now contain native Excel formulas referencing the actual emitted detail rows. Extra account rows are included before their subtotal, so inserting real account evidence does not shift a fixed template reference onto the wrong cell.
 
-Department gross profit subtracts cost of sales from revenue; its operating result subtracts payroll (including any separate service-charge distribution) and other expenses. Nonoperating income is added and under expenses are deducted when calculating the final result. Summary GOP deducts operating and overhead costs once; NOP adds nonoperating income and subtracts under expenses. Catering summary GOI/GOP/NOP reference the corresponding category rows.
+Department gross profit subtracts cost of sales from revenue; its operating result subtracts payroll (including any separate service-charge distribution) and other expenses. Summary GOP deducts operating and overhead costs once. NOP references GOP minus Total expenses below GOP. That subtotal includes under expenses and the verified January Hotel Jasa Giro source-format deduction, less ordinary nonoperating income. The same signed contributions appear in page drilldowns. Department and Catering totals use the same bridge; costs included in GOP are not deducted twice.
 
 Missing comparisons remain blank. Formulas include numeric cached results so previews and data-only readers retain the same values before Excel recalculates. The workbook requests automatic recalculation on opening. Formula text comes only from server-selected cell references; account names remain literal strings.
 
@@ -20,6 +20,6 @@ The supplied January source, approved account mapping and read-only production a
 | 700-500-141 | Contract service | 2,695,917 |
 | Total | | 15,467,204 |
 
-The read-only output also shows the matching accrued-expense documents as VOID: journal 1430 (HK, 13,300,917), 1431 (FO, 666,287), and 1432 (A&G, 1,500,000). No statuses or amounts are changed by this export patch. The previously approved owner-loan mapping remains outside P&L, and bank interest remains income.
+The read-only output also shows the matching accrued-expense documents as VOID: journal 1430 (HK, 13,300,917), 1431 (FO, 666,287), and 1432 (A&G, 1,500,000). The three accruals were subsequently restored through a guarded correction. The approved Dana Proyek mapping was revised to the registered BOD expense account with a separate correction command. This export change does not modify journals or GL. Jasa Giro remains income in the ledger while the approved January management layout includes its positive balance in the below-GOP deductions; reconciliation metadata records that presentation adjustment.
 
 Validation covers formula dependencies and cached values, edits flowing from detail through GOP/NOP, blank budgets, extra accounts, service charges and combined Hotel/Catering workbooks. The provided full January source is replayed only in an isolated database; it is never used to overwrite production values during export.

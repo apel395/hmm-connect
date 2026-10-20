@@ -126,7 +126,8 @@ def detail_rows(statement, title, as_of):
         'sc_payroll': [a for a in members if a['category'] in ('OPERATING_PAYROLL', 'OVERHEAD_PAYROLL') and service_charge(a)],
         'expense': [a for a in members if a['category'] not in ('REVENUE', 'COST_OF_REVENUE', 'OPERATING_PAYROLL', 'OVERHEAD_PAYROLL', 'NONOPERATING_INCOME', *(['UNDER_EXPENSE'] if statement.get('report_scope')=='HOTEL' else []))],
         'under': [a for a in members if a['category'] == 'UNDER_EXPENSE' and statement.get('report_scope')=='HOTEL'],
-        'nonoperating': [a for a in members if a['category'] == 'NONOPERATING_INCOME'],
+        'nonoperating': [a for a in members if a['category'] == 'NONOPERATING_INCOME' and not a.get('nop_deduction')],
+        'source_deductions': [a for a in members if a.get('nop_deduction')],
     }
     section, slots, section_rows = None, {}, {}
     totals = {}
@@ -237,10 +238,10 @@ def detail_rows(statement, title, as_of):
             rows.line(label, item['periods'] if item else empty, index, statistic=True)
         else:
             rows.add([label] if label else [], index)
-    if any(nonzero(a) for a in [*groups['nonoperating'],*groups['under']]):
+    if any(nonzero(a) for a in [*groups['nonoperating'],*groups['under'],*groups['source_deductions']]):
         gop_row = rows.line('GROSS OPERATING PROFIT', sums['net'], max(totals, default=detail_style))
         deferred.append((gop_row,[('net',1)]))
-        for kind,heading in [('nonoperating','NON-OPERATING INCOME'),('under','OTHER DEDUCTIONS')]:
+        for kind,heading in [('nonoperating','NON-OPERATING INCOME'),('under','OTHER DEDUCTIONS'),('source_deductions','JASA GIRO')]:
             if not groups[kind]:continue
             rows.add([heading],detail_style)
             by_label={}
@@ -248,8 +249,11 @@ def detail_rows(statement, title, as_of):
             for label,accounts_ in by_label.items():
                 component_rows[kind].append(rows.line('   '+label,values(statement,accounts_),detail_style))
             total_rows[kind] = rows.line('Total '+heading.title(),sums[kind],max(totals,default=detail_style),terms=[(1,r) for r in component_rows[kind]])
-        target = rows.line('NET RESULT',combine((1,sums['net']),(1,sums['nonoperating']),(-1,sums['under'])),max(totals,default=detail_style))
-        deferred.append((target,[('net',1),('nonoperating',1),('under',-1)]))
+        deductions=combine((1,sums['under']),(1,sums['source_deductions']),(-1,sums['nonoperating']))
+        total_rows['total_deductions']=rows.line('TOTAL EXPENSES BELOW GOP',deductions,max(totals,default=detail_style))
+        deferred.append((total_rows['total_deductions'],[('under',1),('source_deductions',1),('nonoperating',-1)]))
+        target = rows.line('NET RESULT',combine((1,sums['net']),(-1,deductions)),max(totals,default=detail_style))
+        deferred.append((target,[('net',1),('total_deductions',-1)]))
     def expand(key, sign=1):
         if key in total_rows:
             return [(sign,total_rows[key])]
@@ -273,7 +277,8 @@ def summary_schedule(statement, title, groups, as_of):
         dependencies = {
             'GOI': [('REVENUE',1),('COST_OF_REVENUE',-1),('OPERATING_PAYROLL',-1),('OPERATING_EXPENSE',-1)],
             'GOP': [('GOI',1),('OVERHEAD_PAYROLL',-1),('OVERHEAD_EXPENSE',-1)],
-            'NOP': [('GOP',1),('NONOPERATING_INCOME',1),('UNDER_EXPENSE',-1)],
+            'TOTAL_DEDUCTIONS': [('UNDER_EXPENSE',1),('NONOPERATING_INCOME',-1)],
+            'NOP': [('GOP',1),('TOTAL_DEDUCTIONS',-1)],
         }
         for item in statement.get('presentation_rows', []):
             if item['kind'] != 'detail':
@@ -310,7 +315,8 @@ def summary_schedule(statement, title, groups, as_of):
         'cost':values(statement,[a for a in root_members if cost(a)]),
         'op_payroll':aggregate(op,payroll),'op_sc':aggregate(op,sc_payroll),'op_expense':aggregate(op,expense),
         'oh_payroll':aggregate(overhead,payroll),'oh_sc':aggregate(overhead,sc_payroll),'oh_expense':aggregate(overhead,expense),
-        'nonoperating':values(statement,[a for a in root_members if a['category']=='NONOPERATING_INCOME']),
+        'nonoperating':values(statement,[a for a in root_members if a['category']=='NONOPERATING_INCOME' and not a.get('nop_deduction')]),
+        'source_deductions':values(statement,[a for a in root_members if a.get('nop_deduction')]),
         'under':values(statement,[a for a in root_members if a['category']=='UNDER_EXPENSE']),
     }
     amounts['all_revenue']=combine((1,amounts['revenue']),(1,amounts['sc_revenue']))
@@ -323,7 +329,8 @@ def summary_schedule(statement, title, groups, as_of):
     all_payroll=values(statement,[a for a in root_members if a['category'] in ('OPERATING_PAYROLL','OVERHEAD_PAYROLL')])
     all_expenses=values(statement,[a for a in root_members if expense(a)])
     amounts['gop']=combine((1,amounts['all_revenue']),(-1,amounts['cost']),(-1,all_payroll),(-1,all_expenses))
-    amounts['nop']=combine((1,amounts['gop']),(1,amounts['nonoperating']),(-1,amounts['under']))
+    amounts['total_deductions']=combine((1,amounts['under']),(1,amounts['source_deductions']),(-1,amounts['nonoperating']))
+    amounts['nop']=combine((1,amounts['gop']),(-1,amounts['total_deductions']))
     amounts['unassigned_costs']=combine((1,all_payroll),(1,all_expenses),(-1,amounts['op_costs']),(-1,amounts['overhead_costs']))
     section, is_overhead = None, False
     displayed = []
@@ -338,7 +345,8 @@ def summary_schedule(statement, title, groups, as_of):
         'op_costs': [('op_all_payroll',1),('op_expense',1)],
         'overhead_costs': [('oh_all_payroll',1),('oh_expense',1)],
         'gop': [('all_revenue',1),('cost',-1),('op_costs',-1),('overhead_costs',-1),('unassigned_costs',-1)],
-        'nop': [('gop',1),('nonoperating',1),('under',-1)],
+        'total_deductions': [('under',1),('source_deductions',1),('nonoperating',-1)],
+        'nop': [('gop',1),('total_deductions',-1)],
     }
     deferred = []
     stats={r['key']:r for r in (statement.get('statistics') or {}).get('rows',[])}
@@ -386,6 +394,10 @@ def summary_schedule(statement, title, groups, as_of):
                     displayed_rows.append(rows.line('   Other / unassigned ' + section, difference, index))
             if role == 'nop' and any(v not in (None,0) for p in amounts['nonoperating'].values() for v in p.values()):
                 anchors['nonoperating'] = rows.line('NON-OPERATING INCOME', amounts['nonoperating'], index)
+            if role == 'nop':
+                anchors['source_deductions']=rows.line('JASA GIRO',amounts['source_deductions'],index)
+                anchors['total_deductions']=rows.line('TOTAL EXPENSES BELOW GOP',amounts['total_deductions'],index)
+                deferred.append((anchors['total_deductions'],summary_dependencies['total_deductions']))
             anchors[role] = rows.line(label,amounts[role],index,denominator=amounts['sc_revenue'] if role in ('oh_sc','op_sc') else amounts['all_revenue'])
             if role in summary_dependencies:
                 deferred.append((anchors[role],summary_dependencies[role]))
@@ -420,9 +432,12 @@ def summary_schedule(statement, title, groups, as_of):
         rows.add([label] if label else [],index)
     # Hotel's source schedule ends at GOP. Include real under-expense evidence so
     # the final export still exposes the complete NOP when such postings exist.
-    if hotel_only and any(v not in (None,0) for key in ('under','nonoperating') for p in amounts[key].values() for v in p.values()):
+    if hotel_only and any(v not in (None,0) for key in ('under','nonoperating','source_deductions') for p in amounts[key].values() for v in p.values()):
         anchors['nonoperating'] = rows.line('NON-OPERATING INCOME',amounts['nonoperating'],73)
         anchors['under'] = rows.line('OTHER DEDUCTIONS',amounts['under'],73)
+        anchors['source_deductions']=rows.line('JASA GIRO',amounts['source_deductions'],73)
+        anchors['total_deductions']=rows.line('TOTAL EXPENSES BELOW GOP',amounts['total_deductions'],73)
+        deferred.append((anchors['total_deductions'],summary_dependencies['total_deductions']))
         target = rows.line('NETT OPERATING PROFIT',amounts['nop'],73)
         deferred.append((target,summary_dependencies['nop']))
     for target,bucket in income_rows:

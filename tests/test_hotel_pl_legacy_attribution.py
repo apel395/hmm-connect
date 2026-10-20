@@ -44,7 +44,7 @@ def fixture(db):
 def amounts(report,key):return next(r for r in report['presentation_rows'] if r['key']==key)['periods']['YTD']['current']
 
 
-def test_split_food_expenses_bod_and_income_net_invariance(db):
+def test_source_format_nop_reconciles_to_unchanged_ledger(db):
     j=fixture(db)
     report=deliver(FinancialReportingService(db),as_of_date=date(2026,1,31),report_scope='HOTEL')
     assert amounts(report,'REVENUE')==1200
@@ -53,8 +53,16 @@ def test_split_food_expenses_bod_and_income_net_invariance(db):
     assert amounts(report,'UNDER_EXPENSE')==39
     assert amounts(report,'GOP')==1095
     assert amounts(report,'NONOPERATING_INCOME')==10
-    assert amounts(report,'NOP')==1066
-    assert report['metadata']['hotel_attribution']['verified_legacy_lines']==7
+    assert amounts(report,'NOP')==1046
+    assert amounts(report,'TOTAL_DEDUCTIONS')==49
+    bridge=report['metadata']['nop_reconciliation']
+    assert bridge['ledger_net']['YTD']['current']==1066
+    assert bridge['source_format_adjustment']['YTD']['current']==-20
+    assert bridge['report_net']['YTD']['current']==1046
+    interest=next(a for a in report['related_accounts'] if a.get('nop_deduction'))
+    assert interest['account_id']==25 and interest['periods']['YTD']['current']==10
+    assert (j.lines[-1].account_id,j.lines[-1].debit,j.lines[-1].credit)==(25,0,10)
+    assert report['metadata']['hotel_attribution']['verified_legacy_lines']==8
     cost=next(r for r in report['presentation_rows'] if r['key']=='COST_OF_REVENUE')
     selected=[a for a in report['related_accounts'] if a['presentation_key'] in cost['member_keys']]
     assert sum(a['periods']['YTD']['current'] for a in selected)==100
@@ -64,10 +72,10 @@ def test_split_food_expenses_bod_and_income_net_invariance(db):
     assert next(r[1] for r in rows if r and r[0].strip()=='Food Cost')==100
     assert next(r[1] for r in rows if r and r[0].strip()=='Food Revenue')==1000
     assert next(r[1] for r in rows if r and r[0].strip()=='Beverage Revenue')==200
-    assert sum(amounts(g,'NOP') for g in report['group_reports'])==1066
+    assert sum(amounts(g,'NOP') for g in report['group_reports'])==1046
     rows=summary_schedule(report,'Hotel',report['group_reports'],'2026-01-31')
     assert next(r[1] for r in rows if r and r[0]=='GROSS OPERATING PROFIT')==1095
-    assert next(r[1] for r in rows if r and r[0]=='NETT OPERATING PROFIT')==1066
+    assert next(r[1] for r in rows if r and r[0]=='NETT OPERATING PROFIT')==1046
     assert len(j.lines)==8 and j.lines[0].account_id==20 and j.lines[0].debit==100
 
 
@@ -80,7 +88,7 @@ def test_edited_or_ambiguous_or_wrong_source_evidence_not_reused(db):
     r=deliver(FinancialReportingService(db),as_of_date=date(2026,1,31),report_scope='HOTEL')
     assert amounts(r,'COST_OF_REVENUE')==106
     assert amounts(r,'OPERATING_EXPENSE')==0
-    assert amounts(r,'NOP')==1065
+    assert amounts(r,'NOP')==1045
     assert not any(a.get('legacy_codes')==['401101'] for a in r['related_accounts'])
 
 
@@ -107,7 +115,7 @@ def test_identical_shared_coa_amounts_use_verified_line_order(db):
     r=deliver(FinancialReportingService(db),as_of_date=date(2026,1,31),report_scope='HOTEL')
     assert amounts(r,'COST_OF_REVENUE')==5
     assert amounts(r,'OPERATING_EXPENSE')==5
-    assert amounts(r,'NOP')==1161
+    assert amounts(r,'NOP')==1141
 
 
 def test_owner_loan_asset_credit_is_never_reintroduced_as_expense(db):
@@ -118,7 +126,7 @@ def test_owner_loan_asset_credit_is_never_reintroduced_as_expense(db):
     db.commit()
     r=deliver(FinancialReportingService(db),as_of_date=date(2026,1,31),report_scope='HOTEL')
     assert amounts(r,'UNDER_EXPENSE')==39
-    assert amounts(r,'NOP')==1066
+    assert amounts(r,'NOP')==1046
     assert not any(a['account_id']==1 for a in r['related_accounts'])
 
 
@@ -152,7 +160,7 @@ def test_officer_check_is_other_expense_and_employee_meals_remain_payroll(db,leg
     assert officer['account_name']=='Officer Check Dept. Head'
     assert officer['periods']['YTD']['current']==50
     assert amounts(r,payroll)==50
-    assert amounts(r,'GOP')==995 and amounts(r,'NOP')==966
+    assert amounts(r,'GOP')==995 and amounts(r,'NOP')==946
     selected=next(row for row in r['presentation_rows'] if row['key']==target)['member_keys']
     assert officer['presentation_key'] in selected
     group=next(g for g in r['group_reports'] if g['department_id']==department.id)
@@ -163,3 +171,32 @@ def test_officer_check_is_other_expense_and_employee_meals_remain_payroll(db,leg
     verify_formulas(workbook_sheets(r))
     assert [(line.account_id,line.debit,line.credit) for line in j.lines]==[(21,Decimal(50),Decimal(0))]*2
     assert db.query(JournalEntry).count()==2
+
+
+def test_unverified_interest_keeps_ordinary_income_sign(db):
+    fixture(db)
+    row=db.get(ImportRow,8)
+    row.raw_data_json={**row.raw_data_json,'source_sha256':'unverified'}
+    db.commit()
+    report=deliver(FinancialReportingService(db),as_of_date=date(2026,1,31),report_scope='HOTEL')
+    assert amounts(report,'GOP')==1095
+    assert amounts(report,'TOTAL_DEDUCTIONS')==29
+    assert amounts(report,'NOP')==1066
+    assert report['metadata']['nop_reconciliation']['source_format_adjustment']['YTD']['current']==0
+    assert not any(a.get('nop_deduction') for a in report['related_accounts'])
+
+
+def test_source_format_excel_totals_recalculate_and_consolidate(db):
+    fixture(db)
+    from test_profit_loss_formulas import verify_formulas
+    from app.services.profit_loss_delivery import workbook_sheets
+    service=FinancialReportingService(db)
+    report=deliver(service,as_of_date=date(2026,1,31),report_scope='HOTEL')
+    verify_formulas(workbook_sheets(report))
+    consolidated=deliver(service,as_of_date=date(2026,1,31))
+    verify_formulas(workbook_sheets(consolidated))
+    assert amounts(consolidated,'NOP')==1046
+    assert sum(amounts(g,'NOP') for g in report['group_reports'])==1046
+    assert all(v==0 for period in consolidated['split_control'].values() for v in period.values())
+    assert amounts(report,'GOP')-amounts(report,'TOTAL_DEDUCTIONS')==amounts(report,'NOP')
+    assert report['metadata']['nop_reconciliation']['source_format_adjustment']['MTD']['last_year'] is None

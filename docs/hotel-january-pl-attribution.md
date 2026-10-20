@@ -15,6 +15,7 @@ lines, not hardcoded source workbook totals.
 | 542050 / 544050 / 546022 / 548049 | Department-head Officer Check: overhead expenses |
 | 591007 / 591050 | BOD deductions, below GOP |
 | 602070 | Bank administration, below GOP |
+| 601001 | Jasa Giro, retained as income in the ledger and included as a deduction in the approved January management layout |
 | 301* registered room revenue codes | Room Sales |
 | 303001 / 303004 / 304001 / 305001 | Food Revenue |
 | 303002 / 304002 | Beverage Revenue |
@@ -39,9 +40,19 @@ blank rather than being distributed. Dana Proyek initially used a provisional
 receivable mapping; the user revised it on 2026-10-20 to registered BOD expense
 account 750-100-104. The remapping command updates posted journal/GL and normalized
 import account evidence, with raw source records and bank counterparts preserved.
-Reports continue using the currently posted accounts. Bank interest increases
-the final result below GOP; the original XLS subtracts it, an arithmetic/sign
-difference that is not fixed by changing a journal account.
+Reports continue using the currently posted accounts. The approved management
+layout calculates NOP as GOP minus the total deductions below GOP. For verified
+January legacy 601001 only, its displayed Jasa Giro income balance is included
+in that deduction subtotal, following the source workbook. Its journal remains
+income. Ordinary nonoperating income retains its financial sign. Operating and
+overhead costs already deducted in GOP are never deducted again.
+
+`metadata.nop_reconciliation` exposes the ordinary ledger result, the signed
+source-format adjustment and the displayed NOP for each comparison period.
+For January after the approved Dana Proyek remapping: GOP is Rp113,431,425.01,
+total deductions Rp24,341,922.13 and displayed NOP Rp89,089,502.88. Ledger profit
+is Rp90,452,177.66 and the report adjustment is -Rp1,362,674.78. These are
+validation evidence, not constants used to calculate live reports.
 
 The January P&L source places department-head Officer Check under each
 department's other expenses, separately from Employee Meal in payroll. Although
