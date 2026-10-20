@@ -130,7 +130,7 @@ def attribute(service, report, records, mappings):
         if token not in slices:
             item=deepcopy(base)
             item.update(category=target,account_name=label,coa_account_name=account.account_name,
-                        presentation_key=token,source_slice=True,legacy_codes=[],nop_deduction=(legacy=='601001'))
+                        presentation_key=token,source_slice=True,legacy_codes=[])
             item['periods']={p:{m:None if v is None or m in ('budget','variance') else ZERO for m,v in amounts.items()} for p,amounts in base['periods'].items()}
             slices[token]=item
         item=slices[token]

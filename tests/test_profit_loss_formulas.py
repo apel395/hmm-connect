@@ -18,6 +18,9 @@ def evaluate(sheet, coordinate, stack=()):
     def number(match):
         return str(evaluate(sheet,match[0],(*stack,coordinate)))
     expression = re.sub(r'[A-Z]+[0-9]+',number,expression)
+    # A negative net-expense reference makes subtraction a double negative.
+    while any(pair in expression for pair in ('--','+-','-+','++')):
+        expression = expression.replace('--','+').replace('+-','-').replace('-+','-').replace('++','+')
     return sum((Decimal(term) for term in re.findall(r'[+-]?\d+(?:\.\d+)?',expression)),Decimal(0))
 
 
@@ -82,3 +85,17 @@ def test_summary_without_department_breakdown_keeps_all_posted_costs():
     rows=summary_schedule(source,'Hotel',[],'2026-01-31')
     verify_formulas([('Summary',rows)])
     assert next(r[1] for r in rows if r and r[0]=='GROSS OPERATING PROFIT')==900
+
+
+def test_nop_subtracts_negative_net_expenses_and_interest_changes_flow_through():
+    source=hotel('Accounting',[('Bank interest','NONOPERATING_INCOME',10),('Bank administration','UNDER_EXPENSE',2)])
+    wb,cached=verify_formulas([('Accounting',detail_rows(source,'Accounting','2026-01-31'))])
+    sheet=wb.active
+    net=next(c.row for row in sheet for c in row if c.column==1 and c.value=='NET RESULT')
+    expenses=next(c.row for row in sheet for c in row if c.column==1 and c.value=='TOTAL EXPENSES')
+    interest=next(c.row for row in sheet for c in row if c.column==1 and str(c.value).strip()=='Bank interest')
+    assert cached.active.cell(expenses,2).value==-8
+    assert evaluate(sheet,f'B{net}')==8
+    sheet.cell(interest,2,15)
+    assert evaluate(sheet,f'B{expenses}')==-13
+    assert evaluate(sheet,f'B{net}')==13
