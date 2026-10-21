@@ -1,3 +1,4 @@
+import { approvalPrintSignatures } from "@/components/print/approvalSignatures";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import api from "@/api/client";
@@ -17,15 +18,7 @@ export default function StockOpnamePrintPage() {
   if (query.isLoading) return <Loading />;
   if (!query.data) return <p>Stock Opname could not be loaded.</p>;
   const data: any = query.data;
-  const approvals = (data.approval_history ?? [])
-    .filter((step: any) => step.status === "APPROVED")
-    .map((step: any) => ({
-      label: step.signature_label || step.name || ("Approval Level " + step.level),
-      name: step.signature_name || step.approver_name || "Approved",
-      imageSrc: step.signature_image || undefined,
-      signedAt: step.decided_at,
-      status: step.status,
-    }));
+  const approvals = approvalPrintSignatures(data.approval_history);
 
   return <DocumentPrintTemplate
     title="Stock Opname Count Sheet"

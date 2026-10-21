@@ -1,3 +1,4 @@
+import { approvalPrintSignatures } from "@/components/print/approvalSignatures";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -362,17 +363,14 @@ export default function StockOpnameDetailPage() {
           Approval Signatures
         </h2>
         <div className="grid grid-cols-3 gap-10 text-center">
-          {(d.approval_history ?? []).map((step) => (
-            <div key={String(step.level ?? step.name)}>
-              <div className="flex h-14 items-end justify-center">
-                {step.signature_image && (
-                  <img src={step.signature_image} alt="" className="max-h-14 max-w-full object-contain" />
-                )}
+          {approvalPrintSignatures(d.approval_history).map((signature, index) => (
+            <div key={`${signature.label}-${index}`}>
+              <div className="flex h-14 items-end justify-center" aria-label="Signature space">
+                {signature.imageSrc && <img src={signature.imageSrc} alt="" className="max-h-14 max-w-full object-contain" />}
               </div>
-              <div className="border-t border-black pt-1 font-semibold">
-                {step.signature_label || step.name || `Level ${step.level}`}
-              </div>
-              <div className="mt-1 text-[11px]">{step.signature_name || step.approver_name || step.status}</div>
+              <div className="border-t border-black pt-1 font-semibold">{signature.label}</div>
+              <div className="mt-1 text-[11px]">{signature.name}</div>
+              {signature.signedAt && <div className="mt-1 text-[10px]">{new Date(signature.signedAt).toLocaleString("id-ID", {timeZone:"Asia/Jakarta",hour12:false})} WIB</div>}
             </div>
           ))}
         </div>

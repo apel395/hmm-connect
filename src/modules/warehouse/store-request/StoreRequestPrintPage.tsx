@@ -1,3 +1,4 @@
+import { approvalPrintSignatures } from "@/components/print/approvalSignatures";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import api from "@/api/client";
@@ -10,6 +11,7 @@ interface PrintApproval {
   name: string;
   status: string;
   approver_name?: string | null;
+  decided_at?: string | null;
   signature_name?: string | null;
   signature_label?: string | null;
   signature_image?: string | null;
@@ -24,6 +26,8 @@ interface PrintStoreRequest {
   location_name?: string | null;
   warehouse_name?: string | null;
   notes?: string | null;
+  created_by_name?: string | null;
+  created_at?: string | null;
   printed_by: string;
   generated_at: string;
   items: StoreRequestItem[];
@@ -38,7 +42,10 @@ export default function StoreRequestPrintPage() {
   if (query.isLoading) return <Loading />;
   if (!query.data) return <p>Document could not be loaded.</p>;
   const data = query.data;
-  const signatures: PrintSignature[] = (data.approval_history ?? []).filter((row) => row.status === "APPROVED").map((row) => ({ label: row.signature_label || row.name, name: row.signature_name || row.approver_name || row.status, imageSrc: row.signature_image || undefined }));
+  const signatures: PrintSignature[] = [
+    { label: "Created by", name: data.created_by_name || data.requester_name || "—", signedAt: data.created_at },
+    ...approvalPrintSignatures(data.approval_history),
+  ];
   return <DocumentPrintTemplate
     title="Store Request"
     documentNumber={data.sr_number}
@@ -62,7 +69,7 @@ export default function StoreRequestPrintPage() {
     rows={data.items}
     rowKey={(item) => item.id}
     notes={data.notes}
-    signatures={signatures.length ? signatures : [{ label: "Requested By", name: data.requester_name || data.printed_by }, { label: "Store Approval" }]}
+    signatures={signatures}
     footer={<>Printed by {data.printed_by} · {new Date(data.generated_at).toLocaleString()}</>}
   />;
 }

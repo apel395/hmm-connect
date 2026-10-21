@@ -1,3 +1,4 @@
+import { approvalPrintSignatures } from "@/components/print/approvalSignatures";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { getVoucherPrint } from "../api";
@@ -17,13 +18,7 @@ export default function PaymentVoucherPrintPage() {
   const v: any = q.data;
 
   const rows = (v.groups ?? []).map((g: any, idx: number) => ({ ...g, row_number: idx + 1 }));
-  const approvalSignatures: any[] = (v.approval_history ?? []).filter((step: any) => step.status === "APPROVED").map((step: any) => ({
-    label: step.signature_label || step.name || ("Approval Level " + step.level),
-    name: step.signature_name || step.approver_name || "Approved",
-    imageSrc: step.signature_image || undefined,
-    signedAt: step.decided_at,
-    status: step.status,
-  }));
+  const approvalSignatures = approvalPrintSignatures(v.approval_history);
   if (!approvalSignatures.length && v.approved_by_name) approvalSignatures.push({ label: "Approved By", name: v.approved_by_name, signedAt: v.approved_at, status: "APPROVED" });
 
   return <DocumentPrintTemplate
