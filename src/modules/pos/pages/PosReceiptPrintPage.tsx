@@ -21,6 +21,7 @@ interface PrintPosSale {
   status: string;
   sale_date: string;
   warehouse_name?: string | null;
+  location_name?: string | null;
   customer_name?: string | null;
   payment_method: string;
   payment_received: number;
@@ -53,7 +54,7 @@ export default function PosReceiptPrintPage() {
     documentDate={new Date(`${data.sale_date}T00:00:00`).toLocaleDateString("id-ID")}
     status={data.status}
     fields={[
-      { label: "WAREHOUSE", value: data.warehouse_name },
+      { label: "SALES LOCATION", value: data.location_name || data.warehouse_name },
       { label: "CUSTOMER", value: data.customer_name },
       { label: "CASHIER", value: data.created_by_name },
       { label: "PAYMENT", value: paymentLabel[data.payment_method] ?? "-" },
@@ -65,7 +66,7 @@ export default function PosReceiptPrintPage() {
       { label: "DESCRIPTION", align: "left", render: (item: PrintPosItem) => item.product_name },
       { label: "QTY", align: "right", render: (item: PrintPosItem) => `${num(item.quantity)} ${item.uom}` },
       { label: "PRICE", align: "right", render: (item: PrintPosItem) => money(item.unit_price) },
-      { label: "PPN", align: "right", render: (item: PrintPosItem) => money(item.tax_amount) },
+      { label: "Tax", align: "right", render: (item: PrintPosItem) => money(item.tax_amount) },
       { label: "AMOUNT", align: "right", render: (item: PrintPosItem) => money(Number(item.quantity) * Number(item.unit_price) + Number(item.tax_amount) + Number(item.service_charge_amount || 0)) },
     ]}
     rows={data.items}
@@ -74,7 +75,7 @@ export default function PosReceiptPrintPage() {
       { label: "Subtotal", value: money(data.subtotal) },
       { label: "Discount", value: data.discount_amount > 0 ? `-${money(data.discount_amount)}` : "-" },
       { label: "Service charge", value: money(data.service_charge_amount) },
-      { label: "PPN", value: money(data.tax_amount) },
+      { label: "Tax", value: money(data.tax_amount) },
       { label: "Total", value: money(data.total_amount), emphasis: true },
     ]}
     notes={data.notes}

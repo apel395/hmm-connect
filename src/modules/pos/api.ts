@@ -8,6 +8,7 @@ export type PosListParams = {
   page_size?: number;
   status?: string;
   warehouse_id?: number;
+  location_id?: number;
   date_from?: string;
   date_to?: string;
   search?: string;
@@ -20,7 +21,7 @@ export type PosItemIn = {
 };
 
 export type PosCreatePayload = {
-  warehouse_id: number;
+  warehouse_id?: number;
   transaction_type?: PosTransactionType;
   table_number?: string | null;
   queue_number?: string | null;
@@ -60,6 +61,7 @@ export type PosVoidPayload = {
 };
 
 export const posApi = {
+  options: () => api.get("/pos/options"),
   products: (params: Record<string, unknown> = {}) => api.get("/pos/products", { params }),
   list: (params: PosListParams = {}) => api.get("/pos", { params }),
   detail: (id: number) => api.get(`/pos/${id}`),

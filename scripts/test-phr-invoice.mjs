@@ -92,11 +92,22 @@ assert.ok(
     document: { ...sample.document, description: "<script>alert(1)</script>" },
   }).includes("&lt;script&gt;"),
 );
+// Amounts from the accepted catering invoice; no historical values are defaults.
+const accepted = {
+  ...sample, invoice_number: "MMH-MNS/186/VI/2026", amount: "516179829.00", outstanding_amount: "516179829.00",
+  document: {...sample.document, lines: [
+    {...sample.document.lines[0], registration_number: "268/MMH-MINAS/VI/2026", amount: "230817730.00"},
+    {...sample.document.lines[1], registration_number: "274/MMH-MINAS/VI/2026", amount: "238436660.00"},
+  ], tax_amount: "46925439.00", amount_in_words: "Lima Ratus Enam Belas Juta Seratus Tujuh Puluh Sembilan Ribu Delapan Ratus Dua Puluh Sembilan Rupiah"},
+};
+const acceptedHtml = render(accepted);
+for (const value of ["469.254.390,00", "46.925.439,00", "516.179.829,00", "268/MMH-MINAS/VI/2026", "274/MMH-MINAS/VI/2026", "Authorized by,", 'src="/logoprint.jpeg"']) assert.ok(acceptedHtml.includes(value), value);
+assert.ok(!acceptedHtml.includes("meterai") && !acceptedHtml.includes("data:image"));
 if (process.argv.includes("--preview")) {
   writeFileSync(
     "/tmp/phr-preview.html",
     '<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0}</style></head><body>' +
-      html +
+      acceptedHtml +
       "</body></html>",
   );
   writeFileSync(
