@@ -26,6 +26,8 @@ from app.services.general_ledger import GeneralLedgerService
 from app.services.location_access import apply_warehouse_scope, resolve_location_id, require_location_access
 from app.models.business_unit import BusinessUnit
 from app.services.organization_dimensions import validate_dimensions
+from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
+from app.services.location_access import apply_location_scope
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 
@@ -46,8 +48,19 @@ class SalesTransactionService:
             raise HTTPException(403, f"{permission_code} permission required")
 
     @staticmethod
-    def _get(db: Session, transaction_id: int, *, lock: bool = False) -> SalesTransaction:
-        query = db.query(SalesTransaction).filter(SalesTransaction.id == transaction_id)
+    def scoped_query(db, user):
+        query = apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
+        unit = business_unit_scope(db, user)
+        department = department_scope(user)
+        if unit is not None:
+            query = query.filter(SalesTransaction.business_unit_id == unit)
+        if department is not None:
+            query = query.filter(SalesTransaction.department_id == department)
+        return query
+
+    @staticmethod
+    def _get(db: Session, transaction_id: int, *, lock: bool = False, user=None) -> SalesTransaction:
+        query = SalesTransactionService.scoped_query(db, user).filter(SalesTransaction.id == transaction_id)
         query = query.with_for_update() if lock else query
         row = query.first()
         if not row:
@@ -78,8 +91,9 @@ class SalesTransactionService:
         business_unit_id = data.business_unit_id or location.business_unit_id
         if not business_unit_id:
             raise HTTPException(422, "Sales location requires a business unit")
-        validate_dimensions(db, business_unit_id, location.id, data.department_id, False)
-        return business_unit_id, location.id, data.department_id
+        scope = resolve_organization_access(db, user, location_id=location.id, business_unit_id=business_unit_id, department_id=data.department_id)
+        validate_dimensions(db, business_unit_id, location.id, scope["department_id"], False)
+        return business_unit_id, location.id, scope["department_id"]
 
     @staticmethod
     def _sell_item(db, product, transaction):
@@ -308,7 +322,7 @@ class SalesTransactionService:
         user: User,
     ) -> SalesTransaction:
         cls._require(user, "pos.sell")
-        transaction = cls._get(db, transaction_id, lock=True)
+        transaction = cls._get(db, transaction_id, lock=True, user=user)
         require_location_access(transaction.location_id, user)
         if transaction.status != "DRAFT":
             raise HTTPException(409, "Only draft POS sales can be posted")
@@ -455,7 +469,7 @@ class SalesTransactionService:
         user: User,
     ) -> SalesTransaction:
         cls._require(user, "pos.sell")
-        transaction = cls._get(db, transaction_id, lock=True)
+        transaction = cls._get(db, transaction_id, lock=True, user=user)
         require_location_access(transaction.location_id, user)
         if transaction.status == "POSTED":
             raise HTTPException(

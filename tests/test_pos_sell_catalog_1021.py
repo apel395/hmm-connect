@@ -80,3 +80,17 @@ def test_rejects_buy_wrong_catalog_zero_price_and_cross_location(db,monkeypatch)
     scoped=SimpleNamespace(**{**vars(ADMIN),'roles':[],'default_location_id':999})
     with patch.object(Service,'_require'),pytest.raises(HTTPException):
         menu(s,location.id,scoped)
+
+
+def test_unit_and_department_access_filter_options_and_menu(db):
+    s,unit,location,department,_=db
+    products(s)
+    unit_user=SimpleNamespace(**{**vars(ADMIN),'roles':[],'default_business_unit_id':999})
+    dept_user=SimpleNamespace(**{**vars(ADMIN),'roles':[SimpleNamespace(name='DEPARTMENT')],'default_location_id':location.id,'default_department_id':999})
+    with patch.object(Service,'_require'):
+        assert sale_options(s,unit_user)['locations']==[]
+        assert sale_options(s,dept_user)['departments']==[]
+        with pytest.raises(HTTPException):
+            menu(s,location.id,unit_user)
+        with pytest.raises(HTTPException):
+            menu(s,location.id,dept_user,department.id)

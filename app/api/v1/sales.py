@@ -26,6 +26,7 @@ from app.models.department import Department
 from app.models.location_department import LocationDepartment
 from app.models.item_department import ItemDepartment
 from app.services.sales_transaction_service import SalesTransactionService
+from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 
 router = APIRouter(prefix="/pos", tags=["Point of Sales"])
 
@@ -111,8 +112,14 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
 @router.get("/options")
 def sale_options(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     SalesTransactionService._require(user, "pos.view")
-    locations = apply_location_scope(db.query(Location), Location.id, user).filter(Location.is_active.is_(True)).order_by(Location.name).all()
+    query = apply_location_scope(db.query(Location), Location.id, user).filter(Location.is_active.is_(True))
+    unit = business_unit_scope(db, user)
+    if unit is not None:
+        query = query.filter(Location.business_unit_id == unit)
+    locations = query.order_by(Location.name).all()
     links = db.query(LocationDepartment, Department).join(Department, Department.id == LocationDepartment.department_id).filter(Department.is_active.is_(True), LocationDepartment.location_id.in_([row.id for row in locations])).all()
+    assigned_department = department_scope(user)
+    links = [(link, dept) for link, dept in links if assigned_department in (None, dept.id)]
     return {"locations": [{"id": row.id, "name": row.name, "code": str(row.id)} for row in locations],
             "departments": [{"id": dept.id, "name": dept.name, "location_id": link.location_id} for link, dept in links]}
 
@@ -133,6 +140,8 @@ def list_pos_products(
     if not location or not location.is_active:
         raise HTTPException(422, "Select an active sales location")
     from app.services.organization_dimensions import validate_dimensions
+    scope = resolve_organization_access(db, user, location_id=location.id, business_unit_id=location.business_unit_id, department_id=department_id)
+    department_id = scope["department_id"]
     validate_dimensions(db, location.business_unit_id, location.id, department_id, False)
     unit = db.get(BusinessUnit, location.business_unit_id)
     catalog = "HOTEL" if unit and "hotel" in unit.name.casefold() else "CATERING"
@@ -170,7 +179,7 @@ def list_sales(
     user: User = Depends(get_current_user),
 ):
     SalesTransactionService._require(user, "pos.view")
-    query = apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
+    query = SalesTransactionService.scoped_query(db, user)
     if status and status.upper() != "ALL":
         query = query.filter(SalesTransaction.status == status.upper())
     if location_id:
@@ -192,13 +201,13 @@ def list_sales(
         )
 
     summary_rows = (
-        apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
+        SalesTransactionService.scoped_query(db, user)
         .with_entities(SalesTransaction.status, func.count(SalesTransaction.id))
         .group_by(SalesTransaction.status)
         .all()
     )
     totals_filter = (
-        apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user).filter(
+        SalesTransactionService.scoped_query(db, user).filter(
             SalesTransaction.status == "POSTED"
         )
     )
@@ -249,7 +258,7 @@ def get_sale(
 ):
     SalesTransactionService._require(user, "pos.view")
     transaction = (
-        apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
+        SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )
@@ -266,7 +275,7 @@ def update_sale(
     user: User = Depends(get_current_user),
 ):
     transaction = (
-        apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
+        SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )
@@ -285,7 +294,7 @@ def post_sale(
     user: User = Depends(get_current_user),
 ):
     transaction = (
-        apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
+        SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )
@@ -316,7 +325,7 @@ def print_sale(
 ):
     SalesTransactionService._require(user, "pos.view")
     transaction = (
-        apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
+        SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )
