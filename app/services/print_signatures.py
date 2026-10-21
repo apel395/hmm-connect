@@ -1,4 +1,5 @@
 from urllib.parse import quote
+import unicodedata
 
 
 # Official signature assets are kept on the authenticated backend side instead of
@@ -34,19 +35,40 @@ def _signature_key(step: dict) -> str | None:
     return None
 
 
-def add_private_print_signatures(payload: dict) -> dict:
-    """Attach Batam signature data only to approved print approval records."""
-    if "BATAM" not in str(payload.get("location_name") or "").upper():
+def _person_name(value) -> str:
+    # Formatting differences are harmless; initials, aliases and partial names
+    # are not sufficient evidence of a signature owner's identity.
+    return " ".join(unicodedata.normalize("NFKC", str(value or "")).casefold().split())
+
+
+def add_private_print_signatures(payload: dict, *, db=None) -> dict:
+    """Attach a stored signature only to its uniquely identified real approver."""
+    history = payload.get("approval_history") or []
+    # Payloads can be re-used after reopen/rejection; never retain old images.
+    for step in history:
+        for key in ("signature_name", "signature_label", "signature_image"):
+            step.pop(key, None)
+    if _person_name(payload.get("location_name")) != "batam" or db is None:
         return payload
 
-    for step in payload.get("approval_history") or []:
-        if str(step.get("status") or "").upper() != "APPROVED":
+    from app.models.user import User
+    owners = {}
+    for uid, full_name in db.query(User.id, User.full_name):
+        owners.setdefault(_person_name(full_name), set()).add(uid)
+    for step in history:
+        if str(step.get("status") or "").upper() != "APPROVED" or not step.get("decided_at"):
             continue
         key = _signature_key(step)
         asset = _SIGNATURES.get(key) if key else None
         if not asset:
             continue
-        step["signature_name"] = asset["name"]
+        name = _person_name(asset["name"])
+        if not name or _person_name(step.get("approver_name")) != name:
+            continue
+        owner_ids = owners.get(name, set())
+        if len(owner_ids) != 1 or step.get("approver_id") not in owner_ids:
+            continue
+        step["signature_name"] = step["approver_name"]
         step["signature_label"] = asset["label"]
         step["signature_image"] = "data:image/svg+xml;charset=utf-8," + quote(asset["svg"], safe="")
     return payload
