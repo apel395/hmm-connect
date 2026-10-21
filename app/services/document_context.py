@@ -175,6 +175,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
             "approver_role": step.approver_role_name,
             "location_name": step.location_name,
             "status": step.status,
+            "approver_id": step.approved_by_id,
             "approver_name": step.approved_by.full_name if step.approved_by else None,
             "decided_at": step.decided_at,
             "comment": step.decision_comment,
@@ -192,7 +193,7 @@ def document_context(db: Session, entity_type: str, entity_id: int, status: str,
             "occurred_at": event.created_at,
         } for event in events],
     }
-    return add_private_print_signatures(result)
+    return add_private_print_signatures(result, db=db)
 
 
 def print_metadata(user) -> dict:
