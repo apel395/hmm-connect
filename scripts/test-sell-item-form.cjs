@@ -1,3 +1,4 @@
+/* eslint @typescript-eslint/no-require-imports: "off" */
 /* global require, __dirname, global, console, process */
 const assert=require('node:assert/strict');
 const path=require('node:path');
