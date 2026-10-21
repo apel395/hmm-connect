@@ -16,7 +16,7 @@ export type GoodsReceiptListParams = {
 export const goodsReceiptApi = {
   list: (params: GoodsReceiptListParams = {}) => api.get("/goods-receipts", { params }),
   detail: (id: number) => api.get(`/goods-receipts/${id}`),
-  receivablePurchaseOrders: () => api.get("/goods-receipts/receivable-purchase-orders"),
+  receivablePurchaseOrders: (params: { date_from?: string; date_to?: string } = {}) => api.get("/goods-receipts/receivable-purchase-orders", { params }),
   remainingItems: (purchaseOrderId: number) => api.get(`/goods-receipts/receivable-purchase-orders/${purchaseOrderId}/items`),
   listByPurchaseOrder: (purchaseOrderId: number) => api.get("/goods-receipts", { params: { purchase_order_id: purchaseOrderId, page: 1, page_size: 100 } }),
   receive: (purchaseOrderId: number, payload: GoodsReceiptCreatePayload) => api.post("/goods-receipts", { ...payload, purchase_order_id: purchaseOrderId }),
