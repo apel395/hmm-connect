@@ -56,6 +56,11 @@ def _normalize_item_coa(payload: dict, product: Product | None = None) -> None:
     Stock issue expense is optional here and is used only when stock goes OUT.
     """
     fields = {"inventory_account_id", "purchase_account_id", "asset_account_id", "cogs_account_id"}
+    if payload.get("item_type", getattr(product, "item_type", "BUY")) == "SELL":
+        # SELL menus are a separate catalog, never inventory/expense offsets.
+        for field in fields:
+            payload[field] = None
+        return
     if not (fields.intersection(payload) or "inventory_treatment" in payload):
         return
     treatment = payload.get("inventory_treatment", getattr(product, "inventory_treatment", "REVIEW_REQUIRED"))
