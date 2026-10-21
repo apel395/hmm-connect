@@ -1,3 +1,4 @@
+import { approvalPrintSignatures } from "@/components/print/approvalSignatures";
 import { destinationLabel } from "../goods-receipts/destination";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
@@ -20,17 +21,6 @@ const displayDate=(value?:string)=>value?new Date(value).toLocaleDateString():"�
 const indonesianLongDate=(value?:string)=>value?new Date(`${value.slice(0,10)}T00:00:00`).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"—";
 const addCalendarDays=(value:string,days:number)=>{const date=new Date(`${value.slice(0,10)}T00:00:00`);date.setDate(date.getDate()+days);return date.toISOString().slice(0,10)};
 
-function approvalSignatures(data:PrintDocument):PrintSignature[]{
-  return (data.approval_history??[])
-    .filter(record=>record.status==="APPROVED")
-    .map(record=>({
-      label:record.signature_label||record.name||`Approval Level ${record.level}`,
-      name:record.signature_name||record.approver_name||"—",
-      imageSrc:record.signature_image||undefined,
-      signedAt:record.decided_at,
-
-    }));
-}
 
 export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"market-lists"|"purchase-orders"|"goods-receipts"}){
   const{id}=useParams();
@@ -69,7 +59,7 @@ export default function PrintDocumentPage({kind}:{kind:"purchase-requisitions"|"
   ];
   const createdEvent=(data.activity_history??[]).find(event=>event.action==="CREATE"||event.action==="CREATED"||event.action.endsWith("_CREATED"));
   const creator=data.created_by_name??createdEvent?.actor_name??data.requester_name??data.received_by_name;
-  const signatures:PrintSignature[]=[{label:"Created by",name:creator??"—",signedAt:data.created_at??createdEvent?.occurred_at},...approvalSignatures(data)];
+  const signatures:PrintSignature[]=[{label:"Created by",name:creator??"—",signedAt:data.created_at??createdEvent?.occurred_at},...approvalPrintSignatures(data.approval_history)];
   const poTerms=isPo?<section className="avoid-break mt-7 text-[11px] leading-5"><div className="mb-1 font-bold">Syarat & Ketentuan</div><ol className="list-decimal space-y-0.5 pl-5"><li>Barang harus dikirim paling lambat {indonesianLongDate(deliveryDeadline)} ke lokasi yang tertera pada PO ini.</li><li>Pembayaran dilakukan melalui transfer bank setelah 60 hari sejak barang diterima dan diverifikasi.</li><li>Faktur asli dan dokumen pendukung harus dilampirkan bersama pengiriman barang.</li><li>Apabila terjadi keterlambatan pengiriman ataupun selisih, pihak pemasok wajib memberikan pemberitahuan tertulis.</li></ol></section>:undefined;
   const partialReceipt=isReceipt&&data.is_partial_receipt?<section className="avoid-break mt-5 border-2 border-black p-3 text-[11px]"><div className="font-bold">PARTIAL RECEIPT</div><div>Purchase Order ini belum diterima seluruhnya. Sisa item/qty tetap terbuka untuk Receiving berikutnya.</div>{Boolean(data.remaining_items?.length)&&<div className="mt-2">{data.remaining_items!.slice(0,8).map((item,index)=><div key={index}>• {item.product_code??""} {item.product_name??""}: sisa {item.remaining_quantity??0} {item.uom??""}</div>)}</div>}</section>:undefined;
   const extraAfterTable=<>{partialReceipt}{poTerms}</>;
