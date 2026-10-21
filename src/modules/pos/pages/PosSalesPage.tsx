@@ -12,7 +12,6 @@ import { DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } fr
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
 import { posApi, type PosVoidPayload } from "../api";
-import { warehouseApi } from "@/modules/master/warehouses/api/warehouseApi";
 
 const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
 const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -42,19 +41,19 @@ export default function PosSalesPage() {
   const canSell = canAccess(user, POS_ROLES, "pos.sell");
 
   const [status, setStatus] = useState("ALL");
-  const [warehouseFilter, setWarehouseFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
 
   const listQuery = useQuery({
-    queryKey: ["pos-sales", { status, warehouseFilter, search, dateFrom, dateTo, page }],
+    queryKey: ["pos-sales", { status, locationFilter, search, dateFrom, dateTo, page }],
     queryFn: async () => (await posApi.list({
       page,
       page_size: PAGE_SIZE,
       status: status === "ALL" ? undefined : status,
-      warehouse_id: warehouseFilter ? Number(warehouseFilter) : undefined,
+      location_id: locationFilter ? Number(locationFilter) : undefined,
       search: search.trim() || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
@@ -66,13 +65,13 @@ export default function PosSalesPage() {
   const statusCounts: Record<string, number> = summary.status_counts ?? {};
   const pages = Math.max(data.total_pages ?? 0, 1);
 
-  useEffect(() => setPage(1), [status, warehouseFilter, search, dateFrom, dateTo]);
+  useEffect(() => setPage(1), [status, locationFilter, search, dateFrom, dateTo]);
 
-  const warehousesQuery = useQuery({
-    queryKey: ["pos-sales-warehouses"],
-    queryFn: async () => (await warehouseApi.list()).data,
+  const locationsQuery = useQuery({
+    queryKey: ["pos-options"],
+    queryFn: async () => (await posApi.options()).data,
   });
-  const warehouses: any[] = warehousesQuery.data ?? [];
+  const locations: any[] = locationsQuery.data?.locations ?? [];
 
   const [detailId, setDetailId] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
@@ -105,7 +104,7 @@ export default function PosSalesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Point of Sales" description="History of register sales. Posted sales are deducted from warehouse stock and reflected in the general ledger; draft sales can still be edited." />
+      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Point of Sales" description="History of register sales. SELL sales are reflected in the general ledger; draft sales can still be edited." />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Sales</div><div className="mt-2 text-2xl font-bold">{num(data.total_items ?? 0)}</div></Card>
@@ -123,9 +122,9 @@ export default function PosSalesPage() {
             <option value="POSTED">Posted</option>
             <option value="VOID">Void</option>
           </select>
-          <select className={input} value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)}>
-            <option value="">All warehouses</option>
-            {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code} - {w.name}</option>)}
+          <select className={input} value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}>
+            <option value="">All sales locations</option>
+            {locations.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
           <input type="date" className={input} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <input type="date" className={input} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
@@ -139,7 +138,7 @@ export default function PosSalesPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead><tr className="whitespace-nowrap border-b text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Number</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Warehouse</th><th className="px-4 py-3">Cashier</th>
+                  <th className="px-4 py-3">Number</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Sales location</th><th className="px-4 py-3">Cashier</th>
                   <th className="px-4 py-3">Payment</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3 text-right">Actions</th>
                 </tr></thead>
                 <tbody>
@@ -148,7 +147,7 @@ export default function PosSalesPage() {
                     <tr key={row.id} className="border-t">
                       <td className="px-4 py-3 font-medium text-emerald-700">{row.transaction_number}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{fmtDate(row.sale_date)}</td>
-                      <td className="px-4 py-3">{row.warehouse_code} - {row.warehouse_name}</td>
+                      <td className="px-4 py-3">{row.location_name || row.warehouse_name || "—"}</td>
                       <td className="px-4 py-3">{row.created_by_name || "-"}</td>
                       <td className="px-4 py-3">{paymentLabel[row.payment_method] ?? "-"}</td>
                       <td className="px-4 py-3"><Badge variant={statusVariant[row.status] ?? "default"}>{row.status}</Badge></td>
@@ -184,7 +183,7 @@ export default function PosSalesPage() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Status</div><Badge variant={statusVariant[detail.status] ?? "default"}>{detail.status}</Badge></div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Date</div>{fmtDate(detail.sale_date)}</div>
-                  <div><div className="text-xs uppercase tracking-wide text-slate-500">Warehouse</div>{detail.warehouse_code} - {detail.warehouse_name}</div>
+                  <div><div className="text-xs uppercase tracking-wide text-slate-500">Sales location</div>{detail.location_name || detail.warehouse_name || "—"}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Payment</div>{paymentLabel[detail.payment_method] ?? "-"}{detail.payment_method === "CASH" && detail.change_amount > 0 ? ` (change ${money(detail.change_amount)})` : ""}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Cashier</div>{detail.created_by_name || "-"}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Journal</div>{detail.journal_number || "-"}</div>
@@ -195,7 +194,7 @@ export default function PosSalesPage() {
                 </div>
                 <table className="w-full text-left text-sm">
                   <thead><tr className="border-b text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-2 py-2">Product</th><th className="px-2 py-2 text-right">Qty</th><th className="px-2 py-2 text-right">Price</th><th className="px-2 py-2 text-right">PPN</th><th className="px-2 py-2 text-right">Amount</th>
+                    <th className="px-2 py-2">Product</th><th className="px-2 py-2 text-right">Qty</th><th className="px-2 py-2 text-right">Price</th><th className="px-2 py-2 text-right">Tax</th><th className="px-2 py-2 text-right">Amount</th>
                   </tr></thead>
                   <tbody>
                     {(detail.items ?? []).map((item: any) => (
@@ -211,7 +210,7 @@ export default function PosSalesPage() {
                   <tfoot>
                     <tr className="border-t text-slate-600"><td className="px-2 py-2" colSpan={4}>Subtotal</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.subtotal)}</td></tr>
                     {detail.discount_amount > 0 && <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Discount</td><td className="px-2 py-2 text-right tabular-nums">-{money(detail.discount_amount)}</td></tr>}
-                    <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Service charge</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.service_charge_amount)}</td></tr><tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>PPN</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.tax_amount)}</td></tr>
+                    <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Service charge</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.service_charge_amount)}</td></tr><tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Tax</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.tax_amount)}</td></tr>
                     <tr className="font-bold"><td className="px-2 py-2" colSpan={4}>Total</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.total_amount)}</td></tr>
                     {detail.payment_received > 0 && <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Received</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.payment_received)}</td></tr>}
                   </tfoot>

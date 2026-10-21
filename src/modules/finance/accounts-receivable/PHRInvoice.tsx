@@ -20,10 +20,11 @@ export default function PHRInvoice({ data }: { data: Invoice }) {
       data-print-ready={data.print_ready ? "true" : "false"}
     >
       <style>{`
-      .phr-invoice { max-width:210mm; margin:auto; padding:12mm; background:white; color:#111; font:12px Arial,sans-serif; }
-      .phr-letterhead { border:2px solid #223755; border-radius:12px; padding:16px; text-align:center; margin-bottom:6px; }
-      .phr-letterhead h1 { font: bold 25px Georgia,serif; color:#223755; margin:0 0 10px; }
-      .phr-body { border:2px solid #223755; border-radius:12px; padding:22px; min-height:235mm; }
+      .phr-invoice { max-width:210mm; margin:auto; padding:6mm; background:white; color:#111; font:12px Arial,sans-serif; }
+      .phr-letterhead { display:flex; align-items:center; gap:18px; border:2px solid #223755; border-radius:12px; padding:16px; text-align:center; margin-bottom:6px; }
+      .phr-letterhead img { width:24mm; height:24mm; object-fit:contain; flex-shrink:0; }
+      .phr-letterhead h1 { font: bold 22px Georgia,serif; color:#223755; margin:0 0 10px; }
+      .phr-body { border:2px solid #223755; border-radius:12px; padding:22px; min-height:240mm; }
       .phr-body h2 { font-size:23px; text-decoration:underline; text-align:center; margin:0 0 24px; }
       .phr-meta { display:grid; grid-template-columns:1.2fr 1fr; gap:20px; margin-bottom:28px; }
       .phr-meta dl { display:grid; grid-template-columns:auto 1fr; gap:5px 12px; }
@@ -37,7 +38,7 @@ export default function PHRInvoice({ data }: { data: Invoice }) {
       .phr-invoice p { white-space:pre-line; margin:4px 0; }
       .phr-warning { color:#a33; border:1px solid #a33; padding:8px; margin-bottom:10px; }
       @page { size:A4 portrait; margin:10mm; }
-      @media print { .phr-invoice { max-width:none; padding:0!important; font-size:10pt; } .phr-body { min-height:240mm; } .phr-letterhead { break-inside:avoid; } .phr-invoice thead { display:table-header-group; } .phr-invoice tr { break-inside:avoid; } }
+      @media print { .phr-invoice { max-width:none; padding:0!important; font-size:9pt; } .phr-body { min-height:240mm; } .phr-letterhead { break-inside:avoid; } .phr-invoice thead { display:table-header-group; } .phr-invoice tr { break-inside:avoid; } }
     `}</style>
       {!data.print_ready && (
         <p className="phr-warning">
@@ -46,8 +47,9 @@ export default function PHRInvoice({ data }: { data: Invoice }) {
         </p>
       )}
       <header className="phr-letterhead">
-        <h1>PT. MUTIARA MERDEKA HOTEL</h1>
-        <p>{layout.company_address}</p>
+        <img src="/logoprint.jpeg" alt="MMH" />
+        <div><h1>PT. MUTIARA MERDEKA HOTEL</h1>
+        <p>{layout.company_address}</p></div>
       </header>
       <section className="phr-body">
         <h2>{layout.title}</h2>
@@ -110,7 +112,7 @@ export default function PHRInvoice({ data }: { data: Invoice }) {
               <td className="phr-money">Rp {money(data.amount)}</td>
             </tr>
             <tr style={{ fontWeight: "bold" }}>
-              <td colSpan={3}>Total be Paid</td>
+              <td colSpan={3}><i>Total be Paid</i></td>
               <td className="phr-money">Rp {money(data.amount)}</td>
             </tr>
             {doc.amount_in_words && (
