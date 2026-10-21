@@ -81,6 +81,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
   const accounts = useQuery({
     queryKey: ["product-coa-lookup", "all-active-posting"],
     queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }),
+    enabled: open && form.item_type === "BUY",
   });
   const units = useQuery({
     queryKey: ["product-sales-business-units"],
@@ -276,7 +277,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
     (["EXEMPT", "NON_TAXABLE"].includes(form.tax_category)) ||
     (form.is_taxable && Number(form.tax_rate) > 0);
 
-  const correctingStock = Boolean(product && form.inventory_treatment === "DIRECT_USE" && existingStock.data?.stock.length);
+  const correctingStock = Boolean(product && form.item_type === "BUY" && form.inventory_treatment === "DIRECT_USE" && existingStock.data?.stock.length);
   const subgroupRequired = form.item_type === "BUY";
   const valid = Boolean(
     displayedCode.trim() &&
@@ -285,32 +286,33 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
     form.group_code &&
     (!subgroupRequired || form.subgroup_code) &&
     form.uom.trim() &&
-    form.usage_uom.trim() &&
+    (form.item_type === "SELL" || form.usage_uom.trim()) &&
     (form.item_type !== "SELL" || Number(form.selling_price) >= 0) &&
-    Number(form.conversion) > 0 &&
+    (form.item_type === "SELL" || Number(form.conversion) > 0) &&
     Number(form.minimum_stock) >= 0 &&
-    accountingReady &&
+    (form.item_type === "SELL" || accountingReady) &&
     (!correctingStock || stockReason.trim().length >= 3) &&
     !(product && existingStock.isLoading) &&
-    taxReady
+    (form.item_type === "SELL" || taxReady)
   );
 
   const submit = () => {
     const { cogs_account_id, department_id, ...itemFields } = form;
     const payload = {
       ...itemFields,
+      ...(form.item_type === "SELL" ? {inventory_treatment:"NON_STOCK", inventory_account_id:null, purchase_account_id:null, asset_account_id:null, minimum_stock:0} : {}),
       ...(correctingStock ? {correct_existing_stock:true,stock_correction_reason:stockReason.trim()} : {}),
       ...(departments.data?.available ? {department_id} : {}),
       is_market_item: form.subgroup_name.trim().toUpperCase() === "MEAT" ? form.is_market_item : ["VEGETABLES","FRUIT","HERB","FISH","POULTRY","SNACK"].includes(form.subgroup_name.trim().toUpperCase()),
       catalog_type: catalogType,
-      ...(cogs_account_id !== (product?.cogs_account_id ?? null) ? { cogs_account_id } : {}),
+      ...(form.item_type === "SELL" ? {cogs_account_id:null} : cogs_account_id !== (product?.cogs_account_id ?? null) ? { cogs_account_id } : {}),
       code: displayedCode.trim(),
       name: form.name.trim(),
       subgroup_code: form.item_type === "SELL" ? "" : form.subgroup_code,
       subgroup_name: form.item_type === "SELL" ? "" : form.subgroup_name === "GRESORIS" ? "GROCERIES" : form.subgroup_name,
       uom: form.uom.trim(),
-      usage_uom: form.usage_uom.trim(),
-      conversion: Number(form.conversion),
+      usage_uom: form.item_type === "SELL" ? form.uom.trim() : form.usage_uom.trim(),
+      conversion: form.item_type === "SELL" ? 1 : Number(form.conversion),
       minimum_stock: Number(form.minimum_stock),
       cost_price: Number(form.cost_price),
       selling_price: Number(form.selling_price),
@@ -399,22 +401,22 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
             <p className="md:col-span-2 text-xs text-amber-800">Sales tax fields are item setup only. POS posting for items with PBJT, PPN, or PPh 23 requires the corresponding tax accounting flow.</p>
           </div>}
 
-          <label className="text-sm font-medium">Purchase UOM
-            <Input className="mt-1" type="text" autoComplete="off" maxLength={20} placeholder="Type a unit, e.g. Kg, Pcs, Tray" list={uomListId} value={form.uom} onChange={(event) => update("uom", event.target.value)} />
+          <label className="text-sm font-medium">{form.item_type === "SELL" ? "Sales UOM *" : "Purchase UOM"}
+            <Input className="mt-1" type="text" autoComplete="off" maxLength={20} placeholder={form.item_type === "SELL" ? "Type a unit, e.g. Portion, Meals, Pax, Month" : "Type a unit, e.g. Kg, Pcs, Tray"} list={uomListId} value={form.uom} onChange={(event) => update("uom", event.target.value)} />
           </label>
-          <label className="text-sm font-medium">Usage UOM
+          {form.item_type === "BUY" && <label className="text-sm font-medium">Usage UOM
             <Input className="mt-1" type="text" autoComplete="off" maxLength={20} placeholder="Type a unit, e.g. Gram, Pcs, Portion" list={uomListId} value={form.usage_uom} onChange={(event) => update("usage_uom", event.target.value)} />
-          </label>
+          </label>}
           <datalist id={uomListId}>{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
 
-          <label className="text-sm font-medium">Conversion
+          {form.item_type === "BUY" && <label className="text-sm font-medium">Conversion
             <Input className="mt-1" type="number" min="0.0001" step="0.0001" value={form.conversion} onChange={(event) => update("conversion", Number(event.target.value))} />
-          </label>
+          </label>}
           {form.inventory_treatment === "STOCK" && <label className="text-sm font-medium">Minimum Stock
             <Input className="mt-1" type="number" min="0" step="0.01" value={form.minimum_stock} onChange={(event) => update("minimum_stock", Number(event.target.value))} />
           </label>}
 
-          <div className="col-span-2 rounded-lg border border-emerald-200 bg-emerald-50/30 p-4">
+          {form.item_type === "BUY" && <div className="col-span-2 rounded-lg border border-emerald-200 bg-emerald-50/30 p-4">
             <div className="mb-3">
               <div className="font-semibold text-slate-900">Inventory Treatment</div>
               <div className="text-xs text-slate-500">Controls whether receiving goes to warehouse stock, direct expense, fixed asset, or non-stock expense.</div>
@@ -423,7 +425,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
               <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.inventory_treatment} onChange={(event) => changeTreatment(event.target.value as InventoryTreatment)}>
                 {TREATMENTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
-              <span className="mt-1 block text-xs font-normal text-slate-500">{form.item_type === "SELL" && form.inventory_treatment === "NON_STOCK" ? "Selling service does not enter warehouse stock." : selectedTreatment?.help}</span>
+              <span className="mt-1 block text-xs font-normal text-slate-500">{selectedTreatment?.help}</span>
             </label>
 
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -462,7 +464,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
                 onChange={(value) => update("cogs_account_id", value ? Number(value) : null)}
               /></div></details>}
             </div>
-          </div>
+          </div>}
 
           {form.item_type === "BUY" && <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="mb-3">
@@ -491,6 +493,14 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
       </DialogBody>
       {correctingStock && <div className="mx-5 mb-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm"><p>Saving will correct existing receiving-only stock to this expense account and remove its warehouse balance. Existing issues, transfers and warehouse exceptions require separate correction.</p><p className="my-2 tabular-nums">Stock value: Rp {existingStock.data?.stock.reduce((sum,row)=>sum+Number(row.value),0).toLocaleString("id-ID")}</p><Input aria-label="Stock correction reason" value={stockReason} onChange={e=>setStockReason(e.target.value)}/></div>}
       <DialogFooter>
+        {!valid && <span role="status" className="mr-auto text-xs text-amber-800">Complete {[
+          !form.name.trim() && "item name", !form.group_code && "group",
+          !displayedCode.trim() && "generated code", !form.uom.trim() && (form.item_type === "SELL" ? "sales UOM" : "purchase UOM"),
+          form.item_type === "BUY" && !form.usage_uom.trim() && "usage UOM",
+          form.item_type === "BUY" && !form.subgroup_code && "subgroup",
+          form.item_type === "BUY" && !accountingReady && "posting account",
+          form.item_type === "BUY" && !taxReady && "tax profile",
+        ].filter(Boolean).join(", ") || "required fields"}.</span>}
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={!valid} loading={loading} onClick={submit}>{correctingStock ? "Save & correct stock" : "Save"}</Button>
       </DialogFooter>
