@@ -12,7 +12,7 @@ class SalesTransactionItemIn(BaseModel):
 
 
 class SalesTransactionCreate(BaseModel):
-    warehouse_id: int
+    warehouse_id: int | None = None
     transaction_type: Literal["POS", "INVOICE"] = "POS"
     table_number: str | None = Field(default=None, max_length=30)
     queue_number: str | None = Field(default=None, max_length=50)

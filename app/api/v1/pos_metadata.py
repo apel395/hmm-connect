@@ -7,7 +7,7 @@ from app.dependencies.auth import get_current_user
 from app.models.sales_transaction import SalesTransaction
 from app.models.user import User
 from app.services.document_number import next_document_number
-from app.services.location_access import apply_warehouse_scope
+from app.services.location_access import apply_location_scope
 from app.services.sales_transaction_service import SalesTransactionService
 
 router = APIRouter(prefix="/pos-metadata", tags=["Point of Sales"])
@@ -28,7 +28,7 @@ def update_pos_metadata(
 ):
     SalesTransactionService._require(user, "pos.sell")
     transaction = (
-        apply_warehouse_scope(db.query(SalesTransaction), user)
+        apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )
