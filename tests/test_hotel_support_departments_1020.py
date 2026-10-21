@@ -86,7 +86,10 @@ def test_four_department_schedules_sum_once_and_keep_wrong_postings_visible(db):
     assert total(report,'UNDER_EXPENSE')==40
     assert total(report,'NOP')==-157
     for key in ('OVERHEAD_PAYROLL','OVERHEAD_EXPENSE','GOP','UNDER_EXPENSE','NOP'):
-        assert total(report,key)==sum(total(g,key) for g in report['group_reports'])
+        assert total(report,key)==sum(total(g,key) for g in report['group_reports'] if not g.get('is_department_rollup'))
+    assert all(v == 0 for period in report['split_control'].values() for v in period.values())
+    assert groups['Admin and General']['is_department_rollup']
+    assert total(groups['Admin and General'], 'NOP') == total(groups['Accounting'], 'NOP') + total(hr, 'NOP')
     wb=load_workbook(BytesIO(build_xlsx(workbook_sheets(report))))
     accounting=wb['Hotel · Accounting'];hr_sheet=wb['Hotel · Human Resources']
     def labels(sheet):return {str(row[0].value or '').strip() for row in sheet}
@@ -97,7 +100,10 @@ def test_four_department_schedules_sum_once_and_keep_wrong_postings_visible(db):
     assert 'Total Revenue' not in labels(accounting) and 'TOTAL DEPARTMENT EXPENSES' in labels(accounting)
     assert next(row[1].value for row in accounting if row[0].value=='TOTAL DEPARTMENT EXPENSES').startswith('=')
     cached=load_workbook(BytesIO(build_xlsx(workbook_sheets(report))),data_only=True)
-    for name,expected in [('Admin and General',10),('Accounting',20),('Human Resources',37),('Board of Directur',90)]:
+    for name,expected in [('Admin and General',67),('Accounting',30),('Human Resources',37),('Board of Directur',90)]:
         sheet=cached[f'Hotel · {name}'[:31]]
         assert next(row[1].value for row in sheet if row[0].value=='TOTAL DEPARTMENT EXPENSES')==expected
+    summary=cached['Summary']
+    assert [r[1].value for r in summary if r[0].value=='Administration & General']==[0,67]
+    assert next(r[1].value for r in summary if r[0].value=='Board of Directors')==50
     assert before==(db.query(JournalEntry).count(),db.query(JournalLine).count(),db.query(GeneralLedger).count())

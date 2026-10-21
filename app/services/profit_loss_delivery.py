@@ -179,7 +179,7 @@ def deliver(service, *, as_of_date, report_scope='CONSOLIDATED', location_id=Non
     for p in ('MTD', 'YTD') if include_breakdown else ():
         report['split_control'][p] = {}
         for section in ('REVENUE', 'COST_OF_REVENUE', 'EXPENSES'):
-            total = sum((r['section_totals'][section][p]['current'] for r in report['group_reports']), ZERO)
+            total = sum((r['section_totals'][section][p]['current'] for r in report['group_reports'] if not r.get('is_department_rollup') or report.get('is_department_rollup')), ZERO)
             report['split_control'][p][section] = report['section_totals'][section][p]['current'] - total
     position = service.build(report_type='BALANCE_SHEET', as_of_date=as_of_date,
                              location_id=location_id, business_unit_id=business_unit_id, detail=True)

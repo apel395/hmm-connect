@@ -74,6 +74,7 @@ def related(account, report, values, evidence):
     if 'hotel' in unit and (code == '400-110' or code.startswith('400-110-') or code == '400-200' or code.startswith('400-200-') or ('catering' in name and 'outsidecatering' not in name and 'outsitecatering' not in name)):
         return False
     dept = department_key(labels.get('department_id'))
+    department_keys = {'AG', 'ACC', 'HR'} if dept == 'AG' and report.get('is_department_rollup') else {dept}
     if dept is None:
         return True
     owner = REVENUE_DEPARTMENTS.get(code)
@@ -86,9 +87,9 @@ def related(account, report, values, evidence):
     if prefix:
         owner = PREFIXES.get(prefix[1].upper(), owner)
     if owner is None and dept in SUPPORT_DEPARTMENTS and is_hotel_report(report):
-        return dept in zero_account_departments(account)
+        return bool(department_keys.intersection(zero_account_departments(account)))
     if account.account_type in ("REVENUE", "INCOME") and owner is None:
         return False
     if code.startswith("500-100-") and owner is None and dept != "FB":
         return False
-    return owner is None or owner == dept
+    return owner is None or owner in department_keys

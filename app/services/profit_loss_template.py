@@ -295,12 +295,14 @@ def summary_schedule(statement, title, groups, as_of):
     hotel_only = statement.get('report_scope') == 'HOTEL'
     rows = TemplateRows(statement, 'SUMMARY_HOTEL' if hotel_only else 'SUMMARY', title, as_of)
     root_members = statement.get('related_accounts', [])
-    buckets = {key: [] for key in ('room', 'fb', 'other', 'rental', 'project', 'ag', 'sm', 'pmc', 'energy')}
+    buckets = {key: [] for key in ('room', 'fb', 'other', 'rental', 'project', 'ag', 'sm', 'pmc', 'energy', 'bod')}
     for group in groups:
+        if group.get('is_department_rollup') and not statement.get('is_department_rollup'):
+            continue
         if group.get('report_scope') == 'CATERING': bucket = 'project'
         else:
             key = department_key(group.get('department_name'))
-            bucket = {'FO':'room','HK':'room','FB':'fb','AG':'ag','ACC':'ag','HR':'ag','BOD':'ag','SM':'sm','PMC':'pmc'}.get(key,'other')
+            bucket = {'FO':'room','HK':'room','FB':'fb','AG':'ag','ACC':'ag','HR':'ag','BOD':'bod','SM':'sm','PMC':'pmc'}.get(key,'other')
         for account in group.get('related_accounts', []):
             target = bucket
             if group.get('report_scope') != 'CATERING' and utility_account(account): target = 'energy'
@@ -313,7 +315,7 @@ def summary_schedule(statement, title, groups, as_of):
     sc_payroll = lambda a:a['category'] in ('OPERATING_PAYROLL','OVERHEAD_PAYROLL') and service_charge(a)
     cost = lambda a:a['category']=='COST_OF_REVENUE'
     expense = lambda a:a['category'] in ('OPERATING_EXPENSE','OVERHEAD_EXPENSE')
-    op=('room','fb','other','rental','project'); overhead=('ag','sm','pmc','energy')
+    op=('room','fb','other','rental','project'); overhead=('ag','sm','pmc','energy','bod')
     amounts={
         'revenue':values(statement,[a for a in root_members if revenue(a)]),
         'sc_revenue':values(statement,[a for a in root_members if a['category']=='REVENUE' and service_charge(a)]),
@@ -392,6 +394,11 @@ def summary_schedule(statement, title, groups, as_of):
                 displayed_rows.append(target)
                 bucket_rows[('cost','room')] = target
                 displayed.append(room_cost)
+            if role in ('oh_payroll', 'oh_expense'):
+                director_amount = aggregate(('bod',), payroll if role == 'oh_payroll' else expense)
+                if any(v not in (None, 0) for period in director_amount.values() for v in period.values()):
+                    displayed.append(director_amount)
+                    displayed_rows.append(rows.line('Board of Directors', director_amount, index))
             if role in ('revenue', 'cost', 'op_payroll', 'oh_payroll', 'op_expense', 'oh_expense', 'department_income'):
                 difference = combine((1, amounts[role]), *[(-1, value) for value in displayed])
                 if any(v not in (None, 0) for period in difference.values() for v in period.values()):
