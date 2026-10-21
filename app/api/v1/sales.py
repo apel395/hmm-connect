@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from math import ceil
 from typing import Any
 
@@ -8,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.models.inventory import Inventory
 from app.models.product import Product
 from app.models.sales_transaction import SalesTransaction
 from app.models.user import User
@@ -19,8 +19,14 @@ from app.schemas.sales_transaction import (
     SalesTransactionUpdate,
     SalesTransactionVoid,
 )
-from app.services.location_access import apply_warehouse_scope
+from app.services.location_access import apply_location_scope, resolve_location_id
+from app.models.location import Location
+from app.models.business_unit import BusinessUnit
+from app.models.department import Department
+from app.models.location_department import LocationDepartment
+from app.models.item_department import ItemDepartment
 from app.services.sales_transaction_service import SalesTransactionService
+from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 
 router = APIRouter(prefix="/pos", tags=["Point of Sales"])
 
@@ -64,6 +70,7 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
     posted_by = transaction.posted_by
     customer = transaction.customer
     journal = transaction.journal_entry
+    location = transaction.location
     return {
         "id": transaction.id,
         "transaction_number": transaction.transaction_number,
@@ -77,6 +84,10 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
         "customer_name": customer.customer_name if customer else None,
         "business_unit_id": transaction.business_unit_id,
         "location_id": transaction.location_id,
+        "location_name": location.name if location else None,
+        "transaction_type": transaction.transaction_type,
+        "table_number": transaction.table_number,
+        "queue_number": transaction.queue_number,
         "department_id": transaction.department_id,
         "payment_method": transaction.payment_method,
         "payment_received": transaction.payment_received,
@@ -98,66 +109,59 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
     }
 
 
+@router.get("/options")
+def sale_options(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SalesTransactionService._require(user, "pos.view")
+    query = apply_location_scope(db.query(Location), Location.id, user).filter(Location.is_active.is_(True))
+    unit = business_unit_scope(db, user)
+    if unit is not None:
+        query = query.filter(Location.business_unit_id == unit)
+    locations = query.order_by(Location.name).all()
+    links = db.query(LocationDepartment, Department).join(Department, Department.id == LocationDepartment.department_id).filter(Department.is_active.is_(True), LocationDepartment.location_id.in_([row.id for row in locations])).all()
+    assigned_department = department_scope(user)
+    links = [(link, dept) for link, dept in links if assigned_department in (None, dept.id)]
+    return {"locations": [{"id": row.id, "name": row.name, "code": str(row.id)} for row in locations],
+            "departments": [{"id": dept.id, "name": dept.name, "location_id": link.location_id} for link, dept in links]}
+
+
 @router.get("/products")
 def list_pos_products(
-    warehouse_id: int | None = None,
+    location_id: int | None = None,
+    department_id: int | None = None,
     search: str | None = Query(default=None, max_length=100),
     group_name: str | None = Query(default=None, max_length=100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    query = (
-        db.query(Inventory, Product, Warehouse)
-        .join(Product, Product.id == Inventory.product_id)
-        .join(Warehouse, Warehouse.id == Inventory.warehouse_id)
-        .filter(Product.is_active.is_(True), Warehouse.is_active.is_(True))
-    )
-    query = apply_warehouse_scope(query, user)
-    if warehouse_id:
-        query = query.filter(Inventory.warehouse_id == warehouse_id)
+    SalesTransactionService._require(user, "pos.view")
+    location_id = resolve_location_id(user, location_id)
+    location = db.get(Location, location_id) if location_id else None
+    if not location or not location.is_active:
+        raise HTTPException(422, "Select an active sales location")
+    from app.services.organization_dimensions import validate_dimensions
+    scope = resolve_organization_access(db, user, location_id=location.id, business_unit_id=location.business_unit_id, department_id=department_id)
+    department_id = scope["department_id"]
+    validate_dimensions(db, location.business_unit_id, location.id, department_id, False)
+    unit = db.get(BusinessUnit, location.business_unit_id)
+    catalog = "HOTEL" if unit and "hotel" in unit.name.casefold() else "CATERING"
+    query = db.query(Product).filter(Product.is_active.is_(True), Product.item_type == "SELL", Product.inventory_treatment == "NON_STOCK", Product.catalog_type == catalog,
+        or_(Product.sales_location_id.is_(None), Product.sales_location_id == location.id),
+        or_(Product.sales_business_unit_id.is_(None), Product.sales_business_unit_id == location.business_unit_id))
+    from app.services import item_departments
+    if item_departments.available(db):
+        query = query.outerjoin(ItemDepartment, ItemDepartment.product_id == Product.id).filter(or_(ItemDepartment.department_id.is_(None), ItemDepartment.department_id == department_id))
     if search and search.strip():
         term = f"%{search.strip()}%"
-        query = query.filter(
-            or_(
-                Product.code.ilike(term),
-                Product.name.ilike(term),
-                Product.group_name.ilike(term),
-                Product.subgroup_name.ilike(term),
-            )
-        )
-    if group_name and group_name.strip():
-        query = query.filter(Product.group_name == group_name.strip())
-
+        query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
+    if group_name:
+        query = query.filter(Product.group_name == group_name)
     total = query.count()
-    rows = (
-        query.order_by(Product.group_name, Product.name, Product.code)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-    items = [
-        {
-            "id": inventory.id,
-            "product_id": product.id,
-            "product_code": product.code,
-            "product_name": product.name,
-            "group_name": product.group_name,
-            "subgroup_name": product.subgroup_name,
-            "uom": product.uom,
-            "selling_price": product.selling_price,
-            "service_charge_rate": product.service_charge_rate,
-            "tax_rate": product.tax_rate,
-            "is_taxable": product.is_taxable,
-            "warehouse_id": warehouse.id,
-            "warehouse_code": warehouse.code,
-            "warehouse_name": warehouse.name,
-            "quantity": inventory.quantity,
-            "average_cost": inventory.average_cost,
-        }
-        for inventory, product, warehouse in rows
-    ]
+    rows = query.order_by(Product.group_name, Product.name, Product.code).offset((page-1)*page_size).limit(page_size).all()
+    items = [{"product_id": p.id, "product_code": p.code, "product_name": p.name, "group_name": p.group_name,
+        "uom": p.uom, "selling_price": p.selling_price, "service_charge_rate": p.service_charge_rate,
+        "tax_rate": p.tax_rate, "is_taxable": p.is_taxable,
+        "sale_available": p.selling_price > 0 and not any(Decimal(getattr(p, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate"))} for p in rows]
     return _paged(items, page=page, page_size=page_size, total=total)
 
 
@@ -165,6 +169,7 @@ def list_pos_products(
 def list_sales(
     status: str | None = Query(default=None, max_length=30),
     warehouse_id: int | None = None,
+    location_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     search: str | None = Query(default=None, max_length=100),
@@ -174,9 +179,11 @@ def list_sales(
     user: User = Depends(get_current_user),
 ):
     SalesTransactionService._require(user, "pos.view")
-    query = apply_warehouse_scope(db.query(SalesTransaction), user)
+    query = SalesTransactionService.scoped_query(db, user)
     if status and status.upper() != "ALL":
         query = query.filter(SalesTransaction.status == status.upper())
+    if location_id:
+        query = query.filter(SalesTransaction.location_id == location_id)
     if warehouse_id:
         query = query.filter(SalesTransaction.warehouse_id == warehouse_id)
     if date_from:
@@ -185,7 +192,7 @@ def list_sales(
         query = query.filter(SalesTransaction.sale_date <= date_to)
     if search and search.strip():
         term = f"%{search.strip()}%"
-        query = query.join(Warehouse, Warehouse.id == SalesTransaction.warehouse_id)
+        query = query.outerjoin(Warehouse, Warehouse.id == SalesTransaction.warehouse_id)
         query = query.filter(
             or_(
                 SalesTransaction.transaction_number.ilike(term),
@@ -194,16 +201,18 @@ def list_sales(
         )
 
     summary_rows = (
-        apply_warehouse_scope(db.query(SalesTransaction), user)
+        SalesTransactionService.scoped_query(db, user)
         .with_entities(SalesTransaction.status, func.count(SalesTransaction.id))
         .group_by(SalesTransaction.status)
         .all()
     )
     totals_filter = (
-        apply_warehouse_scope(db.query(SalesTransaction), user).filter(
+        SalesTransactionService.scoped_query(db, user).filter(
             SalesTransaction.status == "POSTED"
         )
     )
+    if location_id:
+        totals_filter = totals_filter.filter(SalesTransaction.location_id == location_id)
     if date_from:
         totals_filter = totals_filter.filter(SalesTransaction.sale_date >= date_from)
     if date_to:
@@ -249,7 +258,7 @@ def get_sale(
 ):
     SalesTransactionService._require(user, "pos.view")
     transaction = (
-        apply_warehouse_scope(db.query(SalesTransaction), user)
+        SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )
@@ -266,7 +275,7 @@ def update_sale(
     user: User = Depends(get_current_user),
 ):
     transaction = (
-        apply_warehouse_scope(db.query(SalesTransaction), user)
+        SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )
@@ -285,7 +294,7 @@ def post_sale(
     user: User = Depends(get_current_user),
 ):
     transaction = (
-        apply_warehouse_scope(db.query(SalesTransaction), user)
+        SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )
@@ -316,7 +325,7 @@ def print_sale(
 ):
     SalesTransactionService._require(user, "pos.view")
     transaction = (
-        apply_warehouse_scope(db.query(SalesTransaction), user)
+        SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
         .first()
     )

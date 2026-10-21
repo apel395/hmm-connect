@@ -17,8 +17,8 @@ class SalesTransaction(Base, TimestampMixin):
     queue_number: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(20), default="DRAFT", nullable=False, index=True)
     sale_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    warehouse_id: Mapped[int] = mapped_column(
-        ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[int | None] = mapped_column(
+        ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     customer_id: Mapped[int | None] = mapped_column(
         ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
@@ -54,6 +54,7 @@ class SalesTransaction(Base, TimestampMixin):
     )
 
     warehouse = relationship("Warehouse")
+    location = relationship("Location")
     customer = relationship("Customer")
     created_by = relationship("User", foreign_keys=[created_by_id])
     posted_by = relationship("User", foreign_keys=[posted_by_id])

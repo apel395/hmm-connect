@@ -2,14 +2,13 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.dependencies.authorization import has_permission
 from app.models.chart_of_account import ChartOfAccount
-from app.models.inventory import Inventory
 from app.models.location import Location
 from app.models.product import Product
-from app.models.stock_movement import StockMovement
 from app.models.sales_transaction import SalesTransaction, SalesTransactionLine
 from app.models.user import User
 from app.models.warehouse import Warehouse
@@ -24,8 +23,11 @@ from app.services.activity_service import ActivityService
 from app.services.direct_coa_service import DirectCoaService
 from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
-from app.services.location_access import apply_warehouse_scope
+from app.services.location_access import apply_warehouse_scope, resolve_location_id, require_location_access
+from app.models.business_unit import BusinessUnit
 from app.services.organization_dimensions import validate_dimensions
+from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
+from app.services.location_access import apply_location_scope
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 
@@ -46,8 +48,19 @@ class SalesTransactionService:
             raise HTTPException(403, f"{permission_code} permission required")
 
     @staticmethod
-    def _get(db: Session, transaction_id: int, *, lock: bool = False) -> SalesTransaction:
-        query = db.query(SalesTransaction).filter(SalesTransaction.id == transaction_id)
+    def scoped_query(db, user):
+        query = apply_location_scope(db.query(SalesTransaction), SalesTransaction.location_id, user)
+        unit = business_unit_scope(db, user)
+        department = department_scope(user)
+        if unit is not None:
+            query = query.filter(SalesTransaction.business_unit_id == unit)
+        if department is not None:
+            query = query.filter(SalesTransaction.department_id == department)
+        return query
+
+    @staticmethod
+    def _get(db: Session, transaction_id: int, *, lock: bool = False, user=None) -> SalesTransaction:
+        query = SalesTransactionService.scoped_query(db, user).filter(SalesTransaction.id == transaction_id)
         query = query.with_for_update() if lock else query
         row = query.first()
         if not row:
@@ -68,22 +81,36 @@ class SalesTransactionService:
         return warehouse
 
     @staticmethod
-    def _dimensions(db: Session, warehouse: Warehouse, data) -> tuple[int, int, int | None]:
-        location: Location | None = db.get(Location, data.location_id or warehouse.location_id)
+    def _dimensions(db: Session, warehouse: Warehouse | None, data, user=None) -> tuple[int, int, int | None]:
+        location_id = resolve_location_id(user, data.location_id or (warehouse.location_id if warehouse else None))
+        location = db.get(Location, location_id) if location_id else None
         if not location or not location.is_active:
-            raise HTTPException(422, "Active Location is required for a POS sale")
-        if warehouse.location_id != location.id:
-            raise HTTPException(
-                422,
-                f"Warehouse {warehouse.code} belongs to Location {warehouse.location_id}, "
-                "not the selected sale Location",
-            )
+            raise HTTPException(422, "Select an active sales location")
+        if warehouse and warehouse.location_id != location.id:
+            raise HTTPException(422, "Warehouse does not belong to the sales location")
         business_unit_id = data.business_unit_id or location.business_unit_id
         if not business_unit_id:
-            raise HTTPException(422, "Selected Location is not assigned to a Business Unit")
-        department_id = data.department_id
-        validate_dimensions(db, business_unit_id, location.id, department_id, False)
-        return business_unit_id, location.id, department_id
+            raise HTTPException(422, "Sales location requires a business unit")
+        scope = resolve_organization_access(db, user, location_id=location.id, business_unit_id=business_unit_id, department_id=data.department_id)
+        validate_dimensions(db, business_unit_id, location.id, scope["department_id"], False)
+        return business_unit_id, location.id, scope["department_id"]
+
+    @staticmethod
+    def _sell_item(db, product, transaction):
+        if not product or not product.is_active or product.item_type != "SELL":
+            raise HTTPException(422, "POS accepts active SELL Item Master items only")
+        if product.inventory_treatment != "NON_STOCK":
+            raise HTTPException(422, "SELL items must use NON_STOCK treatment")
+        if product.sales_location_id not in (None, transaction.location_id) or product.sales_business_unit_id not in (None, transaction.business_unit_id):
+            raise HTTPException(422, "SELL item is unavailable at this sales location")
+        unit = db.get(BusinessUnit, transaction.business_unit_id)
+        catalog = "HOTEL" if unit and "hotel" in unit.name.casefold() else "CATERING"
+        if product.catalog_type != catalog:
+            raise HTTPException(422, "SELL item belongs to another item catalog")
+        from app.services import item_departments
+        department = item_departments.payloads(db, [product.id]).get(product.id, {}).get("department_id")
+        if department is not None and department != transaction.department_id:
+            raise HTTPException(422, "Choose the item's sales department / outlet")
 
     @staticmethod
     def _discount(subtotal: Decimal, discount: Decimal) -> Decimal:
@@ -106,26 +133,17 @@ class SalesTransactionService:
                 raise HTTPException(400, f"Duplicate product {line.product_id} in sale items")
             seen.add(line.product_id)
             product = db.get(Product, line.product_id)
-            if not product or not product.is_active:
-                raise HTTPException(404, f"Active product {line.product_id} not found")
+            cls._sell_item(db, product, transaction)
             if any(Decimal(getattr(product, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate")):
-                raise HTTPException(409, f"Sale tax profile for {product.code} is not supported by POS posting yet")
-            inventory = (
-                db.query(Inventory)
-                .filter(
-                    Inventory.warehouse_id == transaction.warehouse_id,
-                    Inventory.product_id == line.product_id,
-                )
-                .first()
-            )
+                raise HTTPException(409, f"Sale tax profile for {product.code} requires supported POS tax account setup")
             quantity = Decimal(line.quantity)
             unit_price = (
                 Decimal(line.unit_price)
                 if line.unit_price is not None
                 else Decimal(product.selling_price or 0)
             )
-            if unit_price < ZERO:
-                raise HTTPException(400, f"Unit price for {product.code} cannot be negative")
+            if unit_price <= ZERO:
+                raise HTTPException(400, f"Unit price for {product.code} must be greater than zero")
             tax_rate = Decimal(product.tax_rate or 0) if product.is_taxable else ZERO
             gross = quantity * unit_price
             tax_amount = (gross * tax_rate / Decimal("100")).quantize(MONEY) if tax_rate > 0 else ZERO
@@ -140,7 +158,7 @@ class SalesTransactionService:
                     tax_rate=tax_rate,
                     tax_amount=tax_amount,
                     line_amount=gross,
-                    unit_cost=Decimal(inventory.average_cost or 0) if inventory else ZERO,
+                    unit_cost=ZERO,
                     uom=product.uom,
                 )
             )
@@ -164,13 +182,19 @@ class SalesTransactionService:
     @classmethod
     def create(cls, db: Session, *, data: SalesTransactionCreate, user: User) -> SalesTransaction:
         cls._require(user, "pos.sell")
-        warehouse = cls._scoped_warehouse(db, data.warehouse_id, user)
-        business_unit_id, location_id, department_id = cls._dimensions(db, warehouse, data)
+        if not data.warehouse_id:
+            nullable = next(c["nullable"] for c in inspect(db.connection()).get_columns("sales_transactions") if c["name"] == "warehouse_id")
+            if not nullable:
+                raise HTTPException(503, "Apply the 20261021_pos_sell_catalog migration on EC2 before creating a location-based sale")
+        warehouse = cls._scoped_warehouse(db, data.warehouse_id, user) if data.warehouse_id else None
+        business_unit_id, location_id, department_id = cls._dimensions(db, warehouse, data, user)
         transaction = SalesTransaction(
             transaction_number=next_document_number(db, "POS", digits=5, day=True),
             status="DRAFT",
+            transaction_type=data.transaction_type,
+            table_number=data.table_number if data.transaction_type == "POS" else None,
             sale_date=data.sale_date or date.today(),
-            warehouse_id=warehouse.id,
+            warehouse_id=warehouse.id if warehouse else None,
             customer_id=data.customer_id,
             business_unit_id=business_unit_id,
             location_id=location_id,
@@ -197,8 +221,8 @@ class SalesTransactionService:
             document_type="POS",
             document_number=transaction.transaction_number,
             document_status=transaction.status,
-            reference_document=warehouse.code,
-            details={"warehouse_id": warehouse.id, "item_count": len(transaction.lines)},
+            reference_document=warehouse.code if warehouse else None,
+            details={"warehouse_id": warehouse.id if warehouse else None, "item_count": len(transaction.lines)},
         )
         db.commit()
         db.refresh(transaction)
@@ -298,7 +322,8 @@ class SalesTransactionService:
         user: User,
     ) -> SalesTransaction:
         cls._require(user, "pos.sell")
-        transaction = cls._get(db, transaction_id, lock=True)
+        transaction = cls._get(db, transaction_id, lock=True, user=user)
+        require_location_access(transaction.location_id, user)
         if transaction.status != "DRAFT":
             raise HTTPException(409, "Only draft POS sales can be posted")
         if not transaction.lines:
@@ -321,31 +346,13 @@ class SalesTransactionService:
             payment_received = total
             change = ZERO
 
-        prepared = []
-        cost_total = ZERO
-        for line in sorted(transaction.lines, key=lambda row: (row.product_id, row.id)):
-            inventory = (
-                db.query(Inventory)
-                .filter(
-                    Inventory.warehouse_id == transaction.warehouse_id,
-                    Inventory.product_id == line.product_id,
-                )
-                .with_for_update()
-                .first()
-            )
-            if not inventory:
-                raise HTTPException(409, f"Inventory row for product {line.product_id} no longer exists")
-            quantity = Decimal(line.quantity)
-            on_hand = Decimal(inventory.quantity or 0)
-            if quantity > on_hand + Decimal("0.0001"):
-                raise HTTPException(
-                    409,
-                    f"Not enough stock for {line.product.code}: on hand {on_hand} {line.uom}, "
-                    f"sale requires {quantity}",
-                )
-            line.unit_cost = Decimal(inventory.average_cost or 0)
-            cost_total += quantity * Decimal(inventory.average_cost or 0)
-            prepared.append((line, inventory))
+        for line in transaction.lines:
+            cls._sell_item(db, line.product or db.get(Product, line.product_id), transaction)
+            if any(Decimal(getattr(line.product, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate")):
+                raise HTTPException(409, "SELL tax profile requires supported POS tax account setup")
+            if Decimal(line.unit_price or 0) <= ZERO:
+                raise HTTPException(422, "SELL price must be greater than zero")
+            line.unit_cost = ZERO
 
         resolver = DirectCoaService(db)
         cash_account = cls._debit_account(
@@ -362,16 +369,6 @@ class SalesTransactionService:
                 db, resolver.setting_account("POS_TAX_PAYABLE_ACCOUNT", "Output VAT Payable")
             )
             tax_payable = tax_account.id if tax_account else None
-
-        cost_by_account: dict[int, Decimal] = {}
-        inventory_by_account: dict[int, Decimal] = {}
-        for line in transaction.lines:
-            product = line.product or db.get(Product, line.product_id)
-            cogs = cls._cogs_account(db, product)
-            inv_account = resolver.inventory_account(product, transaction.location_id)
-            quantity_cost = Decimal(line.quantity) * Decimal(line.unit_cost or 0)
-            cost_by_account[cogs.id] = cost_by_account.get(cogs.id, ZERO) + quantity_cost
-            inventory_by_account[inv_account.id] = inventory_by_account.get(inv_account.id, ZERO) + quantity_cost
 
         journal = JournalEntry(
             journal_number=next_document_number(db, "JV", digits=4),
@@ -397,11 +394,6 @@ class SalesTransactionService:
         if tax_payable:
             lines.append((tax_payable, ZERO, tax_amount, f"Output VAT {transaction.transaction_number}"))
         lines.append((revenue_account.id, ZERO, subtotal - discount + service_charge, f"Sales revenue {transaction.transaction_number}"))
-        for account_id, amount in sorted(cost_by_account.items()):
-            lines.append((account_id, amount, ZERO, f"Cost of goods sold {transaction.transaction_number}"))
-        for account_id, amount in sorted(inventory_by_account.items()):
-            lines.append((account_id, ZERO, amount, f"Inventory issued {transaction.transaction_number}"))
-
         total_debit = sum((debit for _, debit, _, _ in lines), ZERO)
         total_credit = sum((credit for _, _, credit, _ in lines), ZERO)
         if total_debit != total_credit:
@@ -433,33 +425,6 @@ class SalesTransactionService:
                 reference_number=journal.journal_number,
                 description=description,
                 user_id=user.id,
-            )
-
-        for line, inventory in prepared:
-            quantity = Decimal(line.quantity)
-            inventory.quantity = Decimal(inventory.quantity or 0) - quantity
-            if Decimal(inventory.quantity) == ZERO:
-                inventory.average_cost = ZERO
-            product = line.product or db.get(Product, line.product_id)
-            cogs = cls._cogs_account(db, product)
-            inv_account = resolver.inventory_account(product, transaction.location_id)
-            db.add(
-                StockMovement(
-                    product_id=line.product_id,
-                    warehouse_id=transaction.warehouse_id,
-                    business_unit_id=transaction.business_unit_id,
-                    location_id=transaction.location_id,
-                    department_id=transaction.department_id,
-                    movement_type="OUT",
-                    quantity=quantity,
-                    unit_cost=Decimal(line.unit_cost or 0),
-                    reference_type="SALES_TRANSACTION",
-                    reference_id=transaction.id,
-                    notes=f"POS sale {transaction.transaction_number}",
-                    inventory_account_id=inv_account.id,
-                    offset_account_id=cogs.id,
-                    journal_entry_id=journal.id,
-                )
             )
 
         transaction.subtotal = subtotal
@@ -504,7 +469,8 @@ class SalesTransactionService:
         user: User,
     ) -> SalesTransaction:
         cls._require(user, "pos.sell")
-        transaction = cls._get(db, transaction_id, lock=True)
+        transaction = cls._get(db, transaction_id, lock=True, user=user)
+        require_location_access(transaction.location_id, user)
         if transaction.status == "POSTED":
             raise HTTPException(
                 409,
