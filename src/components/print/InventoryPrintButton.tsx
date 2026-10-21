@@ -19,10 +19,12 @@ export default function InventoryPrintButton({
   loadReport,
   disabled,
   reportLabel = "Inventory",
+  compact = false,
 }: {
   loadReport: () => Promise<InventoryPrintReport>;
   disabled?: boolean;
   reportLabel?: string;
+  compact?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [html, setHtml] = useState("");
@@ -60,6 +62,7 @@ export default function InventoryPrintButton({
     <>
       <Button
         variant="outline"
+        size={compact ? "xs" : undefined}
         title="Print complete report"
         aria-label={`Print complete ${reportLabel.toLowerCase()} report`}
         disabled={disabled}
