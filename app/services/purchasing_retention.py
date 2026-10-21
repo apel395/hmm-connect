@@ -66,7 +66,7 @@ def approval_snapshot(request):
         'steps':[{'order':s.step_order,'status':s.status,'approved_by_id':s.approved_by_id,'decided_at':s.decided_at.isoformat() if s.decided_at else None} for s in request.steps]}
 
 
-def cleanup(db, *, as_of=None, apply=False, user=None):
+def cleanup(db, *, as_of=None, apply=False, user=None, only_ids=None):
     day=as_of or today()
     if apply and day>today():raise HTTPException(422,'Cleanup date must not be in the future')
     if user and not all(has_permission(user,p) for p in ('po.manage','pr.manage')):
@@ -74,9 +74,12 @@ def cleanup(db, *, as_of=None, apply=False, user=None):
     scope=resolve_organization_access(db,user) if user else None
     result={'mode':'APPLY' if apply else 'DRY_RUN','as_of':str(day),'counts':{'PO_TO_TRASH':0,'PR_DELETE':0,'PROTECTED':0},'items':[]}
     for kind,model,field,number,months in [('PURCHASE_ORDER',PurchaseOrder,'order_date','po_number',6),('PURCHASE_REQUISITION',PurchaseRequisition,'request_date','pr_number',3)]:
+        allowed_ids = None if only_ids is None else only_ids.get(kind, [])
+        if allowed_ids is not None and not allowed_ids: continue
         cutoff=months_before(day,months);last_id=0
         while True:
             q=db.query(model).filter(model.id>last_id,getattr(model,field)<cutoff,model.status.notin_(CLOSED|({'ARCHIVED'} if kind=='PURCHASE_ORDER' else set())))
+            if allowed_ids is not None: q=q.filter(model.id.in_(allowed_ids))
             if scope:
                 for key in ('location_id','department_id','business_unit_id'):
                     value=scope[key]
