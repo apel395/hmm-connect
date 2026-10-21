@@ -44,8 +44,9 @@ def periods(as_of: date) -> dict:
 
 
 class FinancialReportingService:
-    def __init__(self, db):
+    def __init__(self, db, *, hotel_support_rollup=True):
         self.db = db
+        self.hotel_support_rollup = hotel_support_rollup
         self.statements = FinancialStatementService(db)
         self._actual_cache = {}
         self._year_evidence = {}
@@ -57,6 +58,15 @@ class FinancialReportingService:
         self.budget_setup_available = all(self._schema.has_table(name) for name in ("budgets", "budget_lines"))
 
     def budget(self, start, end, scope, budget_id, report_type):
+        from app.services.hotel_support_rollup import source_scopes
+        amounts, available = defaultdict(lambda: ZERO), False
+        for source in source_scopes(self, scope, report_type):
+            values, found = self._budget_single(start, end, source, budget_id, report_type)
+            available |= found
+            for aid, value in values.items(): amounts[aid] += value
+        return dict(amounts), available
+
+    def _budget_single(self, start, end, scope, budget_id, report_type):
         if not self.budget_setup_available:
             if budget_id is not None:
                 raise HTTPException(503, "Budget reporting is awaiting a database update")
@@ -91,6 +101,26 @@ class FinancialReportingService:
         return dict(amounts), bool(rows)
 
     def _actual(self, kind, start, end, scope):
+        from app.services.hotel_support_rollup import source_scopes
+        sources = source_scopes(self, scope, kind)
+        if len(sources) == 1:
+            return self._actual_single(kind, start, end, sources[0])
+        accounts, totals = {}, defaultdict(lambda: ZERO)
+        for source in sources:
+            rows, summary = self._actual_single(kind, start, end, source)
+            for key, row in rows.items():
+                if key not in accounts: accounts[key] = {**row, 'amount': ZERO}
+                accounts[key]['amount'] += row['amount']
+            for key, value in summary.items():
+                if isinstance(value, (int, Decimal)) and not isinstance(value, bool): totals[key] += value
+        totals['unclassified_account_count'] = sum(
+            row.get('financial_statement_group') not in (
+                ('OPERATING_REVENUE', 'OTHER_REVENUE') if row['account_type'] in ('REVENUE', 'INCOME')
+                else ('COST_OF_REVENUE', 'OPERATING_EXPENSE', 'OTHER_EXPENSE'))
+            for row in accounts.values())
+        return accounts, dict(totals)
+
+    def _actual_single(self, kind, start, end, scope):
         cache_key = (kind, start if kind == "PROFIT_LOSS" else None, end, tuple(scope.items()))
         if cache_key in self._actual_cache:
             return self._actual_cache[cache_key]
@@ -110,6 +140,11 @@ class FinancialReportingService:
         return self._actual_cache[cache_key]
 
     def _has_year_evidence(self, kind, year, scope):
+        from app.services.hotel_support_rollup import source_scopes
+        return any(self._has_year_evidence_single(kind, year, source)
+                   for source in source_scopes(self, scope, kind))
+
+    def _has_year_evidence_single(self, kind, year, scope):
         key = (kind, year, tuple(scope.items()))
         if key in self._year_evidence:
             return self._year_evidence[key]
@@ -296,10 +331,20 @@ class FinancialReportingService:
                 self._category_mappings = {row.account_id: row.description for row in self.db.query(AccountingSetting).filter(AccountingSetting.setting_key.startswith(SETTING_PREFIX)).all()}
             report["include_zero"] = include_zero
             from app.services.profit_loss_relevance import scoped_usage
-            evidence = scoped_usage(self.db, scope, as_of_date)
+            from app.services.hotel_support_rollup import source_scopes, is_rollup
+            sources = source_scopes(self, scope)
+            evidence = set().union(*(scoped_usage(self.db, source, as_of_date) for source in sources))
+            report['is_department_rollup'] = is_rollup(self, scope, report_type)
+            report['metadata']['source_department_ids'] = [s['department_id'] for s in sources]
+            report['metadata']['department_basis'] = 'ACCOUNTING_PLUS_HR' if report['is_department_rollup'] else 'ACCOUNTING_INCLUDES_LEGACY_AG' if len(sources) > 1 else 'RECORDED_DEPARTMENT'
             from app.services.hotel_pl_attribution import attribute
             report["presentation_rows"] = presentation(report, originals, values, all_accounts, self._category_mappings, selected, evidence,
                 attributor=lambda records: attribute(self, report, records, self._category_mappings))
+            if len(sources) > 1:
+                source_labels = [{"id": source['department_id'], "name": self.db.get(Department, source['department_id']).name}
+                                 for source in sources]
+                for account in report['related_accounts']:
+                    account['source_departments'] = source_labels
             from app.services.report_statistics import build_statistics
             report["statistics"] = build_statistics(self, report, budget_id)
         return report
@@ -346,6 +391,14 @@ class FinancialReportingService:
                         if name == "business_unit_id": dimension = effective_business_unit(dimension, BudgetLine.location_id)
                         budgets = budgets.filter(dimension == scope[name])
                 ids.update(row[0] or 0 for row in budgets.distinct().all())
+        # A legacy A&G source can be the only department with recorded activity.
+        # Keep its Accounting leaf in the split even if it is now inactive.
+        if kind == 'PROFIT_LOSS' and scope['department_id'] is None:
+            from app.services.hotel_support_rollup import source_scopes, is_rollup
+            for did in list(ids):
+                candidate = {**scope, 'department_id': did}
+                if is_rollup(self, candidate, kind):
+                    ids.update(source['department_id'] for source in source_scopes(self, candidate))
         names = {row.id: row.name for row in self.db.query(Department).filter(Department.id.in_(ids)).all()}
         from app.services.department_outlets import labels as outlet_labels
         names.update({did:data["display_name"] for did,data in outlet_labels(self.db).items() if did in ids})
@@ -355,6 +408,7 @@ class FinancialReportingService:
                 location_id=scope["location_id"], business_unit_id=scope["business_unit_id"],
                 department_id=dept_id, budget_id=budget_id, kap=kap, include_zero=include_zero, detail=detail, all_accounts=all_accounts)
             result.append({"department_id": dept_id or None, "department_name": names.get(dept_id, "Unassigned department"),
+                           "is_department_rollup": child.get("is_department_rollup", False), "metadata": child["metadata"],
                            "rows": child["rows"], "related_accounts": child.get("related_accounts",[]), "section_totals": child["section_totals"],
                            "statistics": child.get("statistics"), "periods": child["periods"], "presentation_rows": child.get("presentation_rows",[]), "comparison_available": child["comparison_available"]})
         return result

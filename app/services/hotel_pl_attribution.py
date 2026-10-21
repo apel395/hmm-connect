@@ -63,9 +63,11 @@ def load_evidence(service, as_of, scope):
         JournalEntry.status=='POSTED',JournalEntry.posting_date.between(date(as_of.year-1,1,1),as_of),
         ChartOfAccount.account_type.in_(('REVENUE','INCOME','EXPENSE')),
         func.coalesce(JournalEntry.reference_type,'').notin_(('OPENING_BALANCE','OPENING_BALANCE_ADJUSTMENT','PERIOD_CLOSE','YEAR_END')))
+    from app.services.hotel_support_rollup import department_ids
+    source_departments = department_ids(service, scope)
     for k,col in (('business_unit_id',unit),('location_id',location),('department_id',department)):
         if scope[k] is not None:
-            query=query.filter(col.is_(None) if k=='department_id' and scope[k]==0 else col==scope[k])
+            query=query.filter(col.is_(None) if k=='department_id' and scope[k]==0 else col.in_(source_departments) if k=='department_id' else col==scope[k])
     lines=query.all()
     journal_ids={j.id for _,j,_,_,_,_,_ in lines if j.source_type=='JOURNAL_IMPORT' and (j.external_reference or '').startswith('HOTEL-JAN2026-REG-')}
     journals={j.id:j for _,j,_,_,_,_,_ in lines}
@@ -105,10 +107,12 @@ def attribute(service, report, records, mappings):
     slices={}
     if not hasattr(service,'_hotel_pl_unit_ids'):
         service._hotel_pl_unit_ids={u.id for u in service.db.query(BusinessUnit).all() if 'hotel' in f'{u.code} {u.name}'.lower()}
+    from app.services.hotel_support_rollup import department_ids
+    source_departments = department_ids(service, report['scope'])
     matched=0
     for line,journal,account,unit,location,department,department_name in lines:
         actual_scope=dict(business_unit_id=unit,location_id=location,department_id=department)
-        if any(v is not None and actual_scope[k] != (None if k=='department_id' and v==0 else v) for k,v in report['scope'].items()):continue
+        if any(v is not None and (actual_scope[k] not in source_departments if k=='department_id' and v != 0 else actual_scope[k] != (None if k=='department_id' and v==0 else v)) for k,v in report['scope'].items()):continue
         base=bases.get(account.id)
         if base is None:continue
         # Hotel policy is scoped to the actual unit, never applied to Catering.

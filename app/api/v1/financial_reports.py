@@ -127,7 +127,8 @@ def comparison(report_type: str = Query(pattern=TYPES), as_of_date: date = Query
                db: Session = Depends(get_db), user=Depends(view)):
     allowed = resolve_organization_access(db, user, location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
     scope, business_unit_id, department_id = allowed["location_id"], allowed["business_unit_id"], allowed["department_id"]
-    service = FinancialReportingService(db)
+    from app.services.organization_access import department_scope
+    service = FinancialReportingService(db, hotel_support_rollup=department_scope(user) is None)
     if report_type == "PROFIT_LOSS" and report_scope is not None:
         report = deliver(service, as_of_date=as_of_date, report_scope=report_scope, location_id=scope,
                          business_unit_id=business_unit_id, department_id=department_id, budget_id=budget_id,
@@ -154,7 +155,8 @@ def export_comparison(report_type: str = Query(pattern=TYPES), as_of_date: date 
                       db: Session = Depends(get_db), user=Depends(view)):
     allowed = resolve_organization_access(db, user, location_id=location_id, business_unit_id=business_unit_id, department_id=department_id)
     scope, business_unit_id, department_id = allowed["location_id"], allowed["business_unit_id"], allowed["department_id"]
-    service = FinancialReportingService(db)
+    from app.services.organization_access import department_scope
+    service = FinancialReportingService(db, hotel_support_rollup=department_scope(user) is None)
     if report_type == "PROFIT_LOSS":
         report = deliver(service, as_of_date=as_of_date, report_scope=report_scope or "CONSOLIDATED", location_id=scope,
                          business_unit_id=business_unit_id, department_id=department_id, budget_id=budget_id,
@@ -183,7 +185,8 @@ def executive_overview(as_of_date: date = Query(), location_id: int | None = Non
     if not (has_permission(user,'reports.view') or has_permission(user,'finance.view')):
         raise HTTPException(403,'Report view access required')
     scope=resolve_organization_access(db,user,location_id=location_id,business_unit_id=business_unit_id,department_id=department_id)
-    service=FinancialReportingService(db)
+    from app.services.organization_access import department_scope
+    service=FinancialReportingService(db, hotel_support_rollup=department_scope(user) is None)
     pnl=deliver(service,as_of_date=as_of_date,report_scope='CONSOLIDATED',**scope,
                 budget_id=budget_id,include_zero=False,detail=False,include_breakdown=False)
     balance=service.build(report_type='BALANCE_SHEET',as_of_date=as_of_date,**scope,budget_id=budget_id,kap=True)
