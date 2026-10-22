@@ -21,6 +21,7 @@ export type PosItemIn = {
 };
 
 export type PosCreatePayload = {
+  revenue_account_id?: number;
   warehouse_id?: number;
   transaction_type?: PosTransactionType;
   table_number?: string | null;
@@ -35,6 +36,7 @@ export type PosCreatePayload = {
 };
 
 export type PosUpdatePayload = {
+  revenue_account_id?: number;
   transaction_type?: PosTransactionType;
   table_number?: string | null;
   queue_number?: string | null;
@@ -51,6 +53,7 @@ export type PosMetadataPayload = {
 };
 
 export type PosPostPayload = {
+  revenue_account_id?: number;
   payment_method: PosPaymentMethod;
   payment_received?: number | null;
   discount_amount?: number | null;
@@ -62,6 +65,7 @@ export type PosVoidPayload = {
 
 export const posApi = {
   options: () => api.get("/pos/options"),
+  revenueAccounts: (location_id?: number) => api.get("/pos/revenue-accounts", { params: { location_id } }),
   products: (params: Record<string, unknown> = {}) => api.get("/pos/products", { params }),
   list: (params: PosListParams = {}) => api.get("/pos", { params }),
   detail: (id: number) => api.get(`/pos/${id}`),

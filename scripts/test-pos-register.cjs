@@ -8,11 +8,12 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 const values = new Map();
 global.window = Object.assign(new EventTarget(), {localStorage: {getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)}});
 global.__owner = 45;
-const item = {product_id:7,product_code:'7-000001',product_name:'Catering service',group_name:'SERVICE',uom:'PERIOD',selling_price:100,sale_available:true,tax_type:'PBJT',tax_rate:10,is_taxable:true,service_charge_rate:5};
+const item = {product_id:7,product_code:'7-000001',product_name:'Catering service',group_name:'SERVICE',uom:'PERIOD',selling_price:100,sale_available:true,tax_type:'PBJT',tax_rate:10,is_taxable:true,service_charge_rate:5,sales_location_id:6,department_id:1,catalog_type:'CATERING'};
 global.__queries = [];
 global.__products = async params => {global.__queries.push(params);return {data:{items:params.page===1?[item]:[{...item,product_id:8}],has_next:params.page===1}};};
-let writes = 0;
-global.__api = {products:params=>global.__products(params),options:async()=>({data:{}}),create:async()=>{writes++;return {data:{id:1,transaction_number:'POS-1'}};},metadata:async()=>({data:{queue_number:'POS-1'}}),post:async()=>({data:{}})};
+let writes = 0, updates = 0;
+const payloads = [];
+global.__api = {products:params=>global.__products(params),options:async()=>({data:{}}),create:async payload=>{payloads.push(payload);writes++;return {data:{id:1,transaction_number:'POS-1'}};},update:async()=>{updates++;return {data:{id:1,transaction_number:'POS-1'}};},revenueAccounts:async()=>({data:[{id:37,name:'Catering revenue'}]}),metadata:async()=>({data:{queue_number:'POS-1'}}),post:async()=>({data:{}})};
 async function run() {
  const bundle=await req('esbuild').build({absWorkingDir:root,tsconfig:root+'/tsconfig.app.json',entryPoints:['src/modules/pos/pages/PosRegisterPage.tsx'],bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/jsx-runtime'],plugins:[{name:'mocks',setup(b){
  b.onResolve({filter:/^(?:@\/components\/|@\/store\/auth|@\/lib\/access|sonner|@tanstack\/react-query|react-router-dom|lucide-react|\.\.\/api)/},a=>({path:a.path,namespace:'mock'}));
@@ -24,7 +25,7 @@ async function run() {
  else if(a.path==='sonner') contents='export const toast={success(){}};';
  else if(a.path==='react-router-dom') contents='export const useNavigate=()=>()=>{};';
  else if(a.path==='lucide-react') contents='export const Minus=()=>null,Plus=()=>null,Receipt=()=>null,ShoppingCart=()=>null,Trash2=()=>null;';
- else if(a.path==='@tanstack/react-query') contents=`export const useQueryClient=()=>({invalidateQueries:async()=>{}}); export const useQuery=o=>{globalThis.__queriesOptions??=[];globalThis.__queriesOptions.push(o);return {data:o.queryKey[0]==='pos-options'?{locations:[{id:6,name:'Rumin'},{id:8,name:'Hotel'}],departments:[{id:1,name:'Operations',location_id:6}]}:{items:[${JSON.stringify(item)}]},isLoading:false};};export const useMutation=o=>({isPending:false,mutate:async()=>{try{const result=await o.mutationFn();o.onSuccess?.(result);}catch(e){o.onError?.(e);}}});`;
+ else if(a.path==='@tanstack/react-query') contents=`export const useQueryClient=()=>({invalidateQueries:async()=>{}}); export const useQuery=o=>{globalThis.__queriesOptions??=[];globalThis.__queriesOptions.push(o);return {data:o.queryKey[0]==='pos-options'?{locations:[{id:6,name:'Rumin'},{id:8,name:'Hotel'}],departments:[{id:1,name:'Operations',location_id:6}]}:o.queryKey[0]==='pos-revenue-accounts'?[{id:37,name:'Catering revenue'}]:{items:[${JSON.stringify(item)}]},isLoading:false};};export const useMutation=o=>({isPending:false,mutate:async()=>{try{const result=await o.mutationFn();o.onSuccess?.(result);}catch(e){o.onError?.(e);}}});`;
  else if(a.path.includes('SearchableSelect')) contents=`import React from 'react';export default p=>React.createElement('select',{'aria-label':p.label,value:p.value??'',onChange:e=>p.onChange(e.target.value?Number(e.target.value):undefined)},React.createElement('option',{value:''},'All'),p.options.map(o=>React.createElement('option',{key:o.id,value:o.id},o.name)));`;
  else contents=`import React from 'react';export default ({children,onClick,disabled})=>React.createElement('${a.path.endsWith('/Button')?'button':'div'}',{onClick,disabled},children);`;
  return {contents,loader:'js'};
@@ -43,12 +44,12 @@ async function run() {
  assert.ok(text(v.root).includes('PBJT'));
  await renderer.act(async()=>{v.root.findAllByType('input').find(n=>n.props.className==='h-9 w-32 rounded border px-2 text-right').props.onChange({target:{value:'10'}});});
  assert.ok(text(v.root).includes('Rp 9,5'),'PBJT includes service charge after allocated discount');
- await renderer.act(async()=>{v.root.findByProps({'aria-label':'Sales location'}).props.onChange({target:{value:'6'}});});
+ await renderer.act(async()=>{v.root.findByProps({'aria-label':'Filter location'}).props.onChange({target:{value:'8'}});});
  assert.ok(text(v.root).includes('Rp 100'),'location filter preserves cart');
  await renderer.act(async()=>{v.root.findAllByType('input').find(n=>n.props.placeholder==='Contoh: M-01 / 12').props.onChange({target:{value:'12'}});});
  await renderer.act(async()=>v.unmount());
  v=await mount();
- assert.equal(v.root.findByProps({'aria-label':'Sales location'}).props.value,6);
+ assert.equal(v.root.findByProps({'aria-label':'Filter location'}).props.value,8);
  assert.equal(v.root.findAllByType('input').find(n=>n.props.placeholder==='Contoh: M-01 / 12').props.value,'12');
  assert.ok(button(v,'Clear'),'refresh restores cart');assert.equal(writes,0,'refresh never submits or posts');
  global.__owner=46;await renderer.act(async()=>v.update(React.createElement(Page)));
@@ -56,9 +57,26 @@ async function run() {
  global.__owner=45;await renderer.act(async()=>v.update(React.createElement(Page)));
  await click(v,'Clear');await renderer.act(async()=>v.unmount());v=await mount();
  assert.equal(button(v,'Clear'),undefined,'explicit clear survives refresh');
- await click(v,'Catering service');await click(v,'Save Draft');
+ await click(v,'Catering service');
+ await renderer.act(async()=>{v.root.findByProps({'aria-label':'Revenue account'}).props.onChange({target:{value:'37'}});});
+ await click(v,'Save Draft');
  await renderer.act(async()=>v.unmount());v=await mount();assert.equal(button(v,'Clear'),undefined,'saved draft does not return as unsaved cart');
  assert.equal(writes,1);
+ assert.equal(payloads[0].location_id,6,'sale uses Item Master location, not filter location 8');
+ assert.equal(payloads[0].department_id,1);
+ assert.equal(payloads[0].revenue_account_id,37);
+ await click(v,'Catering service');
+ await renderer.act(async()=>{v.root.findByProps({'aria-label':'Revenue account'}).props.onChange({target:{value:'37'}});});
+ await click(v,'Invoice · Langsung');
+ await renderer.act(async()=>{v.root.findAllByType('select').find(n=>!n.props['aria-label']).props.onChange({target:{value:'BANK_TRANSFER'}});});
+ global.__api.post=async()=>{throw new Error('Posting unavailable');};
+ await click(v,'Create Invoice');
+ assert.equal(writes,2);
+ await renderer.act(async()=>v.unmount());v=await mount();
+ global.__api.post=async()=>({data:{}});
+ await click(v,'Create Invoice');
+ assert.equal(writes,2,'retry after refresh reuses the saved draft');assert.equal(updates,1);
+ assert.equal(button(v,'Clear'),undefined,'successful posting clears the recovered order');
  await renderer.act(async()=>v.unmount());
  console.log('POS PASS: refresh recovery, user isolation, non-destructive filters, unfiltered paginated menus, explicit clear and saved draft cleanup.');
 }

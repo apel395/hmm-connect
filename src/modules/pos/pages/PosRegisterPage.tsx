@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Minus, Plus, Receipt, ShoppingCart, Trash2 } from "lucide-react";
@@ -18,15 +18,15 @@ const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANA
 const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
-interface CartLine { product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
+interface CartLine { sales_location_id?: number; sales_business_unit_id?: number; department_id?: number; catalog_type?: string; product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
 
-type PosDraft = { transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
+type PosDraft = { orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
 const validDraft = (value: unknown): value is PosDraft => {
   if (!value || typeof value !== "object") return false;
   const d = value as PosDraft;
   return ["POS", "INVOICE"].includes(d.transactionType) && ["CASH", "CARD", "BANK_TRANSFER"].includes(d.paymentMethod)
     && [d.tableNumber, d.search, d.groupFilter, d.discount, d.amountReceived].every(v => typeof v === "string")
-    && [d.locationId, d.departmentId].every(v => v === undefined || (Number.isInteger(v) && v > 0))
+    && [d.locationId, d.departmentId, d.orderLocationId, d.orderDepartmentId, d.revenueAccountId, d.pendingDraftId].every(v => v === undefined || (Number.isInteger(v) && v > 0))
     && Array.isArray(d.cart) && d.cart.every(l => l && Number.isInteger(l.product_id) && l.product_id > 0
       && [l.quantity, l.unit_price, l.service_charge_rate, l.tax_rate].every(v => Number.isFinite(v) && v >= 0)
       && l.quantity > 0 && [l.product_code, l.product_name, l.group_name, l.uom].every(v => typeof v === "string")
@@ -59,11 +59,19 @@ function PosRegister() {
   const [lastNumber, setLastNumber] = useState("");
 
   const [departmentId, setDepartmentId] = useState<number | undefined>(initial?.departmentId);
-  const recovery = useFormRecovery("pos:register", { transactionType, locationId, departmentId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
+  const [orderLocationId, setOrderLocationId] = useState<number | undefined>(initial?.orderLocationId ?? (initial?.cart.length ? initial.locationId : undefined));
+  const [orderDepartmentId, setOrderDepartmentId] = useState<number | undefined>(initial?.orderDepartmentId ?? (initial?.cart.length ? initial.departmentId : undefined));
+  const [revenueAccountId, setRevenueAccountId] = useState<number | undefined>(initial?.revenueAccountId);
+  const [pendingDraftId, setPendingDraftId] = useState<number | undefined>(initial?.pendingDraftId);
+  const saleLocationId = cart.find(line => line.sales_location_id)?.sales_location_id ?? orderLocationId;
+  const saleDepartmentId = cart.find(line => line.department_id)?.department_id ?? orderDepartmentId;
+  const recovery = useFormRecovery("pos:register", { transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
   const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId]);
-  useEffect(() => { if (!locationId && locations.length === 1) setLocationId(locations[0].id); }, [locations, locationId]);
+  const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId), [optionsQuery.data, saleLocationId]);
+  const revenueQuery = useQuery({ queryKey: ["pos-revenue-accounts", user?.id, saleLocationId], queryFn: async () => (await posApi.revenueAccounts(saleLocationId)).data });
+  const revenueAccounts = useMemo(() => revenueQuery.data ?? [], [revenueQuery.data]);
 
   const productsQuery = useQuery({
     queryKey: ["pos-products", user?.id, locationId, departmentId, search],
@@ -101,32 +109,52 @@ function PosRegister() {
   const addToCart = (product: any) => {
     setError("");
     if (!product.sale_available) return;
+    const conflict = cart.length > 0 && (
+      (product.sales_location_id && saleLocationId && product.sales_location_id !== saleLocationId)
+      || (product.department_id && saleDepartmentId && product.department_id !== saleDepartmentId)
+      || cart.some(line => (line.catalog_type && product.catalog_type && line.catalog_type !== product.catalog_type)
+        || (line.sales_business_unit_id && product.sales_business_unit_id && line.sales_business_unit_id !== product.sales_business_unit_id)));
+    if (conflict) return setError("This menu belongs to another location, business unit or department. Use a separate order.");
+    if (!cart.length) { setOrderLocationId(product.sales_location_id); setOrderDepartmentId(product.department_id); setRevenueAccountId(undefined); }
     const existing = inCart(product.product_id);
     if (existing) {
       setCart((rows) => rows.map((line) => line.product_id === product.product_id ? { ...line, quantity: line.quantity + 1 } : line));
       return;
     }
-    setCart((rows) => [...rows, { product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), service_charge_rate:Number(product.service_charge_rate??0), tax_rate: Number(product.tax_rate ?? 0), tax_type: product.tax_type, is_taxable: Boolean(product.is_taxable), sale_available: Boolean(product.sale_available) }]);
+    setCart((rows) => [...rows, { sales_location_id: product.sales_location_id ?? undefined, sales_business_unit_id: product.sales_business_unit_id ?? undefined, department_id: product.department_id ?? undefined, catalog_type: product.catalog_type, product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), service_charge_rate:Number(product.service_charge_rate??0), tax_rate: Number(product.tax_rate ?? 0), tax_type: product.tax_type, is_taxable: Boolean(product.is_taxable), sale_available: Boolean(product.sale_available) }]);
   };
-  const changeQty = (id: number, delta: number) => setCart((rows) => rows.map((line) => line.product_id === id ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line).filter((line) => line.quantity > 0));
-  const clear = () => { recovery.clear(); setCart([]); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
+  const changeQty = (id: number, delta: number) => {
+    const next = cart.map(line => line.product_id === id ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line).filter(line => line.quantity > 0);
+    if (!next.length) { clear(); return; }
+    setCart(next);
+  };
+  const clear = () => { recovery.clear(); setCart([]); setPendingDraftId(undefined); setOrderLocationId(undefined); setOrderDepartmentId(undefined); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
 
+  const persistOrder = async () => {
+    if (!saleLocationId) throw new Error("Choose the order location for menus shared across locations.");
+    if (!revenueAccountId) throw new Error("Choose a revenue account.");
+    const items = cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity }));
+    let created;
+    if (pendingDraftId) {
+      created = (await posApi.update(pendingDraftId, { revenue_account_id: revenueAccountId, items })).data;
+    } else {
+      created = (await posApi.create({ location_id: saleLocationId, department_id: saleDepartmentId, revenue_account_id: revenueAccountId, transaction_type: transactionType, items })).data;
+      setPendingDraftId(created.id);
+    }
+    const metadata = (await posApi.metadata(created.id, { transaction_type: transactionType, table_number: transactionType === "POS" ? tableNumber.trim() : null, queue_number: created.transaction_number })).data;
+    return { created, metadata };
+  };
   const createAndPost = useMutation({
     mutationFn: async () => {
-      const created = (await posApi.create({ location_id: locationId, department_id: departmentId, transaction_type: transactionType, items: cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity })) })).data;
-      const metadata = await posApi.metadata(created.id, { transaction_type: transactionType, table_number: transactionType === "POS" ? tableNumber.trim() : null, queue_number: created.transaction_number });
-      const posted = (await posApi.post(created.id, { payment_method: paymentMethod, payment_received: paymentMethod === "CASH" ? Number(amountReceived) : total, discount_amount: discountValue > 0 ? discountValue : null })).data;
-      return { created, metadata: metadata.data, posted };
+      const { created, metadata } = await persistOrder();
+      const posted = (await posApi.post(created.id, { revenue_account_id: revenueAccountId, payment_method: paymentMethod, payment_received: paymentMethod === "CASH" ? Number(amountReceived) : total, discount_amount: discountValue > 0 ? discountValue : null })).data;
+      return { created, metadata, posted };
     },
-    onSuccess: ({ created, metadata }) => { recovery.clear(); setQueueNumber(metadata.queue_number || created.transaction_number); setLastNumber(created.transaction_number); setCart([]); setDiscount(""); setAmountReceived(""); void queryClient.invalidateQueries({ queryKey: ["pos-products"] }); },
+    onSuccess: ({ created, metadata }) => { clear(); setQueueNumber(metadata.queue_number || created.transaction_number); setLastNumber(metadata.transaction_number || created.transaction_number); void queryClient.invalidateQueries({ queryKey: ["pos-products"] }); },
     onError: (e: any) => setError(e?.response?.data?.detail || e?.message || "Transaction failed"),
   });
-
   const saveDraft = useMutation({
-    mutationFn: async () => {
-      const created = (await posApi.create({ location_id: locationId, department_id: departmentId, transaction_type: transactionType, items: cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity })) })).data;
-      return posApi.metadata(created.id, { transaction_type: transactionType, table_number: transactionType === "POS" ? tableNumber.trim() : null, queue_number: created.transaction_number });
-    },
+    mutationFn: persistOrder,
     onSuccess: () => { clear(); navigate("/pos/sales"); },
     onError: (e: any) => setError(e?.response?.data?.detail || e?.message || "Could not save draft"),
   });
@@ -134,7 +162,8 @@ function PosRegister() {
   const checkout = () => {
     setError("");
     if (!canSell) return setError("You do not have permission to sell.");
-    if (!locationId) return setError("Select a sales location.");
+    if (!saleLocationId) return setError("Choose the order sales location.");
+    if (!revenueAccountId) return setError("Choose a revenue account.");
     if (transactionType === "POS" && !tableNumber.trim()) return setError("Select or enter a table number.");
     if (!cart.length) return setError("Add at least one menu item.");
     if (paymentMethod === "CASH" && Number(amountReceived) < total) return setError("Cash received must cover the total.");
@@ -151,8 +180,8 @@ function PosRegister() {
           <div className="ml-auto text-xs text-slate-500">{transactionType === "POS" ? "Pilih meja → pilih menu → ambil nomor → bayar" : "Pilih menu → bayar → invoice langsung"}</div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="All accessible locations" onChange={(value) => { setLocationId(value); setDepartmentId(undefined); setGroupFilter(""); }} />
-          <SearchableSelect label="Department / outlet" value={departmentId} options={departments} placeholder="All departments / outlets" onChange={(value) => { setDepartmentId(value); setGroupFilter(""); }} />
+          <SearchableSelect label="Filter location" value={locationId} options={locations} placeholder="All accessible locations" onChange={(value) => { setLocationId(value); setDepartmentId(undefined); setGroupFilter(""); }} />
+          <SearchableSelect label="Filter department / outlet" value={departmentId} options={departments} placeholder="All departments / outlets" onChange={(value) => { setDepartmentId(value); setGroupFilter(""); }} />
           {transactionType === "POS" ? <div><label className="mb-1 block text-xs font-medium text-slate-500">Meja <span className="text-red-500">*</span></label><input className={input} value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} placeholder="Contoh: M-01 / 12" /></div> : <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500">Invoice langsung tidak memerlukan meja.</div>}
         </div>
       </Card>
@@ -169,12 +198,17 @@ function PosRegister() {
         </Card>
         <Card className="h-fit p-4">
           <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2 text-sm font-semibold"><ShoppingCart className="h-4 w-4 text-[#0F6758]" />Order</div>{cart.length > 0 && <button type="button" onClick={clear} className="text-xs text-slate-500">Clear</button>}</div>
+          {cart.length > 0 && <div className="mb-3 space-y-2">
+            {(pendingDraftId || cart.some(line => line.sales_location_id)) ? <div className="text-xs text-slate-600">Sales location: <strong>{locations.find((l: any) => l.id === saleLocationId)?.name || "Item Master location"}</strong></div> : <SearchableSelect label="Order sales location" value={saleLocationId} options={locations} placeholder="Choose order location" onChange={value => { setOrderLocationId(value); setOrderDepartmentId(undefined); setRevenueAccountId(undefined); }} />}
+            {(pendingDraftId || cart.some(line => line.department_id)) ? <div className="text-xs text-slate-600">Department / outlet: <strong>{orderDepartments.find((d: any) => d.id === saleDepartmentId)?.name || "Item Master department"}</strong></div> : <SearchableSelect label="Order department / outlet" value={saleDepartmentId} options={orderDepartments} placeholder="Choose order department" onChange={setOrderDepartmentId} />}
+            <SearchableSelect label="Revenue account" required value={revenueAccountId} options={revenueAccounts} placeholder="Choose revenue account" onChange={setRevenueAccountId} />
+          </div>}
           <div className="space-y-2">{cart.length === 0 && <div className="rounded-md border border-dashed p-6 text-center text-xs text-slate-500">Pilih menu untuk memulai.</div>}{cart.map((line) => <div key={line.product_id} className="rounded-md border p-2"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-semibold">{line.product_name}</div><div className="text-[10px] text-slate-400">{money(line.unit_price)} / {line.uom}</div></div><button type="button" onClick={() => changeQty(line.product_id, -line.quantity)} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div><div className="mt-2 flex items-center justify-between"><div className="flex items-center gap-1"><button type="button" onClick={() => changeQty(line.product_id, -1)} className="grid h-7 w-7 place-items-center rounded border"><Minus className="h-3.5 w-3.5" /></button><span className="w-8 text-center text-sm">{line.quantity}</span><button type="button" onClick={() => changeQty(line.product_id, 1)} className="grid h-7 w-7 place-items-center rounded border"><Plus className="h-3.5 w-3.5" /></button></div><span className="text-sm font-semibold">{money(line.quantity * line.unit_price)}</span></div></div>)}</div>
           <div className="mt-4 space-y-2 border-t pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div><div className="flex items-center justify-between"><span>Discount</span><input className="h-9 w-32 rounded border px-2 text-right" type="number" min={0} value={discount} onChange={(e) => setDiscount(e.target.value)} /></div><div className="flex justify-between"><span>Service charge</span><span>{money(serviceCharge)}</span></div><div className="flex justify-between"><span>{taxLabel}</span><span>{money(tax)}</span></div><div className="flex justify-between border-t pt-2 text-base font-bold"><span>Total</span><span>{money(total)}</span></div></div>
           <div className="mt-4 space-y-2"><select className={input} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PosPaymentMethod)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></select>{paymentMethod === "CASH" && <><input className={input} type="number" min={0} placeholder="Cash received" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} /><div className="flex justify-between text-xs text-slate-500"><span>Change</span><span>{money(change)}</span></div></>}</div>
           {error && <div className="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
           {lastNumber && <div className="mt-3 rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">Saved: <strong>{lastNumber}</strong></div>}
-          <div className="mt-4 grid grid-cols-2 gap-2"><Button variant="outline" disabled={!cart.length || saveDraft.isPending} onClick={() => saveDraft.mutate()}>Save Draft</Button><Button variant="primary" disabled={!cart.length || createAndPost.isPending} onClick={checkout}><Receipt className="h-4 w-4" /> {transactionType === "POS" ? "Ambil Nomor & Bayar" : "Create Invoice"}</Button></div>
+          <div className="mt-4 grid grid-cols-2 gap-2"><Button variant="outline" disabled={!cart.length || saveDraft.isPending || createAndPost.isPending} onClick={() => saveDraft.mutate()}>Save Draft</Button><Button variant="primary" disabled={!cart.length || createAndPost.isPending || saveDraft.isPending} onClick={checkout}><Receipt className="h-4 w-4" /> {transactionType === "POS" ? "Ambil Nomor & Bayar" : "Create Invoice"}</Button></div>
         </Card>
       </div>
     </div>

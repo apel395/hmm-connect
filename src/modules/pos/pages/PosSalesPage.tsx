@@ -9,9 +9,10 @@ import Button from "@/components/ui/Button";
 import Pagination from "@/components/datatable/Pagination";
 import Dialog from "@/components/ui/Dialog";
 import { DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from "@/components/ui/Dialog";
+import SearchableSelect from "@/components/form/SearchableSelect";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
-import { posApi, type PosVoidPayload } from "../api";
+import { posApi, type PosPaymentMethod, type PosVoidPayload } from "../api";
 
 const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
 const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -83,9 +84,15 @@ export default function PosSalesPage() {
   });
   const detail: any = detailQuery.data;
 
+  const [postRevenue, setPostRevenue] = useState<number | undefined>();
+  const [postMethod, setPostMethod] = useState<PosPaymentMethod>("CASH");
+  const [cashReceived, setCashReceived] = useState("");
+  useEffect(() => { setPostRevenue(undefined); setCashReceived(""); setPostMethod("CASH"); setFormError(""); }, [detailId]);
+  const revenueQuery = useQuery({ queryKey: ["pos-revenue-accounts", user?.id, detail?.location_id], queryFn: async () => (await posApi.revenueAccounts(detail?.location_id)).data, enabled: Boolean(detail && detail.status === "DRAFT" && canSell) });
+  const chosenRevenue = postRevenue ?? detail?.revenue_account_id;
   const postMutation = useMutation({
-    mutationFn: async (id: number) => (await posApi.post(id, { payment_method: "CASH" })).data,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["pos-sales"] }),
+    mutationFn: async (id: number) => (await posApi.post(id, { revenue_account_id: chosenRevenue, payment_method: postMethod, payment_received: postMethod === "CASH" ? Number(cashReceived) : undefined })).data,
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["pos-sales"] }); void queryClient.invalidateQueries({ queryKey: ["pos-sale-detail", detailId] }); },
     onError: (error: any) => setFormError(typeof error?.response?.data?.detail === "string" ? error.response.data.detail : error?.message || "Post failed"),
   });
 
@@ -158,7 +165,7 @@ export default function PosSalesPage() {
                           {row.status === "POSTED" && <Button variant="ghost" size="xs" onClick={() => window.open(`/pos/sales/${row.id}/print`, "_blank")}><Printer className="h-4 w-4" /></Button>}
                           {canSell && row.status === "DRAFT" && (
                             <>
-                              <Button variant="success" size="xs" disabled={postMutation.isPending} onClick={() => postMutation.mutate(row.id)}><PlayCircle className="h-4 w-4" />Post</Button>
+                              <Button variant="success" size="xs" disabled={postMutation.isPending} onClick={() => setDetailId(row.id)}><PlayCircle className="h-4 w-4" />Post</Button>
                               <Button variant="ghost" size="xs" disabled={voidMutation.isPending} onClick={() => confirmVoid(row.id)}><Ban className="h-4 w-4" />Void</Button>
                             </>
                           )}
@@ -215,6 +222,11 @@ export default function PosSalesPage() {
                     {detail.payment_received > 0 && <tr className="text-slate-600"><td className="px-2 py-2" colSpan={4}>Received</td><td className="px-2 py-2 text-right tabular-nums">{money(detail.payment_received)}</td></tr>}
                   </tfoot>
                 </table>
+                {canSell && detail.status === "DRAFT" && <div className="grid gap-3 sm:grid-cols-2">
+                  <SearchableSelect label="Revenue account" required value={chosenRevenue} options={revenueQuery.data ?? []} placeholder="Choose revenue account" onChange={setPostRevenue} />
+                  <div><label className="mb-1 block text-xs">Payment method</label><select className={input} value={postMethod} onChange={event => setPostMethod(event.target.value as PosPaymentMethod)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></select></div>
+                  {postMethod === "CASH" && <div><label className="mb-1 block text-xs">Cash received</label><input className={input} type="number" min={0} value={cashReceived} onChange={event => setCashReceived(event.target.value)} /></div>}
+                </div>}
                 {(postMutation.isError || voidMutation.isError) && formError && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{formError}</div>}
               </div>
             )}
@@ -222,7 +234,7 @@ export default function PosSalesPage() {
           <DialogFooter>
             {canSell && detail ? (
               <>
-                {detail.status === "DRAFT" && <Button variant="success" onClick={() => postMutation.mutate(detail.id)} disabled={postMutation.isPending}><PlayCircle className="h-4 w-4" />Post</Button>}
+                {detail.status === "DRAFT" && <Button variant="success" onClick={() => postMutation.mutate(detail.id)} disabled={postMutation.isPending || !chosenRevenue || (postMethod === "CASH" && Number(cashReceived) < Number(detail.total_amount))}><PlayCircle className="h-4 w-4" />Post</Button>}
                 {detail.status === "DRAFT" && <Button variant="outline" onClick={() => confirmVoid(detail.id)} disabled={voidMutation.isPending}><Ban className="h-4 w-4" />Void</Button>}
               </>
             ) : null}
