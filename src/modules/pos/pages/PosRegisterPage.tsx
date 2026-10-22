@@ -69,8 +69,9 @@ function PosRegister() {
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
   const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId]);
+  const orderLocations = locations.filter((location: any) => cart.every(line => (!line.sales_business_unit_id || line.sales_business_unit_id === location.business_unit_id) && (!line.catalog_type || !location.catalog_type || line.catalog_type === location.catalog_type)));
   const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId), [optionsQuery.data, saleLocationId]);
-  const revenueQuery = useQuery({ queryKey: ["pos-revenue-accounts", user?.id, saleLocationId], queryFn: async () => (await posApi.revenueAccounts(saleLocationId)).data });
+  const revenueQuery = useQuery({ queryKey: ["pos-revenue-accounts", user?.id, saleLocationId], queryFn: async () => (await posApi.revenueAccounts(saleLocationId)).data, enabled: Boolean(cart.length && saleLocationId) });
   const revenueAccounts = useMemo(() => revenueQuery.data ?? [], [revenueQuery.data]);
 
   const productsQuery = useQuery({
@@ -199,7 +200,7 @@ function PosRegister() {
         <Card className="h-fit p-4">
           <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2 text-sm font-semibold"><ShoppingCart className="h-4 w-4 text-[#0F6758]" />Order</div>{cart.length > 0 && <button type="button" onClick={clear} className="text-xs text-slate-500">Clear</button>}</div>
           {cart.length > 0 && <div className="mb-3 space-y-2">
-            {(pendingDraftId || cart.some(line => line.sales_location_id)) ? <div className="text-xs text-slate-600">Sales location: <strong>{locations.find((l: any) => l.id === saleLocationId)?.name || "Item Master location"}</strong></div> : <SearchableSelect label="Order sales location" value={saleLocationId} options={locations} placeholder="Choose order location" onChange={value => { setOrderLocationId(value); setOrderDepartmentId(undefined); setRevenueAccountId(undefined); }} />}
+            {(pendingDraftId || cart.some(line => line.sales_location_id)) ? <div className="text-xs text-slate-600">Sales location: <strong>{locations.find((l: any) => l.id === saleLocationId)?.name || "Item Master location"}</strong></div> : <SearchableSelect label="Order sales location" value={saleLocationId} options={orderLocations} placeholder="Choose order location" onChange={value => { setOrderLocationId(value); setOrderDepartmentId(undefined); setRevenueAccountId(undefined); }} />}
             {(pendingDraftId || cart.some(line => line.department_id)) ? <div className="text-xs text-slate-600">Department / outlet: <strong>{orderDepartments.find((d: any) => d.id === saleDepartmentId)?.name || "Item Master department"}</strong></div> : <SearchableSelect label="Order department / outlet" value={saleDepartmentId} options={orderDepartments} placeholder="Choose order department" onChange={setOrderDepartmentId} />}
             <SearchableSelect label="Revenue account" required value={revenueAccountId} options={revenueAccounts} placeholder="Choose revenue account" onChange={setRevenueAccountId} />
           </div>}
