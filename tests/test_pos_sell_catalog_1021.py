@@ -35,7 +35,7 @@ def test_catalog_uses_sell_menus_without_stock_and_enforces_department(db):
     assert [r['product_id'] for r in menu(s,location.id)['items']]==[p.id]
     assert menu(s,location.id)['items'][0]['sale_available']
     s.add(ItemDepartment(product_id=p.id,department_id=department.id));s.commit()
-    assert not menu(s,location.id)['items']
+    assert menu(s,location.id)['items'][0]['product_id']==p.id
     assert menu(s,location.id,dept=department.id)['items'][0]['product_id']==p.id
     options=sale_options(s,ADMIN)
     assert options['locations'][0]['id']==location.id
@@ -94,3 +94,24 @@ def test_unit_and_department_access_filter_options_and_menu(db):
             menu(s,location.id,unit_user)
         with pytest.raises(HTTPException):
             menu(s,location.id,dept_user,department.id)
+
+
+def test_unfiltered_catalog_keeps_access_and_returns_owned_menus(db):
+    from app.models.location import Location
+    from app.models.business_unit import BusinessUnit
+    s,unit,location,department,_=db
+    p,_,hotel=products(s)
+    s.add(ItemDepartment(product_id=p.id,department_id=department.id))
+    other_unit=BusinessUnit(code='HOTEL',name='Hotel',is_active=True)
+    s.add(other_unit);s.flush()
+    other=Location(code='H',name='Hotel',business_unit_id=other_unit.id,is_active=True)
+    s.add(other);s.flush()
+    hotel.sales_location_id=other.id
+    s.commit()
+    assert {r['product_id'] for r in menu(s,None)['items']}=={p.id,hotel.id}
+    assert menu(s,None)['items'][0]['department_id']==department.id
+    scoped=SimpleNamespace(**{**vars(ADMIN),'roles':[],'default_location_id':location.id})
+    with patch.object(Service,'_require'):
+        assert {r['product_id'] for r in menu(s,None,scoped)['items']}=={p.id}
+    assert {r['product_id'] for r in menu(s,other.id)['items']}=={hotel.id}
+    assert s.query(SalesTransaction).count()==s.query(StockMovement).count()==0
