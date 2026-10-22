@@ -12,6 +12,7 @@ class SalesTransactionItemIn(BaseModel):
 
 
 class SalesTransactionCreate(BaseModel):
+    revenue_account_id: int | None = Field(default=None, gt=0)
     warehouse_id: int | None = None
     transaction_type: Literal["POS", "INVOICE"] = "POS"
     table_number: str | None = Field(default=None, max_length=30)
@@ -26,6 +27,7 @@ class SalesTransactionCreate(BaseModel):
 
 
 class SalesTransactionUpdate(BaseModel):
+    revenue_account_id: int | None = Field(default=None, gt=0)
     transaction_type: Literal["POS", "INVOICE"] | None = None
     table_number: str | None = Field(default=None, max_length=30)
     queue_number: str | None = Field(default=None, max_length=50)
@@ -36,6 +38,7 @@ class SalesTransactionUpdate(BaseModel):
 
 
 class SalesTransactionPost(BaseModel):
+    revenue_account_id: int | None = Field(default=None, gt=0)
     payment_method: Literal["CASH", "CARD", "BANK_TRANSFER"] = "CASH"
     payment_received: Decimal | None = Field(default=None, ge=0)
     discount_amount: Decimal | None = Field(default=None, ge=0)

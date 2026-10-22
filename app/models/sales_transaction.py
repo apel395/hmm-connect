@@ -32,6 +32,7 @@ class SalesTransaction(Base, TimestampMixin):
     department_id: Mapped[int | None] = mapped_column(
         ForeignKey("departments.id", ondelete="RESTRICT"), nullable=True
     )
+    revenue_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"), nullable=True)
     payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
     payment_received: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     change_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
