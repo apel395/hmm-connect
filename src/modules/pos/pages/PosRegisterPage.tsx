@@ -9,6 +9,8 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import useAuthStore from "@/store/auth";
+import useFormRecovery from "@/hooks/useFormRecovery";
+import { browserDraftStorage, draftKey, readDraft } from "@/utils/formDraftStorage";
 import { canAccess } from "@/lib/access";
 import { posApi, type PosItemIn, type PosPaymentMethod, type PosTransactionType } from "../api";
 
@@ -18,34 +20,64 @@ const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text
 
 interface CartLine { product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; is_taxable: boolean; sale_available: boolean; }
 
+type PosDraft = { transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
+const validDraft = (value: unknown): value is PosDraft => {
+  if (!value || typeof value !== "object") return false;
+  const d = value as PosDraft;
+  return ["POS", "INVOICE"].includes(d.transactionType) && ["CASH", "CARD", "BANK_TRANSFER"].includes(d.paymentMethod)
+    && [d.tableNumber, d.search, d.groupFilter, d.discount, d.amountReceived].every(v => typeof v === "string")
+    && [d.locationId, d.departmentId].every(v => v === undefined || (Number.isInteger(v) && v > 0))
+    && Array.isArray(d.cart) && d.cart.every(l => l && Number.isInteger(l.product_id) && l.product_id > 0
+      && [l.quantity, l.unit_price, l.service_charge_rate, l.tax_rate].every(v => Number.isFinite(v) && v >= 0)
+      && l.quantity > 0 && [l.product_code, l.product_name, l.group_name, l.uom].every(v => typeof v === "string")
+      && typeof l.is_taxable === "boolean" && typeof l.sale_available === "boolean");
+};
 export default function PosRegisterPage() {
+  const owner = useAuthStore(state => state.user?.id ?? state.user?.username);
+  return <PosRegister key={owner ?? "anonymous"} />;
+}
+function PosRegister() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+  const [initial] = useState(() => {
+    const owner = user?.id ?? user?.username, storage = browserDraftStorage();
+    return owner != null && storage ? readDraft(storage, draftKey(String(owner), "pos:register"), validDraft) : null;
+  });
   const canSell = canAccess(user, POS_ROLES, "pos.sell");
-  const [transactionType, setTransactionType] = useState<PosTransactionType>("POS");
-  const [locationId, setLocationId] = useState<number | undefined>();
-  const [tableNumber, setTableNumber] = useState("");
-  const [search, setSearch] = useState("");
-  const [groupFilter, setGroupFilter] = useState("");
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [discount, setDiscount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>("CASH");
-  const [amountReceived, setAmountReceived] = useState("");
+  const [transactionType, setTransactionType] = useState<PosTransactionType>(initial?.transactionType ?? "POS");
+  const [locationId, setLocationId] = useState<number | undefined>(initial?.locationId);
+  const [tableNumber, setTableNumber] = useState(initial?.tableNumber ?? "");
+  const [search, setSearch] = useState(initial?.search ?? "");
+  const [groupFilter, setGroupFilter] = useState(initial?.groupFilter ?? "");
+  const [cart, setCart] = useState<CartLine[]>(initial?.cart ?? []);
+  const [discount, setDiscount] = useState(initial?.discount ?? "");
+  const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>(initial?.paymentMethod ?? "CASH");
+  const [amountReceived, setAmountReceived] = useState(initial?.amountReceived ?? "");
   const [error, setError] = useState("");
   const [queueNumber, setQueueNumber] = useState("");
   const [lastNumber, setLastNumber] = useState("");
 
-  const [departmentId, setDepartmentId] = useState<number | undefined>();
-  const optionsQuery = useQuery({ queryKey: ["pos-options"], queryFn: async () => (await posApi.options()).data });
+  const [departmentId, setDepartmentId] = useState<number | undefined>(initial?.departmentId);
+  const recovery = useFormRecovery("pos:register", { transactionType, locationId, departmentId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
+  const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
-  const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === locationId), [optionsQuery.data, locationId]);
+  const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId]);
   useEffect(() => { if (!locationId && locations.length === 1) setLocationId(locations[0].id); }, [locations, locationId]);
 
   const productsQuery = useQuery({
-    queryKey: ["pos-products", locationId, departmentId, search],
-    queryFn: async () => (await posApi.products({ location_id: locationId, department_id: departmentId, search: search.trim() || undefined, page: 1, page_size: 200 })).data,
-    enabled: Boolean(locationId),
+    queryKey: ["pos-products", user?.id, locationId, departmentId, search],
+    queryFn: async () => {
+      const items = [];
+      let page = 1, hasNext = true;
+      while (hasNext) {
+        const { data } = await posApi.products({ location_id: locationId, department_id: departmentId, search: search.trim() || undefined, page, page_size: 200 });
+        items.push(...data.items);
+        hasNext = data.has_next;
+        page += 1;
+      }
+      return { items };
+    },
   });
   const products: any[] = useMemo(() => productsQuery.data?.items ?? [], [productsQuery.data?.items]);
   const groups = useMemo(() => Array.from(new Set(products.map((p) => p.group_name).filter(Boolean))) as string[], [products]);
@@ -69,7 +101,7 @@ export default function PosRegisterPage() {
     setCart((rows) => [...rows, { product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), service_charge_rate:Number(product.service_charge_rate??0), tax_rate: Number(product.tax_rate ?? 0), is_taxable: Boolean(product.is_taxable), sale_available: Boolean(product.sale_available) }]);
   };
   const changeQty = (id: number, delta: number) => setCart((rows) => rows.map((line) => line.product_id === id ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line).filter((line) => line.quantity > 0));
-  const clear = () => { setCart([]); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
+  const clear = () => { recovery.clear(); setCart([]); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
 
   const createAndPost = useMutation({
     mutationFn: async () => {
@@ -78,7 +110,7 @@ export default function PosRegisterPage() {
       const posted = (await posApi.post(created.id, { payment_method: paymentMethod, payment_received: paymentMethod === "CASH" ? Number(amountReceived) : total, discount_amount: discountValue > 0 ? discountValue : null })).data;
       return { created, metadata: metadata.data, posted };
     },
-    onSuccess: ({ created, metadata }) => { setQueueNumber(metadata.queue_number || created.transaction_number); setLastNumber(created.transaction_number); setCart([]); setDiscount(""); setAmountReceived(""); void queryClient.invalidateQueries({ queryKey: ["pos-products"] }); },
+    onSuccess: ({ created, metadata }) => { recovery.clear(); setQueueNumber(metadata.queue_number || created.transaction_number); setLastNumber(created.transaction_number); setCart([]); setDiscount(""); setAmountReceived(""); void queryClient.invalidateQueries({ queryKey: ["pos-products"] }); },
     onError: (e: any) => setError(e?.response?.data?.detail || e?.message || "Transaction failed"),
   });
 
@@ -87,7 +119,7 @@ export default function PosRegisterPage() {
       const created = (await posApi.create({ location_id: locationId, department_id: departmentId, transaction_type: transactionType, items: cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity })) })).data;
       return posApi.metadata(created.id, { transaction_type: transactionType, table_number: transactionType === "POS" ? tableNumber.trim() : null, queue_number: created.transaction_number });
     },
-    onSuccess: () => navigate("/pos/sales"),
+    onSuccess: () => { clear(); navigate("/pos/sales"); },
     onError: (e: any) => setError(e?.response?.data?.detail || e?.message || "Could not save draft"),
   });
 
@@ -111,11 +143,12 @@ export default function PosRegisterPage() {
           <div className="ml-auto text-xs text-slate-500">{transactionType === "POS" ? "Pilih meja → pilih menu → ambil nomor → bayar" : "Pilih menu → bayar → invoice langsung"}</div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="Select location" onChange={(value) => { setLocationId(value); setDepartmentId(undefined); clear(); setGroupFilter(""); }} />
-          <SearchableSelect label="Department / outlet" value={departmentId} options={departments} placeholder="Select department / outlet" onChange={(value) => { setDepartmentId(value); clear(); setGroupFilter(""); }} />
+          <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="All accessible locations" onChange={(value) => { setLocationId(value); setDepartmentId(undefined); setGroupFilter(""); }} />
+          <SearchableSelect label="Department / outlet" value={departmentId} options={departments} placeholder="All departments / outlets" onChange={(value) => { setDepartmentId(value); setGroupFilter(""); }} />
           {transactionType === "POS" ? <div><label className="mb-1 block text-xs font-medium text-slate-500">Meja <span className="text-red-500">*</span></label><input className={input} value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} placeholder="Contoh: M-01 / 12" /></div> : <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500">Invoice langsung tidak memerlukan meja.</div>}
         </div>
       </Card>
+      {recovery.failed && <p className="text-xs text-amber-700">Browser storage is unavailable. Save Draft before leaving this page.</p>}
       {queueNumber && <Card className="flex items-center justify-between border-emerald-200 bg-emerald-50 p-4"><div><div className="text-xs uppercase tracking-wide text-emerald-700">{transactionType === "POS" ? "Nomor Antrian" : "Nomor Invoice"}</div><div className="mt-1 text-2xl font-bold text-emerald-800">{queueNumber}</div></div>{transactionType === "POS" && <Badge variant="success">Meja {tableNumber}</Badge>}</Card>}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_390px]">
@@ -123,7 +156,7 @@ export default function PosRegisterPage() {
           <input className={`${input} mb-3`} placeholder="Cari menu, kode atau kategori" value={search} onChange={(e) => setSearch(e.target.value)} />
           {groups.length > 0 && <div className="mb-3 flex flex-wrap gap-1.5"><button type="button" onClick={() => setGroupFilter("")} className={`rounded-full px-3 py-1 text-xs font-medium ${!groupFilter ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>All</button>{groups.map((g) => <button key={g} type="button" onClick={() => setGroupFilter(g)} className={`rounded-full px-3 py-1 text-xs font-medium ${groupFilter === g ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>{g}</button>)}</div>}
           {productsQuery.isError && <p className="text-sm text-red-600">Could not load SELL items. Refresh and check your sales location.</p>}
-          {locationId && !productsQuery.isLoading && !productsQuery.isError && products.length === 0 && <p className="p-4 text-sm text-slate-500">No SELL items available. Register menus and selling prices in Sell Item Master for this location / outlet.</p>}
+          {!productsQuery.isLoading && !productsQuery.isError && products.length === 0 && <p className="p-4 text-sm text-slate-500">No SELL items available. Register menus and selling prices in Sell Item Master for this location / outlet.</p>}
           {productsQuery.isLoading ? <Loading /> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">{visibleProducts.map((product) => <button key={product.product_id} type="button" disabled={!product.sale_available} onClick={() => addToCart(product)} className="flex h-24 flex-col justify-between rounded-lg border border-slate-200 p-2.5 text-left hover:border-[#0F6758] disabled:opacity-40"><div><div className="line-clamp-2 text-xs font-semibold">{product.product_name}</div><div className="text-[10px] text-slate-400">{!product.sale_available ? (Number(product.selling_price) <= 0 ? "Set selling price" : "Tax posting pending") : product.group_name || product.product_code}</div></div><div className="flex items-center justify-between"><span className="text-sm font-bold text-[#0F6758]">{money(product.selling_price)}</span><span className="text-[10px] text-slate-500">{product.uom}</span></div></button>)}</div>}
         </Card>
         <Card className="h-fit p-4">
