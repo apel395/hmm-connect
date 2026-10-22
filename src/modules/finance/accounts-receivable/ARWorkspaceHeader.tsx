@@ -10,7 +10,7 @@ export default function ARWorkspaceHeader() {
   return (
     <ModuleWorkspaceHeader
       title="Accounts Receivable"
-      description="Review customer balances, receipts, invoice detail, and aging from one read-only workspace."
+      description="Review customer balances, receipts, invoice detail, and aging and record customer payments."
       tabs={tabs}
     />
   );

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --max-warnings 0",
     "format": "prettier --write .",
-    "test:finance": "node scripts/test-finance-print-recovery.mjs && node scripts/test-form-recovery-hook.cjs && node scripts/test-executive-summary.mjs && node scripts/test-approval-print.mjs && node scripts/test-expected-receiving-print.mjs && node scripts/test-phr-invoice.mjs && node scripts/test-sell-item-form.cjs && node scripts/test-item-number-input.cjs && node scripts/test-pos-register.cjs",
+    "test:finance": "node scripts/test-finance-print-recovery.mjs && node scripts/test-form-recovery-hook.cjs && node scripts/test-executive-summary.mjs && node scripts/test-approval-print.mjs && node scripts/test-expected-receiving-print.mjs && node scripts/test-phr-invoice.mjs && node scripts/test-sell-item-form.cjs && node scripts/test-item-number-input.cjs && node scripts/test-pos-register.cjs && node scripts/test-ar-receipt.cjs",
     "test:inventory-print": "node scripts/test-inventory-print.mjs",
     "test:workspace": "node scripts/test-workspace-back.cjs",
     "test:store-request": "node scripts/test-store-request-availability.cjs"

@@ -15,6 +15,7 @@ import Dialog, {
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import useAuthStore from "@/store/auth";
 
+import ARReceiptForm from "./ARReceiptForm";
 import PHRInvoice from "./PHRInvoice";
 import {
   type Invoice,
@@ -86,7 +87,10 @@ export default function ARInvoicePage() {
     );
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap gap-4 rounded border bg-white px-3 py-2 text-sm print:hidden"><span>Invoice: <strong>{money(data.amount)}</strong></span><span>Received: <strong>{money(data.received_amount)}</strong></span><span>Outstanding: <strong>{money(data.outstanding_amount)}</strong></span></div>
+      {!!data.receipts?.length && <div className="rounded border bg-white px-3 py-2 text-xs print:hidden">{data.receipts.map(receipt => <div key={receipt.id} className="flex gap-4 py-1"><span>{receipt.payment_number}</span><span>{receipt.payment_date}</span><span>{money(receipt.amount)}</span><span>{receipt.reference_number}</span></div>)}</div>}
       <div className="flex justify-end gap-1 print:hidden">
+        {canManage && data.account_id && Number(data.outstanding_amount) > 0 && <ARReceiptForm key={data.id} invoiceId={data.id} outstanding={data.outstanding_amount} />}
         {canManage && (
           <Button
             size="sm"

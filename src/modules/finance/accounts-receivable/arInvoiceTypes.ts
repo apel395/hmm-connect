@@ -29,6 +29,10 @@ export type Layout = {
   show_settlement: boolean;
 };
 export type Invoice = {
+  source_sale_id?: number | null;
+  account_id?: number | null;
+  receipts?: Array<{ id: number; payment_number: string; payment_date: string; amount: string; payment_method: string; reference_number: string | null }>;
+
   id: number;
   invoice_number: string;
   invoice_date: string;
