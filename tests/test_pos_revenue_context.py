@@ -41,6 +41,7 @@ def test_chosen_revenue_posts_without_global_mapping_and_master_sets_context(db,
     update_pos_metadata(tx.id,metadata,s,ADMIN)
     update_pos_metadata(tx.id,metadata,s,ADMIN)
     assert tx.transaction_number=='INV-TEST-1' and len(numbers)==1
+    tx.transaction_type='POS';s.commit()
     tx=Service.post(s,transaction_id=tx.id,data=SalesTransactionPost(payment_received=200),user=ADMIN)
     assert s.query(JournalLine).filter_by(account_id=rev.id).one().credit==D(200)
     assert len(pos_revenue_accounts(loc.id,s,ADMIN))==2 # canonical catering account + legacy posting 400

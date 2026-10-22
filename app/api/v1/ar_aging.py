@@ -22,8 +22,9 @@ def get_ar_aging(
 
     today = date.today()
 
+    from app.services.ar_invoice_service import scoped_receivables
     rows = (
-        db.query(AccountReceivable)
+        scoped_receivables(db,current_user)
         .filter(
             AccountReceivable.outstanding_amount > 0
         )

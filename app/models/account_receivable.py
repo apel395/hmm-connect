@@ -12,6 +12,12 @@ class AccountReceivable(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
+    source_sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales_transactions.id", ondelete="RESTRICT"), unique=True, nullable=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"), nullable=True)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), nullable=True)
+    business_unit_id: Mapped[int | None] = mapped_column(ForeignKey("business_units.id", ondelete="RESTRICT"), nullable=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="RESTRICT"), nullable=True)
+
     invoice_number: Mapped[str] = mapped_column(
         String(50),
         unique=True,

@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 
 class CustomerPaymentCreate(BaseModel):
 
+    cash_account_id: int | None = Field(default=None, gt=0)
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=64)
     account_receivable_id: int
     payment_date: date
     amount: Decimal = Field(gt=0)

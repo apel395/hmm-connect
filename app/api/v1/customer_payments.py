@@ -37,63 +37,11 @@ def create_customer_payment(
     ),
 ):
 
-    receivable = (
-        db.query(AccountReceivable)
-        .filter(AccountReceivable.id == data.account_receivable_id)
-        .with_for_update()
-        .first()
-    )
+    from app.services.ar_invoice_service import receive_payment
+    return receive_payment(db,data,current_user)
 
-    if not receivable:
-        raise HTTPException(
-            status_code=404,
-            detail="Account receivable not found.",
-        )
 
-    outstanding = Decimal(receivable.outstanding_amount or 0)
-
-    if outstanding <= 0:
-        raise HTTPException(
-            status_code=409,
-            detail="Account receivable is already paid.",
-        )
-
-    if data.amount > outstanding:
-        raise HTTPException(
-            status_code=400,
-            detail="Payment exceeds outstanding balance.",
-        )
-
-    payment = CustomerPayment(
-        payment_number=next_document_number(db, "CP"),
-        account_receivable_id=receivable.id,
-        payment_date=data.payment_date,
-        amount=data.amount,
-        payment_method=data.payment_method,
-        reference_number=data.reference_number,
-    )
-
-    db.add(payment)
-    db.flush()
-
-    receivable.received_amount += Decimal(data.amount)
-    receivable.outstanding_amount -= Decimal(data.amount)
-
-    if receivable.outstanding_amount <= 0:
-        receivable.outstanding_amount = Decimal("0")
-        receivable.status = "PAID"
-    elif receivable.received_amount > 0:
-        receivable.status = "PARTIAL"
-
-    PostingService.post_customer_payment(
-        db=db,
-        payment=payment,
-        receivable=receivable,
-        user=current_user,
-    )
-
-    db.commit()
-
-    db.refresh(payment)
-
-    return payment
+@router.get("/options")
+def customer_receipt_options(db: Session = Depends(get_db), user=Depends(require_permission("finance.view"))):
+    from app.services.ar_invoice_service import bank_choices
+    return {"cash_accounts":[{"id":a.id,"code":a.account_number,"name":a.account_name} for a in bank_choices(db).all()]}

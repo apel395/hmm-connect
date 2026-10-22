@@ -582,31 +582,31 @@ class FinancialReconciliationService:
 
     def accounts_receivable(self, location_id: int | None = None,
                             as_of: date | None = None) -> dict:
-        if location_id is not None or self.business_unit_id is not None:
+        from app.models.customer_payment import CustomerPayment
+        query = self._unit_scope(self.db.query(AccountReceivable), AccountReceivable)
+        if location_id is not None:
+            query = query.filter(AccountReceivable.location_id == location_id)
+        rows = query.all()
+        if (location_id is not None or self.business_unit_id is not None) and not any(r.source_sale_id for r in rows):
             row = self._row("ACCOUNTS_RECEIVABLE", ZERO, ZERO, [], configured=False)
-            row.update(source_balance=None, difference=None, variance=None, note="AR source records have no unit or location dimension.")
+            row.update(source_balance=None, difference=None, variance=None, note="No location-linked AR invoices are available in this scope.")
             return row
-        account_ids = self._rule_account_ids(
-            debit=False, event_types=["CUSTOMER_PAYMENT"],
-        )
+        account_ids = sorted(set(self._rule_account_ids(debit=False, event_types=["CUSTOMER_PAYMENT"])) | {r.account_id for r in rows if r.account_id})
         gl = self._gl_balance(account_ids, location_id, as_of)
-        if as_of is not None and as_of < datetime.now(timezone.utc).date():
-            row = self._row("ACCOUNTS_RECEIVABLE", ZERO, gl,
-                            self._accounts(account_ids), configured=False)
-            row.update(status="HISTORY_UNAVAILABLE", source_balance=None,
-                       external_statement=None, variance=None, difference=None,
-                       visual="AMBER",
-                       note="AR has no dated payment ledger; historical source balance cannot be reconstructed.")
+        if as_of is not None and as_of < datetime.now(timezone.utc).date() and any(not r.source_sale_id for r in rows):
+            row = self._row("ACCOUNTS_RECEIVABLE", ZERO, gl, self._accounts(account_ids), configured=False)
+            row.update(status="HISTORY_UNAVAILABLE", source_balance=None, external_statement=None, variance=None, difference=None, visual="AMBER", note="Legacy AR lacks a dated source ledger; historical balance cannot be reconstructed completely.")
             return row
-        source = Decimal(
-            self.db.query(func.coalesce(func.sum(AccountReceivable.outstanding_amount), 0)).scalar()
-            or 0
-        )
-        return self._row(
-            "ACCOUNTS_RECEIVABLE", source, gl, self._accounts(account_ids),
-            configured=bool(account_ids),
-            variance_breakdown={"posting_mismatch": source - gl},
-        )
+        if as_of is None:
+            source = sum((Decimal(r.outstanding_amount or 0) for r in rows), ZERO)
+        else:
+            source = ZERO
+            for invoice in rows:
+                if invoice.invoice_date > as_of:
+                    continue
+                received = self.db.query(func.coalesce(func.sum(CustomerPayment.amount), 0)).filter(CustomerPayment.account_receivable_id == invoice.id, CustomerPayment.status == "POSTED", CustomerPayment.payment_date <= as_of).scalar()
+                source += Decimal(invoice.amount or 0) - Decimal(received or 0)
+        return self._row("ACCOUNTS_RECEIVABLE", source, gl, self._accounts(account_ids), configured=bool(account_ids), variance_breakdown={"posting_mismatch": source - gl})
 
     def clearing_suspense(self, location_id: int | None = None,
                           as_of: date | None = None) -> dict:

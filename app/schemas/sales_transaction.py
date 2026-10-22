@@ -12,6 +12,8 @@ class SalesTransactionItemIn(BaseModel):
 
 
 class SalesTransactionCreate(BaseModel):
+    invoice_due_date: date | None = None
+    receivable_account_id: int | None = Field(default=None, gt=0)
     revenue_account_id: int | None = Field(default=None, gt=0)
     warehouse_id: int | None = None
     transaction_type: Literal["POS", "INVOICE"] = "POS"
@@ -27,6 +29,8 @@ class SalesTransactionCreate(BaseModel):
 
 
 class SalesTransactionUpdate(BaseModel):
+    invoice_due_date: date | None = None
+    receivable_account_id: int | None = Field(default=None, gt=0)
     revenue_account_id: int | None = Field(default=None, gt=0)
     transaction_type: Literal["POS", "INVOICE"] | None = None
     table_number: str | None = Field(default=None, max_length=30)
@@ -38,6 +42,9 @@ class SalesTransactionUpdate(BaseModel):
 
 
 class SalesTransactionPost(BaseModel):
+    invoice_due_date: date | None = None
+    receivable_account_id: int | None = Field(default=None, gt=0)
+    customer_id: int | None = Field(default=None, gt=0)
     revenue_account_id: int | None = Field(default=None, gt=0)
     payment_method: Literal["CASH", "CARD", "BANK_TRANSFER"] = "CASH"
     payment_received: Decimal | None = Field(default=None, ge=0)
@@ -61,3 +68,11 @@ class SalesTransactionItemOut(BaseModel):
     line_amount: Decimal
     unit_cost: Decimal
     uom: str
+
+
+class InvoiceARCorrection(BaseModel):
+    customer_id: int = Field(gt=0)
+    invoice_due_date: date
+    receivable_account_id: int | None = Field(default=None, gt=0)
+    correction_date: date
+    confirm_unpaid: Literal[True]

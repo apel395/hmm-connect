@@ -49,7 +49,7 @@ def test_location_only_sale_posts_revenue_without_inventory_or_cogs(db,monkeypat
     def setting(self,key,label):
         return accounts[0] if key=='POS_SALES_REVENUE_ACCOUNT' else accounts[2]
     monkeypatch.setattr('app.services.sales_transaction_service.DirectCoaService.setting_account',setting)
-    tx=Service.create(s,data=SalesTransactionCreate(location_id=location.id,department_id=department.id,sale_date=date(2026,1,5),transaction_type='INVOICE',items=[dict(product_id=p.id,quantity=2)]),user=ADMIN)
+    tx=Service.create(s,data=SalesTransactionCreate(location_id=location.id,department_id=department.id,sale_date=date(2026,1,5),transaction_type='POS',items=[dict(product_id=p.id,quantity=2)]),user=ADMIN)
     assert tx.warehouse_id is None and tx.total_amount==D('210')
     tx=Service.post(s,transaction_id=tx.id,data=SalesTransactionPost(payment_received=210),user=ADMIN)
     assert tx.status=='POSTED' and tx.lines[0].unit_cost==0
