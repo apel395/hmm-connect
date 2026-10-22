@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
 from sqlalchemy import inspect
@@ -19,6 +19,7 @@ from app.schemas.sales_transaction import (
     SalesTransactionUpdate,
     SalesTransactionVoid,
 )
+from app.services.pos_tax import pbjt_account, tax_profile
 from app.services.activity_service import ActivityService
 from app.services.direct_coa_service import DirectCoaService
 from app.services.document_number import next_document_number
@@ -134,8 +135,8 @@ class SalesTransactionService:
             seen.add(line.product_id)
             product = db.get(Product, line.product_id)
             cls._sell_item(db, product, transaction)
-            if any(Decimal(getattr(product, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate")):
-                raise HTTPException(409, f"Sale tax profile for {product.code} requires supported POS tax account setup")
+            tax_type, tax_rate = tax_profile(product)
+            tax_account = pbjt_account(db) if tax_type == "PBJT" else None
             quantity = Decimal(line.quantity)
             unit_price = (
                 Decimal(line.unit_price)
@@ -144,9 +145,8 @@ class SalesTransactionService:
             )
             if unit_price <= ZERO:
                 raise HTTPException(400, f"Unit price for {product.code} must be greater than zero")
-            tax_rate = Decimal(product.tax_rate or 0) if product.is_taxable else ZERO
-            gross = quantity * unit_price
-            tax_amount = (gross * tax_rate / Decimal("100")).quantize(MONEY) if tax_rate > 0 else ZERO
+            gross = (quantity * unit_price).quantize(MONEY, rounding=ROUND_HALF_UP)
+            tax_amount = (gross * tax_rate / Decimal("100")).quantize(MONEY, rounding=ROUND_HALF_UP) if tax_rate > 0 else ZERO
             materialized.append(
                 SalesTransactionLine(
                     product_id=product.id,
@@ -154,7 +154,9 @@ class SalesTransactionService:
                     quantity=quantity,
                     unit_price=unit_price,
                     service_charge_rate=Decimal(product.service_charge_rate or 0),
-                    service_charge_amount=(gross * Decimal(product.service_charge_rate or 0) / 100).quantize(MONEY),
+                    service_charge_amount=(gross * Decimal(product.service_charge_rate or 0) / 100).quantize(MONEY, rounding=ROUND_HALF_UP),
+                    tax_type=tax_type,
+                    tax_account_id=tax_account.id if tax_account else None,
                     tax_rate=tax_rate,
                     tax_amount=tax_amount,
                     line_amount=gross,
@@ -168,6 +170,20 @@ class SalesTransactionService:
     def _totals(lines: list[SalesTransactionLine], discount: Decimal) -> dict:
         subtotal = sum((Decimal(line.line_amount or 0) for line in lines), ZERO)
         discount = min(discount, subtotal)
+        # PBJT follows the amount charged: item value after allocated discount,
+        # plus service charge. The saved rate/account are never read from the
+        # current Item Master when an existing draft is posted.
+        allocated = ZERO
+        for index, line in enumerate(lines):
+            share = ((discount * Decimal(line.line_amount or 0) / subtotal).quantize(MONEY, rounding=ROUND_HALF_UP)
+                     if subtotal else ZERO)
+            share = min(max(ZERO, share), discount - allocated)
+            if index == len(lines) - 1:
+                share = discount - allocated
+            allocated += share
+            if line.tax_type == "PBJT":
+                base = max(ZERO, Decimal(line.line_amount or 0) - share + Decimal(line.service_charge_amount or 0))
+                line.tax_amount = (base * Decimal(line.tax_rate or 0) / 100).quantize(MONEY, rounding=ROUND_HALF_UP)
         tax_amount = sum((Decimal(line.tax_amount or 0) for line in lines), ZERO)
         service_charge = sum((Decimal(getattr(line, "service_charge_amount", 0) or 0) for line in lines), ZERO)
         total = (subtotal - discount + tax_amount + service_charge).quantize(MONEY)
@@ -286,10 +302,8 @@ class SalesTransactionService:
 
     @staticmethod
     def _tax_account(db: Session, account: ChartOfAccount | None) -> ChartOfAccount | None:
-        if account is None:
-            return None
-        if account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
-            raise HTTPException(409, "Output VAT COA must be a credit-balance liability account")
+        if not account or not account.is_active or not account.is_posting or account.account_type != "LIABILITY" or account.normal_balance != "CREDIT":
+            raise HTTPException(409, "Sales tax COA must be an active credit-balance liability posting account")
         return account
 
     @classmethod
@@ -331,9 +345,8 @@ class SalesTransactionService:
 
         subtotal = Decimal(transaction.subtotal or 0)
         discount = cls._discount(subtotal, data.discount_amount or ZERO)
-        tax_amount = sum((Decimal(line.tax_amount or 0) for line in transaction.lines), ZERO)
-        service_charge = sum((Decimal(getattr(line, "service_charge_amount", 0) or 0) for line in transaction.lines), ZERO)
-        total = (subtotal - discount + tax_amount + service_charge).quantize(MONEY)
+        totals = cls._totals(transaction.lines, discount)
+        tax_amount, service_charge, total = totals["tax_amount"], totals["service_charge_amount"], totals["total"]
 
         payment_received = Decimal(data.payment_received or ZERO)
         if data.payment_method == "CASH":
@@ -348,8 +361,8 @@ class SalesTransactionService:
 
         for line in transaction.lines:
             cls._sell_item(db, line.product or db.get(Product, line.product_id), transaction)
-            if any(Decimal(getattr(line.product, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate")):
-                raise HTTPException(409, "SELL tax profile requires supported POS tax account setup")
+            if line.tax_type == "LEGACY" and any(Decimal(getattr(line.product, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate")):
+                raise HTTPException(409, "Update this legacy draft to save its SELL tax profile before posting")
             if Decimal(line.unit_price or 0) <= ZERO:
                 raise HTTPException(422, "SELL price must be greater than zero")
             line.unit_cost = ZERO
@@ -363,12 +376,19 @@ class SalesTransactionService:
         revenue_account = cls._revenue_account(
             db, resolver.setting_account("POS_SALES_REVENUE_ACCOUNT", "POS Revenue")
         )
-        tax_payable = ZERO
-        if tax_amount > ZERO:
-            tax_account = cls._tax_account(
-                db, resolver.setting_account("POS_TAX_PAYABLE_ACCOUNT", "Output VAT Payable")
-            )
-            tax_payable = tax_account.id if tax_account else None
+        tax_entries = {}
+        for line in transaction.lines:
+            amount = Decimal(line.tax_amount or 0)
+            if amount <= ZERO:
+                continue
+            if line.tax_type == "PBJT":
+                account = cls._tax_account(db, db.get(ChartOfAccount, line.tax_account_id) if line.tax_account_id else None)
+            else:
+                account = cls._tax_account(db, resolver.setting_account("POS_TAX_PAYABLE_ACCOUNT", "Output VAT Payable"))
+            line.tax_account_id = account.id
+            label = "PBJT" if line.tax_type == "PBJT" else "Output VAT"
+            key = (account.id, label)
+            tax_entries[key] = tax_entries.get(key, ZERO) + amount
 
         journal = JournalEntry(
             journal_number=next_document_number(db, "JV", digits=4),
@@ -391,8 +411,8 @@ class SalesTransactionService:
         line_number = 1
         lines: list[tuple[int, Decimal, Decimal, str]] = []
         lines.append((cash_account.id, total, ZERO, f"Payment received {transaction.transaction_number}"))
-        if tax_payable:
-            lines.append((tax_payable, ZERO, tax_amount, f"Output VAT {transaction.transaction_number}"))
+        for (account_id, label), amount in tax_entries.items():
+            lines.append((account_id, ZERO, amount, f"{label} {transaction.transaction_number}"))
         lines.append((revenue_account.id, ZERO, subtotal - discount + service_charge, f"Sales revenue {transaction.transaction_number}"))
         total_debit = sum((debit for _, debit, _, _ in lines), ZERO)
         total_credit = sum((credit for _, _, credit, _ in lines), ZERO)
