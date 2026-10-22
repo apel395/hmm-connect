@@ -4,7 +4,7 @@ from math import ceil
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_
+from sqlalchemy import and_, false, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -137,19 +137,33 @@ def list_pos_products(
     SalesTransactionService._require(user, "pos.view")
     location_id = resolve_location_id(user, location_id)
     location = db.get(Location, location_id) if location_id else None
-    if not location or not location.is_active:
+    if location_id and (not location or not location.is_active):
         raise HTTPException(422, "Select an active sales location")
-    from app.services.organization_dimensions import validate_dimensions
-    scope = resolve_organization_access(db, user, location_id=location.id, business_unit_id=location.business_unit_id, department_id=department_id)
+    scope = resolve_organization_access(db, user, location_id=location_id,
+        business_unit_id=location.business_unit_id if location else None, department_id=department_id)
     department_id = scope["department_id"]
-    validate_dimensions(db, location.business_unit_id, location.id, department_id, False)
-    unit = db.get(BusinessUnit, location.business_unit_id)
-    catalog = "HOTEL" if unit and "hotel" in unit.name.casefold() else "CATERING"
-    query = db.query(Product).filter(Product.is_active.is_(True), Product.item_type == "SELL", Product.inventory_treatment == "NON_STOCK", Product.catalog_type == catalog,
-        or_(Product.sales_location_id.is_(None), Product.sales_location_id == location.id),
-        or_(Product.sales_business_unit_id.is_(None), Product.sales_business_unit_id == location.business_unit_id))
+    locations = apply_location_scope(db.query(Location), Location.id, user).filter(Location.is_active.is_(True))
+    if scope["business_unit_id"] is not None:
+        locations = locations.filter(Location.business_unit_id == scope["business_unit_id"])
+    if location_id:
+        locations = locations.filter(Location.id == location_id)
+    if department_id is not None:
+        locations = locations.join(LocationDepartment, LocationDepartment.location_id == Location.id).filter(LocationDepartment.department_id == department_id)
+    # An unfiltered menu is the union of contexts this user may actually sell in.
+    # Keep catalog, location and unit predicates together to prevent cross-unit leaks.
+    contexts = []
+    for loc in locations.all():
+        unit = db.get(BusinessUnit, loc.business_unit_id)
+        if not unit or not unit.is_active:
+            continue
+        catalog = "HOTEL" if "hotel" in unit.name.casefold() else "CATERING"
+        contexts.append(and_(Product.catalog_type == catalog,
+            or_(Product.sales_location_id.is_(None), Product.sales_location_id == loc.id),
+            or_(Product.sales_business_unit_id.is_(None), Product.sales_business_unit_id == loc.business_unit_id)))
+    query = db.query(Product).filter(Product.is_active.is_(True), Product.item_type == "SELL",
+        Product.inventory_treatment == "NON_STOCK", or_(*contexts) if contexts else false())
     from app.services import item_departments
-    if item_departments.available(db):
+    if item_departments.available(db) and department_id is not None:
         query = query.outerjoin(ItemDepartment, ItemDepartment.product_id == Product.id).filter(or_(ItemDepartment.department_id.is_(None), ItemDepartment.department_id == department_id))
     if search and search.strip():
         term = f"%{search.strip()}%"
@@ -158,7 +172,9 @@ def list_pos_products(
         query = query.filter(Product.group_name == group_name)
     total = query.count()
     rows = query.order_by(Product.group_name, Product.name, Product.code).offset((page-1)*page_size).limit(page_size).all()
-    items = [{"product_id": p.id, "product_code": p.code, "product_name": p.name, "group_name": p.group_name,
+    ownership = item_departments.payloads(db, [p.id for p in rows])
+    items = [{"sales_location_id": p.sales_location_id, "sales_business_unit_id": p.sales_business_unit_id,
+        **ownership.get(p.id, {}), "product_id": p.id, "product_code": p.code, "product_name": p.name, "group_name": p.group_name,
         "uom": p.uom, "selling_price": p.selling_price, "service_charge_rate": p.service_charge_rate,
         "tax_rate": p.tax_rate, "is_taxable": p.is_taxable,
         "sale_available": p.selling_price > 0 and not any(Decimal(getattr(p, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate"))} for p in rows]
