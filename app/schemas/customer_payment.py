@@ -10,7 +10,7 @@ class CustomerPaymentCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=64)
     account_receivable_id: int
     payment_date: date
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
     payment_method: str
     reference_number: str | None = None
 

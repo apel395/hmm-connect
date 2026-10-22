@@ -16,6 +16,10 @@ from app.models.customer import Customer
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.user import User
+from app.models.business_unit import BusinessUnit
+from app.models.location import Location
+from app.models.fiscal_period import FiscalPeriod
+from app.models.general_ledger import GeneralLedger
 from app.api.v1 import customer_payments as customer_payment_api
 from app.schemas.customer_payment import CustomerPaymentCreate
 from app.services.financial_reconciliation_service import FinancialReconciliationService
@@ -178,7 +182,13 @@ def test_customer_payment_updates_balance_atomically(db, monkeypatch):
     )
     db.add_all([customer, user])
     db.flush()
+    unit=BusinessUnit(code="AR",name="AR Unit",is_active=True);db.add(unit);db.flush()
+    location=Location(code="AR",name="AR Location",business_unit_id=unit.id,is_active=True);db.add(location);db.flush()
+    cash=account(db,"100-110-100","Bank")
+    control=account(db,"100-200-101","Piutang Usaha")
+    db.add(FiscalPeriod(fiscal_year=2026,fiscal_month=8,period_name="August",start_date=date(2026,8,1),end_date=date(2026,8,31),is_open=True,is_closed=False,allow_backdated_entries=True))
     receivable = AccountReceivable(
+        location_id=location.id,business_unit_id=unit.id,account_id=control.id,
         invoice_number="AR-PAY",
         customer_id=customer.id,
         invoice_date=date(2026, 8, 21),
@@ -191,12 +201,12 @@ def test_customer_payment_updates_balance_atomically(db, monkeypatch):
     db.add(receivable)
     db.commit()
 
-    monkeypatch.setattr(customer_payment_api, "next_document_number", lambda *_args, **_kwargs: "CP-202608-0001")
-    monkeypatch.setattr(PostingService, "post_customer_payment", lambda **_kwargs: None)
+    monkeypatch.setattr("app.services.ar_invoice_service.next_document_number",lambda _db,prefix,**kwargs:f"{prefix}-202608-0001")
 
     payment = customer_payment_api.create_customer_payment(
         CustomerPaymentCreate(
             account_receivable_id=receivable.id,
+            cash_account_id=cash.id,
             payment_date=date(2026, 8, 21),
             amount=Decimal("40000.00"),
             payment_method="BANK_TRANSFER",
@@ -209,6 +219,9 @@ def test_customer_payment_updates_balance_atomically(db, monkeypatch):
     assert receivable.received_amount == Decimal("40000.00")
     assert receivable.outstanding_amount == Decimal("60000.00")
     assert receivable.status == "PARTIAL"
+    assert db.query(GeneralLedger).count()==2
+    assert db.query(JournalLine).filter_by(account_id=cash.id).one().debit==Decimal("40000.00")
+    assert db.query(JournalLine).filter_by(account_id=control.id).one().credit==Decimal("40000.00")
 
 
 def test_customer_payment_rejects_overpayment_without_balance_mutation(db):
@@ -237,9 +250,10 @@ def test_customer_payment_rejects_overpayment_without_balance_mutation(db):
                 payment_method="BANK_TRANSFER",
             ),
             db,
-            SimpleNamespace(id=1),
+            SimpleNamespace(id=1,roles=[]),
         )
 
     assert error.value.status_code == 400
     assert receivable.received_amount == Decimal("0.00")
     assert receivable.outstanding_amount == Decimal("100.00")
+

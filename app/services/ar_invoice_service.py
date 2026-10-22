@@ -96,6 +96,7 @@ def correct_posted_invoice(db,transaction,data,user):
     if book!=ledger:raise HTTPException(409,'Original journal and GL differ; inspect before correcting this invoice')
     bank=bank_choices(db).filter(ChartOfAccount.id==debit[0].account_id).first()
     if not bank:raise HTTPException(409,'Original debit account is not a verified cash/bank posting account')
+    before={'customer_id':transaction.customer_id,'payment_method':transaction.payment_method,'payment_received':str(transaction.payment_received),'change_amount':str(transaction.change_amount),'journal_entry_id':transaction.journal_entry_id}
     ar_account=invoice_party(db,transaction,data.customer_id,data.invoice_due_date,data.receivable_account_id)
     correction=ARJournalService.post(db=db,user=user,journal=JournalCreate(posting_date=data.correction_date,
         document_type='INVOICE_AR_CORRECTION',document_number=transaction.transaction_number,reference_type='INVOICE_AR_CORRECTION',reference_id=transaction.id,
@@ -104,7 +105,7 @@ def correct_posted_invoice(db,transaction,data,user):
     transaction.ar_correction_journal_id=correction.id
     transaction.payment_received=ZERO;transaction.change_amount=ZERO;transaction.payment_method=None
     ar=create_receivable(db,transaction,ar_account)
-    ActivityService.log(db=db,user=user,action='CORRECT',entity_type='SALES_TRANSACTION',entity_id=transaction.id,summary=f'Corrected unpaid invoice {transaction.transaction_number} to AR',details={'original_journal_id':source.id,'correction_journal_id':correction.id,'account_receivable_id':ar.id})
+    ActivityService.log(db=db,user=user,action='CORRECT',entity_type='SALES_TRANSACTION',entity_id=transaction.id,summary=f'Corrected unpaid invoice {transaction.transaction_number} to AR',before_data=before,after_data={'customer_id':transaction.customer_id,'account_receivable_id':ar.id,'outstanding_amount':str(ar.outstanding_amount),'correction_journal_id':correction.id},details={'original_journal_id':source.id,'correction_journal_id':correction.id,'account_receivable_id':ar.id})
     db.commit();return transaction
 
 
@@ -117,10 +118,12 @@ def receive_payment(db,data,user):
             if existing.account_receivable_id!=ar.id or Decimal(existing.amount)!=data.amount or existing.payment_date!=data.payment_date or existing.cash_account_id!=data.cash_account_id or existing.payment_method!=data.payment_method or existing.reference_number!=data.reference_number:
                 raise HTTPException(409,'Payment retry key belongs to different receipt details')
             return existing
+    outstanding=Decimal(ar.outstanding_amount or 0)
+    if data.amount>outstanding:raise HTTPException(400,'Receipt exceeds the unpaid invoice balance')
+    if outstanding<=0:raise HTTPException(409,'Invoice is already paid')
+    if ar.source_sale_id and not data.idempotency_key:raise HTTPException(422,'Customer receipt requires an idempotency key')
     if not ar.location_id or not ar.account_id:raise HTTPException(409,'Legacy AR requires a verified location and receivable account before receipt posting')
     if data.payment_date<ar.invoice_date:raise HTTPException(422,'Receipt date cannot precede the invoice date')
-    outstanding=Decimal(ar.outstanding_amount or 0)
-    if data.amount>outstanding or outstanding<=0:raise HTTPException(409,'Receipt exceeds the unpaid invoice balance')
     bank=bank_choices(db).filter(ChartOfAccount.id==data.cash_account_id).first()
     if not bank:raise HTTPException(422,'Choose an active cash/bank posting account for the actual receipt')
     account=receivable_account(db,ar.account_id)
