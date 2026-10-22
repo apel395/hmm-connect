@@ -19,6 +19,7 @@ from app.schemas.sales_transaction import (
     SalesTransactionUpdate,
     SalesTransactionVoid,
 )
+from app.services.ar_invoice_service import invoice_party, create_receivable
 from app.services.pos_tax import pbjt_account, tax_profile
 from app.services.pos_revenue import validate_revenue
 from app.services.activity_service import ActivityService
@@ -231,7 +232,9 @@ class SalesTransactionService:
         revenue = validate_revenue(db, db.get(ChartOfAccount, data.revenue_account_id), business_unit_id) if data.revenue_account_id else None
         transaction = SalesTransaction(
             revenue_account_id=revenue.id if revenue else None,
-            transaction_number=next_document_number(db, "POS", digits=5, day=True),
+            invoice_due_date=data.invoice_due_date,
+            receivable_account_id=data.receivable_account_id,
+            transaction_number=next_document_number(db, "INV" if data.transaction_type == "INVOICE" else "POS", digits=5, day=True),
             status="DRAFT",
             transaction_type=data.transaction_type,
             table_number=data.table_number if data.transaction_type == "POS" else None,
@@ -282,6 +285,10 @@ class SalesTransactionService:
         cls._require(user, "pos.sell")
         if transaction.status != "DRAFT":
             raise HTTPException(409, "Only draft POS sales can be edited")
+        if data.invoice_due_date is not None:
+            transaction.invoice_due_date=data.invoice_due_date
+        if data.receivable_account_id is not None:
+            transaction.receivable_account_id=data.receivable_account_id
         if data.revenue_account_id is not None:
             transaction.revenue_account_id = validate_revenue(db, db.get(ChartOfAccount, data.revenue_account_id), transaction.business_unit_id).id
         if data.sale_date is not None:
@@ -376,8 +383,13 @@ class SalesTransactionService:
         totals = cls._totals(transaction.lines, discount)
         tax_amount, service_charge, total = totals["tax_amount"], totals["service_charge_amount"], totals["total"]
 
+        is_invoice = transaction.transaction_type == "INVOICE"
+        ar_account = invoice_party(db, transaction, data.customer_id, data.invoice_due_date, data.receivable_account_id) if is_invoice else None
         payment_received = Decimal(data.payment_received or ZERO)
-        if data.payment_method == "CASH":
+        if is_invoice:
+            payment_received=ZERO
+            change=ZERO
+        elif data.payment_method == "CASH":
             if payment_received <= ZERO:
                 raise HTTPException(422, "Cash payment requires an amount received")
             if payment_received + MONEY < total:
@@ -396,7 +408,7 @@ class SalesTransactionService:
             line.unit_cost = ZERO
 
         resolver = DirectCoaService(db)
-        cash_account = cls._debit_account(
+        cash_account = ar_account if is_invoice else cls._debit_account(
             db,
             resolver.setting_account(PAYMENT_ACCOUNT_SETTINGS[data.payment_method], f"POS {data.payment_method}"),
             f"POS {data.payment_method}",
@@ -440,7 +452,7 @@ class SalesTransactionService:
 
         line_number = 1
         lines: list[tuple[int, Decimal, Decimal, str]] = []
-        lines.append((cash_account.id, total, ZERO, f"Payment received {transaction.transaction_number}"))
+        lines.append((cash_account.id, total, ZERO, f"{'Customer invoice receivable' if is_invoice else 'Payment received'} {transaction.transaction_number}"))
         for (account_id, label), amount in tax_entries.items():
             lines.append((account_id, ZERO, amount, f"{label} {transaction.transaction_number}"))
         lines.append((revenue_account.id, ZERO, subtotal - discount + service_charge, f"Sales revenue {transaction.transaction_number}"))
@@ -482,13 +494,15 @@ class SalesTransactionService:
         transaction.tax_amount = tax_amount
         transaction.service_charge_amount = service_charge
         transaction.total_amount = total
-        transaction.payment_method = data.payment_method
+        transaction.payment_method = None if is_invoice else data.payment_method
         transaction.payment_received = payment_received
         transaction.change_amount = change
         transaction.status = "POSTED"
         transaction.posted_at = datetime.now(timezone.utc)
         transaction.posted_by_id = user.id
         transaction.journal_entry_id = journal.id
+        if is_invoice:
+            create_receivable(db, transaction, ar_account)
         ActivityService.log(
             db=db,
             user=user,

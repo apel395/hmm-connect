@@ -156,4 +156,4 @@ def test_client_invoice_layout_preserves_ar_amounts_and_rejects_unscoped_legacy_
     scoped = SimpleNamespace(roles=[], default_location_id=location.id, location_id=location.id)
     with pytest.raises(HTTPException) as error:
         ar_invoice_print.invoice(ar.id, s, scoped)
-    assert error.value.status_code == 403
+    assert error.value.status_code == 404

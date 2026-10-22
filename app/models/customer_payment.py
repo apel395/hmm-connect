@@ -12,6 +12,9 @@ class CustomerPayment(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
+    journal_entry_id: Mapped[int | None] = mapped_column(ForeignKey("journal_entries.id", ondelete="RESTRICT"), nullable=True)
+    cash_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"), nullable=True)
+    request_key: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     payment_number: Mapped[str] = mapped_column(
         String(50),
         unique=True,

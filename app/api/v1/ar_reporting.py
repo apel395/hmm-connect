@@ -28,7 +28,7 @@ def summary(
     current_user=Depends(get_current_user),
 ):
     _require_access(current_user)
-    return ARReportingService(db).summary(
+    return ARReportingService(db,current_user).summary(
         page=page,
         page_size=page_size,
         **_filters(customer_id, search),
@@ -46,7 +46,7 @@ def detail(
     current_user=Depends(get_current_user),
 ):
     _require_access(current_user)
-    return ARReportingService(db).detail(
+    return ARReportingService(db,current_user).detail(
         page=page,
         page_size=page_size,
         status=status,
@@ -64,7 +64,7 @@ def aging(
     current_user=Depends(get_current_user),
 ):
     _require_access(current_user)
-    return ARReportingService(db).aging(
+    return ARReportingService(db,current_user).aging(
         page=page,
         page_size=page_size,
         **_filters(customer_id, search),

@@ -14,6 +14,7 @@ from app.models.sales_transaction import SalesTransaction
 from app.models.user import User
 from app.models.warehouse import Warehouse
 from app.schemas.sales_transaction import (
+    InvoiceARCorrection,
     SalesTransactionCreate,
     SalesTransactionPost,
     SalesTransactionUpdate,
@@ -27,6 +28,9 @@ from app.models.location_department import LocationDepartment
 from app.models.item_department import ItemDepartment
 from app.services.sales_transaction_service import SalesTransactionService
 from app.services.pos_tax import pbjt_account, tax_profile
+from app.services.ar_invoice_service import receivable_choices, receivable_account, correct_posted_invoice
+from app.models.account_receivable import AccountReceivable
+from app.models.customer import Customer
 from app.services.pos_revenue import revenue_accounts
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 
@@ -75,6 +79,8 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
     customer = transaction.customer
     journal = transaction.journal_entry
     location = transaction.location
+    from sqlalchemy.orm import object_session
+    ar = object_session(transaction).query(AccountReceivable).filter_by(source_sale_id=transaction.id).first()
     return {
         "id": transaction.id,
         "transaction_number": transaction.transaction_number,
@@ -94,6 +100,12 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
         "queue_number": transaction.queue_number,
         "department_id": transaction.department_id,
         "revenue_account_id": transaction.revenue_account_id,
+        "invoice_due_date": transaction.invoice_due_date,
+        "receivable_account_id": transaction.receivable_account_id,
+        "ar_correction_journal_id": transaction.ar_correction_journal_id,
+        "account_receivable_id": ar.id if ar else None,
+        "outstanding_amount": ar.outstanding_amount if ar else None,
+        "payment_status": ar.status if ar else ("LEGACY_INVOICE" if transaction.transaction_type == "INVOICE" and transaction.status == "POSTED" else None),
         "payment_method": transaction.payment_method,
         "payment_received": transaction.payment_received,
         "change_amount": transaction.change_amount,
@@ -140,6 +152,17 @@ def pos_revenue_accounts(location_id: int | None = None, db: Session = Depends(g
     unit_id = location.business_unit_id if location else scope["business_unit_id"]
     return [{"id": account.id, "code": account.account_number, "name": account.account_name}
             for account in revenue_accounts(db, unit_id).all()]
+
+
+@router.get("/billing-options")
+def billing_options(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SalesTransactionService._require(user, "pos.view")
+    try:
+        default = receivable_account(db).id
+    except HTTPException:
+        default = None
+    return {"customers": [{"id":c.id,"code":c.customer_code,"name":c.customer_name} for c in db.query(Customer).filter(Customer.is_active.is_(True)).order_by(Customer.customer_name).all()],
+        "receivable_accounts": [{"id":a.id,"code":a.account_number,"name":a.account_name} for a in receivable_choices(db).all()], "default_receivable_account_id":default}
 
 
 @router.get("/products")
@@ -386,3 +409,10 @@ def print_sale(
     payload["printed_by"] = (user.full_name or user.username) if user else "System"
     payload["generated_at"] = datetime.now(timezone.utc).isoformat()
     return payload
+
+
+@router.post("/{transaction_id}/correct-to-ar")
+def correct_invoice_to_ar(transaction_id: int, data: InvoiceARCorrection, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SalesTransactionService._require(user,"finance.manage")
+    tx=SalesTransactionService._get(db,transaction_id,lock=True,user=user)
+    return serialize_sale(correct_posted_invoice(db,tx,data,user))

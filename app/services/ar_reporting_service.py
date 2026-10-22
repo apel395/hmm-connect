@@ -37,14 +37,18 @@ def _bucket(days_overdue: int) -> str:
 class ARReportingService:
     """Read-only reporting over the canonical AccountReceivable balance."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, user=None):
         self.db = db
+        self.user = user
 
     def _query(self, *, customer_id: int | None = None, search: str | None = None):
         query = (
             self.db.query(AccountReceivable)
             .options(joinedload(AccountReceivable.customer))
         )
+        if self.user is not None:
+            from app.services.ar_invoice_service import scoped_receivables
+            query = scoped_receivables(self.db, self.user).options(joinedload(AccountReceivable.customer))
         if customer_id:
             query = query.filter(AccountReceivable.customer_id == customer_id)
         if search:
