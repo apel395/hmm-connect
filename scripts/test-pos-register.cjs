@@ -8,7 +8,7 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 const values = new Map();
 global.window = Object.assign(new EventTarget(), {localStorage: {getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)}});
 global.__owner = 45;
-const item = {product_id:7,product_code:'7-000001',product_name:'Catering service',group_name:'SERVICE',uom:'PERIOD',selling_price:100,sale_available:true};
+const item = {product_id:7,product_code:'7-000001',product_name:'Catering service',group_name:'SERVICE',uom:'PERIOD',selling_price:100,sale_available:true,tax_type:'PBJT',tax_rate:10,is_taxable:true,service_charge_rate:5};
 global.__queries = [];
 global.__products = async params => {global.__queries.push(params);return {data:{items:params.page===1?[item]:[{...item,product_id:8}],has_next:params.page===1}};};
 let writes = 0;
@@ -40,6 +40,9 @@ async function run() {
  assert.notEqual(query.enabled,false,'menus load without a selected location');
  const result=await query.queryFn();assert.equal(result.items.length,2,'all menu pages are loaded');assert.equal(global.__queries[0].location_id,undefined);
  await click(v,'Catering service');
+ assert.ok(text(v.root).includes('PBJT'));
+ await renderer.act(async()=>{v.root.findAllByType('input').find(n=>n.props.className==='h-9 w-32 rounded border px-2 text-right').props.onChange({target:{value:'10'}});});
+ assert.ok(text(v.root).includes('Rp 9,5'),'PBJT includes service charge after allocated discount');
  await renderer.act(async()=>{v.root.findByProps({'aria-label':'Sales location'}).props.onChange({target:{value:'6'}});});
  assert.ok(text(v.root).includes('Rp 100'),'location filter preserves cart');
  await renderer.act(async()=>{v.root.findAllByType('input').find(n=>n.props.placeholder==='Contoh: M-01 / 12').props.onChange({target:{value:'12'}});});

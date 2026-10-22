@@ -12,6 +12,7 @@ interface PrintPosItem {
   quantity: number;
   unit_price: number;
   tax_rate: number;
+  tax_type?: string;
   service_charge_amount?: number;
   tax_amount: number;
 }
@@ -47,6 +48,7 @@ export default function PosReceiptPrintPage() {
   if (query.isLoading) return <Loading />;
   if (!query.data) return <p>Document could not be loaded.</p>;
   const data = query.data;
+  const taxLabel = data.items.some(item => item.tax_type === "PBJT") ? "PBJT / Tax" : "Tax";
   const paymentLabel: Record<string, string> = { CASH: "Cash", CARD: "Card", BANK_TRANSFER: "Bank Transfer" };
   return <DocumentPrintTemplate
     title="POS Receipt"
@@ -66,7 +68,7 @@ export default function PosReceiptPrintPage() {
       { label: "DESCRIPTION", align: "left", render: (item: PrintPosItem) => item.product_name },
       { label: "QTY", align: "right", render: (item: PrintPosItem) => `${num(item.quantity)} ${item.uom}` },
       { label: "PRICE", align: "right", render: (item: PrintPosItem) => money(item.unit_price) },
-      { label: "Tax", align: "right", render: (item: PrintPosItem) => money(item.tax_amount) },
+      { label: "TAX", align: "right", render: (item: PrintPosItem) => `${item.tax_type === "PBJT" ? "PBJT " : ""}${money(item.tax_amount)}` },
       { label: "AMOUNT", align: "right", render: (item: PrintPosItem) => money(Number(item.quantity) * Number(item.unit_price) + Number(item.tax_amount) + Number(item.service_charge_amount || 0)) },
     ]}
     rows={data.items}
@@ -75,7 +77,7 @@ export default function PosReceiptPrintPage() {
       { label: "Subtotal", value: money(data.subtotal) },
       { label: "Discount", value: data.discount_amount > 0 ? `-${money(data.discount_amount)}` : "-" },
       { label: "Service charge", value: money(data.service_charge_amount) },
-      { label: "Tax", value: money(data.tax_amount) },
+      { label: taxLabel, value: money(data.tax_amount) },
       { label: "Total", value: money(data.total_amount), emphasis: true },
     ]}
     notes={data.notes}
