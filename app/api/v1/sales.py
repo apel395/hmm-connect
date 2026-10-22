@@ -27,6 +27,7 @@ from app.models.location_department import LocationDepartment
 from app.models.item_department import ItemDepartment
 from app.services.sales_transaction_service import SalesTransactionService
 from app.services.pos_tax import pbjt_account, tax_profile
+from app.services.pos_revenue import revenue_accounts
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 
 router = APIRouter(prefix="/pos", tags=["Point of Sales"])
@@ -92,6 +93,7 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
         "table_number": transaction.table_number,
         "queue_number": transaction.queue_number,
         "department_id": transaction.department_id,
+        "revenue_account_id": transaction.revenue_account_id,
         "payment_method": transaction.payment_method,
         "payment_received": transaction.payment_received,
         "change_amount": transaction.change_amount,
@@ -123,8 +125,20 @@ def sale_options(db: Session = Depends(get_db), user: User = Depends(get_current
     links = db.query(LocationDepartment, Department).join(Department, Department.id == LocationDepartment.department_id).filter(Department.is_active.is_(True), LocationDepartment.location_id.in_([row.id for row in locations])).all()
     assigned_department = department_scope(user)
     links = [(link, dept) for link, dept in links if assigned_department in (None, dept.id)]
-    return {"locations": [{"id": row.id, "name": row.name, "code": str(row.id)} for row in locations],
+    return {"locations": [{"id": row.id, "name": row.name, "business_unit_id": row.business_unit_id} for row in locations],
             "departments": [{"id": dept.id, "name": dept.name, "location_id": link.location_id} for link, dept in links]}
+
+
+@router.get("/revenue-accounts")
+def pos_revenue_accounts(location_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SalesTransactionService._require(user, "pos.view")
+    scope = resolve_organization_access(db, user, location_id=location_id)
+    location = db.get(Location, scope["location_id"]) if scope["location_id"] else None
+    if scope["location_id"] and (not location or not location.is_active):
+        raise HTTPException(404, "Location not found")
+    unit_id = location.business_unit_id if location else scope["business_unit_id"]
+    return [{"id": account.id, "code": account.account_number, "name": account.account_name}
+            for account in revenue_accounts(db, unit_id).all()]
 
 
 @router.get("/products")
@@ -192,7 +206,7 @@ def list_pos_products(
                 reason = pbjt_error
         except HTTPException as exc:
             reason = exc.detail
-        items.append({"sales_location_id": p.sales_location_id, "sales_business_unit_id": p.sales_business_unit_id,
+        items.append({"sales_location_id": p.sales_location_id, "sales_business_unit_id": p.sales_business_unit_id, "catalog_type": p.catalog_type,
             **ownership.get(p.id, {}), "product_id": p.id, "product_code": p.code, "product_name": p.name,
             "group_name": p.group_name, "uom": p.uom, "selling_price": p.selling_price,
             "service_charge_rate": p.service_charge_rate, "tax_type": tax_type,

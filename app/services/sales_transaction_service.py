@@ -20,6 +20,7 @@ from app.schemas.sales_transaction import (
     SalesTransactionVoid,
 )
 from app.services.pos_tax import pbjt_account, tax_profile
+from app.services.pos_revenue import validate_revenue
 from app.services.activity_service import ActivityService
 from app.services.direct_coa_service import DirectCoaService
 from app.services.document_number import next_document_number
@@ -80,6 +81,28 @@ class SalesTransactionService:
         if warehouse.location_id is None:
             raise HTTPException(409, "Warehouse must be assigned to a work location")
         return warehouse
+
+    @classmethod
+    def _master_dimensions(cls, db, data):
+        from app.services import item_departments
+        products = [db.get(Product, line.product_id) for line in data.items]
+        if any(not p or p.item_type != "SELL" or not p.is_active for p in products):
+            raise HTTPException(422, "Choose active SELL Item Master items")
+        owners = item_departments.payloads(db, [p.id for p in products])
+        update = {}
+        for field, values in (
+            ("location_id", {p.sales_location_id for p in products if p.sales_location_id}),
+            ("business_unit_id", {p.sales_business_unit_id for p in products if p.sales_business_unit_id}),
+            ("department_id", {owners[p.id]["department_id"] for p in products if p.id in owners}),
+        ):
+            if len(values) > 1:
+                raise HTTPException(422, "Menus from different sales locations, business units or departments require separate orders")
+            if values:
+                value = next(iter(values))
+                if getattr(data, field) not in (None, value):
+                    raise HTTPException(422, "Order sales context must follow SELL Item Master")
+                update[field] = value
+        return data.model_copy(update=update)
 
     @staticmethod
     def _dimensions(db: Session, warehouse: Warehouse | None, data, user=None) -> tuple[int, int, int | None]:
@@ -202,9 +225,12 @@ class SalesTransactionService:
             nullable = next(c["nullable"] for c in inspect(db.connection()).get_columns("sales_transactions") if c["name"] == "warehouse_id")
             if not nullable:
                 raise HTTPException(503, "Apply the 20261021_pos_sell_catalog migration on EC2 before creating a location-based sale")
+        data = cls._master_dimensions(db, data)
         warehouse = cls._scoped_warehouse(db, data.warehouse_id, user) if data.warehouse_id else None
         business_unit_id, location_id, department_id = cls._dimensions(db, warehouse, data, user)
+        revenue = validate_revenue(db, db.get(ChartOfAccount, data.revenue_account_id), business_unit_id) if data.revenue_account_id else None
         transaction = SalesTransaction(
+            revenue_account_id=revenue.id if revenue else None,
             transaction_number=next_document_number(db, "POS", digits=5, day=True),
             status="DRAFT",
             transaction_type=data.transaction_type,
@@ -256,6 +282,8 @@ class SalesTransactionService:
         cls._require(user, "pos.sell")
         if transaction.status != "DRAFT":
             raise HTTPException(409, "Only draft POS sales can be edited")
+        if data.revenue_account_id is not None:
+            transaction.revenue_account_id = validate_revenue(db, db.get(ChartOfAccount, data.revenue_account_id), transaction.business_unit_id).id
         if data.sale_date is not None:
             transaction.sale_date = data.sale_date
         if data.customer_id is not None:
@@ -373,9 +401,11 @@ class SalesTransactionService:
             resolver.setting_account(PAYMENT_ACCOUNT_SETTINGS[data.payment_method], f"POS {data.payment_method}"),
             f"POS {data.payment_method}",
         )
-        revenue_account = cls._revenue_account(
-            db, resolver.setting_account("POS_SALES_REVENUE_ACCOUNT", "POS Revenue")
-        )
+        revenue_id = data.revenue_account_id or transaction.revenue_account_id
+        revenue_account = cls._revenue_account(db, db.get(ChartOfAccount, revenue_id) if revenue_id
+            else resolver.setting_account("POS_SALES_REVENUE_ACCOUNT", "POS Revenue"))
+        validate_revenue(db, revenue_account, transaction.business_unit_id)
+        transaction.revenue_account_id = revenue_account.id
         tax_entries = {}
         for line in transaction.lines:
             amount = Decimal(line.tax_amount or 0)

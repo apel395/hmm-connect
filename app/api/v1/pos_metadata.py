@@ -42,7 +42,8 @@ def update_pos_metadata(
     transaction.table_number = data.table_number if data.transaction_type == "POS" else None
 
     if data.transaction_type == "INVOICE":
-        transaction.transaction_number = next_document_number(db, "INV", digits=5, day=True)
+        if not transaction.transaction_number.startswith("INV-"):
+            transaction.transaction_number = next_document_number(db, "INV", digits=5, day=True)
         transaction.queue_number = transaction.transaction_number
     else:
         transaction.queue_number = data.queue_number or transaction.transaction_number
