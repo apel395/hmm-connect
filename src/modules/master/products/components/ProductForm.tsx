@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import ItemNumberInput from "./ItemNumberInput";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import type { InventoryTreatment, ItemType, Product, ProductGroup, TaxCategory } from "../types";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
@@ -65,6 +66,7 @@ const blank = () => ({
 
 export default function ProductForm({ catalogType = "CATERING", itemType, open, product, groups = [], loading, onClose, onSubmit }: Props) {
   const [form, setForm] = useState(blank());
+  const [salesTaxType, setSalesTaxType] = useState<"NONE" | "PBJT" | "PPN">("NONE");
   const uomListId = useId();
   const [stockReason, setStockReason] = useState("Correct Item Master treatment to Direct Use");
   const existingStock = useQuery({queryKey:["product-detail",product?.id],queryFn:async()=>(await productApi.detail(product!.id)).data,enabled:open && Boolean(product)});
@@ -156,6 +158,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
 
   useEffect(() => {
     if (!open) return;
+    setSalesTaxType(Number(product?.pbjt_rate || 0) > 0 ? "PBJT" : Number(product?.sales_ppn_rate || 0) > 0 ? "PPN" : "NONE");
     setStockReason(`Correct Item Master treatment for ${product?.code ?? "item"} to Direct Use`);
     setForm(product ? {
       department_id: product.department_id ?? null, is_market_item: product.is_market_item,
@@ -362,7 +365,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
           {form.item_type === "BUY" && form.subgroup_name.trim().toUpperCase() === "MEAT" && <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_market_item} onChange={e => setForm({...form, is_market_item: e.target.checked})}/>Eligible for Market List (fresh meat). Leave off for normal warehouse purchases.</label>}
           {form.item_type === "BUY" && <div className="col-span-2 grid grid-cols-2 gap-3">
             <label className="text-sm font-medium">Reference cost method<select className="mt-1 w-full rounded border p-2" value={form.reference_cost_method} onChange={e => update("reference_cost_method", e.target.value as typeof form.reference_cost_method)}><option value="LAST_PURCHASE">Last purchase</option><option value="AVERAGE_PURCHASE">Weighted average purchase</option><option value="MANUAL">Manual reference</option></select></label>
-            <label className="text-sm font-medium">{form.reference_cost_method === "MANUAL" ? "Reference unit cost" : "Fallback unit cost"}<Input className="mt-1" type="number" min="0" step="0.01" value={form.cost_price} onChange={e => update("cost_price", Number(e.target.value))}/></label>
+            <label className="text-sm font-medium">{form.reference_cost_method === "MANUAL" ? "Reference unit cost" : "Fallback unit cost"}<ItemNumberInput className="mt-1" min="0" step="0.01" value={form.cost_price} onChange={e => update("cost_price", Number(e.target.value))}/></label>
             {product && <p className="col-span-2 text-xs text-slate-500">Last: Rp {Number(product.last_purchase_price ?? 0).toLocaleString("id-ID")} · Average: Rp {Number(product.average_purchase_price ?? 0).toLocaleString("id-ID")} / {product.uom}</p>}
           </div>}
           {form.item_type === "SELL" && <div className="col-span-2 grid gap-4 rounded-lg border border-blue-200 bg-blue-50/30 p-4 md:grid-cols-2">
@@ -373,7 +376,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
               <Input className="mt-1" maxLength={120} value={form.sales_service_name} onChange={(event) => update("sales_service_name", event.target.value)} />
             </label>
             <label className="text-sm font-medium">Selling price
-              <Input className="mt-1" type="number" min="0" step="0.01" value={form.selling_price} onChange={(event) => update("selling_price", Number(event.target.value))} />
+              <ItemNumberInput className="mt-1" min="0" step="0.01" value={form.selling_price} onChange={(event) => update("selling_price", Number(event.target.value))} />
             </label>
             <label className="text-sm font-medium">Business unit
               <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3" value={form.sales_business_unit_id ?? ""} onChange={(event) => setForm((current) => ({ ...current, sales_business_unit_id: event.target.value ? Number(event.target.value) : null, sales_location_id: null }))}>
@@ -386,16 +389,16 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
               </select>
             </label>
             <label className="text-sm font-medium">Sales tax
-              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3" value={form.pbjt_rate > 0 ? "PBJT" : form.sales_ppn_rate > 0 ? "PPN" : "NONE"} onChange={(event) => setForm((current) => ({ ...current, pbjt_rate: event.target.value === "PBJT" ? 10 : 0, sales_ppn_rate: event.target.value === "PPN" ? 11 : 0 }))}>
+              <select className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3" value={salesTaxType} onChange={(event) => { setSalesTaxType(event.target.value as typeof salesTaxType); setForm((current) => ({ ...current, pbjt_rate: event.target.value === "PBJT" ? 10 : 0, sales_ppn_rate: event.target.value === "PPN" ? 11 : 0 })); }}>
                 <option value="NONE">None</option><option value="PBJT">PBJT</option><option value="PPN">PPN</option>
               </select>
             </label>
             <label className="text-sm font-medium">Sales tax rate (%)
-              <Input className="mt-1" type="number" min="0" max="100" step="0.01" disabled={!form.pbjt_rate && !form.sales_ppn_rate} value={form.pbjt_rate || form.sales_ppn_rate} onChange={(event) => update(form.pbjt_rate > 0 ? "pbjt_rate" : "sales_ppn_rate", Number(event.target.value))} />
+              <ItemNumberInput className="mt-1" min="0" max="100" step="0.01" disabled={salesTaxType === "NONE"} value={salesTaxType === "PBJT" ? form.pbjt_rate : form.sales_ppn_rate} onChange={(event) => update(salesTaxType === "PBJT" ? "pbjt_rate" : "sales_ppn_rate", Number(event.target.value))} />
             </label>
-            <label className="text-sm">Service charge (%)<Input className="mt-1" type="number" min="0" max="100" step="0.01" value={form.service_charge_rate} onChange={event => update("service_charge_rate", Number(event.target.value))} /></label>
+            <label className="text-sm">Service charge (%)<ItemNumberInput className="mt-1" min="0" max="100" step="0.01" value={form.service_charge_rate} onChange={event => update("service_charge_rate", Number(event.target.value))} /></label>
             <label className="text-sm font-medium">PPh 23 withholding (%), if applicable
-              <Input className="mt-1" type="number" min="0" max="100" step="0.01" value={form.pph23_rate} onChange={(event) => update("pph23_rate", Number(event.target.value))} />
+              <ItemNumberInput className="mt-1" min="0" max="100" step="0.01" value={form.pph23_rate} onChange={(event) => update("pph23_rate", Number(event.target.value))} />
             </label>
             <p className="self-end text-xs text-slate-500">Typical PPh 23 service rate is 2%. Tax classification and payer determine applicability.</p>
             <p className="md:col-span-2 text-xs text-amber-800">Sales tax fields are item setup only. POS posting for items with PBJT, PPN, or PPh 23 requires the corresponding tax accounting flow.</p>
@@ -410,10 +413,10 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
           <datalist id={uomListId}>{UOMS.map((uom) => <option key={uom} value={uom}/>)}</datalist>
 
           {form.item_type === "BUY" && <label className="text-sm font-medium">Conversion
-            <Input className="mt-1" type="number" min="0.0001" step="0.0001" value={form.conversion} onChange={(event) => update("conversion", Number(event.target.value))} />
+            <ItemNumberInput className="mt-1" min="0.0001" step="0.0001" value={form.conversion} onChange={(event) => update("conversion", Number(event.target.value))} />
           </label>}
           {form.inventory_treatment === "STOCK" && <label className="text-sm font-medium">Minimum Stock
-            <Input className="mt-1" type="number" min="0" step="0.01" value={form.minimum_stock} onChange={(event) => update("minimum_stock", Number(event.target.value))} />
+            <ItemNumberInput className="mt-1" min="0" step="0.01" value={form.minimum_stock} onChange={(event) => update("minimum_stock", Number(event.target.value))} />
           </label>}
 
           {form.item_type === "BUY" && <div className="col-span-2 rounded-lg border border-emerald-200 bg-emerald-50/30 p-4">
@@ -479,7 +482,7 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
                 <span className="mt-1 block text-xs font-normal text-slate-500">{selectedTax?.help}</span>
               </label>
               <label className="text-sm font-medium">PPN Rate (%)
-                <Input className="mt-1" type="number" min="0" max="100" step="0.01" disabled={!form.is_taxable} value={form.is_taxable ? form.tax_rate : 0} onChange={(event) => update("tax_rate", Number(event.target.value))} />
+                <ItemNumberInput className="mt-1" min="0" max="100" step="0.01" disabled={!form.is_taxable} value={form.is_taxable ? form.tax_rate : 0} onChange={(event) => update("tax_rate", Number(event.target.value))} />
               </label>
               <label className="col-span-2 text-sm font-medium">Tax Reason / Notes
                 <Input className="mt-1" value={form.tax_reason} onChange={(event) => update("tax_reason", event.target.value)} />
