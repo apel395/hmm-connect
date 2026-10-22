@@ -39,6 +39,18 @@ async function run(){
  assert.equal(payload.uom,'Meals');assert.equal(payload.usage_uom,'Meals');assert.equal(payload.conversion,1);
  assert.equal(payload.inventory_treatment,'NON_STOCK');
  for(const key of ['inventory_account_id','purchase_account_id','asset_account_id','cogs_account_id']) assert.equal(payload[key],null);
+ // Verify the real Item Master wiring, including retaining PBJT while replacing its rate.
+ const byLabel=text=>view.root.findAllByType('label').find(label=>label.children.some(c=>typeof c==='string'&&c.trim()===text));
+ const changeNumber=async(field,value)=>{const node={value};await renderer.act(async()=>field.props.onChange({target:node,currentTarget:node}));};
+ await changeNumber(byLabel('Selling price').findByType('input'),'00025000');
+ const taxSelect=()=>byLabel('Sales tax').findByType('select');
+ await renderer.act(async()=>taxSelect().props.onChange({target:{value:'PBJT'}}));
+ await changeNumber(byLabel('Sales tax rate (%)').findByType('input'),'');
+ assert.equal(taxSelect().props.value,'PBJT');
+ assert.equal(byLabel('Sales tax rate (%)').findByType('input').props.disabled,false);
+ await changeNumber(byLabel('Sales tax rate (%)').findByType('input'),'05');
+ await renderer.act(async()=>save().props.onClick());
+ assert.equal(payload.selling_price,25000);assert.equal(payload.pbjt_rate,5);assert.equal(payload.sales_ppn_rate,0);
  await renderer.act(async()=>view.unmount());
  console.log('SELL form: single sales unit enables Save; inventory, expense and COGS mappings absent.');
 }
