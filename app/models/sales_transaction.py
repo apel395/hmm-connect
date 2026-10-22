@@ -87,6 +87,8 @@ class SalesTransactionLine(Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     service_charge_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=0, nullable=False)
+    tax_type: Mapped[str] = mapped_column(String(20), default="LEGACY", server_default="LEGACY", nullable=False)
+    tax_account_id: Mapped[int | None] = mapped_column(ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"), nullable=True)
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=0, nullable=False)
     service_charge_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)

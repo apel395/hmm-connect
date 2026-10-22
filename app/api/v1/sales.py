@@ -26,6 +26,7 @@ from app.models.department import Department
 from app.models.location_department import LocationDepartment
 from app.models.item_department import ItemDepartment
 from app.services.sales_transaction_service import SalesTransactionService
+from app.services.pos_tax import pbjt_account, tax_profile
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 
 router = APIRouter(prefix="/pos", tags=["Point of Sales"])
@@ -54,6 +55,8 @@ def _sale_items(transaction: SalesTransaction) -> list[dict]:
             "uom": line.uom,
             "quantity": line.quantity,
             "unit_price": line.unit_price,
+            "tax_type": line.tax_type,
+            "tax_account_id": line.tax_account_id,
             "tax_rate": line.tax_rate,
             "service_charge_rate": line.service_charge_rate,
             "service_charge_amount": line.service_charge_amount,
@@ -173,11 +176,28 @@ def list_pos_products(
     total = query.count()
     rows = query.order_by(Product.group_name, Product.name, Product.code).offset((page-1)*page_size).limit(page_size).all()
     ownership = item_departments.payloads(db, [p.id for p in rows])
-    items = [{"sales_location_id": p.sales_location_id, "sales_business_unit_id": p.sales_business_unit_id,
-        **ownership.get(p.id, {}), "product_id": p.id, "product_code": p.code, "product_name": p.name, "group_name": p.group_name,
-        "uom": p.uom, "selling_price": p.selling_price, "service_charge_rate": p.service_charge_rate,
-        "tax_rate": p.tax_rate, "is_taxable": p.is_taxable,
-        "sale_available": p.selling_price > 0 and not any(Decimal(getattr(p, field, 0) or 0) > 0 for field in ("pbjt_rate", "sales_ppn_rate", "pph23_rate"))} for p in rows]
+    items = []
+    pbjt_error = None
+    if any(Decimal(p.pbjt_rate or 0) > 0 for p in rows):
+        try:
+            pbjt_account(db)
+        except HTTPException as exc:
+            pbjt_error = exc.detail
+    for p in rows:
+        reason = "Set selling price" if p.selling_price <= 0 else None
+        tax_type, rate = "NONE", Decimal(0)
+        try:
+            tax_type, rate = tax_profile(p)
+            if tax_type == "PBJT" and pbjt_error:
+                reason = pbjt_error
+        except HTTPException as exc:
+            reason = exc.detail
+        items.append({"sales_location_id": p.sales_location_id, "sales_business_unit_id": p.sales_business_unit_id,
+            **ownership.get(p.id, {}), "product_id": p.id, "product_code": p.code, "product_name": p.name,
+            "group_name": p.group_name, "uom": p.uom, "selling_price": p.selling_price,
+            "service_charge_rate": p.service_charge_rate, "tax_type": tax_type,
+            "tax_rate": rate, "is_taxable": rate > 0, "sale_available": reason is None,
+            "unavailable_reason": reason})
     return _paged(items, page=page, page_size=page_size, total=total)
 
 
