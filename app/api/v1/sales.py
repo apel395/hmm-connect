@@ -125,7 +125,8 @@ def sale_options(db: Session = Depends(get_db), user: User = Depends(get_current
     links = db.query(LocationDepartment, Department).join(Department, Department.id == LocationDepartment.department_id).filter(Department.is_active.is_(True), LocationDepartment.location_id.in_([row.id for row in locations])).all()
     assigned_department = department_scope(user)
     links = [(link, dept) for link, dept in links if assigned_department in (None, dept.id)]
-    return {"locations": [{"id": row.id, "name": row.name, "business_unit_id": row.business_unit_id} for row in locations],
+    return {"locations": [{"id": row.id, "name": row.name, "business_unit_id": row.business_unit_id,
+                "catalog_type": "HOTEL" if "hotel" in (db.get(BusinessUnit, row.business_unit_id).name if row.business_unit_id else "").casefold() else "CATERING"} for row in locations],
             "departments": [{"id": dept.id, "name": dept.name, "location_id": link.location_id} for link, dept in links]}
 
 
