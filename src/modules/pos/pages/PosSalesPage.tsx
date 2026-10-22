@@ -202,7 +202,7 @@ export default function PosSalesPage() {
                         <td className="px-2 py-2"><span className="font-medium">{item.product_name}</span> <span className="text-slate-400">({item.product_code})</span></td>
                         <td className="px-2 py-2 text-right tabular-nums">{num(item.quantity)} {item.uom}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{money(item.unit_price)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{money(item.tax_amount)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{item.tax_type === "PBJT" ? "PBJT " : ""}{money(item.tax_amount)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{money(item.line_amount)}</td>
                       </tr>
                     ))}
