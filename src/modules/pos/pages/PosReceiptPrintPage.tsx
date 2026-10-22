@@ -19,6 +19,9 @@ interface PrintPosItem {
 interface PrintPosSale {
   id: number;
   transaction_number: string;
+  transaction_type?: string;
+  invoice_due_date?: string | null;
+  payment_status?: string | null;
   status: string;
   sale_date: string;
   warehouse_name?: string | null;
@@ -51,7 +54,7 @@ export default function PosReceiptPrintPage() {
   const taxLabel = data.items.some(item => item.tax_type === "PBJT") ? "PBJT / Tax" : "Tax";
   const paymentLabel: Record<string, string> = { CASH: "Cash", CARD: "Card", BANK_TRANSFER: "Bank Transfer" };
   return <DocumentPrintTemplate
-    title="POS Receipt"
+    title={data.transaction_type === "INVOICE" ? "Customer Invoice" : "POS Receipt"}
     documentNumber={data.transaction_number}
     documentDate={new Date(`${data.sale_date}T00:00:00`).toLocaleDateString("id-ID")}
     status={data.status}
@@ -59,9 +62,11 @@ export default function PosReceiptPrintPage() {
       { label: "SALES LOCATION", value: data.location_name || data.warehouse_name },
       { label: "CUSTOMER", value: data.customer_name },
       { label: "CASHIER", value: data.created_by_name },
-      { label: "PAYMENT", value: paymentLabel[data.payment_method] ?? "-" },
-      { label: "RECEIVED", value: money(data.payment_received) },
-      { label: "CHANGE", value: money(data.change_amount) },
+      ...(data.transaction_type === "INVOICE" ? [{ label: "DUE DATE", value: data.invoice_due_date || "-" }, { label: "COLLECTION STATUS", value: data.payment_status || "Unpaid" }] : [
+        { label: "PAYMENT", value: paymentLabel[data.payment_method] ?? "-" },
+        { label: "RECEIVED", value: money(data.payment_received) },
+        { label: "CHANGE", value: money(data.change_amount) },
+      ]),
     ]}
     columns={[
       { label: "CODE", align: "left", render: (item: PrintPosItem) => item.product_code },

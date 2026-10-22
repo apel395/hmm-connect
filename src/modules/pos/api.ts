@@ -21,6 +21,8 @@ export type PosItemIn = {
 };
 
 export type PosCreatePayload = {
+  invoice_due_date?: string;
+  receivable_account_id?: number;
   revenue_account_id?: number;
   warehouse_id?: number;
   transaction_type?: PosTransactionType;
@@ -36,6 +38,8 @@ export type PosCreatePayload = {
 };
 
 export type PosUpdatePayload = {
+  invoice_due_date?: string;
+  receivable_account_id?: number;
   revenue_account_id?: number;
   transaction_type?: PosTransactionType;
   table_number?: string | null;
@@ -53,6 +57,9 @@ export type PosMetadataPayload = {
 };
 
 export type PosPostPayload = {
+  invoice_due_date?: string;
+  receivable_account_id?: number;
+  customer_id?: number;
   revenue_account_id?: number;
   payment_method: PosPaymentMethod;
   payment_received?: number | null;
@@ -64,6 +71,8 @@ export type PosVoidPayload = {
 };
 
 export const posApi = {
+  billingOptions: () => api.get("/pos/billing-options"),
+  correctToAR: (id: number, payload: { customer_id: number; invoice_due_date: string; receivable_account_id?: number; correction_date: string; confirm_unpaid: true }) => api.post(`/pos/${id}/correct-to-ar`, payload),
   options: () => api.get("/pos/options"),
   revenueAccounts: (location_id?: number) => api.get("/pos/revenue-accounts", { params: { location_id } }),
   products: (params: Record<string, unknown> = {}) => api.get("/pos/products", { params }),
