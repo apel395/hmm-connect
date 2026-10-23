@@ -11,12 +11,14 @@ from app.models.customer_payment import CustomerPayment
 from app.models.journal_line import JournalLine
 from app.models.general_ledger import GeneralLedger
 from app.models.stock_movement import StockMovement
-from app.schemas.sales_transaction import SalesTransactionCreate, SalesTransactionPost, InvoiceARCorrection
+from app.schemas.sales_transaction import SalesTransactionCreate, SalesTransactionUpdate, SalesTransactionPost, InvoiceARCorrection
 from app.schemas.customer_payment import CustomerPaymentCreate
 from app.services.ar_invoice_service import receive_payment, correct_posted_invoice
 from app.services.ar_reporting_service import ARReportingService
 from app.services.sales_transaction_service import SalesTransactionService as Service
 from app.api.v1.ar_invoice_print import invoice as print_invoice
+from app.api.v1.sales import PosCustomerCreate, create_pos_customer
+from app.models.sales_transaction import SalesTransactionLine
 from test_finance_delivery_1007 import db, ADMIN
 from test_pos_sell_catalog_1021 import products
 from test_pos_pbjt import setup
@@ -81,6 +83,28 @@ def test_missing_customer_or_due_date_does_not_post_invoice(db,monkeypatch):
     tx.customer_id=None;tx.invoice_due_date=None;s.commit()
     with pytest.raises(HTTPException):Service.post(s,transaction_id=tx.id,data=SalesTransactionPost(),user=ADMIN)
     assert tx.status=='DRAFT' and s.query(JournalLine).count()==s.query(AccountReceivable).count()==0
+
+
+def test_pos_customer_can_be_created_and_selected(db):
+    s,_,_,_,_=db
+    created=create_pos_customer(PosCustomerCreate(customer_name='  Walk-in Company  ',phone='081234'),s,ADMIN)
+    assert created['id'] and created['name']=='Walk-in Company'
+    assert s.get(Customer,created['id']).phone=='081234'
+    with pytest.raises(HTTPException) as error:
+        create_pos_customer(PosCustomerCreate(customer_name='Walk-in Company'),s,ADMIN)
+    assert error.value.status_code==409
+
+
+def test_draft_invoice_update_keeps_same_number_and_replaces_existing_line(db,monkeypatch):
+    s,tx,customer,_,_,_=invoice_setup(db,monkeypatch)
+    number=tx.transaction_number
+    product_id=tx.lines[0].product_id
+    updated=Service.update(s,transaction=tx,data=SalesTransactionUpdate(customer_id=customer.id,items=[dict(product_id=product_id,quantity=3,unit_price=120000)]),user=ADMIN)
+    assert updated.id==tx.id and updated.transaction_number==number and updated.status=='DRAFT'
+    assert s.query(SalesTransactionLine).filter_by(sales_transaction_id=tx.id).count()==1
+    assert updated.lines[0].quantity==3 and updated.lines[0].unit_price==120000
+    with pytest.raises(HTTPException):
+        Service.update(s,transaction=tx,data=SalesTransactionUpdate(items=[dict(product_id=product_id,quantity=1),dict(product_id=product_id,quantity=2)]),user=ADMIN)
 
 
 def test_legacy_paid_posting_is_corrected_once_without_duplicate_revenue(db,monkeypatch):
