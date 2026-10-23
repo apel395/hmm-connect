@@ -482,14 +482,47 @@ class GoodsReceiptService:
                     raise HTTPException(409, 'Market List quantity exceeds the remaining amount')
         purchase_order = receipt.purchase_order
         by_id = {item.id: item for item in receipt.items}
-        if set(by_id) != {item.item_id for item in data.items}:
+        stored_ids = {item.item_id for item in data.items if item.item_id is not None}
+        new_items = [item for item in data.items if item.item_id is None]
+        if set(by_id) != stored_ids:
             raise HTTPException(
                 status_code=409,
                 detail="Receiving item identity cannot change during edit; edit quantities, costs and tax on the existing lines",
             )
+        if new_items and (purchase_order or receipt.market_list_id):
+            raise HTTPException(409, "New lines can only be added to Direct Receiving drafts")
 
         changes = []
         for incoming in data.items:
+            if incoming.item_id is None:
+                product = db.get(Product, incoming.product_id)
+                if not product or product.item_type != "BUY":
+                    raise HTTPException(422, "New receiving lines require an existing BUY item")
+                destination, override_reason = resolve_destination(
+                    product, incoming.destination_type, incoming.destination_override_reason,
+                    data.destination_type,
+                )
+                expense_account_id = incoming.expense_account_id
+                if destination == "DIRECT_USE" and product.inventory_treatment != "FIXED_ASSET":
+                    expense_account_id = expense_account_id or getattr(product, "purchase_account_id", None)
+                if expense_account_id:
+                    cls._receiving_debit_account(
+                        DirectCoaService(db), receipt, product, expense_account_id, destination,
+                    )
+                new_line = GoodsReceiptItem(
+                    product_id=product.id,
+                    product=product,
+                    quantity=Decimal(incoming.quantity),
+                    unit_cost=Decimal(incoming.unit_cost),
+                    destination_type=destination,
+                    destination_override_reason=override_reason,
+                    expense_account_id=expense_account_id,
+                    is_taxable=bool(incoming.is_taxable),
+                    tax_rate=Decimal(incoming.tax_rate or 0) if incoming.is_taxable else ZERO,
+                )
+                receipt.items.append(new_line)
+                changes.append({"product_id": product.id, "action": "ADD", "quantity": str(new_line.quantity), "unit_cost": str(new_line.unit_cost)})
+                continue
             item = by_id[incoming.item_id]
             old = {
                 "quantity": str(item.quantity),
