@@ -104,6 +104,7 @@ class GoodsReceiptItemUpdate(BaseModel):
 
 class GoodsReceiptUpdate(BaseModel):
     received_at: datetime
+    location_id: int | None = None
     external_reference: str | None = Field(default=None, max_length=100)
     destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
     warehouse_id: int | None = None
