@@ -471,6 +471,15 @@ class GoodsReceiptService:
         if receipt.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only unposted Receiving Reports can be edited")
 
+        old_location_id = receipt.location_id
+        if data.location_id is not None and data.location_id != receipt.location_id:
+            if receipt.purchase_order_id or receipt.market_list_id:
+                raise HTTPException(409, "PO and Market List receiving locations must follow their source documents")
+            from app.services.organization_dimensions import validate_dimensions
+            enforce_location_access(user, data.location_id)
+            validate_dimensions(db, receipt.business_unit_id, data.location_id, receipt.department_id, True)
+            receipt.location_id = data.location_id
+
         if getattr(receipt, "market_list_id", None):
             market = db.query(MarketList).filter_by(id=receipt.market_list_id).with_for_update().one()
             used = allocated_market_items(db, market.id, receipt.id)
@@ -606,6 +615,8 @@ class GoodsReceiptService:
                 "received_at": data.received_at.isoformat(),
                 "external_reference": data.external_reference,
                 "destination_type": receipt.destination_type,
+                "location_before_id": old_location_id,
+                "location_id": receipt.location_id,
                 "warehouse_id": receipt.warehouse_id,
                 "notes": data.notes,
                 "item_changes": changes,
