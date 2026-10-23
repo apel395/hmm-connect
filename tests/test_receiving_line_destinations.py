@@ -101,6 +101,27 @@ def test_direct_receipt_can_repeat_product_at_different_costs(stock_db):
     assert sum(Decimal(line.credit) for line in journal.lines) == Decimal("62")
 
 
+def test_edit_direct_draft_adds_line_without_replacing_existing_items(stock_db):
+    data = setup_receiving(stock_db)
+    db, _, user, products, balances, *_ = data
+    receipt = create(data, items=[dict(product_id=products[0].id, quantity=2, unit_cost=10)])
+    original = receipt.items[0]
+    Service.update(db, receipt=receipt, user=user, data=GoodsReceiptUpdate(
+        received_at=receipt.received_at,
+        warehouse_id=receipt.warehouse_id,
+        items=[
+            dict(item_id=original.id, quantity=2, unit_cost=10, is_taxable=False),
+            dict(product_id=products[0].id, quantity=3, unit_cost=14, is_taxable=False),
+        ],
+    ))
+    assert len(receipt.items) == 2
+    assert receipt.items[0].id == original.id
+    assert [(Decimal(item.quantity), Decimal(item.unit_cost)) for item in receipt.items] == [(Decimal("2"), Decimal("10")), (Decimal("3"), Decimal("14"))]
+    assert Decimal(receipt.subtotal) == Decimal("62")
+    Service.post(db, receipt_id=receipt.id, user=user)
+    assert sorted(Decimal(m.unit_cost) for m in db.query(StockMovement).all()) == [Decimal("10"), Decimal("14")]
+
+
 def test_explicit_stock_exception_requires_reason_and_keeps_master(stock_db):
     data = setup_receiving(stock_db); db, wh, user, products, *_ = data
     payload = dict(product_id=products[1].id, quantity=3, unit_cost=10, destination_type="WAREHOUSE")
