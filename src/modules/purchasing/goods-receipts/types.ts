@@ -32,6 +32,7 @@ export interface GoodsReceiptCreatePayload {
 
 export interface GoodsReceiptUpdatePayload {
   received_at: string;
+  location_id?: number | null;
   external_reference?: string | null;
   destination_type?: "WAREHOUSE" | "DIRECT_USE";
   warehouse_id?: number | null;
