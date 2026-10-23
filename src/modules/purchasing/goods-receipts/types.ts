@@ -36,7 +36,7 @@ export interface GoodsReceiptUpdatePayload {
   destination_type?: "WAREHOUSE" | "DIRECT_USE";
   warehouse_id?: number | null;
   notes?: string | null;
-  items: Array<{ item_id: number; destination_type?: ReceivingDestination | null; destination_override_reason?: string | null; expense_account_id?: number | null; quantity: number; unit_cost: number; is_taxable: boolean; tax_rate: number }>;
+  items: Array<{ item_id?: number; product_id?: number; destination_type?: ReceivingDestination | null; destination_override_reason?: string | null; expense_account_id?: number | null; quantity: number; unit_cost: number; is_taxable: boolean; tax_rate: number }>;
 }
 
 export interface GoodsReceiptCostCorrectionPayload { reason: string; items: Array<{ item_id: number; unit_cost: number }> }
