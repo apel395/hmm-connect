@@ -12,6 +12,7 @@ import { Trash2 } from "lucide-react";
 import ProductCombobox, { type ProductComboboxOption } from "@/components/form/ProductCombobox";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
+import { listLocations } from "@/modules/admin/organization/api";
 import { useUpdateGoodsReceipt } from "../hooks/useGoodsReceipts";
 import type { GoodsReceipt } from "../types";
 import ReceivingDestinationField from "./ReceivingDestinationField";
@@ -30,11 +31,13 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
   const [receivedAt,setReceivedAt]=useState("");
   const [reference,setReference]=useState("");
   const [warehouseId,setWarehouseId]=useState<number|null>(null);
+  const [locationId,setLocationId]=useState<number|null>(null);
   const [notes,setNotes]=useState("");
   const [items,setItems]=useState<any[]>([]);
   const [productRows,setProductRows]=useState<ProductComboboxOption[]>([]);
   const nextNewId=useRef(0);
   const directReceipt=!receipt.purchase_order_id && !receipt.market_list_id;
+  const locations=useQuery({queryKey:["receiving-edit-locations",receipt.business_unit_id],queryFn:()=>listLocations({business_unit_id:receipt.business_unit_id??undefined,is_active:true,assigned_only:true}),enabled:open && directReceipt && !!receipt.business_unit_id});
   const [catalogType,setCatalogType]=useState<"CATERING" | "HOTEL" | "ALL">("ALL");
   const hasWarehouse = items.some(item => destinationFor(item) === "WAREHOUSE");
   const hasDirectUse = items.some(item => destinationFor(item) === "DIRECT_USE" && item.inventory_treatment !== "FIXED_ASSET");
@@ -45,6 +48,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     setReceivedAt(localDateTime(receipt.received_at));
     setReference(receipt.external_reference ?? receipt.delivery_note_number ?? "");
     setWarehouseId(receipt.warehouse_id ?? null);
+    setLocationId(receipt.location_id ?? null);
     setNotes(receipt.notes ?? "");
     setCatalogType("ALL");
     setProductRows(receipt.items.map(item=>({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom??undefined,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,purchase_account_id:item.purchase_account_id,is_taxable:item.is_taxable,tax_rate:item.tax_rate})));
@@ -66,6 +70,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     if(!receivedAt)return toast.error("Receipt date is required");
     if(receivedAt < "2026-01-01T00:00")return toast.error("Receiving dated before 2026 is excluded from stock.");
     if(hasWarehouse&&!warehouseId)return toast.error("Warehouse is required");
+    if(directReceipt&&!locationId)return toast.error("Location is required");
     if(items.some(item=>!item.item_id&&!item.product_id))return toast.error("Choose an item for every new line");
     const routingIssue = items.map(destinationError).find(Boolean);
     if(routingIssue)return toast.error(routingIssue);
@@ -76,6 +81,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
         id:receipt.id,
         payload:{
           received_at:new Date(receivedAt).toISOString(),
+          ...(directReceipt?{location_id:locationId}:{}),
           external_reference:reference.trim()||null,
           warehouse_id:hasWarehouse?warehouseId:null,
           notes:notes.trim()||null,
@@ -90,7 +96,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     }
   };
 
-  const warehouseOptions=warehouses.filter((row:any)=>row.is_active && Number(row.location_id) === receipt.location_id).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const warehouseOptions=warehouses.filter((row:any)=>row.is_active && Number(row.location_id) === locationId).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
 
   return <Dialog open={open} onOpenChange={value=>!value&&onClose()}>
       <DialogContent className="max-h-[92vh] max-w-[1440px] overflow-hidden">
@@ -99,11 +105,13 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
         <div className="rounded border bg-slate-50 p-3 text-sm">
           <div className="font-medium">{receipt.receipt_number}</div>
           <div className="text-slate-600">Source {receipt.purchase_order_number ?? "Direct Receiving"} · Supplier {receipt.supplier_name ?? "—"} · BU {receipt.business_unit_name ?? "—"} · Location {receipt.location_name ?? "—"} · Department {receipt.department_name ?? "—"}</div>
-          <div className="mt-1 text-xs text-slate-500">Source document and inherited organization dimensions are locked for traceability.</div>
+          <div className="mt-1 text-xs text-slate-500">{directReceipt?"Direct Receiving location can be corrected before posting; warehouse must belong to the selected location. Business Unit and Department stay locked.":"Source organization dimensions are locked for traceability."}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm">Receipt Date *<input type="datetime-local" disabled={receipt.source_type === "LIVE"} data-accounting-date="true" data-min-date="2026-01-01" min="2026-01-01T00:00" className="mt-1 h-10 w-full rounded border px-3" value={receivedAt} onChange={e=>setReceivedAt(e.target.value)}/></label>
           <label className="text-sm">Delivery Note / Reference<input className="mt-1 h-10 w-full rounded border px-3" value={reference} onChange={e=>setReference(e.target.value)}/></label>
+
+          {directReceipt&&<SearchableSelect label="Location" required value={locationId??undefined} placeholder="Type location code or name..." options={(locations.data??[]).map(row=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code,row.name]}))} onChange={value=>{setLocationId(value??null);setWarehouseId(null);}}/>}
 
           {hasWarehouse&&<SearchableSelect label="Warehouse" required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>} 
         </div>
