@@ -81,7 +81,8 @@ class GoodsReceiptCostCorrection(BaseModel):
 
 
 class GoodsReceiptItemUpdate(BaseModel):
-    item_id: int
+    item_id: int | None = None
+    product_id: int | None = None
     expense_account_id: int | None = None
     destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
     destination_override_reason: str | None = Field(default=None, max_length=500)
@@ -94,6 +95,10 @@ class GoodsReceiptItemUpdate(BaseModel):
     def validate_tax(self):
         if not self.is_taxable:
             self.tax_rate = Decimal("0")
+        if self.item_id is None and self.product_id is None:
+            raise ValueError("New receiving lines require product_id")
+        if self.item_id is not None and self.product_id is not None:
+            raise ValueError("Existing receiving lines cannot change product identity")
         return self
 
 
@@ -109,6 +114,7 @@ class GoodsReceiptUpdate(BaseModel):
     def validate_update(self):
         if not self.items:
             raise ValueError("Receipt must contain items")
-        if len({item.item_id for item in self.items}) != len(self.items):
+        stored_ids = [item.item_id for item in self.items if item.item_id is not None]
+        if len(set(stored_ids)) != len(stored_ids):
             raise ValueError("A receipt item may appear only once")
         return self
