@@ -58,7 +58,7 @@ export default function DirectReceiveDialog({
   const { hasPermission } = useAuthorization();
   const [marketListId, setMarketListId] = useState<number>();
   const marketLists = useQuery({queryKey:["receivable-market-lists"],queryFn:async()=>(await api.get("/goods-receipts/receivable-market-lists")).data,enabled:open && marketListMode,refetchOnWindowFocus:false});
-  const [catalogType, setCatalogType] = useState<"CATERING" | "HOTEL">("CATERING");
+  const [catalogType, setCatalogType] = useState<"CATERING" | "HOTEL" | "ALL">("ALL");
   const [supplierId, setSupplierId] = useState<number>();
   const [businessUnitId, setBusinessUnitId] = useState<number>();
   const [departmentId, setDepartmentId] = useState<number>();
@@ -216,7 +216,6 @@ export default function DirectReceiveDialog({
               options={(businessUnits.data ?? []).map(option)}
               onChange={(id) => {
                 setBusinessUnitId(id);
-                setCatalogType((businessUnits.data ?? []).find(unit => unit.id === id)?.name.toLowerCase().includes("hotel") ? "HOTEL" : "CATERING");
                 setDepartmentId(undefined);
                 setLocationId(undefined);
               }}
@@ -268,7 +267,7 @@ export default function DirectReceiveDialog({
             )}
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <label className="mb-2 block text-xs">Item catalog<select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL")}><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>
+            <label className="mb-2 block text-xs">Item catalog<select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL"|"ALL")}><option value="ALL">All Buy Items</option><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>
             <table className="receiving-lines receiving-lines-direct">
               <colgroup><col/><col className="rl-destination"/><col className="rl-unit"/><col className="rl-quantity"/><col className="rl-cost"/><col className="rl-tax-rate"/><col className="rl-amount"/><col className="rl-total"/><col className="rl-action"/></colgroup>
               <thead className="bg-slate-50">
@@ -296,7 +295,7 @@ export default function DirectReceiveDialog({
                       <td className="p-2">
                         <ProductCombobox
                           disabled={marketListMode}
-                          catalogType={catalogType}
+                          catalogType={catalogType === "ALL" ? undefined : catalogType}
                           products={productRows}
                           remote={!marketListMode}
                           value={line.product_id || undefined}
