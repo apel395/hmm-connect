@@ -11,6 +11,9 @@ from app.models.general_ledger import GeneralLedger
 from app.models.journal_entry import JournalEntry
 from app.models.role import Role
 from app.models.stock_movement import StockMovement
+from app.models.location import Location
+from app.models.location_department import LocationDepartment
+from app.models.warehouse import Warehouse
 from app.models.supplier import Supplier
 from app.schemas.goods_receipt import GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptCostCorrection
 from app.services.goods_receipt_service import GoodsReceiptService as Service
@@ -120,6 +123,32 @@ def test_edit_direct_draft_adds_line_without_replacing_existing_items(stock_db):
     assert Decimal(receipt.subtotal) == Decimal("62")
     Service.post(db, receipt_id=receipt.id, user=user)
     assert sorted(Decimal(m.unit_cost) for m in db.query(StockMovement).all()) == [Decimal("10"), Decimal("14")]
+
+
+def test_direct_draft_location_and_warehouse_can_be_corrected_together(stock_db):
+    data = setup_receiving(stock_db)
+    db, warehouse, user, products, _, _, _ = data
+    receipt = create(data, items=[dict(product_id=products[0].id, quantity=2, unit_cost=10)])
+    original_location = receipt.location_id
+    new_location = Location(code="LOC-GEM", name="Gemsmart", location_type="OPERATIONS",
+                            business_unit_id=receipt.business_unit_id, is_active=True)
+    db.add(new_location); db.flush()
+    db.add(LocationDepartment(location_id=new_location.id, department_id=receipt.department_id))
+    new_warehouse = Warehouse(code="WH-GEM", name="Gemsmart", location_id=new_location.id, is_active=True)
+    db.add(new_warehouse); db.commit()
+
+    line = receipt.items[0]
+    payload = dict(received_at=receipt.received_at, location_id=new_location.id,
+                   warehouse_id=new_warehouse.id,
+                   items=[dict(item_id=line.id, quantity=2, unit_cost=10, is_taxable=False)])
+    Service.update(db, receipt=receipt, user=user, data=GoodsReceiptUpdate(**payload))
+    assert receipt.location_id == new_location.id and receipt.warehouse_id == new_warehouse.id
+    assert receipt.location_id != original_location
+    assert db.query(StockMovement).count() == 0
+
+    with pytest.raises(HTTPException):
+        Service.update(db, receipt=receipt, user=user,
+                       data=GoodsReceiptUpdate(**{**payload,"warehouse_id":warehouse.id}))
 
 
 def test_explicit_stock_exception_requires_reason_and_keeps_master(stock_db):
