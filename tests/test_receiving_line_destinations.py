@@ -74,6 +74,33 @@ def test_only_direct_use_does_not_require_or_store_warehouse(stock_db):
     assert Decimal(balances[1].quantity) == Decimal("10.1250")
 
 
+def test_direct_receipt_can_repeat_product_at_different_costs(stock_db):
+    data = setup_receiving(stock_db)
+    db, _, user, products, balances, *_ = data
+    product = products[0]
+    starting_quantity = Decimal(balances[0].quantity)
+    starting_value = starting_quantity * Decimal(balances[0].average_cost)
+    receipt = create(data, items=[
+        dict(product_id=product.id, quantity=2, unit_cost=10),
+        dict(product_id=product.id, quantity=3, unit_cost=14),
+    ])
+    assert len(receipt.items) == 2
+    assert [Decimal(item.unit_cost) for item in receipt.items] == [Decimal("10"), Decimal("14")]
+    assert Decimal(receipt.subtotal) == Decimal("62")
+
+    Service.post(db, receipt_id=receipt.id, user=user)
+    movements = db.query(StockMovement).order_by(StockMovement.id).all()
+    assert len(movements) == 2
+    assert len({row.goods_receipt_item_id for row in movements}) == 2
+    assert [Decimal(row.unit_cost) for row in movements] == [Decimal("10"), Decimal("14")]
+    assert Decimal(balances[0].quantity) == starting_quantity + 5
+    assert abs(Decimal(balances[0].average_cost) - (starting_value + 62) / (starting_quantity + 5)) < Decimal("0.0001")
+
+    journal = db.query(JournalEntry).filter_by(reference_type="GOODS_RECEIPT").one()
+    assert sum(Decimal(line.debit) for line in journal.lines) == Decimal("62")
+    assert sum(Decimal(line.credit) for line in journal.lines) == Decimal("62")
+
+
 def test_explicit_stock_exception_requires_reason_and_keeps_master(stock_db):
     data = setup_receiving(stock_db); db, wh, user, products, *_ = data
     payload = dict(product_id=products[1].id, quantity=3, unit_cost=10, destination_type="WAREHOUSE")

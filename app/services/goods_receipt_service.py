@@ -417,9 +417,10 @@ class GoodsReceiptService:
                     is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
                 ))
             else:
-                if incoming.product_id in seen:
-                    raise HTTPException(status_code=400, detail="A product may appear only once per direct receipt")
-                seen.add(incoming.product_id)
+                # A supplier may deliver the same product in separate batches at
+                # different prices. Keep each direct/ML receiving line intact so
+                # cost, tax and downstream invoice matching remain line-specific.
+                # PO and Market List source-line duplication is checked above.
                 product = db.get(Product, incoming.product_id)
                 if not product:
                     raise HTTPException(status_code=404, detail=f"Product {incoming.product_id} not found")
