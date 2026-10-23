@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Eye, Printer, PlayCircle } from "lucide-react";
+import { Ban, Eye, Pencil, Printer, PlayCircle } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
@@ -11,6 +11,7 @@ import Pagination from "@/components/datatable/Pagination";
 import Dialog from "@/components/ui/Dialog";
 import { DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from "@/components/ui/Dialog";
 import SearchableSelect from "@/components/form/SearchableSelect";
+import PosCustomerField from "../components/PosCustomerField";
 import useAuthStore from "@/store/auth";
 import { canAccess } from "@/lib/access";
 import { posApi, type PosPaymentMethod, type PosVoidPayload } from "../api";
@@ -77,6 +78,8 @@ export default function PosSalesPage() {
   const locations: any[] = locationsQuery.data?.locations ?? [];
 
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draftLines, setDraftLines] = useState<Array<{ product_id: number; quantity: number; unit_price: number }>>([]);
   const [formError, setFormError] = useState("");
 
   const detailQuery = useQuery({
@@ -85,6 +88,9 @@ export default function PosSalesPage() {
     enabled: detailId !== null,
   });
   const detail: any = detailQuery.data;
+  useEffect(() => {
+    setDraftLines((detail?.items ?? []).map((item: any) => ({ product_id: item.product_id, quantity: Number(item.quantity), unit_price: Number(item.unit_price) })));
+  }, [detail]);
 
   const [postRevenue, setPostRevenue] = useState<number | undefined>();
   const [postMethod, setPostMethod] = useState<PosPaymentMethod>("CASH");
@@ -120,6 +126,21 @@ export default function PosSalesPage() {
     mutationFn: async () => posApi.correctToAR(detail.id, { customer_id: chosenCustomer, invoice_due_date: chosenDue, receivable_account_id: chosenAR, correction_date: correctionDate, confirm_unpaid: true }),
     onSuccess: () => { setFormError(""); void queryClient.invalidateQueries({ queryKey: ["pos-sales"] }); void queryClient.invalidateQueries({ queryKey: ["pos-sale-detail", detailId] }); void queryClient.invalidateQueries({ queryKey: ["ar-reporting"] }); },
     onError: (error: any) => setFormError(error?.response?.data?.detail || error?.message || "AR correction failed"),
+  });
+  const saveEdit = useMutation({
+    mutationFn: async () => posApi.update(detail.id, {
+      revenue_account_id: chosenRevenue,
+      customer_id: isInvoice ? chosenCustomer : undefined,
+      invoice_due_date: isInvoice ? chosenDue : undefined,
+      receivable_account_id: isInvoice ? chosenAR : undefined,
+      items: draftLines,
+    }),
+    onSuccess: () => {
+      setEditing(false); setFormError("");
+      void queryClient.invalidateQueries({ queryKey: ["pos-sales"] });
+      void queryClient.invalidateQueries({ queryKey: ["pos-sale-detail", detailId] });
+    },
+    onError: (error: any) => setFormError(error?.response?.data?.detail || "Could not update draft"),
   });
   const confirmVoid = (id: number) => {
     const reason = window.prompt("Void reason (optional)");
@@ -180,7 +201,8 @@ export default function PosSalesPage() {
                       <td className="px-4 py-3 text-right font-semibold">{money(row.total_amount)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="xs" onClick={() => setDetailId(row.id)}><Eye className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="xs" onClick={() => { setEditing(false); setDetailId(row.id); }}><Eye className="h-4 w-4" /></Button>
+                          {canSell && row.status === "DRAFT" && <Button variant="outline" size="xs" onClick={() => { setEditing(true); setDetailId(row.id); }}><Pencil className="h-4 w-4" />Edit</Button>}
                           {row.status === "POSTED" && <Button variant="ghost" size="xs" onClick={() => window.open(`/pos/sales/${row.id}/print`, "_blank")}><Printer className="h-4 w-4" /></Button>}
                           {canSell && row.status === "DRAFT" && (
                             <>
@@ -200,7 +222,7 @@ export default function PosSalesPage() {
         )}
       </Card>
 
-      <Dialog open={detailId !== null} onOpenChange={(open: boolean) => { if (!open) setDetailId(null); }}>
+      <Dialog open={detailId !== null} onOpenChange={(open: boolean) => { if (!open) { setDetailId(null); setEditing(false); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-[#0F6758]" />{detail?.transaction_number ?? "POS Sale"}</DialogTitle></DialogHeader>
           <DialogBody>
@@ -223,11 +245,11 @@ export default function PosSalesPage() {
                     <th className="px-2 py-2">Product</th><th className="px-2 py-2 text-right">Qty</th><th className="px-2 py-2 text-right">Price</th><th className="px-2 py-2 text-right">Tax</th><th className="px-2 py-2 text-right">Amount</th>
                   </tr></thead>
                   <tbody>
-                    {(detail.items ?? []).map((item: any) => (
+                    {(detail.items ?? []).map((item: any, index: number) => (
                       <tr key={item.id} className="border-t">
                         <td className="px-2 py-2"><span className="font-medium">{item.product_name}</span> <span className="text-slate-400">({item.product_code})</span></td>
-                        <td className="px-2 py-2 text-right tabular-nums">{num(item.quantity)} {item.uom}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{money(item.unit_price)}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{editing ? <input aria-label={`Quantity for ${item.product_name}`} type="number" min="0.0001" step="0.0001" className="w-20 rounded border px-2 py-1 text-right" value={draftLines[index]?.quantity ?? item.quantity} onChange={event => setDraftLines(rows => rows.map((row, i) => i === index ? { ...row, quantity: Number(event.target.value) } : row))}/> : num(item.quantity)} {item.uom}</td>
+                        <td className="px-2 py-2 text-right tabular-nums">{editing ? <input aria-label={`Unit price for ${item.product_name}`} type="number" min="0.01" step="0.01" className="w-28 rounded border px-2 py-1 text-right" value={draftLines[index]?.unit_price ?? item.unit_price} onChange={event => setDraftLines(rows => rows.map((row, i) => i === index ? { ...row, unit_price: Number(event.target.value) } : row))}/> : money(item.unit_price)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{item.tax_type === "PBJT" ? "PBJT " : ""}{money(item.tax_amount)}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{money(item.line_amount)}</td>
                       </tr>
@@ -247,20 +269,21 @@ export default function PosSalesPage() {
                   {!isInvoice && postMethod === "CASH" && <div><label className="mb-1 block text-xs">Cash received</label><input className={input} type="number" min={0} value={cashReceived} onChange={event => setCashReceived(event.target.value)} /></div>}
                 </div>}
                 {isInvoice && ((detail.status === "DRAFT" && canSell) || (legacyInvoice && canManage)) && <div className="grid gap-3 sm:grid-cols-2">
-                  <SearchableSelect label="Customer" required value={chosenCustomer} options={billingQuery.data?.customers ?? []} onChange={setInvoiceCustomer} />
+                  <PosCustomerField value={chosenCustomer} onChange={setInvoiceCustomer} customers={billingQuery.data?.customers ?? []} canCreate={canSell} />
                   <div><label className="mb-1 block text-xs">Invoice due date</label><input className={input} type="date" value={chosenDue} onChange={event => setInvoiceDue(event.target.value)} /></div>
                   <SearchableSelect label="Receivable account" value={chosenAR} options={billingQuery.data?.receivable_accounts ?? []} onChange={setInvoiceAccount} />
                   {legacyInvoice && <><div><label className="mb-1 block text-xs">Correction posting date</label><input className={input} type="date" value={correctionDate} onChange={event => setCorrectionDate(event.target.value)} /></div><label className="col-span-full text-sm"><input type="checkbox" checked={confirmUnpaid} onChange={event => setConfirmUnpaid(event.target.checked)} /> This invoice has not been paid. Correct its bank posting to receivables.</label></>}
                 </div>}
-                {(postMutation.isError || voidMutation.isError || correction.isError) && formError && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{formError}</div>}
+                {(postMutation.isError || voidMutation.isError || correction.isError || saveEdit.isError) && formError && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{formError}</div>}
               </div>
             )}
           </DialogBody>
           <DialogFooter>
+            {canSell && detail?.status === "DRAFT" && (editing ? <><Button variant="outline" onClick={() => { setEditing(false); setDraftLines((detail.items ?? []).map((item: any) => ({ product_id: item.product_id, quantity: Number(item.quantity), unit_price: Number(item.unit_price) }))); }}>Cancel edit</Button><Button loading={saveEdit.isPending} disabled={!draftLines.length || draftLines.some(line => line.quantity <= 0 || line.unit_price <= 0) || (isInvoice && (!chosenCustomer || !chosenDue))} onClick={() => saveEdit.mutate()}>Save Changes</Button></> : <Button variant="outline" onClick={() => setEditing(true)}><Pencil className="h-4 w-4"/>Edit Draft</Button>)}
             {canSell && detail ? (
               <>
-                {detail.status === "DRAFT" && <Button variant="success" onClick={() => postMutation.mutate(detail.id)} disabled={postMutation.isPending || !chosenRevenue || (isInvoice ? (!chosenCustomer || !chosenDue) : (postMethod === "CASH" && Number(cashReceived) < Number(detail.total_amount)))}><PlayCircle className="h-4 w-4" />Post</Button>}
-                {detail.status === "DRAFT" && <Button variant="outline" onClick={() => confirmVoid(detail.id)} disabled={voidMutation.isPending}><Ban className="h-4 w-4" />Void</Button>}
+                {detail.status === "DRAFT" && !editing && <Button variant="success" onClick={() => postMutation.mutate(detail.id)} disabled={postMutation.isPending || !chosenRevenue || (isInvoice ? (!chosenCustomer || !chosenDue) : (postMethod === "CASH" && Number(cashReceived) < Number(detail.total_amount)))}><PlayCircle className="h-4 w-4" />Post</Button>}
+                {detail.status === "DRAFT" && !editing && <Button variant="outline" onClick={() => confirmVoid(detail.id)} disabled={voidMutation.isPending}><Ban className="h-4 w-4" />Void</Button>}
               </>
             ) : null}
             {legacyInvoice && canManage && <Button variant="primary" disabled={!confirmUnpaid || !chosenCustomer || !chosenDue || !correctionDate || correction.isPending} onClick={() => correction.mutate()}>Correct unpaid invoice to AR</Button>}
