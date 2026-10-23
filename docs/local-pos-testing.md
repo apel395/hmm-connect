@@ -16,8 +16,8 @@ git clone --branch feature/pos-customer-draft-repair-1023-backend https://github
 
 cd .\hmm-connect-backend
 docker compose -f docker-compose.pos-local.yml up -d --build
-docker compose -f docker-compose.pos-local.yml exec api python scripts/bootstrap_database.py --confirm-empty-database
-docker compose -f docker-compose.pos-local.yml exec api python scripts/seed_local_pos_test.py
+docker compose -f docker-compose.pos-local.yml exec -e PYTHONPATH=/app api python scripts/bootstrap_database.py --confirm-empty-database
+docker compose -f docker-compose.pos-local.yml exec -e PYTHONPATH=/app api python scripts/seed_local_pos_test.py
 ```
 
 Choose a password (at least eight characters) when prompted for the `postest` account. This bootstrap step is **only for the first run against an empty database**; skip it when restarting an existing local setup.
