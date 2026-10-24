@@ -65,6 +65,9 @@ def test_table_reservation_edit_settle_once_and_cash_close(hotel):
     assert tx.transaction_number==number and tx.total_amount==220000
     Sales.post(s,transaction_id=tx.id,data=SalesTransactionPost(revenue_account_id=accounts[0].id,payment_received=230000),user=ADMIN)
     assert tx.change_amount==10000
+    from app.api.v1.sales import get_sale
+    detail=get_sale(tx.id,s,ADMIN)
+    assert detail['department_name']=='Operations' and detail['pos_table_id']==table.id and detail['cashier_session_id']==shift.id
     assert context(**scope,db=s,user=ADMIN)['tables'][0]['status']=='AVAILABLE'
     with pytest.raises(HTTPException):Sales.post(s,transaction_id=tx.id,data=SalesTransactionPost(payment_received=220000),user=ADMIN)
     assert s.query(GeneralLedger).count()==3 and s.query(StockMovement).count()==0
