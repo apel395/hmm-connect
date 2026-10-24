@@ -72,6 +72,7 @@ export type PosVoidPayload = {
 
 export const posApi = {
   billingOptions: () => api.get("/pos/billing-options"),
+  createCustomer: (payload: { customer_name: string; phone?: string; email?: string; address?: string }) => api.post("/pos/customers", payload),
   correctToAR: (id: number, payload: { customer_id: number; invoice_due_date: string; receivable_account_id?: number; correction_date: string; confirm_unpaid: true }) => api.post(`/pos/${id}/correct-to-ar`, payload),
   options: () => api.get("/pos/options"),
   revenueAccounts: (location_id?: number) => api.get("/pos/revenue-accounts", { params: { location_id } }),

@@ -8,6 +8,7 @@ import Loading from "@/components/ui/Loading";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/form/SearchableSelect";
+import PosCustomerField from "../components/PosCustomerField";
 import useAuthStore from "@/store/auth";
 import useFormRecovery from "@/hooks/useFormRecovery";
 import { browserDraftStorage, draftKey, readDraft } from "@/utils/formDraftStorage";
@@ -210,7 +211,7 @@ function PosRegister() {
             <SearchableSelect label="Revenue account" required value={revenueAccountId} options={revenueAccounts} placeholder="Choose revenue account" onChange={setRevenueAccountId} />
           </div>}
           {cart.length > 0 && transactionType === "INVOICE" && <div className="mb-3 space-y-2">
-            <SearchableSelect label="Customer" required value={customerId} options={billingQuery.data?.customers ?? []} placeholder="Choose customer" onChange={setCustomerId} />
+            <PosCustomerField value={customerId} onChange={setCustomerId} customers={billingQuery.data?.customers ?? []} canCreate={canSell} />
             <div><label className="mb-1 block text-xs">Invoice due date</label><input aria-label="Invoice due date" type="date" className={input} value={invoiceDueDate} onChange={event => setInvoiceDueDate(event.target.value)} /></div>
             <SearchableSelect label="Receivable account" value={receivableAccountId ?? billingQuery.data?.default_receivable_account_id} options={billingQuery.data?.receivable_accounts ?? []} placeholder="Piutang Usaha" onChange={setReceivableAccountId} />
           </div>}
