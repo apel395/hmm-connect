@@ -14,6 +14,7 @@ const exactTitles: Record<string, string> = {
   "/reports/inventory": "Inventory Reports",
   "/stock-adjustments": "Stock Adjustment",
   "/pos": "Point of Sales",
+  "/pos/operations": "POS Outlet Operations",
   "/pos/sales": "POS Sales",
   "/reports/purchasing": "Purchasing Reports",
   "/products": "Catering Buy Items",

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Minus, Plus, Receipt, ShoppingCart, Trash2 } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
@@ -13,6 +13,7 @@ import useAuthStore from "@/store/auth";
 import useFormRecovery from "@/hooks/useFormRecovery";
 import { browserDraftStorage, draftKey, readDraft } from "@/utils/formDraftStorage";
 import { canAccess } from "@/lib/access";
+import { operationsApi } from "../operationsApi";
 import { posApi, type PosItemIn, type PosPaymentMethod, type PosTransactionType } from "../api";
 
 const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
@@ -21,13 +22,14 @@ const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text
 
 interface CartLine { sales_location_id?: number; sales_business_unit_id?: number; department_id?: number; catalog_type?: string; product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
 
-type PosDraft = { customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
+type PosDraft = { posTableId?: number; cashierSessionId?: number; eventName?: string; orderRequestKey?: string; customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
 const validDraft = (value: unknown): value is PosDraft => {
   if (!value || typeof value !== "object") return false;
   const d = value as PosDraft;
   return ["POS", "INVOICE"].includes(d.transactionType) && ["CASH", "CARD", "BANK_TRANSFER"].includes(d.paymentMethod)
     && [d.tableNumber, d.search, d.groupFilter, d.discount, d.amountReceived].every(v => typeof v === "string")
-    && [d.locationId, d.departmentId, d.orderLocationId, d.orderDepartmentId, d.revenueAccountId, d.pendingDraftId, d.customerId, d.receivableAccountId].every(v => v === undefined || (Number.isInteger(v) && v > 0))
+    && [d.locationId, d.departmentId, d.orderLocationId, d.orderDepartmentId, d.revenueAccountId, d.pendingDraftId, d.customerId, d.receivableAccountId, d.posTableId, d.cashierSessionId].every(v => v === undefined || (Number.isInteger(v) && v > 0))
+    && [d.eventName,d.orderRequestKey].every(v=>v===undefined||typeof v==="string")
     && Array.isArray(d.cart) && d.cart.every(l => l && Number.isInteger(l.product_id) && l.product_id > 0
       && [l.quantity, l.unit_price, l.service_charge_rate, l.tax_rate].every(v => Number.isFinite(v) && v >= 0)
       && l.quantity > 0 && [l.product_code, l.product_name, l.group_name, l.uom].every(v => typeof v === "string")
@@ -35,19 +37,35 @@ const validDraft = (value: unknown): value is PosDraft => {
 };
 export default function PosRegisterPage() {
   const owner = useAuthStore(state => state.user?.id ?? state.user?.username);
-  return <PosRegister key={owner ?? "anonymous"} />;
+  const [params] = useSearchParams();
+  const orderId = Number(params.get("order")) || undefined;
+  const loaded = useQuery({queryKey:["pos-continue", owner, orderId],queryFn:async()=>(await posApi.detail(orderId!)).data,enabled:Boolean(orderId)});
+  if(orderId && (loaded.isLoading || !loaded.data) && !loaded.isError) return <Loading/>;
+  if(orderId && (loaded.isError || loaded.data?.status!=="DRAFT")) return <p role="alert">This order cannot be continued. <Link to="/pos/operations">Back to outlet operations</Link></p>;
+  return <PosRegister key={`${owner ?? "anonymous"}:${orderId ?? "new"}`} existing={orderId ? loaded.data : undefined} defaultLocation={Number(params.get("location"))||undefined} defaultOutlet={Number(params.get("outlet"))||undefined}/>;
 }
-function PosRegister() {
+function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;defaultLocation?:number;defaultOutlet?:number}) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+  const recoveryName=existing ? `pos:order:${existing.id}` : "pos:register";
   const [initial] = useState(() => {
     const owner = user?.id ?? user?.username, storage = browserDraftStorage();
-    return owner != null && storage ? readDraft(storage, draftKey(String(owner), "pos:register"), validDraft) : null;
+    const saved=owner != null && storage ? readDraft(storage, draftKey(String(owner), recoveryName), validDraft) : null;
+    if(saved)return saved;
+    if(!existing)return null;
+    return {transactionType:existing.transaction_type,pendingDraftId:existing.id,locationId:existing.location_id,departmentId:existing.department_id,
+      orderLocationId:existing.location_id,orderDepartmentId:existing.department_id,revenueAccountId:existing.revenue_account_id??undefined,
+      customerId:existing.customer_id??undefined,invoiceDueDate:existing.invoice_due_date||"",receivableAccountId:existing.receivable_account_id??undefined,
+      posTableId:existing.pos_table_id??undefined,cashierSessionId:existing.cashier_session_id??undefined,eventName:existing.event_name||"",orderRequestKey:existing.order_request_key,
+      tableNumber:existing.table_number||"",search:"",groupFilter:"",discount:String(existing.discount_amount||""),paymentMethod:existing.payment_method||"CASH",amountReceived:"",
+      cart:existing.items.map((line:any)=>({product_id:line.product_id,product_code:line.product_code||"",product_name:line.product_name||"",group_name:"",uom:line.uom||"",
+        sales_location_id:existing.location_id,sales_business_unit_id:existing.business_unit_id,department_id:existing.department_id,
+        quantity:Number(line.quantity),unit_price:Number(line.unit_price),service_charge_rate:Number(line.service_charge_rate||0),tax_rate:Number(line.tax_rate||0),tax_type:line.tax_type,is_taxable:Number(line.tax_rate||0)>0,sale_available:true}))} as PosDraft;
   });
   const canSell = canAccess(user, POS_ROLES, "pos.sell");
   const [transactionType, setTransactionType] = useState<PosTransactionType>(initial?.transactionType ?? "POS");
-  const [locationId, setLocationId] = useState<number | undefined>(initial?.locationId);
+  const [locationId, setLocationId] = useState<number | undefined>(initial?.locationId ?? defaultLocation);
   const [tableNumber, setTableNumber] = useState(initial?.tableNumber ?? "");
   const [search, setSearch] = useState(initial?.search ?? "");
   const [groupFilter, setGroupFilter] = useState(initial?.groupFilter ?? "");
@@ -59,7 +77,7 @@ function PosRegister() {
   const [queueNumber, setQueueNumber] = useState("");
   const [lastNumber, setLastNumber] = useState("");
 
-  const [departmentId, setDepartmentId] = useState<number | undefined>(initial?.departmentId);
+  const [departmentId, setDepartmentId] = useState<number | undefined>(initial?.departmentId ?? defaultOutlet);
   const [orderLocationId, setOrderLocationId] = useState<number | undefined>(initial?.orderLocationId ?? (initial?.cart.length ? initial.locationId : undefined));
   const [orderDepartmentId, setOrderDepartmentId] = useState<number | undefined>(initial?.orderDepartmentId ?? (initial?.cart.length ? initial.departmentId : undefined));
   const [revenueAccountId, setRevenueAccountId] = useState<number | undefined>(initial?.revenueAccountId);
@@ -67,14 +85,24 @@ function PosRegister() {
   const [invoiceDueDate, setInvoiceDueDate] = useState(initial?.invoiceDueDate ?? "");
   const [receivableAccountId, setReceivableAccountId] = useState<number | undefined>(initial?.receivableAccountId);
   const billingQuery = useQuery({ queryKey: ["pos-billing-options", user?.id], queryFn: async () => (await posApi.billingOptions()).data, enabled: transactionType === "INVOICE" });
+  const [posTableId,setPosTableId]=useState<number|undefined>(initial?.posTableId);
+  const [cashierSessionId,setCashierSessionId]=useState<number|undefined>(initial?.cashierSessionId);
+  const [eventName,setEventName]=useState(initial?.eventName??"");
+  const [orderRequestKey,setOrderRequestKey]=useState(initial?.orderRequestKey??crypto.randomUUID());
   const [pendingDraftId, setPendingDraftId] = useState<number | undefined>(initial?.pendingDraftId);
   const saleLocationId = orderLocationId ?? cart.find(line => line.sales_location_id)?.sales_location_id;
   const saleDepartmentId = orderDepartmentId ?? cart.find(line => line.department_id)?.department_id;
-  const recovery = useFormRecovery("pos:register", { transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
+  const recovery = useFormRecovery(recoveryName, { posTableId, cashierSessionId, eventName, orderRequestKey, transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
   const selectedLocation = locations.find((l: any) => l.id === locationId);
   const hotelOutletsRequired = Boolean(selectedLocation?.catalog_type === "HOTEL" && selectedLocation?.has_outlets);
+  const operations=useQuery({queryKey:["pos-operations",user?.id,locationId,departmentId],queryFn:async()=>(await operationsApi.context({location_id:locationId!,department_id:departmentId!})).data,enabled:Boolean(hotelOutletsRequired&&departmentId),refetchInterval:15000});
+  const managed=hotelOutletsRequired&&transactionType==="POS";
+  const myShift=operations.data?.shifts.find(r=>r.status==="OPEN"&&r.cashier_id===user?.id);
+  const mode=operations.data?.order_mode;
+  const selectedTable=operations.data?.tables.find(t=>t.id===posTableId);
+  const operationsLink=`/pos/operations?location=${locationId}&outlet=${departmentId}`;
   const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any) => !hotelOutletsRequired || d.is_outlet).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId, hotelOutletsRequired]);
   const orderLocations = locations.filter((location: any) => cart.every(line => (!line.sales_business_unit_id || line.sales_business_unit_id === location.business_unit_id) && (!line.catalog_type || !location.catalog_type || line.catalog_type === location.catalog_type)));
   const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId && (!hotelOutletsRequired || d.is_outlet)), [optionsQuery.data, saleLocationId, hotelOutletsRequired]);
@@ -140,21 +168,24 @@ function PosRegister() {
     if (!next.length) { clear(); return; }
     setCart(next);
   };
-  const clear = () => { recovery.clear(); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
+  const clear = () => { recovery.clear(); if(existing){navigate(operationsLink);return;} setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
 
   const persistOrder = async () => {
     if (!saleLocationId) throw new Error("Choose the order location for menus shared across locations.");
     if (hotelOutletsRequired && !saleDepartmentId) throw new Error("Choose a hotel outlet for this order.");
     if (!revenueAccountId) throw new Error("Choose a revenue account.");
-    const items = cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity }));
+    if(managed && (!mode || !myShift))throw new Error("Configure the outlet and open your cashier shift in Outlet Operations first.");
+    if(managed && mode==="TABLE" && !posTableId)throw new Error("Choose an available table.");
+    if(managed && mode==="EVENT" && !eventName.trim())throw new Error("Enter the banquet event name.");
+    const items = cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity, unit_price:line.unit_price }));
     let created;
     if (pendingDraftId) {
       created = (await posApi.update(pendingDraftId, { revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, items })).data;
     } else {
-      created = (await posApi.create({ location_id: saleLocationId, department_id: saleDepartmentId, revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, transaction_type: transactionType, items })).data;
-      setPendingDraftId(created.id);
+      created = (await posApi.create({ location_id: saleLocationId, department_id: saleDepartmentId, ...(managed?{cashier_session_id:myShift!.id,pos_table_id:posTableId,event_name:eventName.trim()||undefined,order_request_key:orderRequestKey}:{}), revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, transaction_type: transactionType, items })).data;
+      setPendingDraftId(created.id);setCashierSessionId(created.cashier_session_id);
     }
-    const metadata = (await posApi.metadata(created.id, { transaction_type: transactionType, table_number: transactionType === "POS" ? tableNumber.trim() : null, queue_number: created.transaction_number })).data;
+    const metadata = (await posApi.metadata(created.id, { transaction_type: transactionType, table_number: transactionType === "POS" ? (managed ? (created.table_number||null) : tableNumber.trim()) : null, queue_number: created.transaction_number })).data;
     return { created, metadata };
   };
   const createAndPost = useMutation({
@@ -163,7 +194,7 @@ function PosRegister() {
       const posted = (await posApi.post(created.id, { revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, payment_method: paymentMethod, payment_received: transactionType === "POS" ? (paymentMethod === "CASH" ? Number(amountReceived) : total) : undefined, discount_amount: discountValue > 0 ? discountValue : null })).data;
       return { created, metadata, posted };
     },
-    onSuccess: ({ created, metadata }) => { clear(); setQueueNumber(metadata.queue_number || created.transaction_number); setLastNumber(metadata.transaction_number || created.transaction_number); void queryClient.invalidateQueries({ queryKey: ["pos-products"] }); void queryClient.invalidateQueries({ queryKey: ["pos-sales"] }); void queryClient.invalidateQueries({ queryKey: ["ar-reporting"] }); },
+    onSuccess: ({ created, metadata }) => { clear(); setQueueNumber(metadata.queue_number || created.transaction_number); setLastNumber(metadata.transaction_number || created.transaction_number); void queryClient.invalidateQueries({ queryKey: ["pos-products"] }); void queryClient.invalidateQueries({ queryKey: ["pos-sales"] }); void queryClient.invalidateQueries({queryKey:["pos-operations"]});void queryClient.invalidateQueries({queryKey:["pos-outlet-report"]}); void queryClient.invalidateQueries({ queryKey: ["ar-reporting"] }); },
     onError: (e: any) => setError(e?.response?.data?.detail || e?.message || "Transaction failed"),
   });
   const saveDraft = useMutation({
@@ -178,7 +209,7 @@ function PosRegister() {
     if (!saleLocationId) return setError("Choose the order sales location.");
     if (hotelOutletsRequired && !saleDepartmentId) return setError("Choose a hotel outlet before checkout.");
     if (!revenueAccountId) return setError("Choose a revenue account.");
-    if (transactionType === "POS" && !tableNumber.trim()) return setError("Select or enter a table number.");
+    if (transactionType === "POS" && !managed && !tableNumber.trim()) return setError("Select or enter a table number.");
     if (!cart.length) return setError("Add at least one menu item.");
     if (transactionType === "INVOICE" && (!customerId || !invoiceDueDate)) return setError("Choose the customer and invoice due date.");
     if (transactionType === "POS" && paymentMethod === "CASH" && Number(amountReceived) < total) return setError("Cash received must cover the total.");
@@ -187,19 +218,27 @@ function PosRegister() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Point of Sales" description="Create customer invoices or record paid POS sales." />
+      <PageHeader title={existing?`Continue ${existing.transaction_number}`:"Point of Sales"} actions={<Link className="text-sm text-emerald-700 underline" to={operationsLink}>Outlet operations</Link>} description="Create customer invoices or record paid POS sales." />
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setTransactionType("POS")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${transactionType === "POS" ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>POS · Meja</button>
-          <button type="button" onClick={() => setTransactionType("INVOICE")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${transactionType === "INVOICE" ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>Invoice · AR</button>
+          <button type="button" disabled={Boolean(pendingDraftId||existing)} onClick={() => setTransactionType("POS")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${transactionType === "POS" ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>POS · Meja</button>
+          <button type="button" disabled={Boolean(pendingDraftId||existing)} onClick={() => setTransactionType("INVOICE")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${transactionType === "INVOICE" ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>Invoice · AR</button>
           <div className="ml-auto text-xs text-slate-500">{transactionType === "POS" ? "Pilih meja → pilih menu → ambil nomor → bayar" : "Pilih pelanggan → buat tagihan → terima pembayaran di AR"}</div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="Choose hotel / property location" onChange={(value) => { if(cart.length || pendingDraftId) { setError("Clear or complete the current order before changing location."); return; } setLocationId(value); setDepartmentId(undefined); setOrderLocationId(value); setOrderDepartmentId(undefined); setGroupFilter(""); setError(""); }} />
-          <SearchableSelect label={hotelOutletsRequired ? "Hotel outlet" : "Sales department / outlet"} required={hotelOutletsRequired} value={departmentId} options={departments.map((d: any) => ({...d, label: d.display_name ?? d.name}))} placeholder={hotelOutletsRequired ? "Select Restaurant, Café, Banquet..." : "Choose department"} onChange={(value) => { if(cart.length || pendingDraftId) { setError("Clear or complete the current order before changing outlet."); return; } setDepartmentId(value); setOrderDepartmentId(value); setGroupFilter(""); setError(""); }} />
-          {transactionType === "POS" ? <div><label className="mb-1 block text-xs font-medium text-slate-500">Meja <span className="text-red-500">*</span></label><input className={input} value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} placeholder="Contoh: M-01 / 12" /></div> : <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500">Invoice dicatat sebagai piutang pelanggan.</div>}
+          <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="Choose hotel / property location" onChange={(value) => { if(cart.length || pendingDraftId || existing) { setError("Clear or complete the current order before changing location."); return; } setLocationId(value); setDepartmentId(undefined);setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setOrderLocationId(value); setOrderDepartmentId(undefined); setGroupFilter(""); setError(""); }} />
+          <SearchableSelect label={hotelOutletsRequired ? "Hotel outlet" : "Sales department / outlet"} required={hotelOutletsRequired} value={departmentId} options={departments.map((d: any) => ({...d, label: d.display_name ?? d.name}))} placeholder={hotelOutletsRequired ? "Select Restaurant, Café, Banquet..." : "Choose department"} onChange={(value) => { if(cart.length || pendingDraftId || existing) { setError("Clear or complete the current order before changing outlet."); return; } setDepartmentId(value);setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setOrderDepartmentId(value); setGroupFilter(""); setError(""); }} />
+          {transactionType === "POS" && !managed ? <div><label className="mb-1 block text-xs font-medium text-slate-500">Meja <span className="text-red-500">*</span></label><input className={input} value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} placeholder="Contoh: M-01 / 12" /></div> : transactionType === "INVOICE" ? <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500">Invoice dicatat sebagai piutang pelanggan.</div> : null}
         </div>
       </Card>
+      {managed&&departmentId&&<Card className="p-3 space-y-2">
+        {operations.isError?<p role="alert" className="text-sm text-red-700">Outlet controls could not load. Check migration and refresh.</p>:<div className="flex flex-wrap items-end gap-3">
+          <div className="text-sm">{mode||"Outlet not configured"} · {myShift?`My shift #${myShift.id}`:"No open cashier shift"} <Link className="ml-2 text-emerald-700 underline" to={operationsLink}>Manage shift / tables</Link></div>
+          {mode!=="EVENT"&&<SearchableSelect label={mode==="TABLE"?"Table":"Table (optional)"} required={mode==="TABLE"} value={posTableId} disabled={Boolean(pendingDraftId)} options={(operations.data?.tables??[]).filter(t=>t.is_active&&(t.status==="AVAILABLE"||t.order_id===pendingDraftId)).map(t=>({id:t.id,name:t.name}))} onChange={setPosTableId}/>}
+          {mode==="EVENT"&&<input aria-label="Event name" className={input} maxLength={200} placeholder="Banquet / event name" value={eventName} disabled={Boolean(pendingDraftId)} onChange={e=>setEventName(e.target.value)}/>}
+          {selectedTable&&<span className="text-xs text-slate-500">{selectedTable.seats} seats</span>}
+        </div>}
+      </Card>}
       {hotelOutletsRequired && !departmentId && <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">Select the outlet first. Its menu and sales will be recorded separately from other hotel outlets.</p>}
       {recovery.failed && <p className="text-xs text-amber-700">Browser storage is unavailable. Save Draft before leaving this page.</p>}
       {queueNumber && <Card className="flex items-center justify-between border-emerald-200 bg-emerald-50 p-4"><div><div className="text-xs uppercase tracking-wide text-emerald-700">{transactionType === "POS" ? "Nomor Antrian" : "Nomor Invoice"}</div><div className="mt-1 text-2xl font-bold text-emerald-800">{queueNumber}</div></div>{transactionType === "POS" && <Badge variant="success">Meja {tableNumber}</Badge>}</Card>}
@@ -235,3 +274,4 @@ function PosRegister() {
     </div>
   );
 }
+

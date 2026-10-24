@@ -210,6 +210,7 @@ export default function PosSalesPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="xs" onClick={() => { setEditing(false); setDetailId(row.id); }}><Eye className="h-4 w-4" /></Button>
+                          {canSell && row.status === "DRAFT" && row.cashier_session_id && <Link className="text-sm text-emerald-700 underline" to={`/pos?order=${row.id}`}>Continue / settle</Link>}
                           {canSell && row.status === "DRAFT" && <Button variant="outline" size="xs" onClick={() => { setEditing(true); setDetailId(row.id); }}><Pencil className="h-4 w-4" />Edit</Button>}
                           {canManage && row.status === "POSTED" && row.transaction_type === "INVOICE" && !row.account_receivable_id && <Button variant="outline" size="xs" onClick={() => { setEditing(false); setDetailId(row.id); }}>Repair AR</Button>}
                           {row.status === "POSTED" && <Button variant="ghost" size="xs" onClick={() => window.open(`/pos/sales/${row.id}/print`, "_blank")}><Printer className="h-4 w-4" /></Button>}
@@ -305,3 +306,4 @@ export default function PosSalesPage() {
     </div>
   );
 }
+
