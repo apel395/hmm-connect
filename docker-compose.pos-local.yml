@@ -1,0 +1,38 @@
+# Local POS testing only. Separate database, volume and ports from production.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: hmm_pos_test
+      POSTGRES_USER: hmm_pos_test
+      POSTGRES_PASSWORD: local-pos-test-only
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - hmm_pos_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmm_pos_test -d hmm_pos_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    environment:
+      APP_NAME: HMM Connect POS Local Test
+      DEBUG: "true"
+      SECRET_KEY: local-pos-test-secret-key-1234567890-change-before-sharing
+      DATABASE_URL: postgresql://hmm_pos_test:local-pos-test-only@db:5432/hmm_pos_test
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      DOCUMENT_STORAGE_PATH: /app/uploads
+    ports:
+      - "127.0.0.1:8000:8080"
+    volumes:
+      - .:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  hmm_pos_test_data:

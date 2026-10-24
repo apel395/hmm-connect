@@ -2,8 +2,10 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from math import ceil
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, false, func, or_
 from sqlalchemy.orm import Session
 
@@ -35,6 +37,13 @@ from app.services.pos_revenue import revenue_accounts
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 
 router = APIRouter(prefix="/pos", tags=["Point of Sales"])
+
+
+class PosCustomerCreate(BaseModel):
+    customer_name: str = Field(min_length=1, max_length=200)
+    phone: str | None = Field(default=None, max_length=50)
+    email: str | None = Field(default=None, max_length=150)
+    address: str | None = None
 
 
 def _paged(items, *, page: int, page_size: int, total: int):
@@ -163,6 +172,23 @@ def billing_options(db: Session = Depends(get_db), user: User = Depends(get_curr
         default = None
     return {"customers": [{"id":c.id,"code":c.customer_code,"name":c.customer_name} for c in db.query(Customer).filter(Customer.is_active.is_(True)).order_by(Customer.customer_name).all()],
         "receivable_accounts": [{"id":a.id,"code":a.account_number,"name":a.account_name} for a in receivable_choices(db).all()], "default_receivable_account_id":default}
+
+
+@router.post("/customers", status_code=201)
+def create_pos_customer(data: PosCustomerCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SalesTransactionService._require(user, "pos.sell")
+    name = data.customer_name.strip()
+    if not name:
+        raise HTTPException(422, "Customer name is required")
+    duplicate = db.query(Customer).filter(func.lower(Customer.customer_name) == name.casefold()).first()
+    if duplicate:
+        raise HTTPException(409, "Customer already exists; select it from the list")
+    customer = Customer(customer_code=f"POS-{uuid4().hex[:16].upper()}", customer_name=name,
+                        phone=data.phone, email=data.email, address=data.address, is_active=True)
+    db.add(customer)
+    db.commit()
+    db.refresh(customer)
+    return {"id": customer.id, "code": customer.customer_code, "name": customer.customer_name}
 
 
 @router.get("/products")

@@ -16,6 +16,7 @@ from sqlalchemy import Column, MetaData, String, Table, inspect
 
 from app.core.database import engine
 from app.models import Base
+from app.models.sales_transaction import SalesTransaction  # noqa: F401 - ensure POS/AR FK tables are registered
 
 
 REQUIRED_TABLES = {

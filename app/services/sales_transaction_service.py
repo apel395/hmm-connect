@@ -297,7 +297,14 @@ class SalesTransactionService:
             transaction.customer_id = data.customer_id
         if data.notes is not None:
             transaction.notes = data.notes
-        transaction.lines = cls._materialize_items(db, transaction, incoming=data.items)
+        if not data.items:
+            raise HTTPException(422, "A sale must contain at least one item")
+        new_lines = cls._materialize_items(db, transaction, incoming=data.items)
+        # The unique (sale, product) constraint still covers existing draft rows.
+        # Flush their removal before inserting replacement rows for the same items.
+        transaction.lines.clear()
+        db.flush()
+        transaction.lines = new_lines
         totals = cls._totals(transaction.lines, ZERO)
         transaction.subtotal = totals["subtotal"]
         transaction.service_charge_amount = totals["service_charge_amount"]
