@@ -28,6 +28,7 @@ from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
 from app.services.location_access import apply_warehouse_scope, resolve_location_id, require_location_access
 from app.models.business_unit import BusinessUnit
+from app.models.department import Department
 from app.services.organization_dimensions import validate_dimensions
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 from app.services.location_access import apply_location_scope
@@ -222,6 +223,7 @@ class SalesTransactionService:
     @classmethod
     def create(cls, db: Session, *, data: SalesTransactionCreate, user: User) -> SalesTransaction:
         cls._require(user, "pos.sell")
+        requested_department_id = data.department_id
         if not data.warehouse_id:
             nullable = next(c["nullable"] for c in inspect(db.connection()).get_columns("sales_transactions") if c["name"] == "warehouse_id")
             if not nullable:
@@ -229,6 +231,19 @@ class SalesTransactionService:
         data = cls._master_dimensions(db, data)
         warehouse = cls._scoped_warehouse(db, data.warehouse_id, user) if data.warehouse_id else None
         business_unit_id, location_id, department_id = cls._dimensions(db, warehouse, data, user)
+        # Hotel revenue centers must be explicitly chosen rather than inferred
+        # from an Item Master assignment, including when the location is inferred.
+        from app.models.department_outlet import DepartmentOutlet
+        from app.models.location_department import LocationDepartment
+        from app.services import department_outlets
+        hotel_unit = db.get(BusinessUnit, business_unit_id)
+        if hotel_unit and "hotel" in hotel_unit.name.casefold() and department_outlets.available(db):
+            outlets = (db.query(DepartmentOutlet.department_id)
+                .join(LocationDepartment, LocationDepartment.department_id == DepartmentOutlet.department_id)
+                .join(Department, Department.id == DepartmentOutlet.department_id)
+                .filter(LocationDepartment.location_id == location_id, Department.is_active.is_(True)).all())
+            if outlets and requested_department_id not in {row.department_id for row in outlets}:
+                raise HTTPException(422, "Choose the hotel outlet before starting a POS order")
         revenue = validate_revenue(db, db.get(ChartOfAccount, data.revenue_account_id), business_unit_id) if data.revenue_account_id else None
         transaction = SalesTransaction(
             revenue_account_id=revenue.id if revenue else None,
