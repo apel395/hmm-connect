@@ -12,6 +12,11 @@ from app.models.sales_transaction import SalesTransaction
 from app.models.journal_line import JournalLine
 from app.models.general_ledger import GeneralLedger
 from app.models.item_department import ItemDepartment
+from app.models.business_unit import BusinessUnit
+from app.models.location import Location
+from app.models.department import Department
+from app.models.location_department import LocationDepartment
+from app.models.department_outlet import DepartmentOutlet
 from app.schemas.sales_transaction import SalesTransactionCreate, SalesTransactionPost
 from app.services.sales_transaction_service import SalesTransactionService as Service
 from test_finance_delivery_1007 import db, ADMIN
@@ -115,3 +120,31 @@ def test_unfiltered_catalog_keeps_access_and_returns_owned_menus(db):
         assert {r['product_id'] for r in menu(s,None,scoped)['items']}=={p.id}
     assert {r['product_id'] for r in menu(s,other.id)['items']}=={hotel.id}
     assert s.query(SalesTransaction).count()==s.query(StockMovement).count()==0
+
+
+def test_hotel_outlet_must_be_selected_and_is_persisted(db, monkeypatch):
+    s, _, _, _, _ = db
+    _, _, hotel_menu = products(s)
+    hotel = BusinessUnit(code='HOTEL-POS', name='Hotel POS', is_active=True)
+    s.add(hotel);s.flush()
+    location = Location(code='HOTEL-POS', name='Hotel Lobby', business_unit_id=hotel.id, is_active=True)
+    s.add(location);s.flush()
+    parent = Department(code='FB-POS', name='Food and Beverage', business_unit_id=hotel.id, is_active=True)
+    outlet = Department(code='REST-POS', name='Restaurant', business_unit_id=hotel.id, is_active=True)
+    s.add_all([parent,outlet]);s.flush()
+    s.add_all([LocationDepartment(location_id=location.id,department_id=parent.id),
+               LocationDepartment(location_id=location.id,department_id=outlet.id),
+               DepartmentOutlet(department_id=outlet.id,parent_department_id=parent.id)])
+    s.commit()
+    options = sale_options(s, ADMIN)
+    assert next(loc for loc in options['locations'] if loc['id']==location.id)['has_outlets'] is True
+    chosen = next(dep for dep in options['departments'] if dep['id']==outlet.id)
+    assert chosen['is_outlet'] and chosen['parent_department_name']=='Food and Beverage'
+    with pytest.raises(HTTPException) as exc:
+        Service.create(s,data=SalesTransactionCreate(location_id=location.id,items=[dict(product_id=hotel_menu.id,quantity=1)]),user=ADMIN)
+    assert exc.value.status_code == 422
+    with pytest.raises(HTTPException):
+        Service.create(s,data=SalesTransactionCreate(location_id=location.id,department_id=parent.id,items=[dict(product_id=hotel_menu.id,quantity=1)]),user=ADMIN)
+    monkeypatch.setattr('app.services.sales_transaction_service.ActivityService.log',lambda **kw:None)
+    sale = Service.create(s,data=SalesTransactionCreate(location_id=location.id,department_id=outlet.id,items=[dict(product_id=hotel_menu.id,quantity=1)]),user=ADMIN)
+    assert sale.department_id == outlet.id and sale.location_id == location.id
