@@ -90,9 +90,12 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
     journal = transaction.journal_entry
     location = transaction.location
     from sqlalchemy.orm import object_session
+    department = object_session(transaction).get(Department,transaction.department_id) if transaction.department_id else None
     ar = object_session(transaction).query(AccountReceivable).filter_by(source_sale_id=transaction.id).first()
     return {
         "id": transaction.id,
+        "pos_table_id": transaction.pos_table_id, "cashier_session_id": transaction.cashier_session_id,
+        "order_mode": transaction.order_mode, "event_name": transaction.event_name, "order_request_key": transaction.order_request_key,
         "transaction_number": transaction.transaction_number,
         "status": transaction.status,
         "sale_date": transaction.sale_date,
@@ -109,6 +112,7 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
         "table_number": transaction.table_number,
         "queue_number": transaction.queue_number,
         "department_id": transaction.department_id,
+        "department_name": department.name if department else None,
         "revenue_account_id": transaction.revenue_account_id,
         "invoice_due_date": transaction.invoice_due_date,
         "receivable_account_id": transaction.receivable_account_id,
@@ -391,6 +395,7 @@ def update_sale(
     transaction = (
         SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
+        .with_for_update()
         .first()
     )
     if not transaction:
@@ -456,3 +461,4 @@ def correct_invoice_to_ar(transaction_id: int, data: InvoiceARCorrection, db: Se
     SalesTransactionService._require(user,"finance.manage")
     tx=SalesTransactionService._get(db,transaction_id,lock=True,user=user)
     return serialize_sale(correct_posted_invoice(db,tx,data,user))
+
