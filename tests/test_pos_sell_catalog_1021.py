@@ -146,5 +146,10 @@ def test_hotel_outlet_must_be_selected_and_is_persisted(db, monkeypatch):
     with pytest.raises(HTTPException):
         Service.create(s,data=SalesTransactionCreate(location_id=location.id,department_id=parent.id,items=[dict(product_id=hotel_menu.id,quantity=1)]),user=ADMIN)
     monkeypatch.setattr('app.services.sales_transaction_service.ActivityService.log',lambda **kw:None)
-    sale = Service.create(s,data=SalesTransactionCreate(location_id=location.id,department_id=outlet.id,items=[dict(product_id=hotel_menu.id,quantity=1)]),user=ADMIN)
+    from app.services.pos_operations import set_policy, open_shift
+    from app.schemas.pos_operations import OutletPolicyIn, ShiftOpen
+    set_policy(s,OutletPolicyIn(location_id=location.id,department_id=outlet.id,order_mode='COUNTER'),ADMIN)
+    shift=open_shift(s,ShiftOpen(location_id=location.id,department_id=outlet.id,opening_cash=0),ADMIN)
+    sale = Service.create(s,data=SalesTransactionCreate(location_id=location.id,department_id=outlet.id,cashier_session_id=shift.id,order_request_key='phase1-outlet-test',items=[dict(product_id=hotel_menu.id,quantity=1)]),user=ADMIN)
     assert sale.department_id == outlet.id and sale.location_id == location.id
+

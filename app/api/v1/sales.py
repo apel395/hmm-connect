@@ -93,6 +93,8 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
     ar = object_session(transaction).query(AccountReceivable).filter_by(source_sale_id=transaction.id).first()
     return {
         "id": transaction.id,
+        "pos_table_id": transaction.pos_table_id, "cashier_session_id": transaction.cashier_session_id,
+        "order_mode": transaction.order_mode, "event_name": transaction.event_name, "order_request_key": transaction.order_request_key,
         "transaction_number": transaction.transaction_number,
         "status": transaction.status,
         "sale_date": transaction.sale_date,
@@ -391,6 +393,7 @@ def update_sale(
     transaction = (
         SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
+        .with_for_update()
         .first()
     )
     if not transaction:
@@ -456,3 +459,4 @@ def correct_invoice_to_ar(transaction_id: int, data: InvoiceARCorrection, db: Se
     SalesTransactionService._require(user,"finance.manage")
     tx=SalesTransactionService._get(db,transaction_id,lock=True,user=user)
     return serialize_sale(correct_posted_invoice(db,tx,data,user))
+

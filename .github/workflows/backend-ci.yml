@@ -4,7 +4,7 @@ on:
   push:
     branches: [sprint7b/ar-foundation-backend]
   pull_request:
-    branches: [backend]
+    branches: [backend, feature/hotel-pos-outlets-1024-backend]
     paths:
       - "app/**"
       - "tests/**"
@@ -52,3 +52,4 @@ jobs:
         with:
           script: |
             await github.rest.repos.createCommitStatus({owner: context.repo.owner, repo: context.repo.repo, sha: context.sha, state: "failure", context: "Backend CI / full suite", description: "Backend validation failed"})
+

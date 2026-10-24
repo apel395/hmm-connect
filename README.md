@@ -162,3 +162,7 @@ Receiving detail uses `Post Direct Use` for DIRECT_USE and `Post to Inventory` f
 SYSTEM_ADMINISTRATOR editing a temporary `RBI-` item gets a classification-based code preview. Saving sends `regenerate_code` and the expected current code; the backend locks code allocation and the same product row, validates its selected catalog, allocates a unique next code, and audits old/new codes. Existing regular item codes are retained. Product IDs and source document links remain unchanged. No migration required.
 
 One-item EC2 repair is also available: `python scripts/repair_item_code.py --old-code RBI-88903CDB6423DF2D --name 'PEMPEK KAPAL SELAM' --user-id 45` previews only; append `--apply` to save. The actual sequential code depends on codes already present when saving.
+
+## Hotel POS outlet operations (Phase 2, feature branch)
+
+See [Hotel POS operations](docs/hotel-pos-operations-1024.md) for review dependencies, rollout, table/counter/event policies, cashier shifts, reports and exclusions. Requires the additive `20261024_pos_operations` migration on EC2 before an approved API release. This branch does not deploy itself; no production balances or posted records are changed.

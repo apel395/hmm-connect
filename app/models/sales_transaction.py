@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -10,6 +10,13 @@ from app.models.base import Base, TimestampMixin
 class SalesTransaction(Base, TimestampMixin):
     __tablename__ = "sales_transactions"
 
+    __table_args__ = (Index('uq_pos_active_table', 'pos_table_id', unique=True,
+        postgresql_where=text("status = 'DRAFT' AND pos_table_id IS NOT NULL"), sqlite_where=text("status = 'DRAFT' AND pos_table_id IS NOT NULL")),)
+    pos_table_id: Mapped[int | None] = mapped_column(ForeignKey('pos_tables.id', ondelete='RESTRICT'), nullable=True)
+    cashier_session_id: Mapped[int | None] = mapped_column(ForeignKey('pos_cashier_sessions.id', ondelete='RESTRICT'), nullable=True, index=True)
+    order_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    event_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    order_request_key: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     id: Mapped[int] = mapped_column(primary_key=True)
     transaction_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     transaction_type: Mapped[str] = mapped_column(String(20), default="POS", nullable=False, index=True)
