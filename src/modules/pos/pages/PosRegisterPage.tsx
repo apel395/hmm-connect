@@ -68,19 +68,22 @@ function PosRegister() {
   const [receivableAccountId, setReceivableAccountId] = useState<number | undefined>(initial?.receivableAccountId);
   const billingQuery = useQuery({ queryKey: ["pos-billing-options", user?.id], queryFn: async () => (await posApi.billingOptions()).data, enabled: transactionType === "INVOICE" });
   const [pendingDraftId, setPendingDraftId] = useState<number | undefined>(initial?.pendingDraftId);
-  const saleLocationId = cart.find(line => line.sales_location_id)?.sales_location_id ?? orderLocationId;
-  const saleDepartmentId = cart.find(line => line.department_id)?.department_id ?? orderDepartmentId;
+  const saleLocationId = orderLocationId ?? cart.find(line => line.sales_location_id)?.sales_location_id;
+  const saleDepartmentId = orderDepartmentId ?? cart.find(line => line.department_id)?.department_id;
   const recovery = useFormRecovery("pos:register", { transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
-  const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId]);
+  const selectedLocation = locations.find((l: any) => l.id === locationId);
+  const hotelOutletsRequired = Boolean(selectedLocation?.catalog_type === "HOTEL" && selectedLocation?.has_outlets);
+  const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any) => !hotelOutletsRequired || d.is_outlet).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId, hotelOutletsRequired]);
   const orderLocations = locations.filter((location: any) => cart.every(line => (!line.sales_business_unit_id || line.sales_business_unit_id === location.business_unit_id) && (!line.catalog_type || !location.catalog_type || line.catalog_type === location.catalog_type)));
-  const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId), [optionsQuery.data, saleLocationId]);
+  const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId && (!hotelOutletsRequired || d.is_outlet)), [optionsQuery.data, saleLocationId, hotelOutletsRequired]);
   const revenueQuery = useQuery({ queryKey: ["pos-revenue-accounts", user?.id, saleLocationId], queryFn: async () => (await posApi.revenueAccounts(saleLocationId)).data, enabled: Boolean(cart.length && saleLocationId) });
   const revenueAccounts = useMemo(() => revenueQuery.data ?? [], [revenueQuery.data]);
 
   const productsQuery = useQuery({
     queryKey: ["pos-products", user?.id, locationId, departmentId, search],
+    enabled: Boolean(locationId && (!hotelOutletsRequired || departmentId)),
     queryFn: async () => {
       const items = [];
       let page = 1, hasNext = true;
@@ -115,13 +118,16 @@ function PosRegister() {
   const addToCart = (product: any) => {
     setError("");
     if (!product.sale_available) return;
+    if (!locationId || (hotelOutletsRequired && !departmentId)) return setError("Select the location and hotel outlet before adding a menu item.");
+    if (product.sales_location_id && product.sales_location_id !== locationId) return setError("Menu belongs to another sales location.");
+    if (product.department_id && product.department_id !== departmentId) return setError("Menu belongs to another outlet.");
     const conflict = cart.length > 0 && (
       (product.sales_location_id && saleLocationId && product.sales_location_id !== saleLocationId)
       || (product.department_id && saleDepartmentId && product.department_id !== saleDepartmentId)
       || cart.some(line => (line.catalog_type && product.catalog_type && line.catalog_type !== product.catalog_type)
         || (line.sales_business_unit_id && product.sales_business_unit_id && line.sales_business_unit_id !== product.sales_business_unit_id)));
     if (conflict) return setError("This menu belongs to another location, business unit or department. Use a separate order.");
-    if (!cart.length) { setOrderLocationId(product.sales_location_id); setOrderDepartmentId(product.department_id); setRevenueAccountId(undefined); }
+    if (!cart.length) { setOrderLocationId(locationId); setOrderDepartmentId(departmentId ?? product.department_id); setRevenueAccountId(undefined); }
     const existing = inCart(product.product_id);
     if (existing) {
       setCart((rows) => rows.map((line) => line.product_id === product.product_id ? { ...line, quantity: line.quantity + 1 } : line));
@@ -134,10 +140,11 @@ function PosRegister() {
     if (!next.length) { clear(); return; }
     setCart(next);
   };
-  const clear = () => { recovery.clear(); setCart([]); setPendingDraftId(undefined); setOrderLocationId(undefined); setOrderDepartmentId(undefined); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
+  const clear = () => { recovery.clear(); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
 
   const persistOrder = async () => {
     if (!saleLocationId) throw new Error("Choose the order location for menus shared across locations.");
+    if (hotelOutletsRequired && !saleDepartmentId) throw new Error("Choose a hotel outlet for this order.");
     if (!revenueAccountId) throw new Error("Choose a revenue account.");
     const items = cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity }));
     let created;
@@ -169,6 +176,7 @@ function PosRegister() {
     setError("");
     if (!canSell) return setError("You do not have permission to sell.");
     if (!saleLocationId) return setError("Choose the order sales location.");
+    if (hotelOutletsRequired && !saleDepartmentId) return setError("Choose a hotel outlet before checkout.");
     if (!revenueAccountId) return setError("Choose a revenue account.");
     if (transactionType === "POS" && !tableNumber.trim()) return setError("Select or enter a table number.");
     if (!cart.length) return setError("Add at least one menu item.");
@@ -187,11 +195,12 @@ function PosRegister() {
           <div className="ml-auto text-xs text-slate-500">{transactionType === "POS" ? "Pilih meja → pilih menu → ambil nomor → bayar" : "Pilih pelanggan → buat tagihan → terima pembayaran di AR"}</div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <SearchableSelect label="Filter location" value={locationId} options={locations} placeholder="All accessible locations" onChange={(value) => { setLocationId(value); setDepartmentId(undefined); setGroupFilter(""); }} />
-          <SearchableSelect label="Filter department / outlet" value={departmentId} options={departments} placeholder="All departments / outlets" onChange={(value) => { setDepartmentId(value); setGroupFilter(""); }} />
+          <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="Choose hotel / property location" onChange={(value) => { if(cart.length || pendingDraftId) { setError("Clear or complete the current order before changing location."); return; } setLocationId(value); setDepartmentId(undefined); setOrderLocationId(value); setOrderDepartmentId(undefined); setGroupFilter(""); setError(""); }} />
+          <SearchableSelect label={hotelOutletsRequired ? "Hotel outlet" : "Sales department / outlet"} required={hotelOutletsRequired} value={departmentId} options={departments.map((d: any) => ({...d, label: d.display_name ?? d.name}))} placeholder={hotelOutletsRequired ? "Select Restaurant, Café, Banquet..." : "Choose department"} onChange={(value) => { if(cart.length || pendingDraftId) { setError("Clear or complete the current order before changing outlet."); return; } setDepartmentId(value); setOrderDepartmentId(value); setGroupFilter(""); setError(""); }} />
           {transactionType === "POS" ? <div><label className="mb-1 block text-xs font-medium text-slate-500">Meja <span className="text-red-500">*</span></label><input className={input} value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} placeholder="Contoh: M-01 / 12" /></div> : <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500">Invoice dicatat sebagai piutang pelanggan.</div>}
         </div>
       </Card>
+      {hotelOutletsRequired && !departmentId && <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">Select the outlet first. Its menu and sales will be recorded separately from other hotel outlets.</p>}
       {recovery.failed && <p className="text-xs text-amber-700">Browser storage is unavailable. Save Draft before leaving this page.</p>}
       {queueNumber && <Card className="flex items-center justify-between border-emerald-200 bg-emerald-50 p-4"><div><div className="text-xs uppercase tracking-wide text-emerald-700">{transactionType === "POS" ? "Nomor Antrian" : "Nomor Invoice"}</div><div className="mt-1 text-2xl font-bold text-emerald-800">{queueNumber}</div></div>{transactionType === "POS" && <Badge variant="success">Meja {tableNumber}</Badge>}</Card>}
 
@@ -200,7 +209,7 @@ function PosRegister() {
           <input className={`${input} mb-3`} placeholder="Cari menu, kode atau kategori" value={search} onChange={(e) => setSearch(e.target.value)} />
           {groups.length > 0 && <div className="mb-3 flex flex-wrap gap-1.5"><button type="button" onClick={() => setGroupFilter("")} className={`rounded-full px-3 py-1 text-xs font-medium ${!groupFilter ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>All</button>{groups.map((g) => <button key={g} type="button" onClick={() => setGroupFilter(g)} className={`rounded-full px-3 py-1 text-xs font-medium ${groupFilter === g ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>{g}</button>)}</div>}
           {productsQuery.isError && <p className="text-sm text-red-600">Could not load SELL items. Refresh and check your sales location.</p>}
-          {!productsQuery.isLoading && !productsQuery.isError && products.length === 0 && <p className="p-4 text-sm text-slate-500">No SELL items available. Register menus and selling prices in Sell Item Master for this location / outlet.</p>}
+          {!productsQuery.isLoading && !productsQuery.isError && locationId && (!hotelOutletsRequired || departmentId) && products.length === 0 && <p className="p-4 text-sm text-slate-500">No SELL items available. Register menus and selling prices in Sell Item Master for this location / outlet.</p>}
           {productsQuery.isLoading ? <Loading /> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">{visibleProducts.map((product) => <button key={product.product_id} type="button" disabled={!product.sale_available} onClick={() => addToCart(product)} className="flex h-24 flex-col justify-between rounded-lg border border-slate-200 p-2.5 text-left hover:border-[#0F6758] disabled:opacity-40"><div><div className="line-clamp-2 text-xs font-semibold">{product.product_name}</div><div className="text-[10px] text-slate-400">{!product.sale_available ? (Number(product.selling_price) <= 0 ? "Set selling price" : (product.unavailable_reason || "Tax posting pending")) : product.group_name || product.product_code}</div></div><div className="flex items-center justify-between"><span className="text-sm font-bold text-[#0F6758]">{money(product.selling_price)}</span><span className="text-[10px] text-slate-500">{product.uom}</span></div></button>)}</div>}
         </Card>
         <Card className="h-fit p-4">
