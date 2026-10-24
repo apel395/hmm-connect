@@ -46,18 +46,20 @@ export default function PosSalesPage() {
 
   const [status, setStatus] = useState("ALL");
   const [locationFilter, setLocationFilter] = useState("");
+  const [outletFilter, setOutletFilter] = useState("");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
 
   const listQuery = useQuery({
-    queryKey: ["pos-sales", { status, locationFilter, search, dateFrom, dateTo, page }],
+    queryKey: ["pos-sales", { status, locationFilter, outletFilter, search, dateFrom, dateTo, page }],
     queryFn: async () => (await posApi.list({
       page,
       page_size: PAGE_SIZE,
       status: status === "ALL" ? undefined : status,
       location_id: locationFilter ? Number(locationFilter) : undefined,
+      department_id: outletFilter ? Number(outletFilter) : undefined,
       search: search.trim() || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
@@ -69,13 +71,14 @@ export default function PosSalesPage() {
   const statusCounts: Record<string, number> = summary.status_counts ?? {};
   const pages = Math.max(data.total_pages ?? 0, 1);
 
-  useEffect(() => setPage(1), [status, locationFilter, search, dateFrom, dateTo]);
+  useEffect(() => setPage(1), [status, locationFilter, outletFilter, search, dateFrom, dateTo]);
 
   const locationsQuery = useQuery({
     queryKey: ["pos-options"],
     queryFn: async () => (await posApi.options()).data,
   });
   const locations: any[] = locationsQuery.data?.locations ?? [];
+  const outletChoices: any[] = (locationsQuery.data?.departments ?? []).filter((d: any) => (!locationFilter || String(d.location_id) === locationFilter) && (d.is_outlet || !locations.find((l: any) => l.id === d.location_id)?.has_outlets)).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i);
 
   const [detailId, setDetailId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
@@ -161,7 +164,7 @@ export default function PosSalesPage() {
       </div>
 
       <Card className="p-4">
-        <div className="grid gap-3 md:grid-cols-[1fr_160px_190px_170px_170px_110px]">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_140px_160px_170px_150px_150px_110px]">
           <input className={input} placeholder="Search number, item or cashier" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className={input} value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="ALL">All statuses</option>
@@ -169,9 +172,13 @@ export default function PosSalesPage() {
             <option value="POSTED">Posted</option>
             <option value="VOID">Void</option>
           </select>
-          <select className={input} value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}>
+          <select className={input} value={locationFilter} onChange={(e) => {setLocationFilter(e.target.value);setOutletFilter("");}}>
             <option value="">All sales locations</option>
             {locations.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+          <select aria-label="Filter outlet" className={input} value={outletFilter} onChange={(e) => setOutletFilter(e.target.value)}>
+            <option value="">All outlets</option>
+            {outletChoices.map((d) => <option key={d.id} value={d.id}>{d.display_name ?? d.name}</option>)}
           </select>
           <input type="date" className={input} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <input type="date" className={input} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
@@ -185,16 +192,17 @@ export default function PosSalesPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead><tr className="whitespace-nowrap border-b text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Number</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Sales location</th><th className="px-4 py-3">Cashier</th>
+                  <th className="px-4 py-3">Number</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Sales location</th><th className="px-4 py-3">Outlet</th><th className="px-4 py-3">Cashier</th>
                   <th className="px-4 py-3">Payment</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3 text-right">Actions</th>
                 </tr></thead>
                 <tbody>
-                  {rows.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">No sales match the current filters.</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">No sales match the current filters.</td></tr>}
                   {rows.map((row) => (
                     <tr key={row.id} className="border-t">
                       <td className="px-4 py-3 font-medium text-emerald-700">{row.transaction_number}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{fmtDate(row.sale_date)}</td>
                       <td className="px-4 py-3">{row.location_name || row.warehouse_name || "—"}</td>
+                      <td className="px-4 py-3">{(locationsQuery.data?.departments ?? []).find((d: any) => d.id === row.department_id)?.display_name ?? "—"}</td>
                       <td className="px-4 py-3">{row.created_by_name || "-"}</td>
                       <td className="px-4 py-3">{row.account_receivable_id ? `AR · ${row.payment_status}` : paymentLabel[row.payment_method] ?? "-"}</td>
                       <td className="px-4 py-3"><Badge variant={statusVariant[row.status] ?? "default"}>{row.status}</Badge></td>

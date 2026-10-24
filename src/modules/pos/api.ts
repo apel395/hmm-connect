@@ -9,6 +9,7 @@ export type PosListParams = {
   status?: string;
   warehouse_id?: number;
   location_id?: number;
+  department_id?: number;
   date_from?: string;
   date_to?: string;
   search?: string;
