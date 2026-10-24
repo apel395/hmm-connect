@@ -37,6 +37,7 @@ export const navigationGroups: NavigationGroup[] = [
   ] },
   { title: "Point of Sales", icon: Store, roles: POS_ROLES, children: [
     { title: "Register", url: "/pos", exact: true, permission: "pos.view", roles: POS_ROLES },
+    { title: "Outlet Operations", url: "/pos/operations", permission: "pos.view", roles: POS_ROLES },
     { title: "Sales", url: "/pos/sales", permission: "pos.view", roles: POS_ROLES },
   ] },
   { title: "Finance", icon: Landmark, roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"], children: [
