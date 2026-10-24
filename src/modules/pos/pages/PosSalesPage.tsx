@@ -242,6 +242,8 @@ export default function PosSalesPage() {
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Status</div><Badge variant={statusVariant[detail.status] ?? "default"}>{detail.status}</Badge></div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Date</div>{fmtDate(detail.sale_date)}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Sales location</div>{detail.location_name || detail.warehouse_name || "—"}</div>
+                  {detail.department_name&&<div><div className="text-xs uppercase tracking-wide text-slate-500">Department / outlet</div>{detail.department_name}</div>}
+                  {detail.cashier_session_id&&<div><div className="text-xs uppercase tracking-wide text-slate-500">Table / event · Shift #{detail.cashier_session_id}</div>{detail.table_number||detail.event_name||"Counter"}</div>}
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Payment</div>{detail.account_receivable_id ? `AR · ${detail.payment_status}` : paymentLabel[detail.payment_method] ?? "-"}{detail.payment_method === "CASH" && detail.change_amount > 0 ? ` (change ${money(detail.change_amount)})` : ""}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Cashier</div>{detail.created_by_name || "-"}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Journal</div>{detail.journal_number || "-"}</div>
