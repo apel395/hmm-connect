@@ -23,3 +23,7 @@ Backend migration: `20261024_pos_operations`. New Hotel outlet POS orders requir
 No recipe/BOM consumption, inventory posting, split tender, paid-outs/refunds, kitchen tickets or shift reopening is introduced. Source transaction and server authorization remain authoritative. Network retries preserve saved order identity; posted orders cannot be resumed for editing.
 
 Validation includes React component interactions for required shift/table/event, outlet pinning, refresh/retry, continued-order editing and single source identity; backend regression checks cover accounting, access and operational integrity.
+
+## Opening the correct Hotel context
+
+Outlet Operations resolves link parameters against the signed-in user's accessible Hotel locations and child outlets before requesting operational data. Catering links and unrelated departments are not valid Hotel contexts. The Register only offers its scoped Outlet Operations link after a valid Hotel child outlet is selected. A direct `/pos/operations` visit lets the user choose a Hotel and outlet; a Hotel with no configured child outlets remains selectable and explains the required master setup. Failed requests show the actual available API error and do not assert that the database migration is missing.
