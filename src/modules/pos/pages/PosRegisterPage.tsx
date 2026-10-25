@@ -14,6 +14,7 @@ import useFormRecovery from "@/hooks/useFormRecovery";
 import { browserDraftStorage, draftKey, readDraft } from "@/utils/formDraftStorage";
 import { canAccess } from "@/lib/access";
 import { operationsApi } from "../operationsApi";
+import { hotelOutletContext } from "../outletContext";
 import { posApi, type PosItemIn, type PosPaymentMethod, type PosTransactionType } from "../api";
 
 const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
@@ -97,12 +98,13 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
   const selectedLocation = locations.find((l: any) => l.id === locationId);
   const hotelOutletsRequired = Boolean(selectedLocation?.catalog_type === "HOTEL" && selectedLocation?.has_outlets);
-  const operations=useQuery({queryKey:["pos-operations",user?.id,locationId,departmentId],queryFn:async()=>(await operationsApi.context({location_id:locationId!,department_id:departmentId!})).data,enabled:Boolean(hotelOutletsRequired&&departmentId),refetchInterval:15000});
+  const hotelSelection=hotelOutletContext(optionsQuery.data,locationId,departmentId);
+  const operations=useQuery({queryKey:["pos-operations",user?.id,locationId,departmentId],queryFn:async()=>(await operationsApi.context({location_id:locationId!,department_id:departmentId!})).data,enabled:hotelSelection.valid,refetchInterval:15000});
   const managed=hotelOutletsRequired&&transactionType==="POS";
   const myShift=operations.data?.shifts.find(r=>r.status==="OPEN"&&r.cashier_id===user?.id);
   const mode=operations.data?.order_mode;
   const selectedTable=operations.data?.tables.find(t=>t.id===posTableId);
-  const operationsLink=`/pos/operations?location=${locationId}&outlet=${departmentId}`;
+  const operationsLink=hotelSelection.href;
   const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any) => !hotelOutletsRequired || d.is_outlet).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId, hotelOutletsRequired]);
   const orderLocations = locations.filter((location: any) => cart.every(line => (!line.sales_business_unit_id || line.sales_business_unit_id === location.business_unit_id) && (!line.catalog_type || !location.catalog_type || line.catalog_type === location.catalog_type)));
   const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId && (!hotelOutletsRequired || d.is_outlet)), [optionsQuery.data, saleLocationId, hotelOutletsRequired]);
@@ -111,7 +113,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
 
   const productsQuery = useQuery({
     queryKey: ["pos-products", user?.id, locationId, departmentId, search],
-    enabled: Boolean(locationId && (!hotelOutletsRequired || departmentId)),
+    enabled: Boolean(selectedLocation && (!hotelOutletsRequired || hotelSelection.valid)),
     queryFn: async () => {
       const items = [];
       let page = 1, hasNext = true;
@@ -146,7 +148,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const addToCart = (product: any) => {
     setError("");
     if (!product.sale_available) return;
-    if (!locationId || (hotelOutletsRequired && !departmentId)) return setError("Select the location and hotel outlet before adding a menu item.");
+    if (!selectedLocation || (hotelOutletsRequired && !hotelSelection.valid)) return setError("Select the location and hotel outlet before adding a menu item.");
     if (product.sales_location_id && product.sales_location_id !== locationId) return setError("Menu belongs to another sales location.");
     if (product.department_id && product.department_id !== departmentId) return setError("Menu belongs to another outlet.");
     const conflict = cart.length > 0 && (
@@ -168,7 +170,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     if (!next.length) { clear(); return; }
     setCart(next);
   };
-  const clear = () => { recovery.clear(); if(existing){navigate(operationsLink);return;} setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
+  const clear = () => { recovery.clear(); if(existing){navigate(hotelSelection.valid?operationsLink:"/pos/sales");return;} setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
 
   const persistOrder = async () => {
     if (!saleLocationId) throw new Error("Choose the order location for menus shared across locations.");
@@ -218,7 +220,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
 
   return (
     <div className="space-y-6">
-      <PageHeader title={existing?`Continue ${existing.transaction_number}`:"Point of Sales"} actions={<Link className="text-sm text-emerald-700 underline" to={operationsLink}>Outlet operations</Link>} description="Create customer invoices or record paid POS sales." />
+      <PageHeader title={existing?`Continue ${existing.transaction_number}`:"Point of Sales"} actions={hotelSelection.valid?<Link className="text-sm text-emerald-700 underline" to={operationsLink}>Outlet operations</Link>:undefined} description="Create customer invoices or record paid POS sales." />
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={Boolean(pendingDraftId||existing)} onClick={() => setTransactionType("POS")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${transactionType === "POS" ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>POS · Meja</button>
