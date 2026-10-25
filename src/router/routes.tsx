@@ -93,6 +93,8 @@ import StockOpnameDetailPage from "@/modules/warehouse/stock-opname/StockOpnameD
 import StockOpnamePrintPage from "@/modules/warehouse/stock-opname/StockOpnamePrintPage";
 import StockAdjustmentPage from "@/modules/warehouse/inventory-adjustment/pages/StockAdjustmentPage";
 import PosRegisterPage from "@/modules/pos/pages/PosRegisterPage";
+import PosShiftPrintPage from "@/modules/pos/pages/PosShiftPrintPage";
+import PosOperationsPage from "@/modules/pos/pages/PosOperationsPage";
 import PosSalesPage from "@/modules/pos/pages/PosSalesPage";
 import PosReceiptPrintPage from "@/modules/pos/pages/PosReceiptPrintPage";
 import PurchasingReportsPage from "@/modules/purchasing/reports/PurchasingReportsPage";
@@ -304,6 +306,8 @@ const router = createBrowserRouter([
       { path: "stock-opnames/:id/print", element: <StockOpnamePrintPage /> },
       { path: "put-away", element: <PutAwayPage /> },
       { path: "pos", element: <PermissionGuard permission="pos.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PosRegisterPage /></PermissionGuard> },
+      { path: "pos/operations/shifts/:id/print", element: <PermissionGuard permission="pos.view"><PosShiftPrintPage /></PermissionGuard> },
+      { path: "pos/operations", element: <PermissionGuard permission="pos.view"><PosOperationsPage /></PermissionGuard> },
       { path: "pos/sales", element: <PermissionGuard permission="pos.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PosSalesPage /></PermissionGuard> },
       { path: "pos/sales/:id/print", element: <PermissionGuard permission="pos.view" legacyRoles={["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"]}><PosReceiptPrintPage /></PermissionGuard> },
       { path: "products", element: <ProductPage key="catering" /> },

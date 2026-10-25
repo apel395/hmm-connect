@@ -26,6 +26,10 @@ interface PrintPosSale {
   sale_date: string;
   warehouse_name?: string | null;
   location_name?: string | null;
+  department_name?: string | null;
+  table_number?: string | null;
+  event_name?: string | null;
+  cashier_session_id?: number | null;
   customer_name?: string | null;
   payment_method: string;
   payment_received: number;
@@ -60,6 +64,8 @@ export default function PosReceiptPrintPage() {
     status={data.status}
     fields={[
       { label: "SALES LOCATION", value: data.location_name || data.warehouse_name },
+      { label: "DEPARTMENT / OUTLET", value: data.department_name },
+      ...(data.cashier_session_id ? [{ label: "TABLE / EVENT", value: data.table_number || data.event_name || "Counter" },{ label: "CASHIER SHIFT",value: String(data.cashier_session_id) }] : []),
       { label: "CUSTOMER", value: data.customer_name },
       { label: "CASHIER", value: data.created_by_name },
       ...(data.transaction_type === "INVOICE" ? [{ label: "DUE DATE", value: data.invoice_due_date || "-" }, { label: "COLLECTION STATUS", value: data.payment_status || "Unpaid" }] : [

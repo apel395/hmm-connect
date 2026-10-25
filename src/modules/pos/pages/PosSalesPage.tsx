@@ -210,6 +210,7 @@ export default function PosSalesPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="xs" onClick={() => { setEditing(false); setDetailId(row.id); }}><Eye className="h-4 w-4" /></Button>
+                          {canSell && row.status === "DRAFT" && row.cashier_session_id && <Link className="text-sm text-emerald-700 underline" to={`/pos?order=${row.id}`}>Continue / settle</Link>}
                           {canSell && row.status === "DRAFT" && <Button variant="outline" size="xs" onClick={() => { setEditing(true); setDetailId(row.id); }}><Pencil className="h-4 w-4" />Edit</Button>}
                           {canManage && row.status === "POSTED" && row.transaction_type === "INVOICE" && !row.account_receivable_id && <Button variant="outline" size="xs" onClick={() => { setEditing(false); setDetailId(row.id); }}>Repair AR</Button>}
                           {row.status === "POSTED" && <Button variant="ghost" size="xs" onClick={() => window.open(`/pos/sales/${row.id}/print`, "_blank")}><Printer className="h-4 w-4" /></Button>}
@@ -241,6 +242,8 @@ export default function PosSalesPage() {
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Status</div><Badge variant={statusVariant[detail.status] ?? "default"}>{detail.status}</Badge></div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Date</div>{fmtDate(detail.sale_date)}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Sales location</div>{detail.location_name || detail.warehouse_name || "—"}</div>
+                  {detail.department_name&&<div><div className="text-xs uppercase tracking-wide text-slate-500">Department / outlet</div>{detail.department_name}</div>}
+                  {detail.cashier_session_id&&<div><div className="text-xs uppercase tracking-wide text-slate-500">Table / event · Shift #{detail.cashier_session_id}</div>{detail.table_number||detail.event_name||"Counter"}</div>}
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Payment</div>{detail.account_receivable_id ? `AR · ${detail.payment_status}` : paymentLabel[detail.payment_method] ?? "-"}{detail.payment_method === "CASH" && detail.change_amount > 0 ? ` (change ${money(detail.change_amount)})` : ""}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Cashier</div>{detail.created_by_name || "-"}</div>
                   <div><div className="text-xs uppercase tracking-wide text-slate-500">Journal</div>{detail.journal_number || "-"}</div>
@@ -305,3 +308,4 @@ export default function PosSalesPage() {
     </div>
   );
 }
+
