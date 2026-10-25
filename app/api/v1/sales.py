@@ -35,6 +35,7 @@ from app.models.account_receivable import AccountReceivable
 from app.models.customer import Customer
 from app.services.pos_revenue import revenue_accounts
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
+from app.services import department_outlets
 
 router = APIRouter(prefix="/pos", tags=["Point of Sales"])
 
@@ -89,9 +90,12 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
     journal = transaction.journal_entry
     location = transaction.location
     from sqlalchemy.orm import object_session
+    department = object_session(transaction).get(Department,transaction.department_id) if transaction.department_id else None
     ar = object_session(transaction).query(AccountReceivable).filter_by(source_sale_id=transaction.id).first()
     return {
         "id": transaction.id,
+        "pos_table_id": transaction.pos_table_id, "cashier_session_id": transaction.cashier_session_id,
+        "order_mode": transaction.order_mode, "event_name": transaction.event_name, "order_request_key": transaction.order_request_key,
         "transaction_number": transaction.transaction_number,
         "status": transaction.status,
         "sale_date": transaction.sale_date,
@@ -108,6 +112,7 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
         "table_number": transaction.table_number,
         "queue_number": transaction.queue_number,
         "department_id": transaction.department_id,
+        "department_name": department.name if department else None,
         "revenue_account_id": transaction.revenue_account_id,
         "invoice_due_date": transaction.invoice_due_date,
         "receivable_account_id": transaction.receivable_account_id,
@@ -146,9 +151,13 @@ def sale_options(db: Session = Depends(get_db), user: User = Depends(get_current
     links = db.query(LocationDepartment, Department).join(Department, Department.id == LocationDepartment.department_id).filter(Department.is_active.is_(True), LocationDepartment.location_id.in_([row.id for row in locations])).all()
     assigned_department = department_scope(user)
     links = [(link, dept) for link, dept in links if assigned_department in (None, dept.id)]
+    outlet_labels = department_outlets.labels(db)
+    outlet_locations = {link.location_id for link, dept in links if dept.id in outlet_labels}
     return {"locations": [{"id": row.id, "name": row.name, "business_unit_id": row.business_unit_id,
-                "catalog_type": "HOTEL" if "hotel" in (db.get(BusinessUnit, row.business_unit_id).name if row.business_unit_id else "").casefold() else "CATERING"} for row in locations],
-            "departments": [{"id": dept.id, "name": dept.name, "location_id": link.location_id} for link, dept in links]}
+                "catalog_type": "HOTEL" if "hotel" in (db.get(BusinessUnit, row.business_unit_id).name if row.business_unit_id else "").casefold() else "CATERING",
+                "has_outlets": row.id in outlet_locations} for row in locations],
+            "departments": [{"id": dept.id, "name": dept.name, "location_id": link.location_id,
+                "is_outlet": dept.id in outlet_labels, **department_outlets.payload(db, dept)} for link, dept in links]}
 
 
 @router.get("/revenue-accounts")
@@ -270,6 +279,7 @@ def list_sales(
     status: str | None = Query(default=None, max_length=30),
     warehouse_id: int | None = None,
     location_id: int | None = None,
+    department_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     search: str | None = Query(default=None, max_length=100),
@@ -284,6 +294,8 @@ def list_sales(
         query = query.filter(SalesTransaction.status == status.upper())
     if location_id:
         query = query.filter(SalesTransaction.location_id == location_id)
+    if department_id:
+        query = query.filter(SalesTransaction.department_id == department_id)
     if warehouse_id:
         query = query.filter(SalesTransaction.warehouse_id == warehouse_id)
     if date_from:
@@ -300,12 +312,16 @@ def list_sales(
             )
         )
 
-    summary_rows = (
-        SalesTransactionService.scoped_query(db, user)
-        .with_entities(SalesTransaction.status, func.count(SalesTransaction.id))
-        .group_by(SalesTransaction.status)
-        .all()
-    )
+    status_query = SalesTransactionService.scoped_query(db, user)
+    if location_id:
+        status_query = status_query.filter(SalesTransaction.location_id == location_id)
+    if department_id:
+        status_query = status_query.filter(SalesTransaction.department_id == department_id)
+    if date_from:
+        status_query = status_query.filter(SalesTransaction.sale_date >= date_from)
+    if date_to:
+        status_query = status_query.filter(SalesTransaction.sale_date <= date_to)
+    summary_rows = status_query.with_entities(SalesTransaction.status, func.count(SalesTransaction.id)).group_by(SalesTransaction.status).all()
     totals_filter = (
         SalesTransactionService.scoped_query(db, user).filter(
             SalesTransaction.status == "POSTED"
@@ -313,6 +329,8 @@ def list_sales(
     )
     if location_id:
         totals_filter = totals_filter.filter(SalesTransaction.location_id == location_id)
+    if department_id:
+        totals_filter = totals_filter.filter(SalesTransaction.department_id == department_id)
     if date_from:
         totals_filter = totals_filter.filter(SalesTransaction.sale_date >= date_from)
     if date_to:
@@ -377,6 +395,7 @@ def update_sale(
     transaction = (
         SalesTransactionService.scoped_query(db, user)
         .filter(SalesTransaction.id == sale_id)
+        .with_for_update()
         .first()
     )
     if not transaction:
@@ -442,3 +461,4 @@ def correct_invoice_to_ar(transaction_id: int, data: InvoiceARCorrection, db: Se
     SalesTransactionService._require(user,"finance.manage")
     tx=SalesTransactionService._get(db,transaction_id,lock=True,user=user)
     return serialize_sale(correct_posted_invoice(db,tx,data,user))
+

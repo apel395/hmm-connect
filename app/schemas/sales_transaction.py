@@ -12,6 +12,10 @@ class SalesTransactionItemIn(BaseModel):
 
 
 class SalesTransactionCreate(BaseModel):
+    pos_table_id: int | None = Field(default=None, gt=0)
+    cashier_session_id: int | None = Field(default=None, gt=0)
+    event_name: str | None = Field(default=None, max_length=200)
+    order_request_key: str | None = Field(default=None, min_length=8, max_length=64)
     invoice_due_date: date | None = None
     receivable_account_id: int | None = Field(default=None, gt=0)
     revenue_account_id: int | None = Field(default=None, gt=0)

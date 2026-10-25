@@ -28,6 +28,7 @@ from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
 from app.services.location_access import apply_warehouse_scope, resolve_location_id, require_location_access
 from app.models.business_unit import BusinessUnit
+from app.models.department import Department
 from app.services.organization_dimensions import validate_dimensions
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 from app.services.location_access import apply_location_scope
@@ -222,6 +223,20 @@ class SalesTransactionService:
     @classmethod
     def create(cls, db: Session, *, data: SalesTransactionCreate, user: User) -> SalesTransaction:
         cls._require(user, "pos.sell")
+        if data.cashier_session_id:
+            from app.services.pos_operations import shift_access
+            shift_access(db, data.cashier_session_id, user, lock=True, owner=True)
+        if data.order_request_key:
+            existing = db.query(SalesTransaction).filter_by(order_request_key=data.order_request_key).with_for_update().first()
+            if existing:
+                cls._get(db, existing.id, user=user)
+                incoming = [(r.product_id, Decimal(r.quantity), Decimal(r.unit_price) if r.unit_price is not None else None) for r in data.items]
+                saved = [(r.product_id, Decimal(r.quantity), Decimal(r.unit_price)) for r in existing.lines]
+                same_lines = len(incoming)==len(saved) and all(a[:2]==b[:2] and (a[2] is None or a[2]==b[2]) for a,b in zip(incoming,saved))
+                if existing.created_by_id != user.id or not same_lines or (data.sale_date is not None and existing.sale_date != data.sale_date) or existing.customer_id != data.customer_id or (data.revenue_account_id is not None and existing.revenue_account_id != data.revenue_account_id) or existing.notes != data.notes or (existing.location_id,existing.department_id,existing.cashier_session_id,existing.pos_table_id,existing.event_name,existing.transaction_type)!=(data.location_id,data.department_id,data.cashier_session_id,data.pos_table_id,(data.event_name or '').strip() or None,data.transaction_type):
+                    raise HTTPException(409, 'Order retry key belongs to different order details')
+                return existing
+        requested_department_id = data.department_id
         if not data.warehouse_id:
             nullable = next(c["nullable"] for c in inspect(db.connection()).get_columns("sales_transactions") if c["name"] == "warehouse_id")
             if not nullable:
@@ -229,6 +244,19 @@ class SalesTransactionService:
         data = cls._master_dimensions(db, data)
         warehouse = cls._scoped_warehouse(db, data.warehouse_id, user) if data.warehouse_id else None
         business_unit_id, location_id, department_id = cls._dimensions(db, warehouse, data, user)
+        # Hotel revenue centers must be explicitly chosen rather than inferred
+        # from an Item Master assignment, including when the location is inferred.
+        from app.models.department_outlet import DepartmentOutlet
+        from app.models.location_department import LocationDepartment
+        from app.services import department_outlets
+        hotel_unit = db.get(BusinessUnit, business_unit_id)
+        if hotel_unit and "hotel" in hotel_unit.name.casefold() and department_outlets.available(db):
+            outlets = (db.query(DepartmentOutlet.department_id)
+                .join(LocationDepartment, LocationDepartment.department_id == DepartmentOutlet.department_id)
+                .join(Department, Department.id == DepartmentOutlet.department_id)
+                .filter(LocationDepartment.location_id == location_id, Department.is_active.is_(True)).all())
+            if outlets and requested_department_id not in {row.department_id for row in outlets}:
+                raise HTTPException(422, "Choose the hotel outlet before starting a POS order")
         revenue = validate_revenue(db, db.get(ChartOfAccount, data.revenue_account_id), business_unit_id) if data.revenue_account_id else None
         transaction = SalesTransaction(
             revenue_account_id=revenue.id if revenue else None,
@@ -247,6 +275,8 @@ class SalesTransactionService:
             notes=data.notes,
             created_by_id=user.id,
         )
+        from app.services.pos_operations import bind_order
+        bind_order(db, transaction, data, user)
         if data.items:
             transaction.lines = cls._materialize_items(db, transaction, incoming=data.items)
             totals = cls._totals(transaction.lines, ZERO)
@@ -285,6 +315,10 @@ class SalesTransactionService:
         cls._require(user, "pos.sell")
         if transaction.status != "DRAFT":
             raise HTTPException(409, "Only draft POS sales can be edited")
+        from app.services.pos_operations import assert_open_order
+        assert_open_order(db, transaction, user)
+        before = {"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
+            "items":[{"product_id":r.product_id,"quantity":str(r.quantity),"unit_price":str(r.unit_price),"tax_rate":str(r.tax_rate),"service_charge_rate":str(r.service_charge_rate)} for r in transaction.lines]}
         if data.invoice_due_date is not None:
             transaction.invoice_due_date=data.invoice_due_date
         if data.receivable_account_id is not None:
@@ -320,6 +354,9 @@ class SalesTransactionService:
             document_type="POS",
             document_number=transaction.transaction_number,
             document_status=transaction.status,
+            before_data=before,
+            after_data={"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
+                "items":[{"product_id":r.product_id,"quantity":str(r.quantity),"unit_price":str(r.unit_price),"tax_rate":str(r.tax_rate),"service_charge_rate":str(r.service_charge_rate)} for r in transaction.lines]},
             details={"item_count": len(transaction.lines)},
         )
         db.commit()
@@ -385,6 +422,8 @@ class SalesTransactionService:
         if not transaction.lines:
             raise HTTPException(409, "POS sale has no items to post")
 
+        from app.services.pos_operations import assert_open_order
+        assert_open_order(db, transaction, user)
         subtotal = Decimal(transaction.subtotal or 0)
         discount = cls._discount(subtotal, data.discount_amount or ZERO)
         totals = cls._totals(transaction.lines, discount)
@@ -399,7 +438,7 @@ class SalesTransactionService:
         elif data.payment_method == "CASH":
             if payment_received <= ZERO:
                 raise HTTPException(422, "Cash payment requires an amount received")
-            if payment_received + MONEY < total:
+            if payment_received < total:
                 raise HTTPException(422, "Cash received is less than the sale total")
             change = (payment_received - total).quantize(MONEY)
         else:
@@ -549,6 +588,8 @@ class SalesTransactionService:
             )
         if transaction.status == "VOID":
             raise HTTPException(409, "POS sale is already voided")
+        from app.services.pos_operations import assert_open_order
+        if transaction.cashier_session_id: assert_open_order(db,transaction,user)
         transaction.status = "VOID"
         transaction.void_reason = data.reason
         transaction.voided_at = datetime.now(timezone.utc)
@@ -568,3 +609,4 @@ class SalesTransactionService:
         db.commit()
         db.refresh(transaction)
         return transaction
+
