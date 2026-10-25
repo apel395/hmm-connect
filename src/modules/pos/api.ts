@@ -9,6 +9,7 @@ export type PosListParams = {
   status?: string;
   warehouse_id?: number;
   location_id?: number;
+  department_id?: number;
   date_from?: string;
   date_to?: string;
   search?: string;
@@ -21,6 +22,10 @@ export type PosItemIn = {
 };
 
 export type PosCreatePayload = {
+  pos_table_id?: number;
+  cashier_session_id?: number;
+  event_name?: string;
+  order_request_key?: string;
   invoice_due_date?: string;
   receivable_account_id?: number;
   revenue_account_id?: number;
@@ -86,3 +91,4 @@ export const posApi = {
   void: (id: number, payload: PosVoidPayload = {}) => api.post(`/pos/${id}/void`, payload),
   print: (id: number) => api.get(`/pos/${id}/print`),
 };
+

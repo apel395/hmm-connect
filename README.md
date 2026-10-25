@@ -64,3 +64,8 @@ Backend memiliki dependensi, migrasi, dan prosedur deployment sendiri. Lihat [pa
 ## Pemeliharaan dokumentasi
 
 Saat mengubah workflow, permission, accounting rule, report, atau deployment, perbarui panduan terkait dalam PR yang sama. Bedakan fitur yang sudah ada, konfigurasi yang masih diperlukan, dan data yang belum selesai dimigrasikan. Jangan menyimpan password, token, atau nilai .env production dalam dokumentasi.
+
+
+## Hotel POS operations (feature review)
+
+[Outlet tables, cashier shifts and daily reports](docs/hotel-pos-operations-1024.md) extend the existing POS and `department_outlets` master. Requires companion backend Phase 2 and additive migration `20261024_pos_operations` before an approved release. Hotel orders stay separated by outlet; accounting and AR remain integrated with the existing finance flow.

@@ -2,7 +2,7 @@ name: Frontend CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/hotel-pos-outlets-1024-ui]
     paths:
       - "src/**"
       - "scripts/test-store-request-availability.cjs"
@@ -26,5 +26,6 @@ jobs:
       - run: npm run lint
       - run: npx tsc -b
       - run: npm run test:finance
+      - run: npm run test:pos-operations
       - run: npm run test:store-request
       - run: npm run build
