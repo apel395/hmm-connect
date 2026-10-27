@@ -7,7 +7,7 @@ from app.dependencies.authorization import has_permission
 from app.models.pos_operations import PosTable, PosCashierSession
 from app.models.sales_transaction import SalesTransaction
 from app.models.journal_entry import JournalEntry
-from app.schemas.pos_operations import OutletPolicyIn, TableIn, ShiftOpen, ShiftClose
+from app.schemas.pos_operations import OutletPolicyIn, TableIn, ShiftOpen, ShiftClose, OutletSetupIn
 from app.services import pos_operations as ops
 from app.services.sales_transaction_service import SalesTransactionService as Sales
 
@@ -72,3 +72,22 @@ def report(location_id:int,department_id:int,date_from:date,date_to:date,cashier
     for row in rows:days.setdefault(row.sale_date,[]).append(row)
     result.update({'location':loc.name,'outlet':dept.name,'date_from':date_from,'date_to':date_to,'daily':[{'date':d,**ops.totals(r)} for d,r in days.items()]})
     return result
+
+
+@router.get('/outlets')
+def outlet_setup(location_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    Sales._require(user,'pos.view')
+    from app.services.pos_outlet_setup import list_outlets
+    return list_outlets(db,user,location_id)
+
+
+@router.post('/outlets',status_code=201)
+def create_outlet(data:OutletSetupIn,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    from app.services.pos_outlet_setup import save_outlet
+    return save_outlet(db,user,data)
+
+
+@router.put('/outlets/{outlet_id}')
+def edit_outlet(outlet_id:int,data:OutletSetupIn,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    from app.services.pos_outlet_setup import save_outlet
+    return save_outlet(db,user,data,outlet_id)

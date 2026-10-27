@@ -152,11 +152,15 @@ def sale_options(db: Session = Depends(get_db), user: User = Depends(get_current
     assigned_department = department_scope(user)
     links = [(link, dept) for link, dept in links if assigned_department in (None, dept.id)]
     outlet_labels = department_outlets.labels(db)
+    from app.services.pos_outlet_setup import is_food_beverage
+    fnb_parents = {d.id for d in db.query(Department).filter(Department.is_active.is_(True)) if is_food_beverage(d)}
+    fnb_outlets = {id for id, label in outlet_labels.items() if label['parent_department_id'] in fnb_parents}
     outlet_locations = {link.location_id for link, dept in links if dept.id in outlet_labels}
     return {"locations": [{"id": row.id, "name": row.name, "business_unit_id": row.business_unit_id,
                 "catalog_type": "HOTEL" if "hotel" in (db.get(BusinessUnit, row.business_unit_id).name if row.business_unit_id else "").casefold() else "CATERING",
                 "has_outlets": row.id in outlet_locations} for row in locations],
             "departments": [{"id": dept.id, "name": dept.name, "location_id": link.location_id,
+                "code": dept.code, "is_fnb_outlet": dept.id in fnb_outlets,
                 "is_outlet": dept.id in outlet_labels, **department_outlets.payload(db, dept)} for link, dept in links]}
 
 

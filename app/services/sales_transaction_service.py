@@ -257,6 +257,10 @@ class SalesTransactionService:
                 .filter(LocationDepartment.location_id == location_id, Department.is_active.is_(True)).all())
             if outlets and requested_department_id not in {row.department_id for row in outlets}:
                 raise HTTPException(422, "Choose the hotel outlet before starting a POS order")
+        if hotel_unit and "hotel" in hotel_unit.name.casefold() and data.transaction_type == "POS":
+            # No fallback to an overhead department when no outlets have been set up.
+            from app.services.pos_operations import outlet
+            outlet(db, user, location_id, requested_department_id)
         revenue = validate_revenue(db, db.get(ChartOfAccount, data.revenue_account_id), business_unit_id) if data.revenue_account_id else None
         transaction = SalesTransaction(
             revenue_account_id=revenue.id if revenue else None,

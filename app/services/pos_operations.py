@@ -27,6 +27,9 @@ def outlet(db, user, location_id, department_id):
     parent = db.get(Department,link.parent_department_id) if link else None
     if not location or not location.is_active or not department or not department.is_active or not unit or not unit.is_active or 'hotel' not in unit.name.casefold() or not parent or not parent.is_active or parent.business_unit_id != unit.id or department.business_unit_id != unit.id:
         raise HTTPException(422,'Choose an active Hotel child outlet assigned to this location')
+    from app.services.pos_outlet_setup import is_food_beverage
+    if not is_food_beverage(parent):
+        raise HTTPException(422,'Hotel POS currently supports Food & Beverage outlets only')
     return location,department
 
 
