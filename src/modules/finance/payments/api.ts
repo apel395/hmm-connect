@@ -42,6 +42,30 @@ export type EligiblePaymentSupplier = {
 };
 
 export const listPayments = async (params: any = {}) => (await api.get("/payments", { params })).data;
+export type ReadyToPayInvoice = {
+  id: number;
+  invoice_number: string;
+  supplier_invoice_number: string;
+  supplier_id: number;
+  supplier_name: string | null;
+  invoice_date: string;
+  due_date: string | null;
+  currency: string;
+  total_amount: number;
+  outstanding_balance: number;
+  reserved_amount: number;
+  available_balance: number;
+};
+export type ReadyToPayPage = {
+  items: ReadyToPayInvoice[];
+  total_items: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+  totals_by_currency: Record<string, number>;
+};
+export const listReadyToPay = async (params: {page?: number; page_size?: number; search?: string; currency?: string} = {}) =>
+  (await api.get<ReadyToPayPage>("/payments/ready-to-pay", {params})).data;
 export const getPayment = async (id: number) => (await api.get<Payment>(`/payments/${id}`)).data;
 export const eligibleSuppliers = async (currency = "IDR", include_supplier_id?: number) =>
   (await api.get<EligiblePaymentSupplier[]>("/payments/eligible-suppliers", {
