@@ -10,8 +10,10 @@ The dry run is read-only. On apply, all changes happen in one DB transaction.
 Receiving Reports, their inventory movements, and receiving journals are NEVER
 deleted. Only the 25 invoice ID+number pairs below, payments allocated to them,
 and vouchers exclusively linked to them are removed with AP and journal/GL.
-Any adjustment, asset, attachment, reconciliation, unknown FK, closed-period
-journal, or inconsistent journal/GL link blocks the operation.
+Uncapitalized fixed assets generated solely from these invoices may also be
+deleted (with their invoice acquisition movement) if they have no depreciation,
+other movements or accounting activity. Other assets, attachments, unexpected
+FKs, closed-period journals, or inconsistent journal/GL links block deletion.
 """
 
 import argparse
@@ -215,6 +217,68 @@ def audit(conn, *, lock):
         if voucher["payment_id"] is not None and voucher["payment_id"] not in payment_ids:
             blockers.append(f"Voucher {voucher['id']} is linked to payment {voucher['payment_id']} outside test set")
     line_ids = [line["id"] for line in invoice_lines]
+    invoice_by_id = {row["id"]: row for row in invoice_rows}
+    line_by_id = {row["id"]: row for row in invoice_lines}
+    # Invoice posting may have auto-registered a fixed asset. Only purge an
+    # uncapitalized invoice-generated asset with no independent downstream use.
+    # Receiving-backed and already-capitalized assets must remain untouched.
+    asset_rows = rows(conn, """
+        SELECT * FROM fixed_assets
+         WHERE purchase_invoice_id IN :ids
+            OR source_invoice_line_id IN (
+                SELECT id FROM supplier_invoice_lines WHERE supplier_invoice_id IN :ids
+            )
+         ORDER BY id
+    """ + (" FOR UPDATE" if lock else ""), ids=ids)
+    asset_ids = [asset["id"] for asset in asset_rows]
+    asset_movements = rows(conn, """
+        SELECT * FROM fixed_asset_movements WHERE fixed_asset_id IN :ids ORDER BY id
+    """, ids=asset_ids) if asset_ids else []
+    asset_schedules = rows(conn, """
+        SELECT * FROM fixed_asset_depreciation_schedules WHERE fixed_asset_id IN :ids ORDER BY id
+    """, ids=asset_ids) if asset_ids else []
+    if len(asset_rows) > 1:
+        blockers.append(f"Expected at most one invoice-generated asset, found {len(asset_rows)}")
+    for asset in asset_rows:
+        invoice = invoice_by_id.get(asset["purchase_invoice_id"])
+        line = line_by_id.get(asset["source_invoice_line_id"])
+        if not invoice or not line or line["supplier_invoice_id"] != invoice["id"]:
+            blockers.append(f"Fixed asset {asset['id']} links to an unexpected invoice or invoice line")
+            continue
+        if asset["source_type"] != "SUPPLIER_INVOICE" or asset["external_reference"] != invoice["internal_invoice_number"]:
+            blockers.append(f"Fixed asset {asset['id']} is not exclusively sourced from test invoice {invoice['id']}")
+        if asset["status"] not in {"DRAFT", "PENDING_SETUP", "SOURCE_UNPOSTED"}:
+            blockers.append(f"Fixed asset {asset['id']} has registered status {asset['status']}")
+        if (asset["goods_receipt_id"] is not None or asset["capitalization_date"] is not None
+                or asset["depreciation_start_date"] is not None
+                or Decimal(asset["accumulated_depreciation"] or 0) != 0
+                or asset["disposed_at"] is not None or asset["written_off_at"] is not None):
+            blockers.append(f"Fixed asset {asset['id']} has receipt/capitalization/depreciation/disposal history")
+        movements = [move for move in asset_movements if move["fixed_asset_id"] == asset["id"]]
+        if (len(movements) != 1 or movements[0]["movement_type"] != "ACQUISITION"
+                or movements[0]["journal_entry_id"] is not None
+                or movements[0]["reference_number"] != invoice["internal_invoice_number"]):
+            blockers.append(f"Fixed asset {asset['id']} has movements beyond its invoice acquisition")
+        if any(s["fixed_asset_id"] == asset["id"] for s in asset_schedules):
+            blockers.append(f"Fixed asset {asset['id']} has depreciation schedules")
+    if asset_rows:
+        asset_journals = rows(conn, """
+            SELECT id, journal_number, reference_type, reference_id, document_number
+              FROM journal_entries
+             WHERE document_type = 'FIXED_ASSET' AND document_number IN :ids
+        """, ids=[asset["asset_number"] for asset in asset_rows])
+        asset_gl = rows(conn, """
+            SELECT id, reference_type, reference_id, document_number
+              FROM general_ledger WHERE document_number IN :ids
+        """, ids=[asset["asset_number"] for asset in asset_rows])
+        if asset_journals or asset_gl:
+            blockers.append(f"Fixed assets have accounting journals/GL: {asset_journals}, {asset_gl}")
+        blockers.extend(foreign_key_dependencies(conn, "fixed_assets", asset_ids, {
+            "fixed_asset_movements", "fixed_asset_depreciation_schedules",
+        }))
+        blockers.extend(foreign_key_dependencies(
+            conn, "fixed_asset_movements", [move["id"] for move in asset_movements], set()
+        ))
     adjustment_rows = rows(conn, """
         SELECT * FROM supplier_adjustments WHERE supplier_invoice_id IN :ids ORDER BY id
     """, ids=ids)
@@ -377,8 +441,9 @@ def audit(conn, *, lock):
 
     blockers.extend(foreign_key_dependencies(conn, "supplier_invoices", ids, {
         "supplier_invoice_lines", "payment_allocations", "payment_voucher_allocations", "supplier_adjustments",
+        "fixed_assets",
     }))
-    blockers.extend(foreign_key_dependencies(conn, "supplier_invoice_lines", line_ids, set()))
+    blockers.extend(foreign_key_dependencies(conn, "supplier_invoice_lines", line_ids, {"fixed_assets"}))
     blockers.extend(foreign_key_dependencies(conn, "journal_entries", journal_ids, {
         "journal_lines", "payments", "supplier_adjustments",
     }))
@@ -445,6 +510,8 @@ def audit(conn, *, lock):
         "purpose": "Delete only 25 user-confirmed supplier invoice IDs and related accounting; preserve receiving and stock",
         "invoices": invoice_rows,
         "invoice_lines": invoice_lines,
+        "fixed_assets": asset_rows,
+        "fixed_asset_movements": asset_movements,
         "account_payables": payable_rows,
         "payments": payment_rows,
         "payment_allocations": all_payment_allocations,
@@ -470,6 +537,8 @@ def audit(conn, *, lock):
     print("Last 20:", [(r["id"], r["internal_invoice_number"], r["status"]) for r in invoice_rows[-20:]])
     print("Related counts:", {
         "invoice_lines": len(invoice_lines),
+        "fixed_assets": len(asset_rows),
+        "fixed_asset_movements": len(asset_movements),
         "account_payables": len(payable_rows),
         "payments": len(payment_rows),
         "payment_allocations": len(all_payment_allocations),
@@ -482,6 +551,12 @@ def audit(conn, *, lock):
         "general_ledger": len(gl_rows),
         "notifications": len(notifications),
     })
+    if asset_rows:
+        print("Invoice-generated fixed assets:", [
+            (asset["id"], asset["asset_number"], asset["source_type"], asset["status"],
+             asset["purchase_invoice_id"], asset["source_invoice_line_id"])
+            for asset in asset_rows
+        ])
     if preserved_payment_plan:
         print("Preserved invoices to rebalance after removing shared test payments:")
         for plan in preserved_payment_plan:
@@ -516,6 +591,7 @@ def delete_ids(conn, table, column, ids):
         "supplier_invoices", "account_payables", "payment_allocations",
         "payment_funding_lines", "payments", "payment_voucher_allocations",
         "payment_vouchers", "supplier_adjustments", "notifications",
+        "fixed_asset_movements", "fixed_assets",
     }
     if table not in allowed or not IDENTIFIER.fullmatch(column):
         raise ValueError("Unexpected cleanup table or column")
@@ -597,6 +673,10 @@ def main():
             "notifications": delete_ids(conn, "notifications", "id", notification_ids),
             "general_ledger": delete_ids(conn, "general_ledger", "id", gl_ids),
             "journal_lines": delete_ids(conn, "journal_lines", "journal_entry_id", journal_ids),
+            "fixed_asset_movements": delete_ids(
+                conn, "fixed_asset_movements", "fixed_asset_id", [asset["id"] for asset in snapshot["fixed_assets"]]
+            ),
+            "fixed_assets": delete_ids(conn, "fixed_assets", "id", [asset["id"] for asset in snapshot["fixed_assets"]]),
             "payment_voucher_allocations": delete_ids(conn, "payment_voucher_allocations", "voucher_id", voucher_ids),
             "payment_vouchers": delete_ids(conn, "payment_vouchers", "id", voucher_ids),
             "payment_allocations": delete_ids(conn, "payment_allocations", "payment_id", payment_ids),
@@ -614,6 +694,8 @@ def main():
             "notifications": "notifications",
             "general_ledger": "invoice_and_payment_general_ledger",
             "journal_lines": "journal_lines",
+            "fixed_asset_movements": "fixed_asset_movements",
+            "fixed_assets": "fixed_assets",
             "payment_voucher_allocations": "payment_voucher_allocations",
             "payment_vouchers": "payment_vouchers",
             "payment_allocations": "payment_allocations",
