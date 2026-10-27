@@ -61,3 +61,19 @@ after approval. No production master data was created during development.
 
 Reference: [Oracle Simphony revenue centers](https://docs.oracle.com/en/industries/food-beverage/simphony/19.7/simcg/c_revenue_centers.htm)
 uses outlets such as restaurants/bars for accounting, access and transaction control.
+
+
+### Master dropdown refresh — 2026-10-27
+
+Supplier lookups without server search read every active supplier page; they no longer
+search only an initial 50/100-record sample. Typed server supplier search remains supported.
+The shared local item combobox filters the full supplied list before its display limit.
+Remote item pickers query again on reopening/focus/master updates, preserve the selected
+identity during a different search, and ignore cancelled or out-of-order responses.
+
+Successful Item/Supplier master mutations invalidate dependent query caches in this app
+and notify other same-origin tabs via a storage event (only kind + nonce, no master data).
+Supplier hooks refetch on reopening/focus. A disabled/inactive or wrong-catalog master
+remains excluded; this fix does not bypass authorization or inventory eligibility.
+Receiving shows supplier loading/errors and retry without clearing its input form.
+No database or posted document updates are involved.

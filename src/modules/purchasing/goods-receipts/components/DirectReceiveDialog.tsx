@@ -52,7 +52,8 @@ export default function DirectReceiveDialog({
   onClose: () => void;
   marketListMode?: boolean;
 }) {
-  const { data: suppliers = [] } = useSuppliers();
+  const supplierQuery = useSuppliers("", 100, open);
+  const suppliers = supplierQuery.data ?? [];
   const { data: warehouses = [] } = useWarehouses();
   const receive = useReceiveGoods();
   const { hasPermission } = useAuthorization();
@@ -200,11 +201,13 @@ export default function DirectReceiveDialog({
             Store and PM/Camp Boss approval by two different people before posting.
           </div>}
           {marketListMode && <SearchableSelect label="Approved Market List" value={marketListId} options={(marketLists.data ?? []).map((row: any)=>({id:row.id,label:`${row.ml_number} · ${row.request_date}`}))} onChange={setMarketListId} />}
+          {supplierQuery.isError && <p role="alert" className="text-sm text-red-700">Suppliers could not load. <button type="button" className="underline" onClick={() => void supplierQuery.refetch()}>Retry</button></p>}
           <div className="grid gap-3 md:grid-cols-2">
             <SearchableSelect
               label="Supplier"
               value={supplierId}
-              placeholder="Type supplier code or name..."
+              disabled={supplierQuery.isLoading}
+              placeholder={supplierQuery.isLoading ? "Loading suppliers…" : "Type supplier code or name..."}
               options={(suppliers as any[]).map(option)}
               onChange={setSupplierId}
             />
@@ -403,3 +406,4 @@ export default function DirectReceiveDialog({
     </Dialog>
   );
 }
+

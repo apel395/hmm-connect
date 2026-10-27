@@ -1,3 +1,4 @@
+import { subscribeMasterDataChange } from "@/lib/masterDataEvents";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -87,6 +88,8 @@ export default function ProductCombobox({ catalogType, value, products = [], dis
   const positionFrameRef = useRef<number | null>(null);
   const { hasPermission } = useAuthorization();
   const canManageTax = hasPermission("products.manage");
+  const [lookupRevision, setLookupRevision] = useState(0);
+  const knownProducts = useRef(new Map<number, ProductComboboxOption>());
   const [remoteProducts, setRemoteProducts] = useState<ProductComboboxOption[]>([]);
   const [taxOverrides, setTaxOverrides] = useState<Record<number, ProductComboboxOption>>({});
   const [taxEditor, setTaxEditor] = useState<TaxEditorState | null>(null);
@@ -99,7 +102,10 @@ export default function ProductCombobox({ catalogType, value, products = [], dis
   const [activeIndex, setActiveIndex] = useState(-1);
   const withTaxOverride = useCallback((product: ProductComboboxOption) => ({ ...product, ...(taxOverrides[product.id] ?? {}) }), [taxOverrides]);
   const options = useMemo(() => (remote ? remoteProducts : products).filter(product => !catalogType || product.catalog_type === catalogType).map(withTaxOverride), [remote, remoteProducts, products, withTaxOverride, catalogType]);
-  const selected = useMemo(() => [...products, ...remoteProducts].map(withTaxOverride).find((product) => product.id === value), [products, remoteProducts, withTaxOverride, value]);
+  const selected = useMemo(() => {
+    const product = [...products, ...remoteProducts].find(product => product.id === value) ?? knownProducts.current.get(value ?? 0);
+    return product ? withTaxOverride(product) : undefined;
+  }, [products, remoteProducts, withTaxOverride, value]);
   const selectedLabel = selected ? labelFor(selected) : "";
   const [query, setQuery] = useState(selectedLabel);
 
@@ -127,27 +133,37 @@ export default function ProductCombobox({ catalogType, value, products = [], dis
   }, []);
 
   useEffect(() => { setQuery(selectedLabel); }, [selectedLabel]);
+  useEffect(() => {
+    const refresh = () => setLookupRevision(revision => revision + 1);
+    const unsubscribe = subscribeMasterDataChange(kind => { if (kind === "products") refresh(); });
+    window.addEventListener("focus", refresh);
+    return () => { unsubscribe(); window.removeEventListener("focus", refresh); };
+  }, []);
 
   useEffect(() => {
     if (!remote || disabled || !open) return;
     const raw = query.trim();
-    if (selected && raw === selectedLabel) return;
+
     const requestId = ++requestIdRef.current;
+    let cancelled = false;
     const timer = window.setTimeout(async () => {
       setLoading(true);
       setLoadError(false);
       try {
-        const search = selected && raw === selectedLabel ? "" : raw;
+        const search = value && raw === selectedLabel ? "" : raw;
         const rows = loadOptions ? await loadOptions(search) : await loadRemoteProducts(search, marketOnly, excludeMarket, catalogType);
-        if (requestId === requestIdRef.current) setRemoteProducts(rows);
+        if (!cancelled && requestId === requestIdRef.current) {
+          rows.forEach(row => knownProducts.current.set(row.id, row));
+          setRemoteProducts(rows);
+        }
       } catch {
-        if (requestId === requestIdRef.current) { setRemoteProducts([]); setLoadError(true); }
+        if (!cancelled && requestId === requestIdRef.current) { setRemoteProducts([]); setLoadError(true); }
       } finally {
-        if (requestId === requestIdRef.current) setLoading(false);
+        if (!cancelled && requestId === requestIdRef.current) setLoading(false);
       }
     }, raw ? 250 : 0);
-    return () => window.clearTimeout(timer);
-  }, [remote, disabled, open, query, selected, selectedLabel, marketOnly, excludeMarket, catalogType, loadOptions]);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [remote, disabled, open, query, value, selectedLabel, marketOnly, excludeMarket, catalogType, loadOptions, lookupRevision]);
 
   useEffect(() => {
     if (!open) return;
@@ -176,7 +192,11 @@ export default function ProductCombobox({ catalogType, value, products = [], dis
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
-  const visibleOptions = useMemo(() => options.slice(0, 30), [options]);
+  const visibleOptions = useMemo(() => {
+    const search = value && query.trim() === selectedLabel ? "" : query.trim().toLowerCase();
+    const matching = remote || !search ? options : options.filter(product => `${labelFor(product)} ${product.description ?? ""}`.toLowerCase().includes(search));
+    return matching.slice(0, 30);
+  }, [options, remote, query, value, selectedLabel]);
   useEffect(() => {
     if (!open || visibleOptions.length === 0) { setActiveIndex(-1); return; }
     setActiveIndex((current) => current >= 0 && current < visibleOptions.length ? current : 0);
