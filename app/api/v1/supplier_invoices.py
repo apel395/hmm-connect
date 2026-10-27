@@ -140,7 +140,7 @@ def result(db, invoice, user):
     data.update(document_context(db, "SUPPLIER_INVOICE", invoice.id, invoice.status, user))
     data["allowed_actions"] = {
         "can_edit": invoice.status == "DRAFT",
-        "can_verify": invoice.status == "DRAFT" and match["can_verify"] and readiness["is_ready"],
+        "can_verify": invoice.status == "DRAFT" and not data["supplier_reference_pending"] and match["can_verify"] and readiness["is_ready"],
         "can_reject": invoice.status in {"DRAFT", "VERIFIED"} and not data["related_journal"],
         "can_generate_journal": invoice.status == "VERIFIED" and not data["related_journal"],
         "can_void": invoice.status in {"DRAFT", "VERIFIED"},
@@ -217,6 +217,30 @@ def listing(
 @router.get("/{invoice_id}")
 def detail(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_view_user)):
     return result(db, get(db, invoice_id, user), user)
+
+
+@router.post("/prepare-from-receipt/{receipt_id}", status_code=201)
+def prepare_from_receipt(
+    receipt_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(invoice_create_user),
+):
+    """One-click idempotent preparation for receipts posted before rollout."""
+    receipt = (
+        db.query(GoodsReceipt)
+        .filter(GoodsReceipt.id == receipt_id)
+        .with_for_update()
+        .first()
+    )
+    if not receipt:
+        raise HTTPException(404, "Receiving Report not found")
+    enforce_location_access(user, receipt.location_id)
+    if receipt.status != "POSTED":
+        raise HTTPException(409, "Only posted Receiving Reports can prepare supplier invoice drafts")
+    invoice = SupplierInvoiceService(db).prepare_receipt_draft(receipt, user)
+    db.commit()
+    db.refresh(invoice)
+    return result(db, invoice, user)
 
 
 @router.post("", status_code=201)
