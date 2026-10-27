@@ -8,8 +8,10 @@ Run from the HMM Connect backend root with its production environment configured
 
 The dry run is read-only. On apply, all changes happen in one DB transaction.
 Receiving Reports, their inventory movements, and receiving journals are NEVER
-deleted. Any payment, voucher, adjustment, fixed asset, attachment, unknown FK,
-closed-period journal, or inconsistent journal/GL link blocks the operation.
+deleted. Invoices, payments and vouchers that exclusively belong to this test
+set are removed together with their AP balances, journals and ledger. Any shared
+payment, adjustment, asset, attachment, reconciliation, unknown FK, closed-period
+journal, or inconsistent journal/GL link blocks the operation.
 """
 
 import argparse
@@ -19,6 +21,7 @@ import re
 import tempfile
 from datetime import date
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import bindparam, text
 
@@ -102,10 +105,8 @@ def audit(conn, *, lock):
             blockers.append(f"Invoice {invoice_id} was not created on 2026-10-27 WIB")
         if row["status"] not in {"DRAFT", "VERIFIED", "POSTED", "REJECTED"}:
             blockers.append(f"Invoice {invoice_id} has unexpected status {row['status']}")
-        if Decimal(row["paid_amount"] or 0) or Decimal(row["adjustment_amount"] or 0):
-            blockers.append(f"Invoice {invoice_id} has payments/adjustments recorded in its balance")
-        if row["payment_status"] != "UNPAID":
-            blockers.append(f"Invoice {invoice_id} has payment status {row['payment_status']}")
+        if Decimal(row["adjustment_amount"] or 0):
+            blockers.append(f"Invoice {invoice_id} has supplier adjustments that require a separate cleanup")
 
     invoice_lines = rows(conn, """
         SELECT * FROM supplier_invoice_lines WHERE supplier_invoice_id IN :ids
@@ -120,27 +121,102 @@ def audit(conn, *, lock):
                        if row["internal_invoice_number"] == payable["invoice_number"]), None)
         if source is None or payable["supplier_id"] != source["supplier_id"]:
             blockers.append(f"Unexpected legacy payable identity: {payable['id']}")
-        if Decimal(payable["paid_amount"] or 0):
-            blockers.append(f"Payable {payable['id']} has recorded payment amount")
-        if payable["payment_status"] != "UNPAID":
-            blockers.append(f"Payable {payable['id']} has payment status {payable['payment_status']}")
+    # Payment must be removed as a whole, never partly: a single payment may
+    # allocate across multiple supplier invoices or carry unrelated funding.
+    target_allocations = rows(conn, """
+        SELECT * FROM payment_allocations WHERE supplier_invoice_id IN :ids ORDER BY id
+    """, ids=ids)
+    payment_ids = {row["payment_id"] for row in target_allocations}
+    if payable_ids:
+        payment_ids.update(row["id"] for row in rows(conn, """
+            SELECT id FROM payments WHERE account_payable_id IN :ids
+        """, ids=payable_ids))
+    payment_ids = sorted(payment_ids)
+    payment_rows = rows(conn, """
+        SELECT * FROM payments WHERE id IN :ids ORDER BY id
+    """ + (" FOR UPDATE" if lock else ""), ids=payment_ids) if payment_ids else []
+    if len(payment_rows) != len(payment_ids):
+        blockers.append("A linked payment is missing; payment set is inconsistent")
+    all_payment_allocations = rows(conn, """
+        SELECT * FROM payment_allocations WHERE payment_id IN :ids ORDER BY id
+    """, ids=payment_ids) if payment_ids else []
+    payment_funding_lines = rows(conn, """
+        SELECT * FROM payment_funding_lines WHERE payment_id IN :ids ORDER BY id
+    """, ids=payment_ids) if payment_ids else []
+    for alloc in all_payment_allocations:
+        if alloc["supplier_invoice_id"] not in EXPECTED:
+            blockers.append(f"Payment {alloc['payment_id']} also pays invoice {alloc['supplier_invoice_id']} outside test set")
+    for payment in payment_rows:
+        if (payment["created_at"].astimezone(ZoneInfo("Asia/Jakarta")).date()
+                != EXPECTED_DATE):
+            blockers.append(f"Payment {payment['id']} was not created on the test date")
+
+    voucher_ids = {row["id"] for row in rows(conn, """
+        SELECT id FROM payment_vouchers WHERE payment_id IN :ids
+    """, ids=payment_ids)} if payment_ids else set()
+    voucher_ids.update(row["voucher_id"] for row in rows(conn, """
+        SELECT voucher_id FROM payment_voucher_allocations WHERE supplier_invoice_id IN :ids
+    """, ids=ids))
+    voucher_ids = sorted(voucher_ids)
+    voucher_rows = rows(conn, """
+        SELECT * FROM payment_vouchers WHERE id IN :ids ORDER BY id
+    """ + (" FOR UPDATE" if lock else ""), ids=voucher_ids) if voucher_ids else []
+    if len(voucher_rows) != len(voucher_ids):
+        blockers.append("A linked payment voucher is missing; voucher set is inconsistent")
+    all_voucher_allocations = rows(conn, """
+        SELECT * FROM payment_voucher_allocations WHERE voucher_id IN :ids ORDER BY id
+    """, ids=voucher_ids) if voucher_ids else []
+    for alloc in all_voucher_allocations:
+        if alloc["supplier_invoice_id"] not in EXPECTED:
+            blockers.append(f"Voucher {alloc['voucher_id']} also contains invoice {alloc['supplier_invoice_id']} outside test set")
+    for voucher in voucher_rows:
+        if voucher["payment_id"] is not None and voucher["payment_id"] not in payment_ids:
+            blockers.append(f"Voucher {voucher['id']} is linked to payment {voucher['payment_id']} outside test set")
+        if (voucher["created_at"].astimezone(ZoneInfo("Asia/Jakarta")).date()
+                != EXPECTED_DATE):
+            blockers.append(f"Voucher {voucher['id']} was not created on the test date")
     line_ids = [line["id"] for line in invoice_lines]
-    journal_rows = rows(conn, """
+    invoice_journals = rows(conn, """
         SELECT * FROM journal_entries
          WHERE reference_type = 'SUPPLIER_INVOICE' AND reference_id IN :ids
          ORDER BY id
     """ + (" FOR UPDATE" if lock else ""), ids=ids)
+    payment_journals = rows(conn, """
+        SELECT * FROM journal_entries
+         WHERE reference_type = 'SUPPLIER_PAYMENT' AND reference_id IN :ids
+         ORDER BY id
+    """ + (" FOR UPDATE" if lock else ""), ids=payment_ids) if payment_ids else []
+    journal_rows = invoice_journals + payment_journals
     journal_ids = [journal["id"] for journal in journal_rows]
     journal_numbers = [journal["journal_number"] for journal in journal_rows]
+    payment_journal_by_id = {journal["id"]: journal for journal in payment_journals}
+    for payment in payment_rows:
+        linked_id = payment["journal_entry_id"]
+        if linked_id is not None and (linked_id not in payment_journal_by_id or
+                                      payment_journal_by_id[linked_id]["reference_id"] != payment["id"]):
+            blockers.append(f"Payment {payment['id']} has an unexpected journal link: {linked_id}")
+    if journal_ids:
+        journal_linked_payments = rows(conn, """
+            SELECT id, journal_entry_id FROM payments WHERE journal_entry_id IN :ids
+        """, ids=journal_ids)
+        for payment in journal_linked_payments:
+            if payment["id"] not in payment_ids:
+                blockers.append(f"A payment outside the test set references journal {payment['journal_entry_id']}")
     journal_lines = rows(conn, """
         SELECT * FROM journal_lines WHERE journal_entry_id IN :ids ORDER BY id
     """, ids=journal_ids) if journal_ids else []
 
-    gl_rows = rows(conn, """
+    invoice_gl = rows(conn, """
         SELECT * FROM general_ledger
          WHERE reference_type = 'SUPPLIER_INVOICE' AND reference_id IN :ids
          ORDER BY id
     """, ids=ids)
+    payment_gl = rows(conn, """
+        SELECT * FROM general_ledger
+         WHERE reference_type = 'SUPPLIER_PAYMENT' AND reference_id IN :ids
+         ORDER BY id
+    """, ids=payment_ids) if payment_ids else []
+    gl_rows = invoice_gl + payment_gl
     gl_ids = [row["id"] for row in gl_rows]
 
     other_journals = rows(conn, """
@@ -152,12 +228,23 @@ def audit(conn, *, lock):
     if other_journals:
         blockers.append(f"Other journal sources share the test invoice numbers: {other_journals}")
 
+    if payment_rows:
+        other_payment_journals = rows(conn, """
+            SELECT id, journal_number, reference_type, reference_id, document_number
+              FROM journal_entries WHERE document_number IN :ids
+        """, ids=[row["payment_number"] for row in payment_rows])
+        known_journal_ids = {row["id"] for row in journal_rows}
+        other_payment_journals = [row for row in other_payment_journals if row["id"] not in known_journal_ids]
+        if other_payment_journals:
+            blockers.append(f"Other journals share the payment numbers: {other_payment_journals}")
+
     if journal_numbers:
         other_gl = rows(conn, """
             SELECT id, reference_type, reference_id, reference_number
               FROM general_ledger WHERE reference_number IN :ids
-                AND NOT (reference_type = 'SUPPLIER_INVOICE' AND reference_id BETWEEN 645 AND 658)
         """, ids=journal_numbers)
+        known_gl_ids = {row["id"] for row in gl_rows}
+        other_gl = [row for row in other_gl if row["id"] not in known_gl_ids]
         if other_gl:
             blockers.append(f"Unexpected ledger rows share journal numbers: {other_gl}")
     if journal_ids:
@@ -175,6 +262,18 @@ def audit(conn, *, lock):
           FROM document_attachments
          WHERE entity_type = 'SUPPLIER_INVOICE' AND entity_id IN :ids
     """, ids=ids)
+    if payment_ids:
+        attachments.extend(rows(conn, """
+            SELECT id, entity_id, storage_provider, storage_path
+              FROM document_attachments
+             WHERE entity_type IN ('SUPPLIER_PAYMENT', 'PAYMENT') AND entity_id IN :ids
+        """, ids=payment_ids))
+    if voucher_ids:
+        attachments.extend(rows(conn, """
+            SELECT id, entity_id, storage_provider, storage_path
+              FROM document_attachments
+             WHERE entity_type = 'PAYMENT_VOUCHER' AND entity_id IN :ids
+        """, ids=voucher_ids))
     if attachments:
         blockers.append(f"Invoice attachments need separate storage cleanup: {attachments}")
 
@@ -195,10 +294,17 @@ def audit(conn, *, lock):
         if asset_reclass:
             blockers.append(f"Asset reclassification journals reference invoice lines: {asset_reclass}")
 
-    blockers.extend(foreign_key_dependencies(conn, "supplier_invoices", ids, {"supplier_invoice_lines"}))
+    blockers.extend(foreign_key_dependencies(conn, "supplier_invoices", ids, {
+        "supplier_invoice_lines", "payment_allocations", "payment_voucher_allocations",
+    }))
     blockers.extend(foreign_key_dependencies(conn, "supplier_invoice_lines", line_ids, set()))
-    blockers.extend(foreign_key_dependencies(conn, "journal_entries", journal_ids, {"journal_lines"}))
-    blockers.extend(foreign_key_dependencies(conn, "account_payables", payable_ids, set()))
+    blockers.extend(foreign_key_dependencies(conn, "journal_entries", journal_ids, {"journal_lines", "payments"}))
+    blockers.extend(foreign_key_dependencies(conn, "journal_lines", [line["id"] for line in journal_lines], set()))
+    blockers.extend(foreign_key_dependencies(conn, "account_payables", payable_ids, {"payments"}))
+    blockers.extend(foreign_key_dependencies(conn, "payments", payment_ids, {
+        "payment_allocations", "payment_funding_lines", "payment_vouchers",
+    }))
+    blockers.extend(foreign_key_dependencies(conn, "payment_vouchers", voucher_ids, {"payment_voucher_allocations"}))
 
     # Journal/GL relationship must agree, including any unexpected GL rows
     # stored under the matching document or journal number.
@@ -211,34 +317,70 @@ def audit(conn, *, lock):
         """, ids=invoice_numbers)
         if extra_gl:
             blockers.append(f"Other ledger rows share invoice document numbers: {extra_gl}")
+    if payment_rows:
+        payment_numbers = [row["payment_number"] for row in payment_rows]
+        unexpected_payment_gl = rows(conn, """
+            SELECT id, document_number, reference_type, reference_id, reference_number
+              FROM general_ledger WHERE document_number IN :ids
+        """, ids=payment_numbers)
+        unexpected_payment_gl = [row for row in unexpected_payment_gl if row["id"] not in gl_ids]
+        if unexpected_payment_gl:
+            blockers.append(f"Unexpected ledger rows share payment document numbers: {unexpected_payment_gl}")
     if any(row["reference_number"] not in journal_numbers for row in gl_rows):
-        blockers.append("Supplier-invoice GL rows have no corresponding invoice journal")
+        blockers.append("Invoice/payment GL rows have no corresponding source journal")
+
+    notifications = rows(conn, """
+        SELECT * FROM notifications
+         WHERE reference_type = 'SUPPLIER_INVOICE' AND reference_id IN :ids
+    """, ids=ids)
+    if payment_ids:
+        notifications.extend(rows(conn, """
+            SELECT * FROM notifications
+             WHERE reference_type IN ('SUPPLIER_PAYMENT', 'PAYMENT') AND reference_id IN :ids
+        """, ids=payment_ids))
+    if voucher_ids:
+        notifications.extend(rows(conn, """
+            SELECT * FROM notifications
+             WHERE reference_type = 'PAYMENT_VOUCHER' AND reference_id IN :ids
+        """, ids=voucher_ids))
 
     snapshot = {
         "purpose": "Delete user-confirmed test invoices 645-658 created on 2026-10-27 WIB",
         "invoices": invoice_rows,
         "invoice_lines": invoice_lines,
         "account_payables": payable_rows,
-        "invoice_journals": journal_rows,
+        "payments": payment_rows,
+        "payment_allocations": all_payment_allocations,
+        "payment_funding_lines": payment_funding_lines,
+        "payment_vouchers": voucher_rows,
+        "payment_voucher_allocations": all_voucher_allocations,
+        "invoice_and_payment_journals": journal_rows,
         "journal_lines": journal_lines,
-        "invoice_general_ledger": gl_rows,
+        "invoice_and_payment_general_ledger": gl_rows,
+        "notifications": notifications,
         "blockers": blockers,
     }
     print("Target invoices:", [(r["id"], r["internal_invoice_number"], r["status"]) for r in invoice_rows])
     print("Related counts:", {
         "invoice_lines": len(invoice_lines),
         "account_payables": len(payable_rows),
-        "invoice_journals": len(journal_rows),
+        "payments": len(payment_rows),
+        "payment_allocations": len(all_payment_allocations),
+        "payment_funding_lines": len(payment_funding_lines),
+        "payment_vouchers": len(voucher_rows),
+        "payment_voucher_allocations": len(all_voucher_allocations),
+        "invoice_and_payment_journals": len(journal_rows),
         "journal_lines": len(journal_lines),
         "general_ledger": len(gl_rows),
+        "notifications": len(notifications),
     })
     if blockers:
         print("STOP: dependency or validation blockers:")
         for item in blockers:
             print("  -", item)
     else:
-        print("PASS: exact 14 invoices and journal/GL dependencies validated.")
-    return snapshot, blockers, journal_ids, gl_ids, payable_ids
+        print("PASS: exact 14 invoices, test payments, vouchers, AP and journal/GL dependencies validated.")
+    return snapshot, blockers, journal_ids, gl_ids, payable_ids, payment_ids, voucher_ids, [row["id"] for row in notifications]
 
 
 def save_snapshot(snapshot):
@@ -255,7 +397,12 @@ def save_snapshot(snapshot):
 def delete_ids(conn, table, column, ids):
     if not ids:
         return 0
-    allowed = {"general_ledger", "journal_lines", "journal_entries", "supplier_invoice_lines", "supplier_invoices", "account_payables"}
+    allowed = {
+        "general_ledger", "journal_lines", "journal_entries", "supplier_invoice_lines",
+        "supplier_invoices", "account_payables", "payment_allocations",
+        "payment_funding_lines", "payments", "payment_voucher_allocations",
+        "payment_vouchers", "notifications",
+    }
     if table not in allowed or not IDENTIFIER.fullmatch(column):
         raise ValueError("Unexpected cleanup table or column")
     stmt = text(f'DELETE FROM "{table}" WHERE "{column}" IN :ids').bindparams(bindparam("ids", expanding=True))
@@ -273,7 +420,9 @@ def main():
     with engine.begin() as conn:
         if not args.apply:
             conn.execute(text("SET TRANSACTION READ ONLY"))
-        snapshot, blockers, journal_ids, gl_ids, payable_ids = audit(conn, lock=args.apply)
+        else:
+            conn.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
+        snapshot, blockers, journal_ids, gl_ids, payable_ids, payment_ids, voucher_ids, notification_ids = audit(conn, lock=args.apply)
         if blockers:
             raise SystemExit("No rows deleted. Resolve blockers before running --apply.")
         if not args.apply:
@@ -284,8 +433,14 @@ def main():
         print("Recovery snapshot saved before deletion:", path)
         ids = sorted(EXPECTED)
         counts = {
+            "notifications": delete_ids(conn, "notifications", "id", notification_ids),
             "general_ledger": delete_ids(conn, "general_ledger", "id", gl_ids),
             "journal_lines": delete_ids(conn, "journal_lines", "journal_entry_id", journal_ids),
+            "payment_voucher_allocations": delete_ids(conn, "payment_voucher_allocations", "voucher_id", voucher_ids),
+            "payment_vouchers": delete_ids(conn, "payment_vouchers", "id", voucher_ids),
+            "payment_allocations": delete_ids(conn, "payment_allocations", "payment_id", payment_ids),
+            "payment_funding_lines": delete_ids(conn, "payment_funding_lines", "payment_id", payment_ids),
+            "payments": delete_ids(conn, "payments", "id", payment_ids),
             "journal_entries": delete_ids(conn, "journal_entries", "id", journal_ids),
             "supplier_invoice_lines": delete_ids(conn, "supplier_invoice_lines", "supplier_invoice_id", ids),
             "account_payables": delete_ids(conn, "account_payables", "id", payable_ids),
@@ -293,6 +448,22 @@ def main():
         }
         if counts["supplier_invoices"] != len(EXPECTED):
             raise RuntimeError("Invoice deletion count mismatch. Transaction rolled back.")
+        for key, snapshot_key in {
+            "notifications": "notifications",
+            "general_ledger": "invoice_and_payment_general_ledger",
+            "journal_lines": "journal_lines",
+            "payment_voucher_allocations": "payment_voucher_allocations",
+            "payment_vouchers": "payment_vouchers",
+            "payment_allocations": "payment_allocations",
+            "payment_funding_lines": "payment_funding_lines",
+            "payments": "payments",
+            "journal_entries": "invoice_and_payment_journals",
+            "supplier_invoice_lines": "invoice_lines",
+            "account_payables": "account_payables",
+            "supplier_invoices": "invoices",
+        }.items():
+            if counts[key] != len(snapshot[snapshot_key]):
+                raise RuntimeError(f"Deleted {counts[key]} {key} rows but audited {len(snapshot[snapshot_key])}. Rolled back.")
         print("DELETED in one transaction:", counts)
         print("Receiving Reports, receiving journals and stock movements PRESERVED.")
     print("Committed successfully.")
