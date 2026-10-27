@@ -27,3 +27,37 @@ Validation includes React component interactions for required shift/table/event,
 ## Opening the correct Hotel context
 
 Outlet Operations resolves link parameters against the signed-in user's accessible Hotel locations and child outlets before requesting operational data. Catering links and unrelated departments are not valid Hotel contexts. The Register only offers its scoped Outlet Operations link after a valid Hotel child outlet is selected. A direct `/pos/operations` visit lets the user choose a Hotel and outlet; a Hotel with no configured child outlets remains selectable and explains the required master setup. Failed requests show the actual available API error and do not assert that the database migration is missing.
+
+
+## Hotel Food & Beverage outlet setup — 2026-10-27
+
+POS now provides **Manage F&B outlets** directly on Outlet Operations. An administrator with
+`admin.settings.manage` and `pos.view` selects the existing Food & Beverage department,
+enters an outlet name, confirms a three-letter alphabetic code, and chooses Table,
+Counter or Event service. Restaurant suggests RES; Coffee Shop suggests COF; Banquet
+suggests BAN. The code can be edited when names share the same initial letters. The
+existing Department code/name uniqueness rules still apply; a conflict asks for another
+code/name and does not overwrite or silently reuse an existing department.
+
+The setup creates an existing-model Department, DepartmentOutlet, exact LocationDepartment
+link and PosOutletPolicy in one audited transaction. It supports rename, code change,
+mode change, deactivate and reactivate; changes are blocked while shifts or POS drafts
+are open. Outlets shared across locations must be edited in Department Master to avoid
+unintended cross-location edits. Setup never creates an F&B parent automatically.
+
+Only active children of the active Food & Beverage parent are selectable for new Hotel
+POS operations. The parent is recognized by its existing FNB/F&B code or Food and Beverage
+name; Accounting, HR and other support departments are not selling outlets. Hotel POS
+cannot bypass outlet selection when no outlets exist. Existing posted sales are untouched.
+The service mode controls the workflow, independently of the outlet's display name.
+
+Project Catering remains location-based and uses the existing customer invoice/AR and
+PHR print-template flow. The referenced `MMH-MNS.186.VI.2026.pdf` was not supplied in this
+change; no client numbering, invoice stationery, taxes, receipts or allocations are changed.
+
+No additional migration is needed beyond `20261024_pos_operations` and the existing
+`department_outlets` schema. Frontend and backend companion PRs must be released together
+after approval. No production master data was created during development.
+
+Reference: [Oracle Simphony revenue centers](https://docs.oracle.com/en/industries/food-beverage/simphony/19.7/simcg/c_revenue_centers.htm)
+uses outlets such as restaurants/bars for accounting, access and transaction control.
