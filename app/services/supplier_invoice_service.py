@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+from collections import defaultdict
 
 from fastapi import HTTPException
 from sqlalchemy import func
@@ -304,6 +305,45 @@ class SupplierInvoiceService:
             query = query.filter(SupplierInvoice.id != invoice.id)
         return Decimal(query.scalar() or 0)
 
+    def _check_receipt_reservations(self, data: SupplierInvoiceInput, *, exclude_id: int | None = None):
+        """Reserve receipt quantity while saving, not only when verifying.
+
+        Lock receipt lines in a stable order so concurrent invoice creates for
+        different supplier invoice numbers cannot both claim the last units.
+        Draft/verified/posted invoices all reserve quantities; rejected and
+        void invoices release them. Partial invoices remain supported.
+        """
+        requested = defaultdict(lambda: ZERO)
+        for line in data.lines:
+            if line.goods_receipt_item_id:
+                requested[line.goods_receipt_item_id] += Decimal(line.quantity)
+        if not requested:
+            return
+        items = (self.db.query(GoodsReceiptItem)
+                 .filter(GoodsReceiptItem.id.in_(sorted(requested)))
+                 .order_by(GoodsReceiptItem.id)
+                 .with_for_update().all())
+        if len(items) != len(requested):
+            raise HTTPException(400, "One or more invoice receipt lines do not exist")
+        for item in items:
+            linked = (self.db.query(SupplierInvoice.internal_invoice_number,
+                                    SupplierInvoice.status, SupplierInvoiceLine.quantity)
+                      .join(SupplierInvoiceLine, SupplierInvoiceLine.supplier_invoice_id == SupplierInvoice.id)
+                      .filter(SupplierInvoiceLine.goods_receipt_item_id == item.id,
+                              SupplierInvoice.status.notin_(("REJECTED", "VOID"))))
+            if exclude_id is not None:
+                linked = linked.filter(SupplierInvoice.id != exclude_id)
+            other = linked.all()
+            reserved = sum((Decimal(row.quantity) for row in other), ZERO)
+            available = max(ZERO, Decimal(item.quantity) - reserved)
+            if requested[item.id] > available:
+                drafts = sorted({row.internal_invoice_number for row in other if row.status == "DRAFT"})
+                others = f" Other active drafts: {', '.join(drafts)}." if drafts else ""
+                raise HTTPException(409,
+                    f"Receipt line {item.id} has only {available} of {item.quantity} available; "
+                    f"this invoice requests {requested[item.id]}.{others} "
+                    "Open the existing draft, or reject/void an unused draft before creating another invoice.")
+
     def match_summary(self, invoice: SupplierInvoice) -> dict:
         linked_receipts=self._invoice_receipts(invoice)
         if not invoice.goods_receipt_id and not linked_receipts:
@@ -454,6 +494,7 @@ class SupplierInvoiceService:
 
     def create(self, data, user):
         subtotal, total = self.validate(data, user=user)
+        self._check_receipt_reservations(data)
         invoice = SupplierInvoice(
             internal_invoice_number=next_document_number(self.db, "INV"),
             supplier_invoice_number=data.supplier_invoice_number.strip(),
@@ -505,6 +546,7 @@ class SupplierInvoiceService:
         if invoice.status != "DRAFT":
             raise HTTPException(409, "Only draft invoices can be edited")
         subtotal, total = self.validate(data, invoice.id, user=user)
+        self._check_receipt_reservations(data, exclude_id=invoice.id)
         for key, value in data.model_dump(exclude={"lines", "total_amount"}).items():
             setattr(invoice, key, value)
         invoice.subtotal = subtotal
@@ -593,8 +635,8 @@ class SupplierInvoiceService:
             JournalEntry.reference_type == "SUPPLIER_INVOICE",
             JournalEntry.reference_id == invoice.id,
             JournalEntry.status != "VOID",
-        ).first()
-        if existing:
+        ).with_for_update().first()
+        if existing and existing.status != "DRAFT":
             return existing
 
         resolver = DirectCoaService(self.db)
@@ -645,20 +687,21 @@ class SupplierInvoiceService:
             else None
         )
 
-        journal = JournalEntry(
+        journal = existing or JournalEntry(
             journal_number=next_document_number(self.db, "JV", digits=4),
-            posting_date=invoice.invoice_date,
-            status="DRAFT",
-            document_type="SUPPLIER_INVOICE",
-            document_number=invoice.internal_invoice_number,
-            reference_type="SUPPLIER_INVOICE",
-            reference_id=invoice.id,
-            description=f"Supplier invoice {invoice.supplier_invoice_number}",
+            status="DRAFT", document_type="SUPPLIER_INVOICE",
+            reference_type="SUPPLIER_INVOICE", reference_id=invoice.id,
             created_by_id=user.id,
-            business_unit_id=invoice.business_unit_id,
-            location_id=invoice.location_id,
-            department_id=invoice.department_id,
         )
+        if existing:
+            journal.lines.clear()
+            self.db.flush()
+        journal.posting_date = invoice.invoice_date
+        journal.document_number = invoice.internal_invoice_number
+        journal.description = f"Supplier invoice {invoice.supplier_invoice_number}"
+        journal.business_unit_id = invoice.business_unit_id
+        journal.location_id = invoice.location_id
+        journal.department_id = invoice.department_id
 
         line_number = 1
         for account_id, amount in grouped.items():
@@ -739,9 +782,9 @@ class SupplierInvoiceService:
         record_audit(
             self.db,
             user,
-            "JOURNAL_GENERATED",
+            "JOURNAL_REGENERATED" if existing else "JOURNAL_GENERATED",
             "JOURNAL_ENTRY",
-            f"Generated {journal.journal_number}",
+            f"Updated draft {journal.journal_number}" if existing else f"Generated {journal.journal_number}",
             entity_id=journal.id,
             reference_document=invoice.internal_invoice_number,
         )
