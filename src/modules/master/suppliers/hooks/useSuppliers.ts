@@ -14,7 +14,9 @@ export function useSuppliers(search = "", limit = 50, enabled = true) {
   return useQuery({
     queryKey: supplierKeys.lookup(search, limit),
     queryFn: () => supplierApi.lookup(search, limit),
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
     enabled,
   });
 }

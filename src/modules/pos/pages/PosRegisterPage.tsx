@@ -97,7 +97,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
   const selectedLocation = locations.find((l: any) => l.id === locationId);
-  const hotelOutletsRequired = Boolean(selectedLocation?.catalog_type === "HOTEL" && selectedLocation?.has_outlets);
+  const hotelOutletsRequired = Boolean(selectedLocation?.catalog_type === "HOTEL");
   const hotelSelection=hotelOutletContext(optionsQuery.data,locationId,departmentId);
   const operations=useQuery({queryKey:["pos-operations",user?.id,locationId,departmentId],queryFn:async()=>(await operationsApi.context({location_id:locationId!,department_id:departmentId!})).data,enabled:hotelSelection.valid,refetchInterval:15000});
   const managed=hotelOutletsRequired&&transactionType==="POS";
@@ -105,9 +105,9 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const mode=operations.data?.order_mode;
   const selectedTable=operations.data?.tables.find(t=>t.id===posTableId);
   const operationsLink=hotelSelection.href;
-  const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any) => !hotelOutletsRequired || d.is_outlet).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId, hotelOutletsRequired]);
+  const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any) => !hotelOutletsRequired || (d.is_outlet && d.is_fnb_outlet)).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId, hotelOutletsRequired]);
   const orderLocations = locations.filter((location: any) => cart.every(line => (!line.sales_business_unit_id || line.sales_business_unit_id === location.business_unit_id) && (!line.catalog_type || !location.catalog_type || line.catalog_type === location.catalog_type)));
-  const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId && (!hotelOutletsRequired || d.is_outlet)), [optionsQuery.data, saleLocationId, hotelOutletsRequired]);
+  const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId && (!hotelOutletsRequired || (d.is_outlet && d.is_fnb_outlet))), [optionsQuery.data, saleLocationId, hotelOutletsRequired]);
   const revenueQuery = useQuery({ queryKey: ["pos-revenue-accounts", user?.id, saleLocationId], queryFn: async () => (await posApi.revenueAccounts(saleLocationId)).data, enabled: Boolean(cart.length && saleLocationId) });
   const revenueAccounts = useMemo(() => revenueQuery.data ?? [], [revenueQuery.data]);
 

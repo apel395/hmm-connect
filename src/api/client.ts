@@ -1,4 +1,5 @@
 import axios from "axios";
+import { publishMasterDataChange } from "@/lib/masterDataEvents";
 
 const api=axios.create({
 
@@ -42,7 +43,15 @@ return config;
 
 api.interceptors.response.use(
 
-response=>response,
+response=>{
+const method=(response.config.method??"get").toLowerCase();
+if(["post","put","patch","delete"].includes(method)){
+  const url=response.config.url??"";
+  if(/(?:^|\/)products(?:\/|$)/.test(url)) publishMasterDataChange("products");
+  if(/(?:^|\/)suppliers(?:\/|$)/.test(url)) publishMasterDataChange("suppliers");
+}
+return response;
+},
 
 async error=>{
 

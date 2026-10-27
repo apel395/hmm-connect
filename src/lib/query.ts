@@ -1,3 +1,4 @@
+import { isMasterDataQuery, subscribeMasterDataChange } from "./masterDataEvents";
 import { QueryClient } from "@tanstack/react-query";
 
 const queryClient = new QueryClient({
@@ -13,4 +14,7 @@ const queryClient = new QueryClient({
   },
 });
 
+subscribeMasterDataChange(kind => {
+  void queryClient.invalidateQueries({ predicate: query => isMasterDataQuery(query.queryKey, kind) });
+});
 export default queryClient;
