@@ -15,6 +15,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base
+from app.models.sales_transaction import SalesTransaction  # noqa: F401 - register POS/AR FK targets
 from app.models.accounting_setting import AccountingSetting
 from app.models.business_unit import BusinessUnit
 from app.models.chart_of_account import ChartOfAccount
