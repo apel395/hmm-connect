@@ -12,7 +12,7 @@ def can_edit_receiving(receipt, approval, user):
         return True
     if approval.status == "APPROVED":
         return has_permission(user, "receiving.manage")
-    return approval.status == "PENDING" and can_user_edit_pending_approval(approval, user)
+    return approval.status == "PENDING" and (has_permission(user, "receiving.manage") or can_user_edit_pending_approval(approval, user))
 
 
 def reopen_approved_receiving(db, receipt, user):
@@ -41,3 +41,15 @@ def reopen_approved_receiving(db, receipt, user):
         document_number=receipt.receipt_number, document_status=receipt.status, before_data=before,
         after_data={"status": "PENDING", "current_step_order": first})
     return True
+
+
+def edit_block_reason(receipt, approval, user):
+    if can_edit_receiving(receipt, approval, user):
+        return None
+    if receipt.status == "POSTED":
+        return "This receiving is posted. An authorized receiving/Finance manager can use Depost for Edit when its accounting period and dependencies allow it. Use Correct Cost for price-only changes."
+    if receipt.status == "RETURNED":
+        return "This receiving was returned. Create a corrected receiving; the returned report remains in history."
+    if not has_permission(user, "receiving.edit"):
+        return "Receiving Edit permission is required."
+    return "Editing is restricted at the current approval stage. An authorized receiving manager must review it."
