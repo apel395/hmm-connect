@@ -50,6 +50,24 @@ class PeriodClosingService:
             raise HTTPException(409, "Open the period before closing it")
         if period.end_date.year != period.fiscal_year or period.start_date.year != period.fiscal_year:
             raise HTTPException(409, "Fiscal period dates must belong to its fiscal year")
+        # Finalize all complete drafts before calculating the closing entries.
+        # Incomplete/unbalanced drafts block close; no partial posting is committed.
+        drafts = (db.query(JournalEntry)
+            .filter(JournalEntry.posting_date.between(period.start_date, period.end_date),
+                    JournalEntry.status == "DRAFT")
+            .order_by(JournalEntry.id).with_for_update().all())
+        from app.api.v1.journals import post_locked_journal
+        for draft in drafts:
+            if draft.reference_type in CLOSING_SOURCES:
+                raise HTTPException(409, "System closing journal cannot be a draft")
+            debit = sum((Decimal(line.debit or 0) for line in draft.lines), ZERO)
+            credit = sum((Decimal(line.credit or 0) for line in draft.lines), ZERO)
+            if not draft.lines or debit != credit or debit <= ZERO:
+                raise HTTPException(409, f"Complete and balance draft journal {draft.journal_number} before closing {period.period_name}")
+        # Close is transactional under the period lock.
+        for draft in drafts:
+            post_locked_journal(db, journal=draft, user=user)
+        db.flush()
         # This row lock is shared with normal posting validation. Journal activity
         # is read only after all previously admitted postings have committed.
         dimensions = [func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name))
