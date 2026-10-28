@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import useAuthStore from "@/store/auth";
+import FeatureSearch from "./FeatureSearch";
 
 interface Props {
   onMenuClick: () => void;
@@ -40,6 +41,7 @@ export default function Header({
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <FeatureSearch />
         <Link
           to="/notifications"
           className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]"
