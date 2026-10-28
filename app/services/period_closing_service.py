@@ -66,7 +66,7 @@ class PeriodClosingService:
                 raise HTTPException(409, f"Complete and balance draft journal {draft.journal_number} before closing {period.period_name}")
         # Close is transactional under the period lock.
         for draft in drafts:
-            post_locked_journal(db, journal=draft, user=user)
+            post_locked_journal(db, journal=draft, user=user, system_closing=True)
         db.flush()
         # This row lock is shared with normal posting validation. Journal activity
         # is read only after all previously admitted postings have committed.
