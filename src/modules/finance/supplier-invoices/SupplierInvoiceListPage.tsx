@@ -255,7 +255,10 @@ export default function SupplierInvoiceListPage() {
         if (invoice.status !== "DRAFT") throw new Error("Only draft invoices can be edited");
         setEditingId(editId);
         const saved = recovery.load(`supplier-invoice:edit:${editId}`);
-        setForm(saved ?? { ...emptyForm(), ...invoice, lines: invoice.lines.map((line) => ({ ...line })) });
+        setForm(saved ?? { ...emptyForm(), ...invoice,
+          supplier_invoice_number: invoice.supplier_reference_pending ? "" :
+            (invoice.supplier_invoice_number === invoice.internal_invoice_number ? "" : invoice.supplier_invoice_number),
+          lines: invoice.lines.map((line) => ({ ...line })) });
         if (saved) recovery.notifyRestored();
         setOpen(true);
       })
@@ -363,7 +366,6 @@ export default function SupplierInvoiceListPage() {
     try {
       setSubmitError("");
       if (!form.supplier_id) return failSubmit("Select a Supplier");
-      if (!form.supplier_invoice_number.trim()) return failSubmit("Supplier Invoice Number is required");
       if (!form.business_unit_id) return failSubmit(sourceLocked ? "Source document has no Business Unit. Fix the source document before invoicing." : "Select a Business Unit");
       if (!form.department_id) return failSubmit(sourceLocked ? "Source document has no Department. Fix the source document before invoicing." : "Select a Department");
       if (!form.location_id) return failSubmit(sourceLocked ? "Source document has no Location. Fix the source document before invoicing." : "Select a Location");
@@ -438,7 +440,8 @@ export default function SupplierInvoiceListPage() {
         <label className="text-sm">Business Unit *<select disabled={sourceLocked} required className={input} value={form.business_unit_id ?? ""} onChange={(event) => setForm({ ...form, business_unit_id: Number(event.target.value), department_id: null, location_id: null })}><option value="">Select Business Unit</option>{businessUnits.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
         <label className="text-sm">Department *<select disabled={sourceLocked || !form.business_unit_id} required className={input} value={form.department_id ?? ""} onChange={(event) => setForm({ ...form, department_id: Number(event.target.value) })}><option value="">Select Department</option>{departments.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
         <label className="text-sm">Location *<select disabled={sourceLocked || !form.business_unit_id} required className={input} value={form.location_id ?? ""} onChange={(event) => setForm({ ...form, location_id: Number(event.target.value) })}><option value="">Select Location</option>{locations.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
-        <label className="text-sm">Supplier Invoice Number *<input required className={input} value={form.supplier_invoice_number} onChange={(event) => setForm({ ...form, supplier_invoice_number: event.target.value })} /></label>
+        <div className="space-y-1 text-sm"><span className="block">Invoice Number (System)</span><div className="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 font-medium text-emerald-800">{form.internal_invoice_number || "Generated automatically on Save Draft"}</div></div>
+        <label className="text-sm">Supplier Reference (optional)<input className={input} placeholder="Number printed on supplier's invoice, if available" value={form.supplier_invoice_number} onChange={(event) => setForm({ ...form, supplier_invoice_number: event.target.value })} /></label>
         <label className="text-sm">Invoice Date *<input required type="date" className={input} value={form.invoice_date} onChange={(event) => setForm({ ...form, invoice_date: event.target.value, due_date: addDays(event.target.value, 30) })} /></label>
         <label className="text-sm">Due Date<input type="date" className={input} value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} /></label>
       </div>
