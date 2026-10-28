@@ -72,6 +72,8 @@ export type SupplierInvoice = {
   id: number;
   internal_invoice_number: string;
   supplier_invoice_number: string;
+  auto_prepared_from_receiving?: boolean;
+  supplier_reference_pending?: boolean;
   supplier_id: number;
   supplier_name: string;
   invoice_date: string;
@@ -145,6 +147,8 @@ export type EligibleReceiptSource = {
 export const listInvoices = async (params: any = {}) => (await api.get("/supplier-invoices", { params })).data;
 export const listEligibleReceiptSources = async () => (await api.get<EligibleReceiptSource[]>("/supplier-invoice-sources/eligible-receipts")).data;
 export const getInvoice = async (id: number) => (await api.get<SupplierInvoice>(`/supplier-invoices/${id}`)).data;
+export const prepareInvoiceFromReceipt = async (receiptId: number) =>
+  (await api.post<SupplierInvoice>(`/supplier-invoices/prepare-from-receipt/${receiptId}`)).data;
 export const createInvoice = async (payload: InvoicePayload) => (await api.post<SupplierInvoice>("/supplier-invoices", payload)).data;
 export const updateInvoice = async (id: number, payload: InvoicePayload) => (await api.patch<SupplierInvoice>(`/supplier-invoices/${id}`, payload)).data;
 export const invoiceAction = async (id: number, action: string) => (await api.post(`/supplier-invoices/${id}/${action}`)).data;

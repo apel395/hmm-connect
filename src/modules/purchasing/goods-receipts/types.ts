@@ -56,6 +56,7 @@ export interface GoodsReceiptItem {
 export interface GoodsReceipt {
   source_type?: "LIVE" | "HISTORICAL_ENTRY" | "HISTORICAL_IMPORT";
   id: number; receipt_number: string; status: "DRAFT" | "POSTED" | "RETURNED"; source_mode?: "PO" | "ML" | "DIRECT";
+  supplier_invoice_id?: number | null; supplier_invoice_status?: string | null;
   market_list_id?: number | null;
   market_list_number?: string | null;
   approval_status?: "PENDING" | "APPROVED" | "REJECTED" | null; approval_current_step?: number | null; approval_history?: ApprovalHistoryItem[];
