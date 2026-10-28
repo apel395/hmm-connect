@@ -480,7 +480,8 @@ class GoodsReceiptService:
         if active_invoice:
             raise HTTPException(409, f"Resolve supplier invoice {active_invoice.internal_invoice_number} before editing its receiving source")
 
-        if db.query(StockMovement.id).filter(StockMovement.goods_receipt_id == receipt.id).first():
+        from app.services.receiving_stock_cycle import draft_stock_is_clear
+        if not draft_stock_is_clear(db,receipt.id):
             raise HTTPException(409, "This receiving has stock history. Use the correction/return workflow instead of draft editing")
         accounting_journal = cls._accounting_journal(db, receipt.id)
         if accounting_journal and accounting_journal.status == "POSTED":
@@ -708,15 +709,8 @@ class GoodsReceiptService:
                 po_item.received_quantity = Decimal(po_item.received_quantity or 0) + quantity
                 receipt_item.product_id = po_item.product_id
             if line_destination(receipt, receipt_item) == "WAREHOUSE":
-                existing_movement = (
-                    db.query(StockMovement)
-                    .filter(
-                        StockMovement.goods_receipt_item_id == receipt_item.id,
-                        StockMovement.reference_type == "GOODS_RECEIPT",
-                        StockMovement.movement_type == "IN",
-                    )
-                    .first()
-                )
+                from app.services.receiving_stock_cycle import active_receipt_stock
+                existing_movement = next((m for m in active_receipt_stock(db,receipt.id) if m.goods_receipt_item_id == receipt_item.id),None)
                 if existing_movement:
                     raise HTTPException(
                         status_code=409,
@@ -738,15 +732,8 @@ class GoodsReceiptService:
 
         db.flush()
         if warehouse_items(receipt):
-            movement_count = (
-                db.query(StockMovement)
-                .filter(
-                    StockMovement.goods_receipt_id == receipt.id,
-                    StockMovement.reference_type == "GOODS_RECEIPT",
-                    StockMovement.movement_type == "IN",
-                )
-                .count()
-            )
+            from app.services.receiving_stock_cycle import active_receipt_stock
+            movement_count = len(active_receipt_stock(db,receipt.id))
             if movement_count != len(warehouse_items(receipt)):
                 raise HTTPException(
                     status_code=409,
@@ -777,15 +764,7 @@ class GoodsReceiptService:
         if warehouse_items(receipt) and journal is not None:
             resolver = DirectCoaService(db)
             ap_suspense = resolver.ap_suspense_account()
-            for movement in (
-                db.query(StockMovement)
-                .filter(
-                    StockMovement.goods_receipt_id == receipt.id,
-                    StockMovement.reference_type == "GOODS_RECEIPT",
-                    StockMovement.movement_type == "IN",
-                )
-                .all()
-            ):
+            for movement in active_receipt_stock(db,receipt.id):
                 product = db.get(Product, movement.product_id)
                 movement.inventory_account_id = resolver.inventory_account(product, receipt.location_id).id
                 movement.offset_account_id = ap_suspense.id
@@ -821,7 +800,8 @@ class GoodsReceiptService:
             old_cost, new_cost = Decimal(item.unit_cost or 0), Decimal(correction.unit_cost)
             if new_cost == old_cost: continue
             if receipt.status == "POSTED" and line_destination(receipt, item) == "WAREHOUSE":
-                movement = db.query(StockMovement).filter(StockMovement.goods_receipt_item_id == item.id, StockMovement.movement_type == "IN", StockMovement.reference_type == "GOODS_RECEIPT").order_by(StockMovement.id.asc()).first()
+                from app.services.receiving_stock_cycle import active_receipt_stock
+                movement = next((m for m in active_receipt_stock(db,receipt.id) if m.goods_receipt_item_id == item.id),None)
                 if not movement: raise HTTPException(status_code=409, detail=f"Original inventory movement for receipt item {item.id} was not found")
                 later_outbound = db.query(StockMovement).filter(StockMovement.product_id == item.product_id, StockMovement.warehouse_id == receipt.warehouse_id, StockMovement.id > movement.id, StockMovement.movement_type == "OUT").first()
                 if later_outbound: raise HTTPException(status_code=409, detail=f"Cost for product {item.product_id} cannot be corrected after stock has moved out")
