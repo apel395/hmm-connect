@@ -140,7 +140,7 @@ def result(db, invoice, user):
     data.update(document_context(db, "SUPPLIER_INVOICE", invoice.id, invoice.status, user))
     data["allowed_actions"] = {
         "can_edit": invoice.status == "DRAFT",
-        "can_verify": invoice.status == "DRAFT" and match["can_verify"] and readiness["is_ready"],
+        "can_verify": invoice.status == "DRAFT" and not data["supplier_reference_pending"] and match["can_verify"] and readiness["is_ready"],
         "can_reject": invoice.status in {"DRAFT", "VERIFIED"} and not data["related_journal"],
         "can_generate_journal": invoice.status == "VERIFIED" and not data["related_journal"],
         "can_void": invoice.status in {"DRAFT", "VERIFIED"},
@@ -217,6 +217,30 @@ def listing(
 @router.get("/{invoice_id}")
 def detail(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_view_user)):
     return result(db, get(db, invoice_id, user), user)
+
+
+@router.post("/prepare-from-receipt/{receipt_id}", status_code=201)
+def prepare_from_receipt(
+    receipt_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(invoice_create_user),
+):
+    """One-click idempotent preparation for receipts posted before rollout."""
+    receipt = (
+        db.query(GoodsReceipt)
+        .filter(GoodsReceipt.id == receipt_id)
+        .with_for_update()
+        .first()
+    )
+    if not receipt:
+        raise HTTPException(404, "Receiving Report not found")
+    enforce_location_access(user, receipt.location_id)
+    if receipt.status != "POSTED":
+        raise HTTPException(409, "Only posted Receiving Reports can prepare supplier invoice drafts")
+    invoice = SupplierInvoiceService(db).prepare_receipt_draft(receipt, user)
+    db.commit()
+    db.refresh(invoice)
+    return result(db, invoice, user)
 
 
 @router.post("", status_code=201)
@@ -444,10 +468,8 @@ def admin_reopen(invoice_id: int, db: Session = Depends(get_db), user=Depends(in
     ).with_for_update().all()
     if any(j.status != "DRAFT" for j in journals):
         raise HTTPException(409, "Unpost the supplier invoice journal before reopening")
-    now = datetime.now(timezone.utc)
-    for journal in journals:
-        journal.status = "VOID"
-        journal.voided_at = now
+    # Preserve the draft journal identity. Re-verification rebuilds its lines
+    # from the corrected invoice; only a posted journal needs a reversal flow.
     invoice.status = "DRAFT"
     invoice.verified_at = None
     record_audit(
@@ -455,7 +477,7 @@ def admin_reopen(invoice_id: int, db: Session = Depends(get_db), user=Depends(in
         f"Reopened {invoice.internal_invoice_number} as draft",
         entity_id=invoice.id,
         before_data={"status": "VERIFIED", "journal_ids": [j.id for j in journals]},
-        after_data={"status": "DRAFT", "journal_status": "VOID"},
+        after_data={"status": "DRAFT", "journal_status": "DRAFT", "journal_reused": True},
     )
     db.commit()
     db.refresh(invoice)

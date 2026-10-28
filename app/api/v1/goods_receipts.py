@@ -21,6 +21,7 @@ from app.models.goods_receipt import GoodsReceipt
 from app.models.location import Location
 from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
+from app.models.supplier_invoice import SupplierInvoice
 from app.models.user import User
 from app.models.warehouse import Warehouse
 from app.schemas.approval import ApprovalDecisionRequest
@@ -74,6 +75,20 @@ def _scoped_receipt_for_update(db: Session, receipt_id: int, user) -> GoodsRecei
         raise HTTPException(404, "Goods receipt not found")
     require_location_access(receipt.location_id, user)
     return receipt
+
+
+def _invoice_context(db: Session, receipt_id: int) -> dict:
+    invoice = (
+        db.query(SupplierInvoice)
+        .filter(SupplierInvoice.goods_receipt_id == receipt_id,
+                SupplierInvoice.status.notin_(("VOID", "REJECTED")))
+        .order_by(SupplierInvoice.id.asc())
+        .first()
+    )
+    return {
+        "supplier_invoice_id": invoice.id if invoice else None,
+        "supplier_invoice_status": invoice.status if invoice else None,
+    }
 
 
 def receipt_actions(receipt: GoodsReceipt, user, db: Session):
@@ -448,6 +463,7 @@ def update_receipt(
 def get_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(receiving_view_user)):
     receipt = _scoped_receipt(db, receipt_id, user)
     result = serialize_receipt(receipt, db)
+    result.update(_invoice_context(db, receipt.id))
     result.update(document_context(db, "GOODS_RECEIPT", receipt.id, receipt.status, user))
     result["allowed_actions"] = receipt_actions(receipt, user, db)
     return result

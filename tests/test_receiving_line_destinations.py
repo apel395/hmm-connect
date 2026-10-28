@@ -15,6 +15,7 @@ from app.models.location import Location
 from app.models.location_department import LocationDepartment
 from app.models.warehouse import Warehouse
 from app.models.supplier import Supplier
+from app.models.supplier_invoice import SupplierInvoice
 from app.schemas.goods_receipt import GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptCostCorrection
 from app.services.goods_receipt_service import GoodsReceiptService as Service
 from app.services.receiving_destination import master_destination, line_destination, resolve_destination
@@ -55,6 +56,14 @@ def test_mixed_master_defaults_post_only_stock_lines_and_keep_balanced_journal(s
     assert [x.destination_type for x in receipt.items] == ["WAREHOUSE", "DIRECT_USE"]
     assert receipt.items[1].expense_account_id == expense.id
     Service.post(db, receipt_id=receipt.id, user=user)
+    auto_invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert auto_invoice.status == "DRAFT"
+    assert auto_invoice.supplier_invoice_number == f"PENDING-{receipt.receipt_number}"
+    assert auto_invoice.total_amount == receipt.total_amount
+    assert len(auto_invoice.lines) == 2
+    from app.services.supplier_invoice_service import SupplierInvoiceService
+    with pytest.raises(HTTPException, match="actual supplier invoice number"):
+        SupplierInvoiceService(db).verify(auto_invoice, user)
     assert [Decimal(x.quantity) for x in balances] == [Decimal("22"), Decimal("10.1250")]
     movements = db.query(StockMovement).all()
     assert len(movements) == 1 and movements[0].product_id == products[0].id
@@ -63,6 +72,7 @@ def test_mixed_master_defaults_post_only_stock_lines_and_keep_balanced_journal(s
     assert sum(x.debit for x in journal.lines) == sum(x.credit for x in journal.lines) == 40
     assert db.query(GeneralLedger).count() == 0  # Existing finance posting stage stays separate.
     Service.return_receipt(db, receipt_id=receipt.id, user=user)
+    assert auto_invoice.status == "VOID"
     assert [Decimal(x.quantity) for x in balances] == [Decimal("20"), Decimal("10.1250")]
     assert {x.product_id for x in db.query(StockMovement).all()} == {products[0].id}
     assert journal.status == "VOID"
@@ -93,6 +103,13 @@ def test_direct_receipt_can_repeat_product_at_different_costs(stock_db):
 
     Service.post(db, receipt_id=receipt.id, user=user)
     movements = db.query(StockMovement).order_by(StockMovement.id).all()
+    auto_invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert [(row.product_id, Decimal(row.unit_price)) for row in auto_invoice.lines] == [
+        (product.id, Decimal("10")), (product.id, Decimal("14"))
+    ]
+    from app.services.supplier_invoice_service import SupplierInvoiceService
+    assert SupplierInvoiceService(db).prepare_receipt_draft(receipt, user).id == auto_invoice.id
+    assert db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).count() == 1
     assert len(movements) == 2
     assert len({row.goods_receipt_item_id for row in movements}) == 2
     assert [Decimal(row.unit_cost) for row in movements] == [Decimal("10"), Decimal("14")]
@@ -205,13 +222,31 @@ def test_fixed_asset_stays_capitalized_and_nonstock_cannot_be_forced_into_stock(
 def test_mixed_cost_correction_only_revalues_warehouse_line(stock_db):
     data = setup_receiving(stock_db); db, _, user, _, balances, *_ = data
     receipt = create(data); Service.post(db, receipt_id=receipt.id, user=user)
+    provisional = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
     old = [(x.quantity, x.average_cost) for x in balances]
     Service.correct_costs(db, receipt_id=receipt.id, user=user, data=GoodsReceiptCostCorrection(reason="Corrected vendor price", items=[dict(item_id=receipt.items[1].id, unit_cost=15)]))
     assert [(x.quantity, x.average_cost) for x in balances] == old
     Service.correct_costs(db, receipt_id=receipt.id, user=user, data=GoodsReceiptCostCorrection(reason="Corrected stock price", items=[dict(item_id=receipt.items[0].id, unit_cost=12)]))
+    assert provisional.subtotal == receipt.subtotal and provisional.total_amount == receipt.total_amount
+    assert [(Decimal(line.unit_price)) for line in provisional.lines] == [Decimal("12"), Decimal("15")]
     assert balances[0].average_cost != old[0][1]
     assert balances[1].average_cost == old[1][1]
     assert db.query(StockMovement).one().unit_cost == 12
+
+
+def test_confirmed_invoice_prevents_receiving_cost_rewrite(stock_db):
+    data = setup_receiving(stock_db)
+    db, _, user, _, _, _, _ = data
+    receipt = create(data)
+    Service.post(db, receipt_id=receipt.id, user=user)
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    invoice.supplier_invoice_number = "SUPPLIER-CONFIRMED-123"
+    db.commit()
+    with pytest.raises(HTTPException, match="confirmed or modified"):
+        Service.correct_costs(db, receipt_id=receipt.id, user=user,
+                              data=GoodsReceiptCostCorrection(reason="Attempt after confirmation", items=[
+                                  dict(item_id=receipt.items[0].id, unit_cost=12)
+                              ]))
 
 
 def test_invoice_snapshots_respect_each_mixed_receipt_line(stock_db):

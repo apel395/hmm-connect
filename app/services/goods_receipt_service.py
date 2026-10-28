@@ -769,6 +769,11 @@ class GoodsReceiptService:
         if purchase_order:
             purchase_order.status = "RECEIVED" if all(Decimal(item.received_quantity or 0) >= Decimal(item.quantity) for item in purchase_order.items) else "PARTIALLY_RECEIVED"
         receipt.status = "POSTED"
+        if receipt.source_type != "HISTORICAL_IMPORT":
+            # The RR is the source document; Finance confirms the supplier's
+            # actual invoice details later. Both records commit atomically.
+            from app.services.supplier_invoice_service import SupplierInvoiceService
+            SupplierInvoiceService(db).prepare_receipt_draft(receipt, user)
         ActivityService.log(db=db, user=user, action="POST", entity_type="GOODS_RECEIPT", entity_id=receipt.id, summary=f"Posted {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number, document_status="POSTED", reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT", details={"purchase_order_id": receipt.purchase_order_id, "warehouse_id": receipt.warehouse_id, "destination_type": receipt.destination_type})
         db.commit(); db.refresh(receipt); return receipt
 
@@ -778,8 +783,13 @@ class GoodsReceiptService:
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
         if receipt.status not in {"DRAFT", "POSTED"}: raise HTTPException(status_code=409, detail="Only draft or posted receipts can have their costs corrected")
-        downstream_invoice = db.query(SupplierInvoice).filter(SupplierInvoice.goods_receipt_id == receipt.id, SupplierInvoice.status != "VOID").first()
-        if downstream_invoice: raise HTTPException(status_code=409, detail=f"Receiving cost cannot be corrected after supplier invoice {downstream_invoice.internal_invoice_number} has been created")
+        downstream_invoice = db.query(SupplierInvoice).filter(SupplierInvoice.goods_receipt_id == receipt.id, SupplierInvoice.status.notin_({"VOID", "REJECTED"})).first()
+        provisional_invoice = None
+        if downstream_invoice:
+            from app.services.supplier_invoice_service import SupplierInvoiceService
+            if not SupplierInvoiceService.is_unconfirmed_receipt_draft(downstream_invoice, receipt):
+                raise HTTPException(status_code=409, detail=f"Receiving cost cannot be corrected after supplier invoice {downstream_invoice.internal_invoice_number} has been confirmed or modified")
+            provisional_invoice = downstream_invoice
         by_id = {item.id: item for item in receipt.items}; changes = []
         for correction in data.items:
             item = by_id.get(correction.item_id)
@@ -802,6 +812,8 @@ class GoodsReceiptService:
         cls._recalculate_totals(receipt)
         if receipt.status == "POSTED":
             cls._sync_accounting_journal(db, receipt=receipt, user=user)
+        if provisional_invoice:
+            SupplierInvoiceService(db).sync_unconfirmed_receipt_draft(provisional_invoice, receipt, user)
         ActivityService.log(db=db, user=user, action="COST_CORRECTION", entity_type="GOODS_RECEIPT", entity_id=receipt.id, summary=f"Corrected receiving cost for {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number, document_status=receipt.status, reference_document=receipt.purchase_order.po_number if receipt.purchase_order else "DIRECT_RECEIPT", details={"reason": data.reason.strip(), "changes": changes, "subtotal": str(receipt.subtotal), "tax_amount": str(receipt.tax_amount), "total_amount": str(receipt.total_amount)})
         db.commit(); db.refresh(receipt); return receipt
 
@@ -818,7 +830,12 @@ class GoodsReceiptService:
                 detail=f"Unpost journal {accounting_journal.journal_number} before returning this receipt",
             )
         downstream_invoice = db.query(SupplierInvoice).filter(SupplierInvoice.goods_receipt_id == receipt.id, SupplierInvoice.status.notin_({"VOID", "REJECTED"})).first()
-        if downstream_invoice: raise HTTPException(status_code=409, detail=f"Receipt cannot be returned after supplier invoice {downstream_invoice.internal_invoice_number} has been created")
+        provisional_invoice = None
+        if downstream_invoice:
+            from app.services.supplier_invoice_service import SupplierInvoiceService
+            if not SupplierInvoiceService.is_unconfirmed_receipt_draft(downstream_invoice, receipt):
+                raise HTTPException(status_code=409, detail=f"Receipt cannot be returned after supplier invoice {downstream_invoice.internal_invoice_number} has been confirmed or modified")
+            provisional_invoice = downstream_invoice
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
         for receipt_item in receipt.items:
             quantity = Decimal(receipt_item.quantity)
@@ -840,6 +857,13 @@ class GoodsReceiptService:
         if purchase_order:
             purchase_order.status = "RECEIVED" if all(Decimal(item.received_quantity or 0) >= Decimal(item.quantity) for item in purchase_order.items) else "PARTIALLY_RECEIVED" if any(Decimal(item.received_quantity or 0) > 0 for item in purchase_order.items) else "APPROVED"
         receipt.status = "RETURNED"
+        if provisional_invoice:
+            provisional_invoice.status = "VOID"
+            provisional_invoice.voided_at = datetime.now(timezone.utc)
+            ActivityService.log(db=db, user=user, action="AUTO_VOID", entity_type="SUPPLIER_INVOICE", entity_id=provisional_invoice.id,
+                                summary=f"Voided unconfirmed {provisional_invoice.internal_invoice_number} after returning {receipt.receipt_number}",
+                                document_type="SUPPLIER_INVOICE", document_number=provisional_invoice.internal_invoice_number,
+                                document_status="VOID", reference_document=receipt.receipt_number)
         if accounting_journal and accounting_journal.status == "DRAFT":
             accounting_journal.status = "VOID"
             accounting_journal.voided_at = datetime.now(timezone.utc)

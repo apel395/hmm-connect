@@ -579,6 +579,85 @@ def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_
     return available_rows
 
 
+@router.get("/ready-to-pay")
+def ready_to_pay(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    search: str | None = None,
+    currency: str | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(payment_manage_user),
+):
+    """AP work queue: accounted, unpaid invoices with unreserved balances.
+
+    This endpoint is location scoped, never shows DRAFT/VERIFIED invoices,
+    and does not mark an invoice paid or create accounting entries.
+    """
+    query = apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user).filter(
+        SupplierInvoice.status == "POSTED",
+    )
+    if currency:
+        query = query.filter(SupplierInvoice.currency == currency.upper())
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.outerjoin(Supplier, Supplier.id == SupplierInvoice.supplier_id).filter(or_(
+            SupplierInvoice.internal_invoice_number.ilike(term),
+            SupplierInvoice.supplier_invoice_number.ilike(term),
+            Supplier.name.ilike(term),
+            Supplier.code.ilike(term),
+        ))
+
+    invoices = query.order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id.asc()).all()
+    invoice_ids = [invoice.id for invoice in invoices]
+    reserved_by_id = {}
+    if invoice_ids:
+        reservations = (
+            db.query(PaymentAllocation.supplier_invoice_id, func.sum(PaymentAllocation.allocated_amount))
+            .join(Payment, Payment.id == PaymentAllocation.payment_id)
+            .filter(Payment.status == "APPROVED", PaymentAllocation.supplier_invoice_id.in_(invoice_ids))
+            .group_by(PaymentAllocation.supplier_invoice_id)
+            .all()
+        )
+        reserved_by_id = {invoice_id: Decimal(amount or 0) for invoice_id, amount in reservations}
+
+    items = []
+    totals_by_currency = defaultdict(lambda: ZERO)
+    for invoice in invoices:
+        outstanding = invoice_balance(invoice)
+        reserved = reserved_by_id.get(invoice.id, ZERO)
+        available = max(ZERO, outstanding - reserved)
+        if available <= ZERO:
+            continue
+        totals_by_currency[invoice.currency] += available
+        items.append({
+            "id": invoice.id,
+            "invoice_number": invoice.internal_invoice_number,
+            "supplier_invoice_number": invoice.supplier_invoice_number,
+            "supplier_id": invoice.supplier_id,
+            "supplier_name": invoice.supplier.name if invoice.supplier else None,
+            "invoice_date": invoice.invoice_date,
+            "due_date": invoice.due_date,
+            "currency": invoice.currency,
+            "total_amount": invoice.total_amount,
+            "outstanding_balance": outstanding,
+            "reserved_amount": reserved,
+            "available_balance": available,
+            "location_id": invoice.location_id,
+        })
+
+    start = (page - 1) * page_size
+    return {
+        "items": items[start:start + page_size],
+        "page": page,
+        "page_size": page_size,
+        "total_items": len(items),
+        "total_pages": ceil(len(items) / page_size) if items else 0,
+        "has_next": page * page_size < len(items),
+        "has_previous": page > 1,
+        "totals_by_currency": dict(totals_by_currency),
+    }
+
+
 @router.get("/eligible-vouchers")
 def eligible_vouchers(
     supplier_id: int,

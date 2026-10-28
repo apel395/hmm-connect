@@ -1,5 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from collections import defaultdict
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import func
@@ -54,10 +56,13 @@ class SupplierInvoiceService:
             or (purchase_order.location if purchase_order else None)
             or journal_location
         )
+        automatically_prepared = (getattr(x, "external_reference", None) or "").startswith("AUTO_RECEIPT:")
         return {
             "id": x.id,
             "internal_invoice_number": x.internal_invoice_number,
             "supplier_invoice_number": x.supplier_invoice_number,
+            "auto_prepared_from_receiving": automatically_prepared,
+            "supplier_reference_pending": automatically_prepared and (x.supplier_invoice_number or "").startswith("PENDING-"),
             "supplier_id": x.supplier_id,
             "supplier_name": x.supplier.name,
             "invoice_date": x.invoice_date,
@@ -304,6 +309,177 @@ class SupplierInvoiceService:
             query = query.filter(SupplierInvoice.id != invoice.id)
         return Decimal(query.scalar() or 0)
 
+    def _check_receipt_reservations(self, data: SupplierInvoiceInput, *, exclude_id: int | None = None):
+        """Reserve receipt quantity while saving, not only when verifying.
+
+        Lock receipt lines in a stable order so concurrent invoice creates for
+        different supplier invoice numbers cannot both claim the last units.
+        Draft/verified/posted invoices all reserve quantities; rejected and
+        void invoices release them. Partial invoices remain supported.
+        """
+        requested = defaultdict(lambda: ZERO)
+        for line in data.lines:
+            if line.goods_receipt_item_id:
+                requested[line.goods_receipt_item_id] += Decimal(line.quantity)
+        if not requested:
+            return
+        items = (self.db.query(GoodsReceiptItem)
+                 .filter(GoodsReceiptItem.id.in_(sorted(requested)))
+                 .order_by(GoodsReceiptItem.id)
+                 .with_for_update().all())
+        if len(items) != len(requested):
+            raise HTTPException(400, "One or more invoice receipt lines do not exist")
+        for item in items:
+            linked = (self.db.query(SupplierInvoice.internal_invoice_number,
+                                    SupplierInvoice.status, SupplierInvoiceLine.quantity)
+                      .join(SupplierInvoiceLine, SupplierInvoiceLine.supplier_invoice_id == SupplierInvoice.id)
+                      .filter(SupplierInvoiceLine.goods_receipt_item_id == item.id,
+                              SupplierInvoice.status.notin_(("REJECTED", "VOID"))))
+            if exclude_id is not None:
+                linked = linked.filter(SupplierInvoice.id != exclude_id)
+            other = linked.all()
+            reserved = sum((Decimal(row.quantity) for row in other), ZERO)
+            available = max(ZERO, Decimal(item.quantity) - reserved)
+            if requested[item.id] > available:
+                drafts = sorted({row.internal_invoice_number for row in other if row.status == "DRAFT"})
+                others = f" Other active drafts: {', '.join(drafts)}." if drafts else ""
+                raise HTTPException(409,
+                    f"Receipt line {item.id} has only {available} of {item.quantity} available; "
+                    f"this invoice requests {requested[item.id]}.{others} "
+                    "Open the existing draft, or reject/void an unused draft before creating another invoice.")
+
+    @staticmethod
+    def _receipt_placeholder(receipt: GoodsReceipt) -> str:
+        return f"PENDING-{receipt.receipt_number}"
+
+    @classmethod
+    def is_unconfirmed_receipt_draft(cls, invoice: SupplierInvoice, receipt: GoodsReceipt) -> bool:
+        """Only untouched automatic drafts can follow receiving corrections/returns."""
+        if not (
+            invoice.status == "DRAFT"
+            and invoice.goods_receipt_id == receipt.id
+            and invoice.external_reference == f"AUTO_RECEIPT:{receipt.id}"
+            and invoice.supplier_invoice_number == cls._receipt_placeholder(receipt)
+            and Decimal(invoice.discount_amount or 0) == ZERO
+            and Decimal(invoice.withholding_tax_amount or 0) == ZERO
+        ):
+            return False
+        source_items = {item.id: item for item in receipt.items}
+        if len(invoice.lines) != len(source_items):
+            return False
+        linked_ids = [line.goods_receipt_item_id for line in invoice.lines]
+        if len(set(linked_ids)) != len(source_items) or set(linked_ids) != set(source_items):
+            return False
+        return all(
+            Decimal(line.quantity) == Decimal(source_items[line.goods_receipt_item_id].quantity)
+            and Decimal(line.unit_price) == Decimal(source_items[line.goods_receipt_item_id].unit_cost)
+            and bool(line.is_taxable) == bool(source_items[line.goods_receipt_item_id].is_taxable)
+            and Decimal(line.tax_rate or 0) == Decimal(source_items[line.goods_receipt_item_id].tax_rate or 0)
+            for line in invoice.lines
+        )
+
+    def prepare_receipt_draft(self, receipt: GoodsReceipt, user) -> SupplierInvoice:
+        """Prepare one non-payable invoice in the same transaction as RR posting.
+
+        The supplier's real invoice number, invoice date and tax documents are
+        deliberately NOT invented. They must be confirmed before verification.
+        """
+        if receipt.status != "POSTED":
+            raise HTTPException(409, "Receiving must be posted before preparing its invoice")
+        existing = (
+            self.db.query(SupplierInvoice)
+            .filter(SupplierInvoice.goods_receipt_id == receipt.id,
+                    SupplierInvoice.status.notin_(("VOID", "REJECTED")))
+            .order_by(SupplierInvoice.id.asc())
+            .with_for_update()
+            .first()
+        )
+        if existing:
+            return existing
+        if not receipt.items:
+            raise HTTPException(409, "Cannot prepare an invoice without receiving lines")
+        receipt_item_ids = [item.id for item in receipt.items]
+        already_linked = (
+            self.db.query(SupplierInvoice)
+            .join(SupplierInvoiceLine, SupplierInvoiceLine.supplier_invoice_id == SupplierInvoice.id)
+            .filter(SupplierInvoiceLine.goods_receipt_item_id.in_(receipt_item_ids),
+                    SupplierInvoice.status.notin_(("VOID", "REJECTED")))
+            .first()
+        )
+        if already_linked:
+            raise HTTPException(409, f"Receipt lines are already linked to {already_linked.internal_invoice_number}; review that invoice before preparing a new draft")
+
+        supplier_id = receipt.supplier_id or (receipt.purchase_order.supplier_id if receipt.purchase_order else None)
+        if not supplier_id:
+            raise HTTPException(409, "Receiving has no supplier for invoice preparation")
+        invoice_date = receipt.received_at.astimezone(ZoneInfo("Asia/Jakarta")).date() if receipt.received_at.tzinfo else receipt.received_at.date()
+        invoice = SupplierInvoice(
+            internal_invoice_number=next_document_number(self.db, "INV"),
+            supplier_invoice_number=self._receipt_placeholder(receipt),
+            supplier_id=supplier_id,
+            invoice_date=invoice_date,
+            received_date=invoice_date,
+            due_date=invoice_date + timedelta(days=30),
+            purchase_order_id=receipt.purchase_order_id,
+            goods_receipt_id=receipt.id,
+            business_unit_id=receipt.business_unit_id,
+            department_id=receipt.department_id,
+            location_id=self._source_location_id(receipt, receipt.purchase_order),
+            currency=(receipt.purchase_order.currency if receipt.purchase_order else "IDR"),
+            subtotal=Decimal(receipt.subtotal),
+            tax_amount=Decimal(receipt.tax_amount),
+            total_amount=Decimal(receipt.total_amount),
+            balance_amount=Decimal(receipt.total_amount),
+            discount_amount=ZERO,
+            withholding_tax_amount=ZERO,
+            status="DRAFT",
+            source_type="LIVE",
+            external_reference=f"AUTO_RECEIPT:{receipt.id}",
+            notes=f"Prepared from {receipt.receipt_number}. Confirm supplier invoice number, date, due date, amount and tax before verification.",
+            created_by_id=user.id,
+        )
+        for item in receipt.items:
+            invoice.lines.append(SupplierInvoiceLine(
+                product_id=item.product_id,
+                purchase_order_item_id=item.purchase_order_item_id,
+                goods_receipt_item_id=item.id,
+                description=item.product.name if item.product else f"Received product {item.product_id}",
+                quantity=item.quantity,
+                uom=item.product.uom if item.product else None,
+                unit_price=item.unit_cost,
+                line_amount=(Decimal(item.quantity) * Decimal(item.unit_cost)).quantize(Decimal("0.01")),
+                is_taxable=bool(item.is_taxable),
+                tax_rate=Decimal(item.tax_rate or 0),
+                tax_amount=Decimal(item.tax_amount or 0),
+                department_id=receipt.department_id,
+            ))
+        sync_invoice_balance(invoice)
+        self.db.add(invoice)
+        self.db.flush()
+        resolver = DirectCoaService(self.db)
+        for line in invoice.lines:
+            resolver.snapshot_invoice_line(invoice, line)
+        record_audit(self.db, user, "SUPPLIER_INVOICE_AUTO_DRAFT", "SUPPLIER_INVOICE",
+                     f"Prepared {invoice.internal_invoice_number} from {receipt.receipt_number}",
+                     entity_id=invoice.id)
+        return invoice
+
+    def sync_unconfirmed_receipt_draft(self, invoice: SupplierInvoice, receipt: GoodsReceipt, user) -> None:
+        """Run only after confirming the draft still matches the old receipt."""
+        items = {item.id: item for item in receipt.items}
+        for line in invoice.lines:
+            item = items[line.goods_receipt_item_id]
+            line.unit_price = item.unit_cost
+            line.line_amount = (Decimal(item.quantity) * Decimal(item.unit_cost)).quantize(Decimal("0.01"))
+            line.tax_amount = item.tax_amount
+        invoice.subtotal = receipt.subtotal
+        invoice.tax_amount = receipt.tax_amount
+        invoice.total_amount = receipt.total_amount
+        sync_invoice_balance(invoice)
+        record_audit(self.db, user, "SUPPLIER_INVOICE_AUTO_DRAFT_SYNCED", "SUPPLIER_INVOICE",
+                     f"Updated provisional amounts in {invoice.internal_invoice_number} from {receipt.receipt_number}",
+                     entity_id=invoice.id)
+
     def match_summary(self, invoice: SupplierInvoice) -> dict:
         linked_receipts=self._invoice_receipts(invoice)
         if not invoice.goods_receipt_id and not linked_receipts:
@@ -454,6 +630,7 @@ class SupplierInvoiceService:
 
     def create(self, data, user):
         subtotal, total = self.validate(data, user=user)
+        self._check_receipt_reservations(data)
         invoice = SupplierInvoice(
             internal_invoice_number=next_document_number(self.db, "INV"),
             supplier_invoice_number=data.supplier_invoice_number.strip(),
@@ -505,6 +682,7 @@ class SupplierInvoiceService:
         if invoice.status != "DRAFT":
             raise HTTPException(409, "Only draft invoices can be edited")
         subtotal, total = self.validate(data, invoice.id, user=user)
+        self._check_receipt_reservations(data, exclude_id=invoice.id)
         for key, value in data.model_dump(exclude={"lines", "total_amount"}).items():
             setattr(invoice, key, value)
         invoice.subtotal = subtotal
@@ -540,6 +718,11 @@ class SupplierInvoiceService:
         )
         if invoice.status != "DRAFT":
             raise HTTPException(409, "Only draft invoices can be verified")
+        if (
+            (invoice.external_reference or "").startswith("AUTO_RECEIPT:")
+            and (invoice.supplier_invoice_number or "").startswith("PENDING-")
+        ):
+            raise HTTPException(409, "Enter the actual supplier invoice number before verification")
         self._ensure_invoice_location(invoice)
         match = self.assert_match(invoice)
 
@@ -593,8 +776,8 @@ class SupplierInvoiceService:
             JournalEntry.reference_type == "SUPPLIER_INVOICE",
             JournalEntry.reference_id == invoice.id,
             JournalEntry.status != "VOID",
-        ).first()
-        if existing:
+        ).with_for_update().first()
+        if existing and existing.status != "DRAFT":
             return existing
 
         resolver = DirectCoaService(self.db)
@@ -645,20 +828,21 @@ class SupplierInvoiceService:
             else None
         )
 
-        journal = JournalEntry(
+        journal = existing or JournalEntry(
             journal_number=next_document_number(self.db, "JV", digits=4),
-            posting_date=invoice.invoice_date,
-            status="DRAFT",
-            document_type="SUPPLIER_INVOICE",
-            document_number=invoice.internal_invoice_number,
-            reference_type="SUPPLIER_INVOICE",
-            reference_id=invoice.id,
-            description=f"Supplier invoice {invoice.supplier_invoice_number}",
+            status="DRAFT", document_type="SUPPLIER_INVOICE",
+            reference_type="SUPPLIER_INVOICE", reference_id=invoice.id,
             created_by_id=user.id,
-            business_unit_id=invoice.business_unit_id,
-            location_id=invoice.location_id,
-            department_id=invoice.department_id,
         )
+        if existing:
+            journal.lines.clear()
+            self.db.flush()
+        journal.posting_date = invoice.invoice_date
+        journal.document_number = invoice.internal_invoice_number
+        journal.description = f"Supplier invoice {invoice.supplier_invoice_number}"
+        journal.business_unit_id = invoice.business_unit_id
+        journal.location_id = invoice.location_id
+        journal.department_id = invoice.department_id
 
         line_number = 1
         for account_id, amount in grouped.items():
@@ -739,9 +923,9 @@ class SupplierInvoiceService:
         record_audit(
             self.db,
             user,
-            "JOURNAL_GENERATED",
+            "JOURNAL_REGENERATED" if existing else "JOURNAL_GENERATED",
             "JOURNAL_ENTRY",
-            f"Generated {journal.journal_number}",
+            f"Updated draft {journal.journal_number}" if existing else f"Generated {journal.journal_number}",
             entity_id=journal.id,
             reference_document=invoice.internal_invoice_number,
         )

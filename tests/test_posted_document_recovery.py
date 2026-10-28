@@ -110,7 +110,7 @@ def test_cancel_posted_orphan_payment_voids_journal_and_removes_ledger(db):
         payments.cancel_posted(payment.id, db=db, user=ADMIN)
 
 
-def test_invoice_unpost_then_reopen_voids_old_journal(db, monkeypatch):
+def test_invoice_unpost_then_reopen_preserves_editable_draft_journal(db, monkeypatch):
     debit = _account(db, "INV-EXP", "EXPENSE")
     payable = _account(db, "INV-AP", "LIABILITY")
     supplier = Supplier(code="INV-RECOVER", name="Supplier", is_active=True)
@@ -133,7 +133,11 @@ def test_invoice_unpost_then_reopen_voids_old_journal(db, monkeypatch):
     assert db.query(GeneralLedger).filter(GeneralLedger.reference_type == "SUPPLIER_INVOICE").count() == 0
     assert supplier_invoices.admin_reopen(invoice.id, db=db, user=ADMIN)["status"] == "DRAFT"
     db.refresh(journal)
-    assert journal.status == "VOID"
+    assert journal.status == "DRAFT"
+    assert db.query(JournalEntry).filter(
+        JournalEntry.reference_type == "SUPPLIER_INVOICE",
+        JournalEntry.reference_id == invoice.id,
+    ).count() == 1
 
 
 def test_cancel_posted_payment_restores_invoice_and_ap_last_payment_date(db):

@@ -87,6 +87,7 @@ def test_direct_use_post_does_not_write_inventory_or_movements(monkeypatch):
         def refresh(self,value): pass
     monkeypatch.setattr(GoodsReceiptService,"_check_access",lambda *a:None)
     monkeypatch.setattr(GoodsReceiptService,"_sync_accounting_journal",lambda *a,**kw:None)
+    monkeypatch.setattr("app.services.supplier_invoice_service.SupplierInvoiceService.prepare_receipt_draft",lambda *a,**kw:None)
     monkeypatch.setattr(policy.ActivityService,"log",lambda **kw:None)
     monkeypatch.setattr("app.services.goods_receipt_service.FiscalPeriodService.validate_posting_date",lambda *a,**kw:None)
     result=GoodsReceiptService.post(Db(),receipt_id=707,user=user())
