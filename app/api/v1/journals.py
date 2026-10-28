@@ -339,6 +339,7 @@ def create(data: JournalCreate, db: Session = Depends(get_db), user=Depends(jour
             raise HTTPException(409, "This journal cannot be copied")
         if data.reference_type != "MANUAL" or data.reference_id != 0:
             raise HTTPException(422, "Copies must be independent manual journals")
+    FiscalPeriodService.validate_posting_date(db, data.posting_date)
     debit, credit = validate(db, data.lines)
     if debit != credit and data.reference_type.upper() != "MANUAL":
         raise HTTPException(422, "Source journal debit and credit must be balanced")
@@ -518,6 +519,9 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
     x = get(db, journal_id, user)
     if x.reference_type in {"PERIOD_CLOSE", "YEAR_END"}:
         raise HTTPException(409, "Closing journals are managed through Accounting Periods")
+    FiscalPeriodService.validate_posting_date(db, x.posting_date)
+    if data.posting_date and data.posting_date != x.posting_date:
+        FiscalPeriodService.validate_posting_date(db, data.posting_date)
     if x.status != "DRAFT":
         raise HTTPException(409, "Unpost the journal before editing it")
     if x.reference_type in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE", "GENERAL_CASHIER"}:
@@ -614,6 +618,7 @@ def void(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_ma
     x = get(db, journal_id, user)
     if x.reference_type in {"PERIOD_CLOSE", "YEAR_END"}:
         raise HTTPException(409, "Closing journals are managed through Accounting Periods")
+    FiscalPeriodService.validate_posting_date(db, x.posting_date)
     if x.status != "DRAFT":
         raise HTTPException(409, "Only draft journals can be voided without reversal")
     if x.reference_type in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE", "GENERAL_CASHIER"}:
