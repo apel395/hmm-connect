@@ -214,7 +214,7 @@ def test_double_payment_settlement_updates_invoice_once(pg):
         db.add(journal);db.flush();payment.journal_entry_id=journal.id;db.commit()
         payment_id, invoice_id = payment.id,invoice.id
     def hold_payment(db):
-        db.query(Payment).filter_by(id=payment_id).with_for_update().one()
+        db.query(Payment.id).filter(Payment.id==payment_id).with_for_update().one()
     _, result = race(pg, hold_payment, lambda db: post(payment_id,db=db,user=pg.user),
         holder_finalize=lambda db: post(payment_id,db=db,user=pg.user))
     assert isinstance(result,HTTPException) and result.status_code==409
