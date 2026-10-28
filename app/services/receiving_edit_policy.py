@@ -41,3 +41,15 @@ def reopen_approved_receiving(db, receipt, user):
         document_number=receipt.receipt_number, document_status=receipt.status, before_data=before,
         after_data={"status": "PENDING", "current_step_order": first})
     return True
+
+
+def edit_block_reason(receipt, approval, user):
+    if can_edit_receiving(receipt, approval, user):
+        return None
+    if receipt.status == "POSTED":
+        return "This receiving is posted. Use Correct Cost for price-only changes. To replace or remove items, resolve linked invoices, unpost its journal if posted, then Return and create a corrected receiving."
+    if receipt.status == "RETURNED":
+        return "This receiving was returned. Create a corrected receiving; the returned report remains in history."
+    if not has_permission(user, "receiving.edit"):
+        return "Receiving Edit permission is required."
+    return "Editing is restricted at the current approval stage. An authorized receiving manager must review it."

@@ -37,7 +37,7 @@ from app.services.approval import (
 )
 from app.services.document_context import document_context, print_metadata
 from app.services.goods_receipt_service import GoodsReceiptService
-from app.services.receiving_edit_policy import can_edit_receiving
+from app.services.receiving_edit_policy import can_edit_receiving, edit_block_reason
 from app.services.location_access import (
     apply_location_scope,
     enforce_warehouse_access,
@@ -102,6 +102,7 @@ def receipt_actions(receipt: GoodsReceipt, user, db: Session):
     can_edit = can_edit_receiving(receipt, approval, user)
     return {
         "can_edit": can_edit,
+        "edit_block_reason": edit_block_reason(receipt, approval, user),
         "can_submit": receipt.status == "DRAFT" and receipt.source_type != "HISTORICAL_ENTRY" and approval is None and has_permission(user, "receiving.submit"),
         "can_approve": can_decide and not has_receiving_approval(approval, user) and has_permission(user, "receiving.approve"),
         "can_reject": can_decide and has_permission(user, "receiving.approve"),

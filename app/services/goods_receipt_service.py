@@ -21,7 +21,7 @@ from app.models.purchase_order import PurchaseOrder
 from app.models.purchase_order_item import PurchaseOrderItem
 from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
-from app.models.supplier_invoice import SupplierInvoice
+from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.models.warehouse import Warehouse
 from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate, GoodsReceiptUpdate
 from app.services.activity_service import ActivityService
@@ -471,6 +471,21 @@ class GoodsReceiptService:
         if receipt.status != "DRAFT":
             raise HTTPException(status_code=409, detail="Only unposted Receiving Reports can be edited")
 
+        # Receipt rows are locked by the update API; invoice creation uses the same lock.
+        linked_invoice_ids = db.query(SupplierInvoiceLine.supplier_invoice_id).filter(
+            SupplierInvoiceLine.goods_receipt_item_id.in_([item.id for item in receipt.items]))
+        active_invoice = db.query(SupplierInvoice).filter(
+            (SupplierInvoice.goods_receipt_id == receipt.id) | SupplierInvoice.id.in_(linked_invoice_ids),
+            SupplierInvoice.status.notin_({"VOID", "REJECTED"})).first()
+        if active_invoice:
+            raise HTTPException(409, f"Resolve supplier invoice {active_invoice.internal_invoice_number} before editing its receiving source")
+
+        if db.query(StockMovement.id).filter(StockMovement.goods_receipt_id == receipt.id).first():
+            raise HTTPException(409, "This receiving has stock history. Use the correction/return workflow instead of draft editing")
+        accounting_journal = cls._accounting_journal(db, receipt.id)
+        if accounting_journal and accounting_journal.status == "POSTED":
+            raise HTTPException(409, "Unpost the receiving journal and use the correction/return workflow before changing recorded items")
+
         old_location_id = receipt.location_id
         if data.location_id is not None and data.location_id != receipt.location_id:
             if receipt.purchase_order_id or receipt.market_list_id:
@@ -493,20 +508,29 @@ class GoodsReceiptService:
         by_id = {item.id: item for item in receipt.items}
         stored_ids = {item.item_id for item in data.items if item.item_id is not None}
         new_items = [item for item in data.items if item.item_id is None]
-        if set(by_id) != stored_ids:
-            raise HTTPException(
-                status_code=409,
-                detail="Receiving item identity cannot change during edit; edit quantities, costs and tax on the existing lines",
-            )
+        if stored_ids - set(by_id):
+            raise HTTPException(409, "A receiving line does not belong to this report")
+        removed_ids = set(by_id) - stored_ids
+        # A removed line must never silently detach invoice history, including void invoices.
+        if removed_ids and db.query(SupplierInvoiceLine.id).filter(
+                SupplierInvoiceLine.goods_receipt_item_id.in_(removed_ids)).first():
+            raise HTTPException(409, "A removed receiving line is referenced by invoice history; retain that line and use the correction/return workflow")
         if new_items and (purchase_order or receipt.market_list_id):
             raise HTTPException(409, "New lines can only be added to Direct Receiving drafts")
 
         changes = []
+        for item_id in sorted(removed_ids):
+            item = by_id[item_id]
+            changes.append({"item_id": item.id, "product_id": item.product_id, "action": "REMOVE",
+                "quantity": str(item.quantity), "unit_cost": str(item.unit_cost),
+                "is_taxable": bool(item.is_taxable), "tax_rate": str(item.tax_rate or 0),
+                "destination_type": line_destination(receipt, item), "expense_account_id": item.expense_account_id})
+            receipt.items.remove(item)
         for incoming in data.items:
             if incoming.item_id is None:
                 product = db.get(Product, incoming.product_id)
-                if not product or product.item_type != "BUY":
-                    raise HTTPException(422, "New receiving lines require an existing BUY item")
+                if not product or not product.is_active or product.item_type != "BUY":
+                    raise HTTPException(422, "New receiving lines require an active BUY item")
                 destination, override_reason = resolve_destination(
                     product, incoming.destination_type, incoming.destination_override_reason,
                     data.destination_type,
