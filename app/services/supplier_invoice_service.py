@@ -263,14 +263,16 @@ class SupplierInvoiceService:
         if not supplier:
             raise HTTPException(404, "Supplier not found")
 
-        query = self.db.query(SupplierInvoice).filter(
-            SupplierInvoice.supplier_id == data.supplier_id,
-            func.lower(SupplierInvoice.supplier_invoice_number) == data.supplier_invoice_number.strip().lower(),
-        )
-        if exclude_id:
-            query = query.filter(SupplierInvoice.id != exclude_id)
-        if query.first():
-            raise HTTPException(409, "Supplier invoice number already exists for this supplier")
+        vendor_reference = (data.supplier_invoice_number or "").strip()
+        if vendor_reference:
+            query = self.db.query(SupplierInvoice).filter(
+                SupplierInvoice.supplier_id == data.supplier_id,
+                func.lower(SupplierInvoice.supplier_invoice_number) == vendor_reference.lower(),
+            )
+            if exclude_id:
+                query = query.filter(SupplierInvoice.id != exclude_id)
+            if query.first():
+                raise HTTPException(409, "Supplier reference already exists for this supplier")
         if purchase_order and purchase_order.supplier_id != data.supplier_id:
             raise HTTPException(400, "Purchase order does not belong to selected supplier")
         if receipt and receipt.purchase_order_id and purchase_order and receipt.purchase_order_id != purchase_order.id:
@@ -631,9 +633,10 @@ class SupplierInvoiceService:
     def create(self, data, user):
         subtotal, total = self.validate(data, user=user)
         self._check_receipt_reservations(data)
+        generated_number = next_document_number(self.db, "INV")
         invoice = SupplierInvoice(
-            internal_invoice_number=next_document_number(self.db, "INV"),
-            supplier_invoice_number=data.supplier_invoice_number.strip(),
+            internal_invoice_number=generated_number,
+            supplier_invoice_number=(data.supplier_invoice_number or "").strip() or generated_number,
             supplier_id=data.supplier_id,
             invoice_date=data.invoice_date,
             received_date=data.received_date,
@@ -684,6 +687,8 @@ class SupplierInvoiceService:
         subtotal, total = self.validate(data, invoice.id, user=user)
         self._check_receipt_reservations(data, exclude_id=invoice.id)
         for key, value in data.model_dump(exclude={"lines", "total_amount"}).items():
+            if key == "supplier_invoice_number":
+                value = (value or "").strip() or invoice.internal_invoice_number
             setattr(invoice, key, value)
         invoice.subtotal = subtotal
         invoice.total_amount = total

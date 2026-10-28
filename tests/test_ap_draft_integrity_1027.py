@@ -16,6 +16,44 @@ from test_receiving_tax_ap_confirmation import receive
 from test_stock_opname_functional import stock_db
 
 
+def test_system_invoice_number_when_supplier_reference_is_missing(db, monkeypatch):
+    session, unit, location, department, accounts = db
+    supplier = Supplier(code="SI-AUTO-NUM", name="Reference optional")
+    session.add(supplier)
+    session.flush()
+    payload = SupplierInvoiceInput(
+        supplier_id=supplier.id,
+        business_unit_id=unit.id,
+        location_id=location.id,
+        department_id=department.id,
+        invoice_date=date(2026, 10, 28),
+        lines=[dict(description="Purchased item", quantity=1, unit_price=10)],
+    )
+    assert payload.supplier_invoice_number == ""
+
+    from app.services import supplier_invoice_service as module
+    monkeypatch.setattr(module, "next_document_number", lambda session, prefix: "INV-SYS-0001")
+    monkeypatch.setattr(SupplierInvoiceService, "validate", lambda self, data, exclude_id=None, user=None: (Decimal("10"), Decimal("10")))
+    monkeypatch.setattr(SupplierInvoiceService, "_check_receipt_reservations", lambda self, data, exclude_id=None: None)
+    monkeypatch.setattr(module.DirectCoaService, "snapshot_invoice_line", lambda self, invoice, line: None)
+    monkeypatch.setattr(module, "record_audit", lambda *args, **kwargs: None)
+
+    service = SupplierInvoiceService(session)
+    invoice = service.create(payload, ADMIN)
+    assert invoice.internal_invoice_number == "INV-SYS-0001"
+    assert invoice.supplier_invoice_number == "INV-SYS-0001"
+    assert invoice.status == "DRAFT"
+
+    # Clearing an auto-prepared placeholder during Finance review retains the
+    # ERP number; a real vendor reference can still be supplied later.
+    invoice.supplier_invoice_number = "PENDING-GR-TEST"
+    service.update(invoice, payload, ADMIN)
+    assert invoice.supplier_invoice_number == "INV-SYS-0001"
+    payload.supplier_invoice_number = "VENDOR-REF-100"
+    service.update(invoice, payload, ADMIN)
+    assert invoice.supplier_invoice_number == "VENDOR-REF-100"
+
+
 def test_receipt_reservation_blocks_duplicate_drafts_and_releases_void(stock_db):
     session, _, supplier, product, receipt = receive(stock_db)
     receipt.status = "POSTED"
