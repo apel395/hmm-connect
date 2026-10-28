@@ -80,7 +80,7 @@ def test_close_reopen_and_reclose_are_balanced_and_preserve_pnl_and_opening(db):
         assert all(l.debit >= 0 and l.credit >= 0 for l in j.lines)
     assert PeriodClosingService.close(session, 1, USER)["closing_journal_ids"] == result["closing_journal_ids"]
     report = FinancialStatementService(session).profit_and_loss(date_from=date(2026,1,1), date_to=date(2026,1,31))
-    assert report["summary"]["net_profit_after_tax"] == Decimal("50")
+    assert report["summary"]["net_profit_after_tax"] == Decimal("750")  # includes balanced open draft finalized at close
     after = FinancialStatementService(session).balance_sheet(as_of_date=date(2026,1,31))["summary"]
     assert before["total_assets"] == after["total_assets"]
     assert before["total_equity"] == after["total_equity"]
