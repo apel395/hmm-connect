@@ -26,6 +26,10 @@ export type Journal = {
   reference_id: number;
   reference_number?: string | null;
   status: string;
+  accounting_recognized?: boolean;
+  recognition_reason?: string | null;
+  period_locked?: boolean;
+  period_name?: string | null;
   business_unit_id?: number | null;
   business_unit_name?: string | null;
   department_id?: number | null;

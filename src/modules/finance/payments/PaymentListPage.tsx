@@ -270,7 +270,7 @@ export default function PaymentListPage() {
     <option value="">More actions</option>
     {canManage && row.status === "DRAFT" && <option value="edit">Edit</option>}
     {canManage && row.status === "APPROVED" && !row.journal_entry_id && <option value="generate-journal">Create journal</option>}
-    {hasPermission("journal.manage") && row.status === "APPROVED" && Boolean(row.journal_entry_id) && <option value="open-journal">Open journal to post</option>}
+    {hasPermission("journal.manage") && row.status === "APPROVED" && Boolean(row.journal_entry_id) && <option value="open-journal">Open journal</option>}
     {admin && row.status === "APPROVED" && <option value="reopen">Reopen</option>}
     {canManage && ["DRAFT", "APPROVED"].includes(row.status) && <option value="void">Void payment</option>}
     {admin && row.status === "POSTED" && <option value="unpost">Unpost</option>}

@@ -1,3 +1,4 @@
+import { journalAccountingLabel } from "./journalState";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 import SearchableSelect from "@/components/form/SearchableSelect";
@@ -153,13 +154,13 @@ export default function JournalDetailPage() {
 
   const confirmUnpost = () => {
     const source = (x.reference_type || "MANUAL").replaceAll("_", " ");
-    if (!window.confirm(`Unpost ${x.journal_number}?\n\nThis will remove its General Ledger rows and synchronize the ${source} source document back to its editable/pre-posting state. Closed fiscal periods remain locked.`)) return;
+    if (!window.confirm(`Unpost ${x.journal_number}?\n\nThis returns the journal and ${source} source document to their correction state. A complete balanced DRAFT still counts in an open period. Closed periods remain locked.`)) return;
     act.mutate("unpost");
   };
 
   return <div className="space-y-6">
     <div className="flex flex-wrap justify-between gap-3">
-      <div className="flex items-center gap-3"><WorkspaceBackButton /><h1 className="text-2xl font-bold">{x.journal_number}</h1><Badge>{x.status}</Badge></div>
+      <div className="flex items-center gap-3"><WorkspaceBackButton /><h1 className="text-2xl font-bold">{x.journal_number}</h1><Badge>{x.status}</Badge><span className="text-xs text-slate-500" title={x.recognition_reason??undefined}>{x.period_locked?`Locked · ${x.period_name??"Accounting period"}`:`${journalAccountingLabel(x)} in accounting`}</span></div>
       <div className="flex flex-wrap gap-2">
         {sourcePath && <Button variant="outline" onClick={() => nav(sourcePath, { state: { returnTo: `/journal-entries/${x.id}` } })}>Open Source Document</Button>}
         <PrintPreviewButton src={`/journal-entries/${x.id}/print`} title={`Journal ${x.journal_number}`} ariaLabel="Preview journal" />
@@ -173,7 +174,8 @@ export default function JournalDetailPage() {
     <Card><div className="grid gap-4 md:grid-cols-4"><div><small>Date</small><div>{x.journal_date}</div></div><div><small>Source</small><div>{(x.reference_type || "MANUAL").replaceAll("_", " ")}</div></div><div><small>Work Location</small><div>{x.location_name || (x.location_id ? `Location #${x.location_id}` : "Missing — edit before posting")}</div></div><div><small>Reference</small><div>{sourcePath?<Link className="font-medium text-emerald-700 hover:underline" to={sourcePath} state={{returnTo:`/journal-entries/${x.id}`}}>{x.reference_number||"View Source Document"}</Link>:x.reference_number||"—"}</div></div><div><small>Created By</small><div>{x.created_by_name || "—"}</div></div><div className="md:col-span-4"><small>Description</small><div>{x.description || "—"}</div></div></div></Card>
     <Card><Table stickyHeader variant="grid" className="min-w-[820px]" containerClassName="max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible"><THead><TR className="whitespace-nowrap"><TH>Account</TH><TH>Description</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH>Organization</TH></TR></THead><TBody>{x.lines.map((l: any) => <TR key={l.id} className="whitespace-nowrap"><TD className="max-w-[280px]"><TableCellStack primary={l.account_name} secondary={l.account_code}/></TD><TD className="max-w-[280px]"><span className="block truncate" title={l.description || undefined}>{l.description || "—"}</span></TD><TD numeric className="w-40">{Number(l.debit).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}</TD><TD numeric className="w-40">{Number(l.credit).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}</TD><TD>{l.department_name || l.location_name ? <TableCellStack primary={l.department_name || l.location_name} secondary={l.department_name ? l.location_name : undefined}/> : "—"}</TD></TR>)}</TBody></Table></Card>
     <Card><div className="grid grid-cols-3 gap-4 text-right"><div><small>Total Debit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_debit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Total Credit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_credit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Difference</small><div className="text-lg font-bold tabular-nums">{Number(x.difference).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div></div></Card>
-    {x.status === "POSTED" && !a.can_unpost && <p className="text-xs text-slate-500">This journal cannot be safely unposted from Journal. Reverse it from the originating module or reopen the required fiscal period first.</p>}
+    {x.period_locked&&<p className="text-xs text-slate-500">The accounting period must be reopened by authorized Finance before this journal can be corrected.</p>}
+    {!x.period_locked && x.status === "POSTED" && !a.can_unpost && <p className="text-xs text-slate-500">This journal cannot be safely unposted from Journal. Reverse it from the originating module or reopen the required fiscal period first.</p>}
 
     <Dialog open={editOpen} onOpenChange={next => { if (!save.isPending) setEditOpen(next); }}>
       <DialogContent className="max-w-5xl">
