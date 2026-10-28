@@ -125,3 +125,13 @@ def test_journal_management_uses_persisted_permission_for_finance_and_cost_contr
     with pytest.raises(HTTPException) as error:journals.journal_manage_user(actor)
     assert error.value.status_code==403
     assert not journals.serialize(entry,actor)['allowed_actions']['can_edit']
+
+
+def test_location_reports_inherit_absent_line_dimensions_from_header(db):
+    session,a=db;entry=activity(session,a,date(2026,1,10),'100','30',status='DRAFT')
+    for line in entry.lines:line.location_id=None;line.business_unit_id=None
+    session.commit()
+    assert FinancialReconciliationService(session)._gl_balance([a[2].id],1,None)==70
+    assert ledger_totals(build_ledger_query(session,location_id=1))==(100,100)
+    report=TrialBalanceService(session).report(date_from=date(2026,1,1),date_to=date(2026,1,31),location_id=1)
+    assert sum(row['period_debit'] for row in report['items'])==100

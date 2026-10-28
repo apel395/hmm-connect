@@ -591,8 +591,9 @@ def ready_to_pay(
 ):
     """AP work queue: accounted, unpaid invoices with unreserved balances.
 
-    This endpoint is location scoped, never shows DRAFT/VERIFIED invoices,
-    and does not mark an invoice paid or create accounting entries.
+    This endpoint is location scoped and includes verified invoices only when
+    their accounting journal is recognized. It never marks an invoice paid or
+    creates accounting entries.
     """
     query = apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user).filter(
         accounted_invoice_filter(),

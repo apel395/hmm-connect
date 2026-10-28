@@ -51,7 +51,7 @@ def _visual_for(status: str, difference: Decimal | None = None) -> str:
 
 
 class FinancialReconciliationService:
-    """Read-only controls comparing current subledger balances with posted GL balances.
+    """Read-only controls comparing source balances with recognized accounting.
 
     Produces a closing-checklist shaped report (external statement vs GL book vs
     variance + visual indicator). Inventory is reconciled per inventory posting
@@ -84,7 +84,7 @@ class FinancialReconciliationService:
         return sum(self._gl_by_account(account_ids, location_id, as_of).values(), ZERO)
 
     def _gl_by_account(self, account_ids: list[int], location_id: int | None = None, as_of: date | None = None) -> dict[int, Decimal]:
-        """Per-account signed balance from POSTED journal lines."""
+        """Per-account signed balance from recognized journal lines."""
         if not account_ids:
             return {}
         snapshot_date, snapshot = opening_snapshot(
@@ -110,7 +110,7 @@ class FinancialReconciliationService:
             query = query.filter(JournalEntry.posting_date >= snapshot_date)
         query = self._unit_scope(query, JournalLine)
         if location_id is not None:
-            query = query.filter(JournalLine.location_id == location_id)
+            query = query.filter(func.coalesce(JournalLine.location_id, JournalEntry.location_id) == location_id)
         if as_of is not None:
             query = query.filter(JournalEntry.posting_date <= as_of)
         result = {}
@@ -364,7 +364,7 @@ class FinancialReconciliationService:
                  .filter(recognized_journal_filter(), JournalLine.account_id.in_(account_ids)))
         query = self._unit_scope(query, JournalLine)
         if location_id is not None:
-            query = query.filter(JournalLine.location_id == location_id)
+            query = query.filter(func.coalesce(JournalLine.location_id, JournalEntry.location_id) == location_id)
         if as_of is not None:
             query = query.filter(JournalEntry.posting_date <= as_of)
         return [{
@@ -440,7 +440,7 @@ class FinancialReconciliationService:
             journal_query = journal_query.filter(JournalEntry.posting_date <= as_of)
         journal_query = self._unit_scope(journal_query, JournalLine)
         if location_id is not None:
-            journal_query = journal_query.filter(JournalLine.location_id == location_id)
+            journal_query = journal_query.filter(func.coalesce(JournalLine.location_id, JournalEntry.location_id) == location_id)
         by_journal: dict[int, dict] = {}
         for journal, line in journal_query.all():
             signed = (Decimal(line.credit or 0) - Decimal(line.debit or 0)
