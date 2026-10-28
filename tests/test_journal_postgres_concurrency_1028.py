@@ -193,7 +193,7 @@ def test_double_payment_settlement_updates_invoice_once(pg):
     from app.models.bank_account import BankAccount
     from app.models.payment import Payment, PaymentAllocation, PaymentFundingLine
     from app.models.supplier import Supplier
-    from app.models.supplier_invoice import SupplierInvoice
+    from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
     with pg.factory() as db:
         supplier=Supplier(code='SUP',name='Concurrent supplier',payable_account_id=pg.accounts[3])
         bank=BankAccount(bank_name='Test bank',account_name='Test cash',account_number='123',coa_account_id=pg.accounts[1],currency='IDR',is_active=True,is_payment_account=True,business_unit_id=pg.unit_id)
@@ -201,7 +201,9 @@ def test_double_payment_settlement_updates_invoice_once(pg):
         invoice=SupplierInvoice(internal_invoice_number='INV-TEST',supplier_invoice_number='VENDOR-TEST',supplier_id=supplier.id,
             invoice_date=date(2026,1,10),status='VERIFIED',subtotal=100,total_amount=100,paid_amount=0,balance_amount=100,
             location_id=pg.location_id,business_unit_id=pg.unit_id)
+        invoice.lines = [SupplierInvoiceLine(description='Test purchase', quantity=1, unit_price=100, line_amount=100, account_id=pg.accounts[4])]
         db.add(invoice);db.flush()
+        assert invoice.total_amount == 100 and invoice.paid_amount == 0
         invoice_journal=JournalEntry(journal_number='INV-JE',posting_date=invoice.invoice_date,status='DRAFT',reference_type='SUPPLIER_INVOICE',reference_id=invoice.id,location_id=pg.location_id,business_unit_id=pg.unit_id)
         invoice_journal.lines=[JournalLine(account_id=pg.accounts[4],debit=100,credit=0),JournalLine(account_id=pg.accounts[3],debit=0,credit=100)]
         payment=Payment(payment_number='PAY-TEST',payment_date=date(2026,1,10),supplier_id=supplier.id,amount=60,status='APPROVED',payment_method='BANK_TRANSFER',created_by_id=pg.user.id,location_id=pg.location_id,business_unit_id=pg.unit_id)
