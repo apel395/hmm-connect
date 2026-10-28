@@ -154,7 +154,7 @@ export default function JournalDetailPage() {
 
   const confirmUnpost = () => {
     const source = (x.reference_type || "MANUAL").replaceAll("_", " ");
-    if (!window.confirm(`Unpost ${x.journal_number}?\n\nThis will remove its General Ledger rows and synchronize the ${source} source document back to its editable/pre-posting state. Closed fiscal periods remain locked.`)) return;
+    if (!window.confirm(`Unpost ${x.journal_number}?\n\nThis returns the journal and ${source} source document to their correction state. A complete balanced DRAFT still counts in an open period. Closed periods remain locked.`)) return;
     act.mutate("unpost");
   };
 
