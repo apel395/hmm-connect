@@ -31,7 +31,7 @@ def db(monkeypatch):
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
-    monkeypatch.setattr(FiscalPeriodService, "validate_posting_date", staticmethod(lambda db, posting_date: None))
+    monkeypatch.setattr(FiscalPeriodService, "validate_posting_date", staticmethod(lambda db, posting_date, **kwargs: None))
     yield session
     session.close()
     engine.dispose()

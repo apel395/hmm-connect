@@ -43,6 +43,11 @@ class PeriodClosingService:
 
     @classmethod
     def close(cls, db: Session, period_id: int, user) -> dict:
+        with db.begin_nested():
+            return cls._close(db,period_id,user)
+
+    @classmethod
+    def _close(cls, db: Session, period_id: int, user) -> dict:
         period = cls.period(db, period_id)
         if period.is_closed:
             return {"message": "Fiscal period is already closed", "closing_journal_ids": period.closing_journal_ids or []}
@@ -50,6 +55,24 @@ class PeriodClosingService:
             raise HTTPException(409, "Open the period before closing it")
         if period.end_date.year != period.fiscal_year or period.start_date.year != period.fiscal_year:
             raise HTTPException(409, "Fiscal period dates must belong to its fiscal year")
+        # Finalize all complete drafts before calculating the closing entries.
+        # Incomplete/unbalanced drafts block close; no partial posting is committed.
+        drafts = (db.query(JournalEntry)
+            .filter(JournalEntry.posting_date.between(period.start_date, period.end_date),
+                    JournalEntry.status == "DRAFT")
+            .order_by(JournalEntry.id).with_for_update().all())
+        from app.api.v1.journals import post_locked_journal
+        for draft in drafts:
+            if draft.reference_type in CLOSING_SOURCES:
+                raise HTTPException(409, "System closing journal cannot be a draft")
+            debit = sum((Decimal(line.debit or 0) for line in draft.lines), ZERO)
+            credit = sum((Decimal(line.credit or 0) for line in draft.lines), ZERO)
+            if not draft.lines or debit != credit or debit <= ZERO:
+                raise HTTPException(409, f"Complete and balance draft journal {draft.journal_number} before closing {period.period_name}")
+        # Close is transactional under the period lock.
+        for draft in drafts:
+            post_locked_journal(db, journal=draft, user=user, system_closing=True)
+        db.flush()
         # This row lock is shared with normal posting validation. Journal activity
         # is read only after all previously admitted postings have committed.
         dimensions = [func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name))
@@ -60,7 +83,7 @@ class PeriodClosingService:
             .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)\
             .filter(JournalEntry.status == "POSTED",
                     JournalEntry.posting_date.between(period.start_date, period.end_date),
-                    JournalEntry.reference_type.notin_(CLOSING_SOURCES + OPENING_SOURCES),
+                    func.coalesce(JournalEntry.reference_type, 'MANUAL').notin_(CLOSING_SOURCES + OPENING_SOURCES),
                     ChartOfAccount.account_type.in_(("REVENUE", "INCOME", "EXPENSE")))\
             .group_by(ChartOfAccount.id, *dimensions).all()
         groups = defaultdict(list)
@@ -113,6 +136,12 @@ class PeriodClosingService:
 
     @classmethod
     def reopen(cls, db: Session, period_id: int, user, reason: str) -> dict:
+        if len(reason.strip())<3:raise HTTPException(422,"A reopening reason is required")
+        with db.begin_nested():
+            return cls._reopen(db,period_id,user,reason.strip())
+
+    @classmethod
+    def _reopen(cls, db: Session, period_id: int, user, reason: str) -> dict:
         period = cls.period(db, period_id)
         if period.is_open and not period.is_closed:
             return {"message": "Fiscal period is already open", "voided_closing_journal_ids": []}

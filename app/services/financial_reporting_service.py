@@ -11,6 +11,7 @@ from app.models.budget import Budget, BudgetLine
 from app.models.chart_of_account import ChartOfAccount
 from app.models.financial_report_setting import FinancialReportSetting
 from app.models.journal_entry import JournalEntry
+from app.services.journal_recognition import recognized_journal_filter
 from app.models.journal_line import JournalLine
 from app.models.opening_balance import OpeningBalance
 from app.models.location import Location
@@ -149,8 +150,8 @@ class FinancialReportingService:
         if key in self._year_evidence:
             return self._year_evidence[key]
         query = self.db.query(JournalLine.id).join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id).filter(
-            JournalEntry.status == "POSTED", JournalEntry.posting_date.between(date(year, 1, 1), date(year, 12, 31)),
-            JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT", "PERIOD_CLOSE", "YEAR_END")))
+            recognized_journal_filter(), JournalEntry.posting_date.between(date(year, 1, 1), date(year, 12, 31)),
+            func.coalesce(JournalEntry.reference_type, 'MANUAL').notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT", "PERIOD_CLOSE", "YEAR_END")))
         for name, value in scope.items():
             if value is not None:
                 dimension = func.coalesce(getattr(JournalLine, name), getattr(JournalEntry, name))
@@ -310,7 +311,7 @@ class FinancialReportingService:
         report = {"report_type": report_type, "as_of_date": as_of_date, "scope": scope, "scope_labels": scope_labels,
                 "periods": calendar, "rows": rows, "executive_rows": executive_rows, "section_totals": totals, "summary": summaries,
                 "header_only": header_only, "budget_available": budget_available, "comparison_available": comparison_available,
-                "metadata": {"opening_source": "MANUAL_OPENING_BALANCES", "actual_source": "POSTED_JOURNAL_LINES",
+                "metadata": {"opening_source": "MANUAL_OPENING_BALANCES", "actual_source": "RECOGNIZED_JOURNAL_LINES",
                     "report_setup_available": self.report_setup_available, "budget_setup_available": self.budget_setup_available,
                     "display_selection_only": selected is not None, "totals_scope": "COMPLETE_REPORT",
                     "budget_basis": "FULL_MONTH_PLAN" if report_type == "PROFIT_LOSS" else "MONTH_END_BALANCE_TARGET",
@@ -372,7 +373,7 @@ class FinancialReportingService:
             activity = self.db.query(func.coalesce(JournalLine.department_id, JournalEntry.department_id)).join(
                 JournalEntry, JournalEntry.id == JournalLine.journal_entry_id).join(
                 ChartOfAccount, ChartOfAccount.id == JournalLine.account_id).filter(
-                JournalEntry.status == "POSTED", ChartOfAccount.account_type.in_(("REVENUE", "INCOME", "EXPENSE") if kind == "PROFIT_LOSS" else ("ASSET","LIABILITY","EQUITY","REVENUE","INCOME","EXPENSE")),
+                recognized_journal_filter(), ChartOfAccount.account_type.in_(("REVENUE", "INCOME", "EXPENSE") if kind == "PROFIT_LOSS" else ("ASSET","LIABILITY","EQUITY","REVENUE","INCOME","EXPENSE")),
                 JournalEntry.posting_date.between(date(report["as_of_date"].year - 1, 1, 1), report["as_of_date"]))
             for name in ("location_id", "business_unit_id"):
                 if scope[name] is not None:

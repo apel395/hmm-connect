@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.services.document_accounting import accounted_invoice_filter, accounted_payment_filter, accounted_adjustment_filter
 
 from datetime import date
 from decimal import Decimal
@@ -55,7 +56,7 @@ class APReportingService:
         query = (
             self.db.query(SupplierInvoice)
             .options(joinedload(SupplierInvoice.supplier))
-            .filter(SupplierInvoice.status == "POSTED")
+            .filter(accounted_invoice_filter())
         )
         if supplier_id:
             query = query.filter(SupplierInvoice.supplier_id == supplier_id)
@@ -88,7 +89,7 @@ class APReportingService:
             )
             .join(Payment, Payment.id == PaymentAllocation.payment_id)
             .filter(
-                Payment.status == "POSTED",
+                accounted_payment_filter(),
                 PaymentAllocation.supplier_invoice_id.in_(invoice_ids),
             )
             .group_by(PaymentAllocation.supplier_invoice_id)
@@ -111,7 +112,7 @@ class APReportingService:
                 func.coalesce(func.sum(SupplierAdjustment.amount), 0),
             )
             .filter(
-                SupplierAdjustment.status == "POSTED",
+                accounted_adjustment_filter(),
                 SupplierAdjustment.supplier_invoice_id.in_(invoice_ids),
             )
             .group_by(SupplierAdjustment.supplier_invoice_id)

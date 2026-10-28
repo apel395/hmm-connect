@@ -1,3 +1,4 @@
+from app.services.document_accounting import accounted_invoice_filter, invoice_is_accounted
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -32,7 +33,7 @@ from app.services.supplier_invoice_service import SupplierInvoiceService
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 ZERO = Decimal("0")
-OPEN_INVOICE_STATUSES = {"POSTED"}
+OPEN_INVOICE_STATUSES = {"POSTED", "VERIFIED"}
 
 payment_view_user = require_permission("payment.view")
 payment_manage_user = require_permission("payment.manage")
@@ -154,8 +155,8 @@ def validate_data(db: Session, data: PaymentCreate, user, exclude: int | None = 
             raise HTTPException(400, "Allocated invoice does not belong to selected supplier")
         SupplierInvoiceService(db).ensure_location(invoice)
         enforce_location_access(user, invoice.location_id)
-        if invoice.status not in OPEN_INVOICE_STATUSES or invoice.payment_status == "PAID":
-            raise HTTPException(409, "Only posted unpaid invoices can be allocated")
+        if not invoice_is_accounted(db,invoice) or invoice.payment_status == "PAID":
+            raise HTTPException(409, "Only accounted, verified unpaid invoices can be allocated")
         if invoice.currency != data.currency.upper():
             raise HTTPException(400, "Payment and invoice currencies must match")
 
@@ -546,7 +547,7 @@ def eligible(supplier_id: int, currency: str = "IDR", db: Session = Depends(get_
     rows = apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user).filter(
         SupplierInvoice.supplier_id == supplier_id,
         SupplierInvoice.currency == currency.upper(),
-        SupplierInvoice.status.in_(OPEN_INVOICE_STATUSES),
+        accounted_invoice_filter(),
     ).order_by(SupplierInvoice.due_date.asc().nullslast(), SupplierInvoice.id).all()
 
     available_rows = []
@@ -590,11 +591,12 @@ def ready_to_pay(
 ):
     """AP work queue: accounted, unpaid invoices with unreserved balances.
 
-    This endpoint is location scoped, never shows DRAFT/VERIFIED invoices,
-    and does not mark an invoice paid or create accounting entries.
+    This endpoint is location scoped and includes verified invoices only when
+    their accounting journal is recognized. It never marks an invoice paid or
+    creates accounting entries.
     """
     query = apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user).filter(
-        SupplierInvoice.status == "POSTED",
+        accounted_invoice_filter(),
     )
     if currency:
         query = query.filter(SupplierInvoice.currency == currency.upper())
@@ -787,8 +789,8 @@ def approve(payment_id: int, db: Session = Depends(get_db), user=Depends(payment
     locked_invoices = _lock_allocated_invoices(db, payment)
     for allocation in payment.allocations:
         invoice = locked_invoices[allocation.supplier_invoice_id]
-        if invoice.status not in OPEN_INVOICE_STATUSES:
-            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} is not posted and cannot be paid")
+        if not invoice_is_accounted(db,invoice):
+            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} has no recognized verified accounting journal and cannot be paid")
         available = invoice_balance(invoice) - reserved_amount(db, invoice.id, payment.id)
         if Decimal(allocation.allocated_amount) > available:
             raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} only has {available} available")
@@ -834,7 +836,7 @@ def generate(payment_id: int, db: Session = Depends(get_db), user=Depends(paymen
         db.refresh(payment)
         return result(db, payment, user)
     for allocation in payment.allocations:
-        if allocation.supplier_invoice.status not in OPEN_INVOICE_STATUSES:
+        if not invoice_is_accounted(db,allocation.supplier_invoice):
             raise HTTPException(409, f"Invoice {allocation.supplier_invoice.internal_invoice_number} is not posted")
     payable_account = DirectCoaService(db).payable_account(payment.supplier, payment.location_id)
     funding_accounts = [
@@ -915,8 +917,8 @@ def post(payment_id: int, db: Session = Depends(get_db), user=Depends(payment_ma
     locked_invoices = _lock_allocated_invoices(db, payment)
     for allocation in payment.allocations:
         invoice = locked_invoices[allocation.supplier_invoice_id]
-        if invoice.status not in OPEN_INVOICE_STATUSES:
-            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} is not posted and payment cannot be posted")
+        if not invoice_is_accounted(db,invoice):
+            raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} has no recognized verified accounting journal and payment cannot be posted")
         amount = Decimal(allocation.allocated_amount)
         current_balance = invoice_balance(invoice)
         if amount > current_balance:

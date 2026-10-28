@@ -10,6 +10,7 @@ from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.services.opening_snapshot import opening_snapshot
+from app.services.journal_recognition import recognized_journal_filter
 
 
 ZERO = Decimal("0.00")
@@ -48,11 +49,11 @@ class TrialBalanceService:
                 func.coalesce(func.sum(JournalLine.credit), 0),
             )
             .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)
-            .filter(JournalEntry.status == "POSTED")
-            .filter(JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")))
+            .filter(recognized_journal_filter())
+            .filter(func.coalesce(JournalEntry.reference_type, 'MANUAL').notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")))
         )
         if exclude_closing:
-            query = query.filter(JournalEntry.reference_type.notin_(("PERIOD_CLOSE", "YEAR_END")))
+            query = query.filter(func.coalesce(JournalEntry.reference_type, 'MANUAL').notin_(("PERIOD_CLOSE", "YEAR_END")))
         if before:
             query = query.filter(JournalEntry.posting_date < before)
         if date_from:

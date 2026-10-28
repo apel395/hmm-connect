@@ -53,3 +53,36 @@ jobs:
           script: |
             await github.rest.repos.createCommitStatus({owner: context.repo.owner, repo: context.repo.repo, sha: context.sha, state: "failure", context: "Backend CI / full suite", description: "Backend validation failed"})
 
+
+  postgres-concurrency:
+    name: PostgreSQL journal concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mmh_test
+          POSTGRES_PASSWORD: ci_test_only
+          POSTGRES_DB: mmh_journal_concurrency_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mmh_test -d mmh_journal_concurrency_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-32-characters
+      DATABASE_URL: postgresql+psycopg2://mmh_test:ci_test_only@localhost:5432/mmh_journal_concurrency_test
+      MMH_PG_TEST_URL: postgresql+psycopg2://mmh_test:ci_test_only@localhost:5432/mmh_journal_concurrency_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: python -m pip install --requirement requirements.txt
+      - name: Test real PostgreSQL concurrent journal operations
+        run: pytest -q tests/test_journal_postgres_concurrency_1028.py -rA

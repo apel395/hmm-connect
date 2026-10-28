@@ -27,7 +27,11 @@ ADMIN = SimpleNamespace(
 def db():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
+    from app.models.fiscal_period import FiscalPeriod
+    from calendar import monthrange
     session = sessionmaker(bind=engine, expire_on_commit=False)()
+    session.add(FiscalPeriod(fiscal_year=2026,fiscal_month=9,period_name='September 2026',start_date=date(2026,9,1),end_date=date(2026,9,30),is_open=True,is_closed=False,allow_backdated_entries=True))
+    session.commit()
     yield session
     session.close()
     engine.dispose()

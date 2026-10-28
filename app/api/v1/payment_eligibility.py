@@ -1,3 +1,5 @@
+from app.services.journal_recognition import recognized_journal_filter
+from app.services.document_accounting import accounted_invoice_filter, invoice_is_accounted
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,7 +51,7 @@ def eligible_suppliers(
 ):
     """Return only suppliers that currently have an amount available to pay.
 
-    The eligibility matches the payment invoice flow: invoice must be POSTED,
+    The eligibility matches the payment invoice flow: invoice must have recognized accounting,
     visible to the user's location scope, have an outstanding balance, and not
     be fully reserved by an APPROVED payment.  include_supplier_id preserves
     the current supplier while editing an existing draft payment.
@@ -62,7 +64,7 @@ def eligible_suppliers(
         apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user)
         .filter(
             SupplierInvoice.currency == currency,
-            SupplierInvoice.status == "POSTED",
+            accounted_invoice_filter(),
         )
         .order_by(SupplierInvoice.supplier_id.asc(), SupplierInvoice.id.asc())
         .all()
@@ -118,7 +120,7 @@ def eligible_invoices_available(
             JournalEntry,
             (JournalEntry.reference_type == "SUPPLIER_INVOICE")
             & (JournalEntry.reference_id == SupplierInvoice.id)
-            & (JournalEntry.status == "POSTED"),
+            & recognized_journal_filter(),
         )
         .filter(
             SupplierInvoice.supplier_id == supplier_id,
@@ -131,6 +133,7 @@ def eligible_invoices_available(
 
     result = []
     for invoice in invoices:
+        if not invoice_is_accounted(db,invoice):continue
         balance = invoice_balance(invoice)
         if balance <= ZERO:
             continue
@@ -154,7 +157,8 @@ def eligible_invoices_available(
             "location_id": invoice.location_id,
             "department_id": invoice.department_id,
             "status": invoice.status,
-            "posting_status": "POSTED",
+            "posting_status": "POSTED" if any(j.status=="POSTED" for j in db.query(JournalEntry).filter_by(reference_type="SUPPLIER_INVOICE",reference_id=invoice.id)) else "UNPOSTED",
+            "accounting_recognized": True,
             "payment_status": invoice.payment_status,
         })
 

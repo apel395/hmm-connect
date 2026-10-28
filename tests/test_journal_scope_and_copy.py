@@ -21,7 +21,11 @@ ADMIN = SimpleNamespace(id=1, roles=[SimpleNamespace(name="SYSTEM_ADMINISTRATOR"
 def data(monkeypatch):
     engine = create_engine('sqlite:///:memory:')
     Base.metadata.create_all(engine)
+    from app.models.fiscal_period import FiscalPeriod
+    from calendar import monthrange
     db = sessionmaker(bind=engine, expire_on_commit=False)()
+    db.add_all([FiscalPeriod(fiscal_year=2026,fiscal_month=m,period_name=f'Month {m}',start_date=date(2026,m,1),end_date=date(2026,m,monthrange(2026,m)[1]),is_open=True,is_closed=False,allow_backdated_entries=True) for m in range(1,13)])
+    db.commit()
     monkeypatch.setattr(journals, 'record_audit', lambda *a, **k: None)
     monkeypatch.setattr(journals, 'next_document_number', lambda *a, **k: 'MAN-COPY-1')
     hotel, project = BusinessUnit(code='HTL',name='Hotel'), BusinessUnit(code='PRJ',name='Project Catering')

@@ -1,3 +1,4 @@
+from app.services.document_accounting import accounted_invoice_filter
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -96,7 +97,7 @@ def eligible_invoices(
 ):
     q = apply_location_scope(db.query(SupplierInvoice), SupplierInvoice, user).filter(
         SupplierInvoice.location_id == location_id,
-        SupplierInvoice.status == "POSTED",
+        accounted_invoice_filter(),
     )
     # only unpaid
     q = q.filter(SupplierInvoice.payment_status != "PAID")
