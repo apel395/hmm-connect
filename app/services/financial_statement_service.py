@@ -190,7 +190,7 @@ class FinancialStatementService:
                 "earnings_reconciliation": equity_evidence,
                 "difference": difference, "is_balanced": difference == ZERO, "unclassified_account_count": unclassified,
             },
-            "metadata": {"canonical_source": "OPENING_BALANCES_AND_POSTED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "PERIOD_CLOSE_AND_YEAR_END", "earnings_reconciled": True, "is_yearly": True, "year_start": year_start, "year_end": year_end},
+            "metadata": {"canonical_source": "OPENING_BALANCES_AND_RECOGNIZED_JOURNAL_LINES", "earnings_period_start": date(as_of_date.year, 1, 1), "closing_journal_detection": "PERIOD_CLOSE_AND_YEAR_END", "earnings_reconciled": True, "is_yearly": True, "year_start": year_start, "year_end": year_end},
         }
 
     def profit_and_loss(
@@ -237,4 +237,4 @@ class FinancialStatementService:
         totals={code:sum((row["current_amount"] for row in groups[code]),ZERO) for code in group_codes}
         operating_revenue=totals["OPERATING_REVENUE"]
         cost=totals["COST_OF_REVENUE"];gross=operating_revenue-cost;operating_expenses=totals["OPERATING_EXPENSE"];operating_profit=gross-operating_expenses;other_revenue=totals["OTHER_REVENUE"];other_expenses=totals["OTHER_EXPENSE"];unclassified_net=totals["UNCLASSIFIED_REVENUE"]-totals["UNCLASSIFIED_EXPENSE"];net=operating_profit+other_revenue-other_expenses+unclassified_net
-        return {"date_from":date_from,"date_to":date_to,"comparative_date_from":comparative_date_from,"comparative_date_to":comparative_date_to,"detail_level":detail_level,"sections":sections,"summary":{"total_revenue":operating_revenue+other_revenue+totals["UNCLASSIFIED_REVENUE"],"cost_of_revenue":cost,"gross_profit":gross,"operating_expenses":operating_expenses,"operating_profit":operating_profit,"other_revenue":other_revenue,"other_expenses":other_expenses,"unclassified_net":unclassified_net,"net_profit_before_tax":net,"tax_expense":ZERO,"net_profit_after_tax":net,"unclassified_account_count":unclassified},"metadata":{"canonical_source":"POSTED_JOURNAL_LINES","operating_movement_before_closing":True}}
+        return {"date_from":date_from,"date_to":date_to,"comparative_date_from":comparative_date_from,"comparative_date_to":comparative_date_to,"detail_level":detail_level,"sections":sections,"summary":{"total_revenue":operating_revenue+other_revenue+totals["UNCLASSIFIED_REVENUE"],"cost_of_revenue":cost,"gross_profit":gross,"operating_expenses":operating_expenses,"operating_profit":operating_profit,"other_revenue":other_revenue,"other_expenses":other_expenses,"unclassified_net":unclassified_net,"net_profit_before_tax":net,"tax_expense":ZERO,"net_profit_after_tax":net,"unclassified_account_count":unclassified},"metadata":{"canonical_source":"RECOGNIZED_JOURNAL_LINES","operating_movement_before_closing":True}}

@@ -1,3 +1,4 @@
+from app.services.document_accounting import invoice_is_accounted, accounted_payment_filter, accounted_adjustment_filter
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -85,16 +86,16 @@ def _sync_invoice_payable(db: Session, invoice: SupplierInvoice) -> None:
 def _assert_invoice_has_no_posted_dependents(db: Session, invoice: SupplierInvoice) -> None:
     posted_payment = db.query(PaymentAllocation).join(Payment).filter(
         PaymentAllocation.supplier_invoice_id == invoice.id,
-        Payment.status == "POSTED",
+        accounted_payment_filter(),
     ).first()
     if posted_payment:
         raise HTTPException(
             status_code=409,
-            detail="Supplier invoice has a posted payment. Unpost the payment journal first.",
+            detail="Supplier invoice has an accounted payment. Unpost and reopen or void the payment first.",
         )
     posted_adjustment = db.query(SupplierAdjustment).filter(
         SupplierAdjustment.supplier_invoice_id == invoice.id,
-        SupplierAdjustment.status == "POSTED",
+        accounted_adjustment_filter(),
     ).first()
     if posted_adjustment:
         raise HTTPException(
@@ -142,7 +143,7 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
         payment.posted_at = now
         for allocation in payment.allocations:
             invoice = locked_invoices[allocation.supplier_invoice_id]
-            if invoice.status != "POSTED":
+            if not invoice_is_accounted(db,invoice):
                 raise HTTPException(409, f"Invoice {invoice.internal_invoice_number} must remain posted")
             amount = Decimal(allocation.allocated_amount or 0)
             current_balance = _invoice_balance(invoice)
@@ -161,7 +162,7 @@ def apply_source_post_state(db: Session, *, journal: JournalEntry, user) -> None
         invoice = db.query(SupplierInvoice).filter(
             SupplierInvoice.id == adjustment.supplier_invoice_id,
         ).with_for_update().one()
-        if invoice.status != "POSTED":
+        if not invoice_is_accounted(db,invoice):
             raise HTTPException(409, "Supplier invoice must remain posted")
         amount = Decimal(adjustment.amount or 0)
         if amount <= ZERO or amount > _invoice_balance(invoice):
@@ -309,7 +310,7 @@ def recreate_journal_ledger(
     if not journal.lines:
         raise HTTPException(status_code=409, detail="Journal has no lines to recreate")
 
-    FiscalPeriodService.validate_posting_date(db=db, posting_date=journal.posting_date)
+    FiscalPeriodService.validate_posting_date(db=db, posting_date=journal.posting_date, system_closing=True)
     previous_rows = matching_ledger_rows(db, journal)
     for row in previous_rows:
         db.delete(row)
@@ -365,7 +366,7 @@ def unpost_journal(
 
     # Fiscal period remains the hard accounting lock. Admin can reopen the period,
     # then unpost/rework the document. We never silently bypass a closed period.
-    FiscalPeriodService.validate_posting_date(db=db, posting_date=journal.posting_date)
+    FiscalPeriodService.validate_posting_date(db=db, posting_date=journal.posting_date, system_closing=True)
 
     gl_rows = matching_ledger_rows(db, journal)
     if not gl_rows:

@@ -50,10 +50,10 @@ class TrialBalanceService:
             )
             .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)
             .filter(recognized_journal_filter())
-            .filter(JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")))
+            .filter(func.coalesce(JournalEntry.reference_type, 'MANUAL').notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")))
         )
         if exclude_closing:
-            query = query.filter(JournalEntry.reference_type.notin_(("PERIOD_CLOSE", "YEAR_END")))
+            query = query.filter(func.coalesce(JournalEntry.reference_type, 'MANUAL').notin_(("PERIOD_CLOSE", "YEAR_END")))
         if before:
             query = query.filter(JournalEntry.posting_date < before)
         if date_from:

@@ -34,7 +34,7 @@ def build_ledger_query(
 ):
     q = db.query(JournalLine).join(JournalEntry).filter(
         recognized_journal_filter(),
-        JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")),
+        func.coalesce(JournalEntry.reference_type, 'MANUAL').notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")),
     )
     if account_ids:
         try:

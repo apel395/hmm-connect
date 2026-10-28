@@ -25,7 +25,7 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.models.user import User
 from app.models.warehouse import Warehouse
 from app.schemas.approval import ApprovalDecisionRequest
-from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate, GoodsReceiptUpdate
+from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptDepost
 from app.services.approval import (
     approve_current_step,
     can_user_decide_step,
@@ -37,7 +37,7 @@ from app.services.approval import (
 )
 from app.services.document_context import document_context, print_metadata
 from app.services.goods_receipt_service import GoodsReceiptService
-from app.services.receiving_edit_policy import can_edit_receiving
+from app.services.receiving_edit_policy import can_edit_receiving, edit_block_reason
 from app.services.location_access import (
     apply_location_scope,
     enforce_warehouse_access,
@@ -99,9 +99,12 @@ def receipt_actions(receipt: GoodsReceipt, user, db: Session):
         and approval.status == "PENDING"
         and any(can_user_decide_step(step, user) for step in current_steps(approval))
     )
+    from app.services.receiving_depost import can_depost
     can_edit = can_edit_receiving(receipt, approval, user)
     return {
         "can_edit": can_edit,
+        "can_depost": can_depost(receipt,user),
+        "edit_block_reason": edit_block_reason(receipt, approval, user),
         "can_submit": receipt.status == "DRAFT" and receipt.source_type != "HISTORICAL_ENTRY" and approval is None and has_permission(user, "receiving.submit"),
         "can_approve": can_decide and not has_receiving_approval(approval, user) and has_permission(user, "receiving.approve"),
         "can_reject": can_decide and has_permission(user, "receiving.approve"),
@@ -551,3 +554,13 @@ def print_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(r
     payload["is_partial_receipt"] = bool(receipt.purchase_order and remaining)
     payload["remaining_items"] = remaining
     return {**payload, "document_type": "Receiving Report", **print_metadata(user)}
+
+
+@router.post("/{receipt_id}/unpost")
+def depost_receipt(receipt_id:int,data:GoodsReceiptDepost,db:Session=Depends(get_db),user=Depends(receiving_manage_user)):
+    from app.services.receiving_depost import depost_receiving
+    receipt=depost_receiving(db,receipt_id,user,data.reason)
+    result=serialize_receipt(receipt,db)
+    result.update(document_context(db,"GOODS_RECEIPT",receipt.id,receipt.status,user))
+    result["allowed_actions"]=receipt_actions(receipt,user,db)
+    return result

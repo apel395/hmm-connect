@@ -3,8 +3,8 @@ from decimal import Decimal
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import func, or_, and_
+from sqlalchemy.orm import Session, joinedload, selectinload, object_session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
@@ -28,6 +28,7 @@ from app.services.audit import record_audit
 from app.services.document_context import print_metadata
 from app.services.document_number import next_document_number
 from app.services.general_ledger import GeneralLedgerService
+from app.services.journal_recognition import draft_problem, period_state
 from app.services.fiscal_period_service import FiscalPeriodService
 from app.services.location_access import apply_location_scope, enforce_location_access, resolve_location_id
 from app.services.organization_dimensions import validate_dimensions
@@ -49,6 +50,19 @@ def get(db, id, user):
     return x
 
 
+def locked_journal(db, journal_id, user, new_date=None):
+    snapshot=get(db,journal_id,user)
+    stamp=snapshot.posting_date
+    dates={stamp,new_date} if new_date else {stamp}
+    db.query(FiscalPeriod).filter(or_(*[and_(FiscalPeriod.start_date<=d,FiscalPeriod.end_date>=d) for d in dates])).order_by(FiscalPeriod.id).with_for_update().all()
+    FiscalPeriodService.validate_posting_date(db,stamp,system_closing=True)
+    if new_date and new_date!=stamp:FiscalPeriodService.validate_posting_date(db,new_date)
+    journal=db.query(JournalEntry).filter_by(id=journal_id).populate_existing().with_for_update().one()
+    if journal.posting_date!=stamp:raise HTTPException(409,"Journal date changed; refresh before correcting")
+    enforce_location_access(user,journal.location_id)
+    return journal
+
+
 def validate(db, lines):
     if not lines:
         raise HTTPException(400, "Journal must contain at least one line")
@@ -56,12 +70,12 @@ def validate(db, lines):
     for line in lines:
         d = Decimal(line.debit)
         c = Decimal(line.credit)
-        if d < 0 or c < 0:
+        if not d.is_finite() or not c.is_finite() or d < 0 or c < 0:
             raise HTTPException(400, "Debit and credit cannot be negative")
         if (d > 0) == (c > 0):
             raise HTTPException(400, "Each line must contain either debit or credit")
         account = db.get(ChartOfAccount, line.account_id)
-        if not account or not account.is_active or not account.is_posting:
+        if not account or not account.is_active or not account.is_posting or account.account_type == "STATISTIC":
             raise HTTPException(400, "Journal lines require active posting accounts")
         debit += d
         credit += c
@@ -72,14 +86,14 @@ def validate_journal_location_integrity(journal: JournalEntry) -> None:
     if journal.location_id is None:
         raise HTTPException(409, "Journal requires a work location before posting")
     for line in journal.lines:
-        if line.location_id != journal.location_id:
+        if line.location_id not in (None,journal.location_id):
             raise HTTPException(
                 409,
                 "Every journal line location must match the journal header location",
             )
         if (
             journal.business_unit_id is not None
-            and line.business_unit_id != journal.business_unit_id
+            and line.business_unit_id not in (None,journal.business_unit_id)
         ):
             raise HTTPException(
                 409,
@@ -93,6 +107,12 @@ def serialize(x, user=None):
     source = (x.reference_type or "MANUAL").upper()
     system_close = source in {"PERIOD_CLOSE", "YEAR_END"}
     admin_unpost = bool(user and is_superuser(user) and source in SUPPORTED_SOURCE_TYPES)
+    db=object_session(x)
+    period,period_open=period_state(db,x.posting_date)
+    manager=bool(user and has_permission(user,"journal.manage"))
+    problem=draft_problem(x) if x.status=="DRAFT" else None
+    recognized=x.status=="POSTED" or (x.status=="DRAFT" and not problem and period_open)
+    mutable=manager and period_open and not system_close
     return {
         "id": x.id,
         "journal_number": x.journal_number,
@@ -103,6 +123,10 @@ def serialize(x, user=None):
         "reference_id": x.reference_id,
         "reference_number": x.document_number,
         "status": x.status,
+        "accounting_recognized": recognized,
+        "recognition_reason": None if recognized else problem or ("Accounting period is not open" if x.status=="DRAFT" else "Void journal"),
+        "period_locked": not period_open,
+        "period_name": period.period_name if period else None,
         "business_unit_id": x.business_unit_id,
         "department_id": x.department_id,
         "location_id": x.location_id,
@@ -116,14 +140,14 @@ def serialize(x, user=None):
         "total_credit": credit,
         "difference": debit - credit,
         "allowed_actions": {
-            "can_edit": x.status == "DRAFT" and source not in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE", "GENERAL_CASHIER"},
-            "can_post": x.status == "DRAFT" and bool(x.lines) and (debit == credit or source == "MANUAL"),
-            "can_recreate": not system_close and x.status == "POSTED" and bool(user and is_superuser(user)),
-            "can_unpost": x.status == "POSTED" and (
+            "can_edit": mutable and x.status == "DRAFT" and source == "MANUAL",
+            "can_post": mutable and x.status == "DRAFT" and bool(x.lines) and (not problem or (source=="MANUAL" and debit!=credit)),
+            "can_recreate": mutable and x.status == "POSTED" and bool(user and is_superuser(user)),
+            "can_unpost": mutable and x.status == "POSTED" and (
                 source in STANDARD_UNPOSTABLE_SOURCES or admin_unpost
             ),
-            "can_void": x.status == "DRAFT" and source not in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE", "GENERAL_CASHIER"},
-            "can_void_source_payment": x.status == "DRAFT" and source == "SUPPLIER_PAYMENT" and bool(user and has_permission(user, "payment.manage")),
+            "can_void": mutable and x.status == "DRAFT" and source == "MANUAL",
+            "can_void_source_payment": mutable and x.status == "DRAFT" and source == "SUPPLIER_PAYMENT" and bool(user and has_permission(user, "payment.manage")),
             "can_copy": source == "MANUAL" and bool(user and has_permission(user, "journal.manage")),
             "can_print": True,
         },
@@ -159,6 +183,10 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user, system_clos
         raise HTTPException(409, "Closing journals are managed through Accounting Periods")
     if journal.status != "DRAFT":
         raise HTTPException(409, f"Journal {journal.journal_number} is not draft")
+    FiscalPeriodService.validate_posting_date(db,journal.posting_date,system_closing=True)
+    from app.services.accounting_unpost import matching_ledger_rows
+    if matching_ledger_rows(db,journal):
+        raise HTTPException(409,"Draft journal already has GL rows; Finance must review before finalizing")
     debit, credit = validate(db, journal.lines)
     validate_journal_location_integrity(journal)
     if debit != credit and (journal.reference_type or "").upper() != "MANUAL":
@@ -175,6 +203,13 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user, system_clos
             ).first()
             if grni_setting:
                 allowed_liability_debit_ids.add(grni_setting.account_id)
+            from app.models.supplier_invoice import SupplierInvoice
+            from app.services.direct_coa_service import DirectCoaService
+            invoice = db.get(SupplierInvoice, journal.reference_id)
+            if invoice and any(line.goods_receipt_item_id for line in invoice.lines):
+                # Receiving uses the canonical AP Suspense resolver, not an extra
+                # legacy GRNI setup requirement during automatic finalization.
+                allowed_liability_debit_ids.add(DirectCoaService(db).grni_account().id)
         AccountingPostingRuleService.validate_source_journal_accounts(
             source_type,
             debit_accounts,
@@ -207,7 +242,7 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user, system_clos
             debit=line.debit,
             credit=line.credit,
             posting_date=journal.posting_date,
-            system_closing=system_closing,
+            system_closing=True,
             journal_source=journal.reference_type,
             document_type=journal.document_type,
             document_number=journal.document_number,
@@ -447,12 +482,13 @@ def post_all(
     ids = list(dict.fromkeys(data.journal_ids))
     journals = db.query(JournalEntry).filter(
         JournalEntry.id.in_(ids),
-    ).with_for_update().all()
+    ).order_by(JournalEntry.posting_date,JournalEntry.id).all()
     found = {journal.id for journal in journals}
     missing = [journal_id for journal_id in ids if journal_id not in found]
     if missing:
         raise HTTPException(404, f"Journal entries not found: {missing}")
     for journal in journals:
+        journal=locked_journal(db,journal.id,user)
         post_locked_journal(db, journal=journal, user=user)
     db.commit()
     return {"processed": len(journals), "status": "POSTED", "journal_ids": ids}
@@ -468,12 +504,13 @@ def unpost_all(
     ids = list(dict.fromkeys(data.journal_ids))
     journals = db.query(JournalEntry).filter(
         JournalEntry.id.in_(ids),
-    ).with_for_update().all()
+    ).order_by(JournalEntry.posting_date,JournalEntry.id).all()
     found = {journal.id for journal in journals}
     missing = [journal_id for journal_id in ids if journal_id not in found]
     if missing:
         raise HTTPException(404, f"Journal entries not found: {missing}")
     for journal in journals:
+        journal=locked_journal(db,journal.id,user)
         unpost_journal(db, journal=journal, user=user, commit=False)
     db.commit()
     return {"processed": len(journals), "status": "DRAFT", "journal_ids": ids}
@@ -517,16 +554,13 @@ def detail(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_
 
 @router.patch("/{journal_id}")
 def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
-    x = get(db, journal_id, user)
+    x = locked_journal(db, journal_id, user, data.posting_date)
     if x.reference_type in {"PERIOD_CLOSE", "YEAR_END"}:
         raise HTTPException(409, "Closing journals are managed through Accounting Periods")
-    FiscalPeriodService.validate_posting_date(db, x.posting_date)
-    if data.posting_date and data.posting_date != x.posting_date:
-        FiscalPeriodService.validate_posting_date(db, data.posting_date)
     if x.status != "DRAFT":
         raise HTTPException(409, "Unpost the journal before editing it")
-    if x.reference_type in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE", "GENERAL_CASHIER"}:
-        raise HTTPException(409, "Edit the source document; cashier drafts can be voided and entered again")
+    if (x.reference_type or "MANUAL").upper() != "MANUAL":
+        raise HTTPException(409, "Edit the originating document for this source-controlled journal")
     line_departments = None
     if data.lines is not None and (x.reference_type or "").upper() == "MANUAL":
         line_departments = [line.department_id if "department_id" in line.model_fields_set else x.department_id for line in data.lines]
@@ -569,10 +603,7 @@ def update(journal_id: int, data: JournalUpdate, db: Session = Depends(get_db), 
 
 @router.post("/{journal_id}/post")
 def post(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
-    x = db.query(JournalEntry).filter(JournalEntry.id == journal_id).with_for_update().first()
-    if not x:
-        raise HTTPException(404, "Journal entry not found")
-    enforce_location_access(user, x.location_id)
+    x = locked_journal(db,journal_id,user)
     post_locked_journal(db, journal=x, user=user)
     db.commit()
     db.refresh(x)
@@ -586,11 +617,7 @@ def recreate(
     user=Depends(get_current_user),
 ):
     require_admin(user)
-    journal = db.query(JournalEntry).filter(
-        JournalEntry.id == journal_id,
-    ).with_for_update().first()
-    if not journal:
-        raise HTTPException(404, "Journal entry not found")
+    journal = locked_journal(db, journal_id, user)
     debit, credit = validate(db, journal.lines)
     if debit != credit and (journal.reference_type or "").upper() != "MANUAL":
         raise HTTPException(409, "Source journal is not balanced")
@@ -602,10 +629,7 @@ def recreate(
 
 @router.post("/{journal_id}/unpost")
 def unpost(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
-    x = db.query(JournalEntry).filter(JournalEntry.id == journal_id).with_for_update().first()
-    if not x:
-        raise HTTPException(404, "Journal entry not found")
-    enforce_location_access(user, x.location_id)
+    x = locked_journal(db,journal_id,user)
     source = (x.reference_type or "MANUAL").upper()
     if source in {"PERIOD_CLOSE", "YEAR_END"}:
         raise HTTPException(409, "Reopen the accounting period to undo its closing journal")
@@ -616,13 +640,12 @@ def unpost(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_
 
 @router.post("/{journal_id}/void")
 def void(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_manage_user)):
-    x = get(db, journal_id, user)
+    x = locked_journal(db,journal_id,user)
     if x.reference_type in {"PERIOD_CLOSE", "YEAR_END"}:
         raise HTTPException(409, "Closing journals are managed through Accounting Periods")
-    FiscalPeriodService.validate_posting_date(db, x.posting_date)
     if x.status != "DRAFT":
         raise HTTPException(409, "Only draft journals can be voided without reversal")
-    if x.reference_type in {"SUPPLIER_PAYMENT", "SUPPLIER_INVOICE", "GENERAL_CASHIER"}:
+    if (x.reference_type or "MANUAL").upper() != "MANUAL":
         raise HTTPException(409, "Void or reopen the source payment or supplier invoice instead")
     x.status = "VOID"
     x.voided_at = datetime.now(timezone.utc)

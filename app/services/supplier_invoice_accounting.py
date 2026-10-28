@@ -1,3 +1,4 @@
+from app.services.journal_recognition import recognized_journal_filter
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -77,15 +78,16 @@ def payable_mirror(db: Session, invoice: SupplierInvoice) -> AccountPayable | No
 
 def accounting_state(db: Session, invoice: SupplierInvoice) -> dict:
     posting = posting_status(db, invoice.id)
+    recognized = bool(db.query(JournalEntry.id).filter(JournalEntry.reference_type=="SUPPLIER_INVOICE",JournalEntry.reference_id==invoice.id,recognized_journal_filter()).first())
     document = document_status(invoice)
     posted_payments = posted_payment_total(db, invoice.id)
     authoritative_balance = invoice_balance(invoice)
     payable = payable_mirror(db, invoice)
     exceptions: list[str] = []
 
-    if posted_payments > ZERO and posting != "POSTED":
+    if posted_payments > ZERO and not recognized:
         exceptions.append("PAYMENT_POSTED_BEFORE_INVOICE_JOURNAL")
-    if invoice.status == "POSTED" and posting != "POSTED":
+    if invoice.status == "POSTED" and not recognized:
         exceptions.append("DOCUMENT_POSTED_WITHOUT_POSTED_JOURNAL")
     if posting == "POSTED" and document in {"DRAFT", "REJECTED", "VOID"}:
         exceptions.append("POSTED_JOURNAL_WITH_INVALID_DOCUMENT_STATE")
@@ -110,6 +112,7 @@ def accounting_state(db: Session, invoice: SupplierInvoice) -> dict:
     return {
         "document_status": document,
         "posting_status": posting,
+        "accounting_recognized": recognized,
         "payment_status": invoice.payment_status,
         "balance_amount": authoritative_balance,
         "stored_balance_amount": Decimal(invoice.balance_amount or 0),

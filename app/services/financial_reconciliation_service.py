@@ -1,3 +1,4 @@
+from app.services.document_accounting import accounted_invoice_filter, accounted_payment_filter, accounted_adjustment_filter, invoice_is_accounted
 from datetime import date, datetime, timedelta, timezone
 
 from decimal import Decimal, ROUND_HALF_UP
@@ -20,6 +21,7 @@ from app.models.journal_entry import JournalEntry
 from app.services.journal_recognition import recognized_journal_filter
 from app.models.journal_line import JournalLine
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
+from app.models.supplier_adjustment import SupplierAdjustment
 from app.services.opening_snapshot import opening_snapshot
 
 ZERO = Decimal("0.00")
@@ -331,11 +333,11 @@ class FinancialReconciliationService:
             PaymentAllocation.payment_id,
             func.coalesce(func.sum(PaymentAllocation.allocated_amount), 0).label("amount"),
         ).join(SupplierInvoice, SupplierInvoice.id == PaymentAllocation.supplier_invoice_id)
-         .filter(SupplierInvoice.status == "POSTED")
+         .filter(accounted_invoice_filter())
          .group_by(PaymentAllocation.payment_id).subquery())
         query = (self.db.query(Payment, allocated.c.amount)
                  .outerjoin(allocated, allocated.c.payment_id == Payment.id)
-                 .filter(Payment.status == "POSTED"))
+                 .filter(accounted_payment_filter()))
         query = self._unit_scope(query, Payment)
         if location_id is not None:
             query = query.filter(Payment.location_id == location_id)
@@ -385,7 +387,7 @@ class FinancialReconciliationService:
         """
         if not account_ids:
             return [], {}
-        invoices = self.db.query(SupplierInvoice).filter(SupplierInvoice.status == "POSTED")
+        invoices = self.db.query(SupplierInvoice).filter(accounted_invoice_filter())
         invoices = self._unit_scope(invoices, SupplierInvoice)
         if location_id is not None:
             invoices = invoices.filter(SupplierInvoice.location_id == location_id)
@@ -399,7 +401,7 @@ class FinancialReconciliationService:
             allocations = (self.db.query(PaymentAllocation, Payment)
                            .join(Payment, Payment.id == PaymentAllocation.payment_id)
                            .filter(PaymentAllocation.supplier_invoice_id.in_(invoice_ids),
-                                   Payment.status == "POSTED"))
+                                   accounted_payment_filter()))
             if as_of is not None:
                 allocations = allocations.filter(Payment.payment_date <= as_of)
             for allocation, payment in allocations.all():
@@ -408,7 +410,7 @@ class FinancialReconciliationService:
                     + Decimal(allocation.allocated_amount or 0)
                 )
 
-        payments = self.db.query(Payment).filter(Payment.status == "POSTED")
+        payments = self.db.query(Payment).filter(accounted_payment_filter())
         payments = self._unit_scope(payments, Payment)
         if location_id is not None:
             payments = payments.filter(Payment.location_id == location_id)
@@ -533,17 +535,22 @@ class FinancialReconciliationService:
     def accounts_payable(self, location_id: int | None = None,
                          as_of: date | None = None) -> dict:
         source_query = self.db.query(func.coalesce(func.sum(SupplierInvoice.balance_amount), 0)).filter(
-            SupplierInvoice.status == "POSTED"
+            accounted_invoice_filter()
         )
         source_query = self._unit_scope(source_query, SupplierInvoice)
         if location_id is not None:
             source_query = source_query.filter(SupplierInvoice.location_id == location_id)
         if as_of is None:
             source = Decimal(source_query.scalar() or 0)
+            ids=self._unit_scope(self.db.query(SupplierInvoice.id).filter(accounted_invoice_filter()),SupplierInvoice)
+            if location_id is not None:ids=ids.filter(SupplierInvoice.location_id==location_id)
+            open_payments=self.db.query(func.coalesce(func.sum(PaymentAllocation.allocated_amount),0)).join(Payment,Payment.id==PaymentAllocation.payment_id).filter(PaymentAllocation.supplier_invoice_id.in_(ids),Payment.status=='APPROVED',accounted_payment_filter()).scalar()
+            open_adjustments=self.db.query(func.coalesce(func.sum(SupplierAdjustment.amount),0)).filter(SupplierAdjustment.supplier_invoice_id.in_(ids),SupplierAdjustment.status=='DRAFT',accounted_adjustment_filter()).scalar()
+            source-=Decimal(open_payments or 0)+Decimal(open_adjustments or 0)
         else:
             # Rebuild the dated balance from invoice amounts and posted allocations.
             invoices = self.db.query(SupplierInvoice).filter(
-                SupplierInvoice.status == "POSTED", SupplierInvoice.invoice_date <= as_of
+                accounted_invoice_filter(), SupplierInvoice.invoice_date <= as_of
             )
             invoices = self._unit_scope(invoices, SupplierInvoice)
             if location_id is not None:
@@ -556,10 +563,12 @@ class FinancialReconciliationService:
                     func.coalesce(func.sum(PaymentAllocation.allocated_amount), 0)
                 ).join(Payment, Payment.id == PaymentAllocation.payment_id)
                  .filter(PaymentAllocation.supplier_invoice_id.in_(ids),
-                         Payment.status == "POSTED", Payment.payment_date <= as_of)
+                         accounted_payment_filter(), Payment.payment_date <= as_of)
                  .scalar()) or 0)
             source = sum((Decimal(item.total_amount or 0) -
                           Decimal(item.adjustment_amount or 0) for item in invoice_rows), ZERO) - allocations
+            pending_adjustments=self.db.query(func.coalesce(func.sum(SupplierAdjustment.amount),0)).filter(SupplierAdjustment.supplier_invoice_id.in_(ids),SupplierAdjustment.status=='DRAFT',accounted_adjustment_filter(),SupplierAdjustment.adjustment_date<=as_of).scalar()
+            source-=Decimal(pending_adjustments or 0)
         account_ids = self._rule_account_ids(
             debit=False,
             event_types=["SUPPLIER_INVOICE_INVENTORY", "SUPPLIER_INVOICE_DIRECT_USE"],
@@ -665,7 +674,7 @@ class FinancialReconciliationService:
                     "invoice_number": invoice.internal_invoice_number,
                     "status": invoice.status,
                 }
-                if invoice.status != "POSTED":
+                if not invoice_is_accounted(self.db,invoice):
                     pending_documents.setdefault(receipt_id, {})[invoice.id] = document
                     continue
                 posted_documents.setdefault(receipt_id, {})[invoice.id] = document

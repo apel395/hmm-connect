@@ -799,7 +799,7 @@ class SupplierInvoiceService:
             ).first()
             if receipt.status != "POSTED" or receipt_journal is None:
                 raise HTTPException(
-                    409, f"Post receiving journal for {receipt.receipt_number} before invoicing",
+                    409, f"Complete and balance the receiving journal for {receipt.receipt_number} in an open period before invoicing",
                 )
         grouped = {}
         if uses_grni:

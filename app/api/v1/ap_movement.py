@@ -1,3 +1,4 @@
+from app.services.document_accounting import accounted_invoice_filter, accounted_payment_filter, accounted_adjustment_filter
 """Read-only AP document movement, including the annual opening snapshot."""
 from datetime import date
 from decimal import Decimal
@@ -44,21 +45,21 @@ def listing(
     ap_only = "AP" in role_names(user) and not is_superuser(user)
 
     invoices = apply_location_scope(
-        db.query(SupplierInvoice).filter(SupplierInvoice.status == "POSTED"),
+        db.query(SupplierInvoice).filter(accounted_invoice_filter()),
         SupplierInvoice, user,
     )
     payments = apply_location_scope(
-        db.query(Payment).filter(Payment.status == "POSTED"), Payment, user,
+        db.query(Payment).filter(accounted_payment_filter()), Payment, user,
     )
     adjustments = apply_location_scope(
-        db.query(SupplierAdjustment).filter(SupplierAdjustment.status == "POSTED"),
+        db.query(SupplierAdjustment).filter(accounted_adjustment_filter()),
         SupplierAdjustment, user,
     )
     if ap_only:
         payments = payments.filter(Payment.created_by_id == user.id)
         paid_invoice_ids = (db.query(PaymentAllocation.supplier_invoice_id)
                             .join(Payment, Payment.id == PaymentAllocation.payment_id)
-                            .filter(Payment.status == "POSTED", Payment.created_by_id == user.id))
+                            .filter(accounted_payment_filter(), Payment.created_by_id == user.id))
         invoices = invoices.filter(SupplierInvoice.id.in_(paid_invoice_ids))
         adjustments = adjustments.filter(SupplierAdjustment.supplier_invoice_id.in_(paid_invoice_ids))
     if location_id is not None:

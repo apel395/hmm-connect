@@ -258,7 +258,7 @@ def test_invoice_journal_debits_suspense_and_credits_payable_without_extra_setup
 
     receipt_journal = db.query(JournalEntry).filter(JournalEntry.journal_number == "GR-V-J").one()
     receipt_journal.status = "DRAFT"
-    with pytest.raises(HTTPException, match="Post receiving journal"):
+    with pytest.raises(HTTPException, match="Complete and balance the receiving journal"):
         service.generate_journal(invoice, type("User", (), {"id": 1})(), commit=False)
     receipt_journal.status = "POSTED"
 
@@ -308,3 +308,4 @@ def test_ap_bridge_exposes_orphan_payment_and_manual_opening(db):
     assert evidence["OPENING_GL"]["difference"] == Decimal("-30")
     assert row["ap_document_summary"]["document_difference_total"] == row["difference"]
     assert row["ap_document_summary"]["opening_gl"] == Decimal("30")
+

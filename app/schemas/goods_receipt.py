@@ -119,3 +119,8 @@ class GoodsReceiptUpdate(BaseModel):
         if len(set(stored_ids)) != len(stored_ids):
             raise ValueError("A receipt item may appear only once")
         return self
+
+
+
+class GoodsReceiptDepost(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)

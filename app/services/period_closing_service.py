@@ -43,6 +43,11 @@ class PeriodClosingService:
 
     @classmethod
     def close(cls, db: Session, period_id: int, user) -> dict:
+        with db.begin_nested():
+            return cls._close(db,period_id,user)
+
+    @classmethod
+    def _close(cls, db: Session, period_id: int, user) -> dict:
         period = cls.period(db, period_id)
         if period.is_closed:
             return {"message": "Fiscal period is already closed", "closing_journal_ids": period.closing_journal_ids or []}
@@ -78,7 +83,7 @@ class PeriodClosingService:
             .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)\
             .filter(JournalEntry.status == "POSTED",
                     JournalEntry.posting_date.between(period.start_date, period.end_date),
-                    JournalEntry.reference_type.notin_(CLOSING_SOURCES + OPENING_SOURCES),
+                    func.coalesce(JournalEntry.reference_type, 'MANUAL').notin_(CLOSING_SOURCES + OPENING_SOURCES),
                     ChartOfAccount.account_type.in_(("REVENUE", "INCOME", "EXPENSE")))\
             .group_by(ChartOfAccount.id, *dimensions).all()
         groups = defaultdict(list)
@@ -131,6 +136,12 @@ class PeriodClosingService:
 
     @classmethod
     def reopen(cls, db: Session, period_id: int, user, reason: str) -> dict:
+        if len(reason.strip())<3:raise HTTPException(422,"A reopening reason is required")
+        with db.begin_nested():
+            return cls._reopen(db,period_id,user,reason.strip())
+
+    @classmethod
+    def _reopen(cls, db: Session, period_id: int, user, reason: str) -> dict:
         period = cls.period(db, period_id)
         if period.is_open and not period.is_closed:
             return {"message": "Fiscal period is already open", "voided_closing_journal_ids": []}

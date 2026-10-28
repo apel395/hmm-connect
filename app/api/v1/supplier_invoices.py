@@ -470,13 +470,18 @@ def admin_reopen(invoice_id: int, db: Session = Depends(get_db), user=Depends(in
         raise HTTPException(409, "Unpost the supplier invoice journal before reopening")
     # Preserve the draft journal identity. Re-verification rebuilds its lines
     # from the corrected invoice; only a posted journal needs a reversal flow.
+    from app.services.fiscal_period_service import FiscalPeriodService
+    FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
+    snapshots = [{"id": j.id, "lines": [{"account_id": line.account_id, "debit": str(line.debit), "credit": str(line.credit)} for line in j.lines]} for j in journals]
+    for journal in journals:
+        journal.lines.clear()  # Retain identity, withdraw recognition until re-verification.
     invoice.status = "DRAFT"
     invoice.verified_at = None
     record_audit(
         db, user, "SUPPLIER_INVOICE_REOPENED", "SUPPLIER_INVOICE",
         f"Reopened {invoice.internal_invoice_number} as draft",
         entity_id=invoice.id,
-        before_data={"status": "VERIFIED", "journal_ids": [j.id for j in journals]},
+        before_data={"status": "VERIFIED", "journals": snapshots},
         after_data={"status": "DRAFT", "journal_status": "DRAFT", "journal_reused": True},
     )
     db.commit()
@@ -491,6 +496,10 @@ def void(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_vo
         raise HTTPException(409, "Posted invoices cannot be voided without a reversal")
     if invoice.status == "VOID":
         raise HTTPException(409, "Invoice is already void")
+    from app.services.accounting_unpost import _assert_invoice_has_no_posted_dependents
+    from app.services.fiscal_period_service import FiscalPeriodService
+    FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
+    _assert_invoice_has_no_posted_dependents(db, invoice)
     now = datetime.now(timezone.utc)
     invoice.status = "VOID"
     invoice.voided_at = now
