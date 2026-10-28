@@ -56,12 +56,13 @@ class SupplierInvoiceService:
             or (purchase_order.location if purchase_order else None)
             or journal_location
         )
+        automatically_prepared = (getattr(x, "external_reference", None) or "").startswith("AUTO_RECEIPT:")
         return {
             "id": x.id,
             "internal_invoice_number": x.internal_invoice_number,
             "supplier_invoice_number": x.supplier_invoice_number,
-            "auto_prepared_from_receiving": (x.external_reference or "").startswith("AUTO_RECEIPT:"),
-            "supplier_reference_pending": (x.external_reference or "").startswith("AUTO_RECEIPT:") and (x.supplier_invoice_number or "").startswith("PENDING-"),
+            "auto_prepared_from_receiving": automatically_prepared,
+            "supplier_reference_pending": automatically_prepared and (x.supplier_invoice_number or "").startswith("PENDING-"),
             "supplier_id": x.supplier_id,
             "supplier_name": x.supplier.name,
             "invoice_date": x.invoice_date,
