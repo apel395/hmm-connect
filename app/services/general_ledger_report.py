@@ -9,6 +9,7 @@ from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
 from app.models.supplier import Supplier
 from app.services.opening_snapshot import opening_snapshot
+from app.services.journal_recognition import recognized_journal_filter
 from app.services.organization_access import effective_business_unit
 
 ZERO = Decimal("0")
@@ -32,7 +33,7 @@ def build_ledger_query(
     search: str | None = None,
 ):
     q = db.query(JournalLine).join(JournalEntry).filter(
-        JournalEntry.status == "POSTED",
+        recognized_journal_filter(),
         JournalEntry.reference_type.notin_(("OPENING_BALANCE", "OPENING_BALANCE_ADJUSTMENT")),
     )
     if account_ids:

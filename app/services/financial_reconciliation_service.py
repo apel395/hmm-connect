@@ -17,6 +17,7 @@ from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
 from app.models.product import Product
 from app.models.payment import Payment, PaymentAllocation
 from app.models.journal_entry import JournalEntry
+from app.services.journal_recognition import recognized_journal_filter
 from app.models.journal_line import JournalLine
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.services.opening_snapshot import opening_snapshot
@@ -98,7 +99,7 @@ class FinancialReconciliationService:
             .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)
             .filter(
                 ChartOfAccount.id.in_(account_ids),
-                JournalEntry.status == "POSTED",
+                recognized_journal_filter(),
                 _operational_journal(),
             )
             .group_by(ChartOfAccount.id, ChartOfAccount.normal_balance)
@@ -358,7 +359,7 @@ class FinancialReconciliationService:
             return []
         query = (self.db.query(JournalEntry, JournalLine)
                  .join(JournalLine, JournalLine.journal_entry_id == JournalEntry.id)
-                 .filter(JournalEntry.status == "POSTED", JournalLine.account_id.in_(account_ids)))
+                 .filter(recognized_journal_filter(), JournalLine.account_id.in_(account_ids)))
         query = self._unit_scope(query, JournalLine)
         if location_id is not None:
             query = query.filter(JournalLine.location_id == location_id)
@@ -428,7 +429,7 @@ class FinancialReconciliationService:
                    .filter(ChartOfAccount.id.in_(account_ids)).all()}
         journal_query = (self.db.query(JournalEntry, JournalLine)
                          .join(JournalLine, JournalLine.journal_entry_id == JournalEntry.id)
-                         .filter(JournalEntry.status == "POSTED",
+                         .filter(recognized_journal_filter(),
                                  JournalLine.account_id.in_(account_ids),
                                  _operational_journal()))
         if snapshot_date is not None:
@@ -878,7 +879,7 @@ class FinancialReconciliationService:
             .join(JournalEntry, JournalEntry.id == target.journal_entry_id)
             .filter(
                 target.account_id.in_(account_ids),
-                JournalEntry.status == "POSTED",
+                recognized_journal_filter(),
                 _operational_journal(),
             )
         )

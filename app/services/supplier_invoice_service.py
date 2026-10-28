@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.chart_of_account import ChartOfAccount
 from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
 from app.models.journal_entry import JournalEntry
+from app.services.journal_recognition import recognized_journal_filter
 from app.models.journal_line import JournalLine
 from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
@@ -794,7 +795,7 @@ class SupplierInvoiceService:
             receipt_journal = self.db.query(JournalEntry.id).filter(
                 JournalEntry.reference_type == "GOODS_RECEIPT",
                 JournalEntry.reference_id == receipt.id,
-                JournalEntry.status == "POSTED",
+                recognized_journal_filter(),
             ).first()
             if receipt.status != "POSTED" or receipt_journal is None:
                 raise HTTPException(

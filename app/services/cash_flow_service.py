@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.bank_account import BankAccount
 from app.models.chart_of_account import ChartOfAccount
 from app.models.journal_entry import JournalEntry
+from app.services.journal_recognition import recognized_journal_filter
 from app.models.journal_line import JournalLine
 from app.models.payment import Payment
 from app.models.bank_transfer import BankTransfer
@@ -46,7 +47,7 @@ class CashFlowService:
         if active_only:q=q.filter(ChartOfAccount.is_active.is_(True),ChartOfAccount.is_posting.is_(True),ChartOfAccount.account_type=="ASSET")
         return q.order_by(ChartOfAccount.account_number).all()
     def journals(self,date_from=None,date_to=None,account_id=None,subtypes=None,location_id=None,department_id=None,business_unit_id=None):
-        q=self.db.query(JournalEntry).options(joinedload(JournalEntry.lines).joinedload(JournalLine.account),joinedload(JournalEntry.lines).joinedload(JournalLine.supplier)).filter(JournalEntry.status=="POSTED",JournalEntry.reference_type.notin_(("OPENING_BALANCE","OPENING_BALANCE_ADJUSTMENT")))
+        q=self.db.query(JournalEntry).options(joinedload(JournalEntry.lines).joinedload(JournalLine.account),joinedload(JournalEntry.lines).joinedload(JournalLine.supplier)).filter(recognized_journal_filter(),JournalEntry.reference_type.notin_(("OPENING_BALANCE","OPENING_BALANCE_ADJUSTMENT")))
         if date_from:q=q.filter(JournalEntry.posting_date>=date_from)
         if date_to:q=q.filter(JournalEntry.posting_date<=date_to)
         if account_id:q=q.filter(JournalEntry.lines.any(JournalLine.account_id==account_id))
