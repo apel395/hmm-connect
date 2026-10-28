@@ -154,7 +154,7 @@ def require_admin(user) -> None:
         raise HTTPException(403, "Administrator access required for bulk or recreate journal operations")
 
 
-def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
+def post_locked_journal(db: Session, *, journal: JournalEntry, user, system_closing: bool = False) -> None:
     if journal.reference_type in {"PERIOD_CLOSE", "YEAR_END"}:
         raise HTTPException(409, "Closing journals are managed through Accounting Periods")
     if journal.status != "DRAFT":
@@ -207,6 +207,7 @@ def post_locked_journal(db: Session, *, journal: JournalEntry, user) -> None:
             debit=line.debit,
             credit=line.credit,
             posting_date=journal.posting_date,
+            system_closing=system_closing,
             journal_source=journal.reference_type,
             document_type=journal.document_type,
             document_number=journal.document_number,
