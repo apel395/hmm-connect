@@ -53,7 +53,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     setCatalogType("ALL");
     setProductRows(receipt.items.map(item=>({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom??undefined,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,purchase_account_id:item.purchase_account_id,is_taxable:item.is_taxable,tax_rate:item.tax_rate})));
     setItems(receipt.items.map(item=>({
-      row_key:`existing-${item.id}`,item_id:item.id, catalog_type:item.catalog_type, inventory_treatment:item.inventory_treatment, product_name:item.product_name, product_code:item.product_code, uom:item.uom,
+      row_key:`existing-${item.id}`,item_id:item.id,original_item_id:item.id,original_product_id:item.product_id,product_id:item.product_id, catalog_type:item.catalog_type, inventory_treatment:item.inventory_treatment, product_name:item.product_name, product_code:item.product_code, uom:item.uom,
       destination_type:item.destination_type ?? (receipt.destination_type === "DIRECT_USE" ? "DIRECT_USE" : "WAREHOUSE"),
       original_destination:item.destination_type ?? (receipt.destination_type === "DIRECT_USE" ? "DIRECT_USE" : "WAREHOUSE"),
       destination_override_reason:item.destination_override_reason ?? null,
@@ -67,6 +67,8 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
   const subtotal=items.reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.unit_cost||0),0);
   const tax=items.reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.unit_cost||0)*(item.is_taxable?Number(item.tax_rate||0):0)/100,0);
   const save=async()=>{
+    if(receipt.status!=="DRAFT")return toast.error("Posted receiving requires the correction or return workflow");
+    if(!items.length)return toast.error("Keep at least one receiving item");
     if(!receivedAt)return toast.error("Receipt date is required");
     if(receivedAt < "2026-01-01T00:00")return toast.error("Receiving dated before 2026 is excluded from stock.");
     if(hasWarehouse&&!warehouseId)return toast.error("Warehouse is required");
@@ -105,7 +107,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
         <div className="rounded border bg-slate-50 p-3 text-sm">
           <div className="font-medium">{receipt.receipt_number}</div>
           <div className="text-slate-600">Source {receipt.purchase_order_number ?? "Direct Receiving"} · Supplier {receipt.supplier_name ?? "—"} · BU {receipt.business_unit_name ?? "—"} · Location {receipt.location_name ?? "—"} · Department {receipt.department_name ?? "—"}</div>
-          <div className="mt-1 text-xs text-slate-500">{directReceipt?"Direct Receiving location can be corrected before posting; warehouse must belong to the selected location. Business Unit and Department stay locked.":"Source organization dimensions are locked for traceability."}</div>
+          <div className="mt-1 text-xs text-slate-500">{directReceipt?"Direct Receiving location can be corrected before posting; warehouse must belong to the selected location. Business Unit and Department stay locked. Remove or reselect items below.":"Source organization dimensions and item identity follow the PO / Market List. Lines may be removed before posting."}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm">Receipt Date *<input type="datetime-local" disabled={receipt.source_type === "LIVE"} data-accounting-date="true" data-min-date="2026-01-01" min="2026-01-01T00:00" className="mt-1 h-10 w-full rounded border px-3" value={receivedAt} onChange={e=>setReceivedAt(e.target.value)}/></label>
@@ -118,10 +120,10 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           {directReceipt && <label className="mb-2 block text-xs">Item catalog <select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL"|"ALL")}><option value="ALL">All Buy Items</option><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>}
           <table className="receiving-lines receiving-lines-edit">
-            <colgroup><col/><col className="rl-destination"/><col className="rl-unit"/><col className="rl-quantity"/><col className="rl-cost"/><col className="rl-tax-rate"/><col className="rl-amount"/><col className="rl-total"/>{directReceipt&&<col className="rl-action"/>}</colgroup>
-            <thead className="bg-slate-50"><tr><th className="p-2 text-left">Product</th><th>Destination</th><th>UOM</th><th>Qty</th><th className="whitespace-nowrap">Unit Cost</th><th title="Provisional PPN rate; confirmed in AP">PPN %</th><th>PPN</th><th>Line Total</th>{directReceipt&&<th/>}</tr></thead>
+            <colgroup><col/><col className="rl-destination"/><col className="rl-unit"/><col className="rl-quantity"/><col className="rl-cost"/><col className="rl-tax-rate"/><col className="rl-amount"/><col className="rl-total"/><col className="rl-action"/></colgroup>
+            <thead className="bg-slate-50"><tr><th className="p-2 text-left">Product</th><th>Destination</th><th>UOM</th><th>Qty</th><th className="whitespace-nowrap">Unit Cost</th><th title="Provisional PPN rate; confirmed in AP">PPN %</th><th>PPN</th><th>Line Total</th><th/></tr></thead>
             <tbody>{items.map(item=><tr key={item.row_key} className="border-t">
-              <td className="p-2">{item.item_id?<><div className="font-medium">{item.product_name}</div><div className="text-xs text-slate-500">{item.product_code}</div></>:<ProductCombobox remote catalogType={catalogType==="ALL"?undefined:catalogType} products={productRows} value={item.product_id||undefined} onChange={id=>patch(item.row_key,{product_id:id||0})} onSelect={product=>{setProductRows(current=>current.some(row=>row.id===product.id)?current:[...current,product]);patch(item.row_key,{product_id:product.id,product_name:product.name,product_code:product.code,uom:product.uom,catalog_type:product.catalog_type,inventory_treatment:product.inventory_treatment,expense_account_id:product.purchase_account_id??null,unit_cost:Number(product.reference_cost??product.last_purchase_price??0),destination_type:null,destination_override_reason:null,is_taxable:!!product.is_taxable,tax_rate:Number(product.tax_rate??0)});}}/>}</td>
+              <td className="p-2">{!directReceipt?<><div className="font-medium">{item.product_name}</div><div className="text-xs text-slate-500">{item.product_code}</div></>:<ProductCombobox remote catalogType={catalogType==="ALL"?undefined:catalogType} products={productRows} value={item.product_id||undefined} onChange={id=>patch(item.row_key,{product_id:id||0,...!id?{item_id:undefined}:{}})} onSelect={product=>{setProductRows(current=>current.some(row=>row.id===product.id)?current:[...current,product]);patch(item.row_key,{item_id:product.id===item.original_product_id?item.original_item_id:undefined,product_id:product.id,product_name:product.name,product_code:product.code,uom:product.uom,catalog_type:product.catalog_type,inventory_treatment:product.inventory_treatment,expense_account_id:product.purchase_account_id??null,unit_cost:Number(product.reference_cost??product.last_purchase_price??0),destination_type:null,destination_override_reason:null,is_taxable:!!product.is_taxable,tax_rate:Number(product.tax_rate??0)});}}/>}</td>
               <td className="p-2"><ReceivingDestinationField name={item.product_name??"New item"} line={item} onChange={value => patch(item.row_key, value)}/></td>
               <td className="text-center">{item.uom??"—"}</td>
               <td className="p-2"><QuantityInput value={item.quantity} onValueChange={value=>patch(item.row_key,{quantity:value})}/></td>
@@ -129,7 +131,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
               <td className="p-2"><input aria-label={`Provisional PPN rate for ${item.product_name??"new item"}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={item.is_taxable?item.tax_rate:0} onChange={e=>patch(item.row_key,{tax_rate:Number(e.target.value),is_taxable:Number(e.target.value)>0})}/></td>
               <td className="text-right">{money(Number(item.quantity||0)*Number(item.unit_cost||0)*(item.is_taxable?Number(item.tax_rate||0):0)/100)}</td>
               <td className="text-right font-medium">{money(Number(item.quantity||0)*Number(item.unit_cost||0)*(1+(item.is_taxable?Number(item.tax_rate||0):0)/100))}</td>
-              {directReceipt&&<td className="p-2">{!item.item_id&&<Button size="sm" variant="ghost" aria-label="Remove item" title="Remove item" onClick={()=>setItems(current=>current.filter(row=>row.row_key!==item.row_key))}><Trash2 size={14}/></Button>}</td>}
+              <td className="p-2"><Button size="sm" variant="ghost" disabled={items.length<=1||update.isPending} aria-label={`Remove item ${item.product_name??"new line"}`} title="Remove item" onClick={()=>setItems(current=>current.filter(row=>row.row_key!==item.row_key))}><Trash2 size={14}/></Button></td>
             </tr>)}</tbody>
           </table>
         </div>
@@ -147,3 +149,4 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     </DialogContent>
   </Dialog>;
 }
+
