@@ -26,6 +26,7 @@ export const goodsReceiptApi = {
   approve: (id: number, comment?: string) => api.post(`/goods-receipts/${id}/approve`, comment ? { comment } : {}),
   reject: (id: number, comment: string) => api.post(`/goods-receipts/${id}/reject`, { comment }),
   post: (id: number) => api.post(`/goods-receipts/${id}/post`),
+  depost: (id:number,reason:string) => api.post(`/goods-receipts/${id}/unpost`,{reason}),
   correctCosts: (id: number, payload: GoodsReceiptCostCorrectionPayload) => api.patch(`/goods-receipts/${id}/costs`, payload),
   returnReceipt: (id: number) => api.post(`/goods-receipts/${id}/return`),
   allowedActions: (id: number) => api.get(`/goods-receipts/${id}/allowed-actions`),

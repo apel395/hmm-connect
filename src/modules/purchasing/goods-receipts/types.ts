@@ -65,6 +65,6 @@ export interface GoodsReceipt {
   business_unit_id?: number | null; business_unit_name?: string | null; department_id?: number | null; department_name?: string | null; location_id?: number | null; location_name?: string | null;
   warehouse_id?: number | null; warehouse_name?: string | null; notes?: string | null; external_reference?: string | null; delivery_note_number?: string | null;
   subtotal?: number; tax_amount?: number; total_amount?: number; total_value?: number; items: GoodsReceiptItem[];
-  allowed_actions?: { edit_block_reason?: string | null;can_edit:boolean;can_submit?:boolean;can_approve?:boolean;can_reject?:boolean;can_post:boolean;can_return?:boolean;can_correct_cost?:boolean;can_print:boolean;can_view_history:boolean;can_manage_attachments:boolean };
+  allowed_actions?: { can_depost?: boolean; edit_block_reason?: string | null;can_edit:boolean;can_submit?:boolean;can_approve?:boolean;can_reject?:boolean;can_post:boolean;can_return?:boolean;can_correct_cost?:boolean;can_print:boolean;can_view_history:boolean;can_manage_attachments:boolean };
   activity_history?: import("../components/DocumentActivity").DocumentActivityItem[];
 }

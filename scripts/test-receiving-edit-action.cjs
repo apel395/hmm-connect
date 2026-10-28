@@ -9,7 +9,7 @@ async function run(){
  b.onLoad({filter:/.*/,namespace:'mock'},a=>{let contents;
  if(a.path==='sonner')contents='export const toast={error:()=>{},success:()=>{}};';
  else if(a.path==='lucide-react')contents='export const FileCheck2=()=>null,FilePlus2=()=>null,Pencil=()=>null,PencilLine=()=>null,RotateCcw=()=>null;';
- else if(a.path.includes('useGoodsReceipts'))contents='export const useGoodsReceipt=()=>({data:globalThis.__receipt,isLoading:false});const action=()=>({isPending:false,mutate(){}});export const useApproveGoodsReceipt=action,useCorrectGoodsReceiptCosts=action,usePostGoodsReceipt=action,useRejectGoodsReceipt=action,useReturnGoodsReceipt=action,useSubmitGoodsReceipt=action;';
+ else if(a.path.includes('useGoodsReceipts'))contents='export const useGoodsReceipt=()=>({data:globalThis.__receipt,isLoading:false});const action=()=>({isPending:false,mutate(){}});export const useDepostGoodsReceipt=()=>({isPending:false,mutate:p=>{globalThis.__depost=p;}});export const useApproveGoodsReceipt=action,useCorrectGoodsReceiptCosts=action,usePostGoodsReceipt=action,useRejectGoodsReceipt=action,useReturnGoodsReceipt=action,useSubmitGoodsReceipt=action;';
  else if(a.path.includes('useAuthorization'))contents='export default ()=>({hasPermission:()=>true,isSuperuser:()=>true,canPerform:()=>false});';
  else if(a.path==='@tanstack/react-query')contents='export const useQueryClient=()=>({invalidateQueries:()=>{}});export const useMutation=()=>({isPending:false});';
  else if(a.path.includes('supplier-invoices/api'))contents='export const prepareInvoiceFromReceipt=async()=>({});';
@@ -20,6 +20,10 @@ async function run(){
  return {contents,loader:'js'};});}}]});
  const m={exports:{}};new Function('module','exports','require',bundled.outputFiles[0].text)(m,m.exports,n=>req(n));let v;await renderer.act(async()=>{v=renderer.create(React.createElement(m.exports.default));});const text=n=>n.children.map(c=>typeof c==='string'?c:text(c)).join('');
  const edit=v.root.findAllByType('button').find(n=>text(n).trim()==='Edit Receiving');assert.ok(edit,'Edit remains discoverable after invoice creation and posting');await renderer.act(async()=>edit.props.onClick());assert.ok(text(v.root).includes('This receiving is posted.'));assert.ok(v.root.findAllByType('a').some(n=>n.props.href==='/supplier-invoices/650'),'correction explanation links to source invoice');assert.ok(!text(v.root).includes('Save Changes'),'posted receipt never opens mutable draft form');await renderer.act(async()=>v.unmount());
+ global.__receipt.allowed_actions.can_depost=true;await renderer.act(async()=>{v=renderer.create(React.createElement(m.exports.default));});
+ const depost=v.root.findAllByType('button').find(n=>text(n)==='Depost for Edit');assert.ok(depost);await renderer.act(async()=>depost.props.onClick());
+ assert.ok(v.root.findAllByType('button').find(n=>text(n)==='Depost and Edit').props.disabled);await renderer.act(async()=>v.root.findByProps({'aria-label':'Receiving depost reason'}).props.onChange({target:{value:'Fix wrong item'}}));
+ await renderer.act(async()=>v.root.findAllByType('button').find(n=>text(n)==='Depost and Edit').props.onClick());assert.deepEqual(global.__depost,{id:10,reason:'Fix wrong item'});await renderer.act(async()=>v.unmount());
  console.log('Receiving action PASS: posted Edit button remains visible, explains restrictions and links invoice without exposing draft save.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
