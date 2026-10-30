@@ -1,5 +1,6 @@
 export type ReceivingBilling = {
   supplier_invoice_number: string;
+  supplier_document_total: number | null;
   supplier_invoice_date: string;
   supplier_invoice_due_date: string;
   tax_invoice_number: string;
@@ -15,7 +16,7 @@ export type ReceivingBilling = {
   other_fee_account_id: number | null;
 };
 export const emptyReceivingBilling = (): ReceivingBilling => ({
-  supplier_invoice_number: "", supplier_invoice_date: "", supplier_invoice_due_date: "",
+  supplier_invoice_number: "", supplier_document_total: null, supplier_invoice_date: "", supplier_invoice_due_date: "",
   tax_invoice_number: "", tax_invoice_date: "", supplier_document_url: "",
   discount_amount: 0, shipping_fee_amount: 0, admin_fee_amount: 0, other_fee_amount: 0,
   other_fee_description: "", shipping_fee_account_id: null,
@@ -38,6 +39,7 @@ export const validateReceivingBilling = (b: ReceivingBilling, subtotal: number):
   }
   if (b.other_fee_amount > 0 && !b.other_fee_description.trim()) return "Describe the other supplier charge.";
   if (b.supplier_invoice_number.trim() && !b.supplier_invoice_date) return "Enter the supplier invoice date.";
+  if (b.supplier_invoice_number.trim() && (!b.supplier_document_total || b.supplier_document_total <= 0)) return "Enter the total printed on the supplier invoice.";
   if (b.supplier_invoice_due_date && b.supplier_invoice_date && b.supplier_invoice_due_date < b.supplier_invoice_date)
     return "Supplier due date must not precede invoice date.";
   return null;
