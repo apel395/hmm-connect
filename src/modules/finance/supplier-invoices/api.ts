@@ -153,7 +153,7 @@ export const createInvoice = async (payload: InvoicePayload) => (await api.post<
 export const updateInvoice = async (id: number, payload: InvoicePayload) => (await api.patch<SupplierInvoice>(`/supplier-invoices/${id}`, payload)).data;
 export const invoiceAction = async (id: number, action: string) => (await api.post(`/supplier-invoices/${id}/${action}`)).data;
 export const adminUnpostInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/unpost`)).data;
-export const adminReopenInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/reopen`)).data;
+export const adminReopenInvoice = async (id: number, reason?: string) => (await api.post(`/supplier-invoices/${id}/reopen`, {reason})).data;
 
 export const reclassifyInvoiceAsset = async (
   id: number,
