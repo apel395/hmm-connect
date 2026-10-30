@@ -72,6 +72,15 @@ export type SupplierInvoice = {
   id: number;
   internal_invoice_number: string;
   supplier_invoice_number: string;
+  supplier_document_total?: number | null;
+  supplier_document_url?: string | null;
+  shipping_fee_amount?: number;
+  admin_fee_amount?: number;
+  other_fee_amount?: number;
+  other_fee_description?: string | null;
+  shipping_fee_account_id?: number | null;
+  admin_fee_account_id?: number | null;
+  other_fee_account_id?: number | null;
   auto_prepared_from_receiving?: boolean;
   supplier_reference_pending?: boolean;
   supplier_id: number;
@@ -113,6 +122,15 @@ export type SupplierInvoice = {
 
 export type InvoicePayload = {
   supplier_invoice_number: string;
+  supplier_document_total?: number | null;
+  supplier_document_url?: string | null;
+  shipping_fee_amount?: number;
+  admin_fee_amount?: number;
+  other_fee_amount?: number;
+  other_fee_description?: string | null;
+  shipping_fee_account_id?: number | null;
+  admin_fee_account_id?: number | null;
+  other_fee_account_id?: number | null;
   supplier_id: number;
   invoice_date: string;
   received_date?: string | null;
@@ -153,7 +171,7 @@ export const createInvoice = async (payload: InvoicePayload) => (await api.post<
 export const updateInvoice = async (id: number, payload: InvoicePayload) => (await api.patch<SupplierInvoice>(`/supplier-invoices/${id}`, payload)).data;
 export const invoiceAction = async (id: number, action: string) => (await api.post(`/supplier-invoices/${id}/${action}`)).data;
 export const adminUnpostInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/unpost`)).data;
-export const adminReopenInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/reopen`)).data;
+export const adminReopenInvoice = async (id: number, reason?: string) => (await api.post(`/supplier-invoices/${id}/reopen`, {reason})).data;
 
 export const reclassifyInvoiceAsset = async (
   id: number,
