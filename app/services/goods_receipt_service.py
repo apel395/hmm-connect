@@ -523,7 +523,8 @@ class GoodsReceiptService:
             raise HTTPException(409, "Unpost the receiving journal and use the correction/return workflow before changing recorded items")
 
         for field in RECEIVING_BILLING_FIELDS:
-            setattr(receipt, field, getattr(data, field))
+            if field in data.model_fields_set:
+                setattr(receipt, field, getattr(data, field))
         old_location_id = receipt.location_id
         if data.location_id is not None and data.location_id != receipt.location_id:
             if receipt.purchase_order_id or receipt.market_list_id:
