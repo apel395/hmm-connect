@@ -74,6 +74,7 @@ class SupplierInvoiceService:
             "id": x.id,
             "internal_invoice_number": x.internal_invoice_number,
             "supplier_invoice_number": x.supplier_invoice_number,
+            "supplier_document_total": getattr(x, "supplier_document_total", None),
             "auto_prepared_from_receiving": automatically_prepared,
             "supplier_reference_pending": automatically_prepared and (x.supplier_invoice_number or "").startswith("PENDING-"),
             "supplier_id": x.supplier_id,
@@ -320,6 +321,8 @@ class SupplierInvoiceService:
         if Decimal(data.discount_amount) > subtotal:
             raise HTTPException(422, "Discount cannot exceed invoice goods subtotal")
         self._validate_fee_accounts(data)
+        if data.supplier_document_total is not None and Decimal(data.supplier_document_total) != total:
+            raise HTTPException(422, "Invoice charges and taxes do not match the supplier document total")
         if data.total_amount is not None and Decimal(data.total_amount) != total:
             raise HTTPException(400, "Invoice total does not match line totals and adjustments")
         data.total_amount = total
@@ -443,6 +446,7 @@ class SupplierInvoiceService:
         invoice = SupplierInvoice(
             internal_invoice_number=next_document_number(self.db, "INV"),
             supplier_invoice_number=(receipt.supplier_invoice_number or "").strip() or self._receipt_placeholder(receipt),
+            supplier_document_total=getattr(receipt, "supplier_document_total", None),
             supplier_id=supplier_id,
             invoice_date=receipt.supplier_invoice_date or invoice_date,
             received_date=invoice_date,
@@ -672,6 +676,7 @@ class SupplierInvoiceService:
         invoice = SupplierInvoice(
             internal_invoice_number=generated_number,
             supplier_invoice_number=(data.supplier_invoice_number or "").strip() or generated_number,
+            supplier_document_total=data.supplier_document_total,
             supplier_id=data.supplier_id,
             invoice_date=data.invoice_date,
             received_date=data.received_date,
