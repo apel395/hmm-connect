@@ -820,8 +820,8 @@ class GoodsReceiptService:
             # and prepare a recognized open-period DRAFT accounting journal atomically.
             # Without real billing details, keep an editable invoice DRAFT.
             has_vendor_invoice = bool((getattr(receipt, "supplier_invoice_number", None) or "").strip() and getattr(receipt, "supplier_invoice_date", None))
-            has_vat_docs = Decimal(invoice.tax_amount or 0) <= ZERO or bool(
-                (getattr(receipt, "tax_invoice_number", None) or "").strip() and getattr(receipt, "tax_invoice_date", None))
+            has_vat_docs = invoice is not None and (Decimal(invoice.tax_amount or 0) <= ZERO or bool(
+                (getattr(receipt, "tax_invoice_number", None) or "").strip() and getattr(receipt, "tax_invoice_date", None)))
             if has_vendor_invoice and has_vat_docs:
                 FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
                 invoice_service.verify(invoice, user, commit=False)
