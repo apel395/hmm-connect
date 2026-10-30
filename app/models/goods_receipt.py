@@ -28,6 +28,7 @@ class GoodsReceipt(Base):
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     supplier_invoice_number: Mapped[str | None] = mapped_column(String(100))
+    supplier_document_total: Mapped[Decimal | None] = mapped_column(Numeric(18,2))
     supplier_invoice_date: Mapped[date | None] = mapped_column(Date)
     supplier_invoice_due_date: Mapped[date | None] = mapped_column(Date)
     tax_invoice_number: Mapped[str | None] = mapped_column(String(100))
