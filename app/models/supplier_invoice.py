@@ -13,6 +13,7 @@ class SupplierInvoice(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     internal_invoice_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     supplier_invoice_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    supplier_document_total: Mapped[Decimal | None] = mapped_column(Numeric(18,2))
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False, index=True)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     received_date: Mapped[date | None] = mapped_column(Date)
