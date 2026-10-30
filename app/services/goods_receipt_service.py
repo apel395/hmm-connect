@@ -34,7 +34,7 @@ MONEY = Decimal("0.01")
 STOCK_CUTOFF = date(2026, 1, 1)
 
 
-RECEIVING_BILLING_FIELDS = ('supplier_invoice_number', 'supplier_invoice_date', 'supplier_invoice_due_date', 'tax_invoice_number', 'tax_invoice_date', 'supplier_document_url', 'discount_amount', 'shipping_fee_amount', 'admin_fee_amount', 'other_fee_amount', 'other_fee_description', 'shipping_fee_account_id', 'admin_fee_account_id', 'other_fee_account_id')
+RECEIVING_BILLING_FIELDS = ('supplier_document_total', 'supplier_invoice_number', 'supplier_invoice_date', 'supplier_invoice_due_date', 'tax_invoice_number', 'tax_invoice_date', 'supplier_document_url', 'discount_amount', 'shipping_fee_amount', 'admin_fee_amount', 'other_fee_amount', 'other_fee_description', 'shipping_fee_account_id', 'admin_fee_account_id', 'other_fee_account_id')
 
 
 class GoodsReceiptService:
@@ -819,10 +819,10 @@ class GoodsReceiptService:
             # If its required fields are complete, finalize invoice verification
             # and prepare a recognized open-period DRAFT accounting journal atomically.
             # Without real billing details, keep an editable invoice DRAFT.
-            has_vendor_invoice = bool((getattr(receipt, "supplier_invoice_number", None) or "").strip() and getattr(receipt, "supplier_invoice_date", None))
+            has_vendor_invoice = bool((getattr(receipt, "supplier_invoice_number", None) or "").strip() and getattr(receipt, "supplier_invoice_date", None) and getattr(receipt, "supplier_document_total", None) is not None)
             has_vat_docs = invoice is not None and (Decimal(invoice.tax_amount or 0) <= ZERO or bool(
                 (getattr(receipt, "tax_invoice_number", None) or "").strip() and getattr(receipt, "tax_invoice_date", None)))
-            if has_vendor_invoice and has_vat_docs:
+            if has_vendor_invoice and has_vat_docs and Decimal(receipt.supplier_document_total) == Decimal(invoice.total_amount):
                 FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
                 invoice_service.verify(invoice, user, commit=False)
                 invoice_service.generate_journal(invoice, user, commit=False)
