@@ -6,6 +6,8 @@ down_revision = '20261024_pos_operations'
 branch_labels = None
 depends_on = None
 def upgrade():
+    op.add_column('goods_receipts',sa.Column('supplier_document_total',sa.Numeric(18,2)))
+    op.add_column('supplier_invoices',sa.Column('supplier_document_total',sa.Numeric(18,2)))
     for table in ('goods_receipts','supplier_invoices'):
         for n in ('shipping_fee_amount','admin_fee_amount','other_fee_amount'):
             op.add_column(table,sa.Column(n,sa.Numeric(18,2),nullable=False,server_default='0'))
@@ -19,6 +21,8 @@ def upgrade():
     for n in ('supplier_invoice_date','supplier_invoice_due_date','tax_invoice_date'):
         op.add_column('goods_receipts',sa.Column(n,sa.Date()))
 def downgrade():
+    op.drop_column('goods_receipts','supplier_document_total')
+    op.drop_column('supplier_invoices','supplier_document_total')
     for n in ('supplier_invoice_date','supplier_invoice_due_date','tax_invoice_date'):
         op.drop_column('goods_receipts',n)
     for n in ('supplier_invoice_number','tax_invoice_number'):
