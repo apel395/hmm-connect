@@ -50,6 +50,14 @@ class SupplierInvoiceInput(BaseModel):
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
     tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
     withholding_tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    supplier_document_url: str | None = None
+    shipping_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    admin_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    other_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    other_fee_description: str | None = None
+    shipping_fee_account_id: int | None = None
+    admin_fee_account_id: int | None = None
+    other_fee_account_id: int | None = None
     total_amount: Decimal | None = Field(default=None, ge=0)
     notes: str | None = None
     source_type: Literal["LIVE", "HISTORICAL_IMPORT"] = "LIVE"
@@ -65,7 +73,7 @@ class SupplierInvoiceInput(BaseModel):
         ):
             self.tax_amount = sum((Decimal(line.tax_amount) for line in self.lines), Decimal("0"))
         subtotal = sum((Decimal(line.quantity) * Decimal(line.unit_price) for line in self.lines), Decimal("0"))
-        calculated_total = subtotal - Decimal(self.discount_amount) + self.tax_amount - Decimal(self.withholding_tax_amount)
+        calculated_total = subtotal - Decimal(self.discount_amount) + self.tax_amount - Decimal(self.withholding_tax_amount) + self.shipping_fee_amount + self.admin_fee_amount + self.other_fee_amount
         if self.total_amount is not None and Decimal(self.total_amount) != calculated_total:
             raise ValueError("Invoice total does not match line totals, item PPN, and adjustments")
         self.total_amount = calculated_total
