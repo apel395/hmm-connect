@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, event, func, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, event, func, text
 from sqlalchemy.orm import Mapped, Session as OrmSession, mapped_column, relationship
 
 from app.models.base import Base
