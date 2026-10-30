@@ -30,6 +30,8 @@ import useAuthorization from "@/hooks/useAuthorization";
 import { nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
 import ReceivingDestinationField from "./ReceivingDestinationField";
+import ReceivingBillingFields from "./ReceivingBillingFields";
+import { emptyReceivingBilling, validateReceivingBilling } from "../billing";
 import { destinationFor, destinationError, type LineRouting } from "../destination";
 
 type Line = LineRouting & { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; tax_rate?:number; expense_account_id?: number | null };
@@ -69,6 +71,7 @@ export default function DirectReceiveDialog({
   const [historical, setHistorical] = useState(false);
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
+  const [billing, setBilling] = useState(emptyReceivingBilling);
   const [lines, setLines] = useState<Line[]>([
     { product_id: 0, quantity: 1, unit_cost: 0 },
   ]);
@@ -135,6 +138,8 @@ export default function DirectReceiveDialog({
       return alert("Warehouse is required.");
     if (!receivedAt)
       return alert("Receipt Date/Time is required.");
+    const billingIssue = validateReceivingBilling(billing, subtotal);
+    if (billingIssue) return alert(billingIssue);
     const routingIssue = lines.filter(line => line.product_id && line.quantity > 0).map(line => destinationError(routingFor(line))).find(Boolean);
     if (routingIssue) return alert(routingIssue);
     const items = lines
@@ -172,6 +177,7 @@ export default function DirectReceiveDialog({
           external_reference: reference || null,
           warehouse_id: hasWarehouse ? warehouseId : null,
           notes: notes || null,
+          ...billing,
           items,
         },
       });
@@ -385,6 +391,7 @@ export default function DirectReceiveDialog({
               </div>
             </div>
           </div>
+          <ReceivingBillingFields value={billing} onChange={setBilling} subtotal={subtotal} tax={tax} open={open}/>
           <label className="block text-xs font-medium text-slate-700">
             Notes
             <textarea
