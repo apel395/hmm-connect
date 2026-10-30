@@ -825,8 +825,24 @@ class GoodsReceiptService:
             is_catering = bool(receipt.items) and all(
                 getattr(item.product, "catalog_type", None) == "CATERING" for item in receipt.items
             )
-            if (receipt.source_type == "LIVE" and is_catering and has_vendor_invoice and has_vat_docs
-                    and Decimal(receipt.supplier_document_total) == Decimal(invoice.total_amount)):
+            has_matching_total = (
+                invoice is not None
+                and getattr(receipt, "supplier_document_total", None) is not None
+                and Decimal(receipt.supplier_document_total) == Decimal(invoice.total_amount)
+            )
+            eligible_for_auto_verify = (
+                receipt.source_type == "LIVE" and is_catering and has_vendor_invoice
+                and has_vat_docs and has_matching_total
+                and (Decimal(invoice.tax_amount or 0) <= ZERO or bool(invoice.supplier.is_pkp))
+            )
+            if eligible_for_auto_verify:
+                # Incomplete source matching or accounting master data should
+                # leave a correctable AP draft, never block the physical receipt.
+                eligible_for_auto_verify = (
+                    invoice_service.match_summary(invoice)["can_verify"]
+                    and DirectCoaService(db).supplier_invoice_readiness(invoice)["is_ready"]
+                )
+            if eligible_for_auto_verify:
                 FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
                 invoice_service.verify(invoice, user, commit=False)
                 invoice_service.generate_journal(invoice, user, commit=False)
