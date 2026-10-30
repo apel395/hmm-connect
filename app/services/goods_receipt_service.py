@@ -225,21 +225,21 @@ class GoodsReceiptService:
             tax += Decimal(item.tax_amount or 0)
         receipt.subtotal = subtotal.quantize(MONEY, rounding=ROUND_HALF_UP)
         receipt.tax_amount = tax.quantize(MONEY, rounding=ROUND_HALF_UP)
-        discount = Decimal(receipt.discount_amount or 0)
+        discount = Decimal(getattr(receipt, "discount_amount", 0) or 0)
         if discount < 0 or discount > receipt.subtotal:
             raise HTTPException(422, "Invoice discount cannot exceed received subtotal")
         for name in ("shipping", "admin", "other"):
-            amount = Decimal(getattr(receipt, f"{name}_fee_amount") or 0)
-            account_id = getattr(receipt, f"{name}_fee_account_id")
+            amount = Decimal(getattr(receipt, f"{name}_fee_amount", 0) or 0)
+            account_id = getattr(receipt, f"{name}_fee_account_id", None)
             if amount < 0:
                 raise HTTPException(422, f"{name.title()} fee cannot be negative")
             if amount:
                 account = db.get(ChartOfAccount, account_id) if db is not None and account_id else None
                 if not account or not account.is_active or not account.is_posting or account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
                     raise HTTPException(422, f"{name.title()} fee requires an active debit expense account")
-                if name == "other" and not (receipt.other_fee_description or "").strip():
+                if name == "other" and not (getattr(receipt, "other_fee_description", None) or "").strip():
                     raise HTTPException(422, "Describe the other supplier charge")
-        fees = sum((Decimal(getattr(receipt, f"{k}_fee_amount") or 0) for k in ("shipping", "admin", "other")), ZERO)
+        fees = sum((Decimal(getattr(receipt, f"{k}_fee_amount", 0) or 0) for k in ("shipping", "admin", "other")), ZERO)
         receipt.total_amount = (receipt.subtotal + receipt.tax_amount - discount + fees).quantize(MONEY, rounding=ROUND_HALF_UP)
         if receipt.total_amount <= 0:
             raise HTTPException(422, "Total supplier invoice must be greater than zero")
@@ -819,9 +819,9 @@ class GoodsReceiptService:
             # If its required fields are complete, finalize invoice verification
             # and prepare a recognized open-period DRAFT accounting journal atomically.
             # Without real billing details, keep an editable invoice DRAFT.
-            has_vendor_invoice = bool((receipt.supplier_invoice_number or "").strip() and receipt.supplier_invoice_date)
+            has_vendor_invoice = bool((getattr(receipt, "supplier_invoice_number", None) or "").strip() and getattr(receipt, "supplier_invoice_date", None))
             has_vat_docs = Decimal(invoice.tax_amount or 0) <= ZERO or bool(
-                (receipt.tax_invoice_number or "").strip() and receipt.tax_invoice_date)
+                (getattr(receipt, "tax_invoice_number", None) or "").strip() and getattr(receipt, "tax_invoice_date", None))
             if has_vendor_invoice and has_vat_docs:
                 FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
                 invoice_service.verify(invoice, user, commit=False)
