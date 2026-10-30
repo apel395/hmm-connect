@@ -31,6 +31,8 @@ def _setup(stock_db):
 def test_complete_receiving_documents_auto_verify_invoice_and_charge_once(stock_db):
     data = _setup(stock_db)
     db, warehouse, user, products, balances, expense, supplier = data
+    for product in products: product.catalog_type = "CATERING"
+    db.commit()
     receipt = create(data)
     receipt.supplier_invoice_number = "VENDOR-CAT-1030"
     receipt.supplier_invoice_date = GoodsReceiptService.business_date(receipt.received_at)
