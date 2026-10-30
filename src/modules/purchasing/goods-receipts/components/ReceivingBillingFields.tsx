@@ -17,7 +17,7 @@ export default function ReceivingBillingFields({value, onChange, subtotal, tax, 
   return <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
     <div>
       <h3 className="font-semibold text-sm">Supplier Invoice & Additional Charges</h3>
-      <p className="text-xs text-slate-600">Enter the supplier document received with the goods. Complete documents auto-verify the generated invoice when Receiving is posted; incomplete documents leave it as a draft for correction.</p>
+      <p className="text-xs text-slate-600">Enter the supplier document received with the goods. For Catering, complete matching supplier documents auto-verify the generated invoice after Receiving is posted. Missing details leave an invoice draft for authorized correction.</p>
     </div>
     <div className="grid gap-3 md:grid-cols-3">
       <label className="text-xs font-medium">Supplier Invoice Number<input className="mt-1 w-full rounded border p-2" maxLength={100} value={value.supplier_invoice_number} onChange={e=>update("supplier_invoice_number",e.target.value)} placeholder="Vendor-issued invoice number"/></label>
