@@ -38,8 +38,6 @@ export const validateReceivingBilling = (b: ReceivingBilling, subtotal: number):
       return `Select an expense account for the ${key} fee.`;
   }
   if (b.other_fee_amount > 0 && !b.other_fee_description.trim()) return "Describe the other supplier charge.";
-  if (b.supplier_invoice_number.trim() && !b.supplier_invoice_date) return "Enter the supplier invoice date.";
-  if (b.supplier_invoice_number.trim() && (!b.supplier_document_total || b.supplier_document_total <= 0)) return "Enter the total printed on the supplier invoice.";
   if (b.supplier_invoice_due_date && b.supplier_invoice_date && b.supplier_invoice_due_date < b.supplier_invoice_date)
     return "Supplier due date must not precede invoice date.";
   return null;
