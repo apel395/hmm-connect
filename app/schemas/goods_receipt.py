@@ -39,6 +39,7 @@ class GoodsReceiptCreate(BaseModel):
     destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
     notes: str | None = None
     supplier_invoice_number: str | None = Field(default=None, max_length=100)
+    supplier_document_total: Decimal | None = Field(default=None, gt=0)
     supplier_invoice_date: date | None = None
     supplier_invoice_due_date: date | None = None
     tax_invoice_number: str | None = Field(default=None, max_length=100)
