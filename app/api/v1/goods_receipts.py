@@ -153,6 +153,7 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
         "notes": receipt.notes,
         "subtotal": receipt.subtotal,
         "supplier_invoice_number": getattr(receipt, "supplier_invoice_number", None),
+        "supplier_document_total": getattr(receipt, "supplier_document_total", None),
         "supplier_invoice_date": getattr(receipt, "supplier_invoice_date", None),
         "supplier_invoice_due_date": getattr(receipt, "supplier_invoice_due_date", None),
         "tax_invoice_number": getattr(receipt, "tax_invoice_number", None),
