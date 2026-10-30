@@ -47,6 +47,14 @@ def test_complete_receiving_documents_auto_verify_invoice_and_charge_once(stock_
     receipt.other_fee_description = "Packing materials"
     receipt.supplier_document_total = receipt.subtotal + receipt.tax_amount - 1 + 3 + 2 + 1
     db.commit()
+    GoodsReceiptService._recalculate_totals(receipt, db)
+    assert receipt.total_amount == Decimal("45.00"), (
+        f"Recalculation failed: sub={receipt.subtotal} tax={receipt.tax_amount} "
+        f"discount={receipt.discount_amount} shipping={receipt.shipping_fee_amount} "
+        f"admin={receipt.admin_fee_amount} other={receipt.other_fee_amount}"
+    )
+    db.flush()
+    assert receipt.total_amount == Decimal("45.00"), "Flush changed receiving total"
 
     posted = GoodsReceiptService.post(db,receipt_id=receipt.id,user=user)
     invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
