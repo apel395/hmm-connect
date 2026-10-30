@@ -442,9 +442,12 @@ def admin_unpost(invoice_id: int, db: Session = Depends(get_db), user=Depends(in
 
 
 @router.post("/{invoice_id}/reopen")
-def admin_reopen(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_edit_user)):
-    if not is_superuser(user):
-        raise HTTPException(403, "Administrator access required to reopen a supplier invoice")
+def admin_reopen(invoice_id: int, body: dict | None = None, db: Session = Depends(get_db), user=Depends(invoice_edit_user)):
+    # The invoice.edit permission is explicitly granted by the Roles module.
+    # No journal posting or period-closing privilege is implied.
+    reason = str((body or {}).get("reason") or "").strip()
+    if not is_superuser(user) and len(reason) < 3:
+        raise HTTPException(422, "Enter a correction reason before reopening a verified invoice")
     invoice = db.query(SupplierInvoice).filter(SupplierInvoice.id == invoice_id).with_for_update().first()
     if not invoice:
         raise HTTPException(404, "Supplier invoice not found")
@@ -482,7 +485,7 @@ def admin_reopen(invoice_id: int, db: Session = Depends(get_db), user=Depends(in
         f"Reopened {invoice.internal_invoice_number} as draft",
         entity_id=invoice.id,
         before_data={"status": "VERIFIED", "journals": snapshots},
-        after_data={"status": "DRAFT", "journal_status": "DRAFT", "journal_reused": True},
+        after_data={"status": "DRAFT", "journal_status": "DRAFT", "journal_reused": True, "reason": reason or "Administrator correction"},
     )
     db.commit()
     db.refresh(invoice)
