@@ -442,7 +442,7 @@ def admin_unpost(invoice_id: int, db: Session = Depends(get_db), user=Depends(in
 
 
 @router.post("/{invoice_id}/reopen")
-def admin_reopen(invoice_id: int, body: dict | None = None, db: Session = Depends(get_db), user=Depends(invoice_edit_user)):
+def admin_reopen(invoice_id: int, db: Session = Depends(get_db), user=Depends(invoice_edit_user), body: dict | None = None):
     # The invoice.edit permission is explicitly granted by the Roles module.
     # No journal posting or period-closing privilege is implied.
     reason = str((body or {}).get("reason") or "").strip()
