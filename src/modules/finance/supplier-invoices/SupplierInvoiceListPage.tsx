@@ -34,7 +34,7 @@ const addDays = (value: string, days: number) => {
 const blankLine = (): InvoiceLine => ({ description: "", quantity: 0, uom: "", unit_price: 0, account_id: null, is_taxable: false, tax_rate: 0, tax_amount: 0 });
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const emptyForm = (): any => ({ supplier_id: 0, supplier_invoice_number: "", invoice_date: today(), received_date: today(), due_date: addDays(today(), 30), purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, withholding_tax_amount: 0, tax_invoice_number: "", tax_invoice_date: "", notes: "", source_type: "LIVE", vat_decision:"", lines: [blankLine()] });
+const emptyForm = (): any => ({ supplier_id: 0, supplier_invoice_number: "", invoice_date: today(), received_date: today(), due_date: addDays(today(), 30), purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, withholding_tax_amount: 0, shipping_fee_amount: 0, admin_fee_amount: 0, other_fee_amount: 0, shipping_fee_account_id: null, admin_fee_account_id: null, other_fee_account_id: null, other_fee_description: "", supplier_document_url: "", tax_invoice_number: "", tax_invoice_date: "", notes: "", source_type: "LIVE", vat_decision:"", lines: [blankLine()] });
 const validInvoiceInput = (v: unknown): v is ReturnType<typeof emptyForm> => { const x = v as any; return !!x && typeof x.invoice_date === "string" && typeof x.supplier_id === "number" && Array.isArray(x.lines); };
 const invoiceErrorMessage = (error: unknown) => {
   if (!axios.isAxiosError(error)) return "Invoice could not be saved";
@@ -277,9 +277,9 @@ export default function SupplierInvoiceListPage() {
       const base = Number(line.quantity || 0) * Number(line.unit_price || 0);
       return sum + (line.is_taxable ? base * Number(line.tax_rate || 0) / 100 : 0);
     }, 0);
-    const total = subtotal - Number(form.discount_amount || 0) + tax - Number(form.withholding_tax_amount || 0);
+    const total = subtotal - Number(form.discount_amount || 0) + tax - Number(form.withholding_tax_amount || 0) + Number(form.shipping_fee_amount || 0) + Number(form.admin_fee_amount || 0) + Number(form.other_fee_amount || 0);
     return { subtotal, tax, total };
-  }, [form.lines, form.discount_amount, form.withholding_tax_amount]);
+  }, [form.lines, form.discount_amount, form.withholding_tax_amount, form.shipping_fee_amount, form.admin_fee_amount, form.other_fee_amount]);
 
   const receiptOptions = useMemo(() => {
     const rows = receipts.data ?? [];
@@ -454,7 +454,19 @@ export default function SupplierInvoiceListPage() {
       {hasVat && <div className="rounded-lg border border-blue-200 bg-blue-50 p-4"><div className="mb-3 flex items-center justify-between"><div><div className="font-semibold text-blue-950">Faktur Pajak</div><div className="text-xs text-blue-700">Required because this invoice contains PPN.</div></div><Badge variant={selectedSupplier?.is_pkp ? "success" : "danger"}>{selectedSupplier?.is_pkp ? "Supplier PKP" : "Supplier is not PKP"}</Badge></div><div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Faktur Pajak Number *<input className={input} value={form.tax_invoice_number} onChange={(event)=>setForm({...form,tax_invoice_number:event.target.value})}/></label><label className="text-sm">Faktur Pajak Date *<input type="date" className={input} value={form.tax_invoice_date} onChange={(event)=>setForm({...form,tax_invoice_date:event.target.value})}/></label></div></div>}
 
       <div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Discount<CurrencyInput value={Number(form.discount_amount)} onValueChange={(value) => setForm({ ...form, discount_amount: value })} /></label><label className="text-sm">Withholding Tax<CurrencyInput value={Number(form.withholding_tax_amount)} onValueChange={(value) => setForm({ ...form, withholding_tax_amount: value })} /></label></div>
-      <div className="ml-auto max-w-sm space-y-2 rounded-lg border bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(calculation.subtotal)}</span></div><div className="flex justify-between"><span>PPN</span><span>{money(calculation.tax)}</span></div>{Number(form.discount_amount)>0&&<div className="flex justify-between"><span>Discount</span><span>({money(form.discount_amount)})</span></div>}{Number(form.withholding_tax_amount)>0&&<div className="flex justify-between"><span>Withholding</span><span>({money(form.withholding_tax_amount)})</span></div>}<div className="flex justify-between border-t pt-2 text-lg font-bold"><span>Invoice Total</span><span>{money(calculation.total)}</span></div></div>
+      <div className="rounded border border-slate-200 p-3 space-y-3">
+         <h3 className="font-semibold text-sm">Supplier charges (correct only when required)</h3>
+         <div className="grid gap-3 md:grid-cols-3">
+           {(["shipping","admin","other"] as const).map(kind=><div className="space-y-1" key={kind}>
+             <label className="text-sm capitalize">{kind} Fee<CurrencyInput value={Number(form[`${kind}_fee_amount`]||0)} onValueChange={value=>setForm((current:any)=>({...current,[`${kind}_fee_amount`]:value}))}/></label>
+             <div className="text-xs text-slate-600">Expense account</div>
+             <AccountPicker value={form[`${kind}_fee_account_id`]} onChange={id=>setForm((current:any)=>({...current,[`${kind}_fee_account_id`]:id}))}/>
+           </div>)}
+         </div>
+         {Number(form.other_fee_amount)>0&&<label className="text-sm">Other fee description<input className={input} value={form.other_fee_description||""} onChange={e=>setForm({...form,other_fee_description:e.target.value})}/></label>}
+         <label className="text-sm">Supplier document link<input type="url" className={input} value={form.supplier_document_url||""} onChange={e=>setForm({...form,supplier_document_url:e.target.value})}/></label>
+       </div>
+       <div className="ml-auto max-w-sm space-y-2 rounded-lg border bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(calculation.subtotal)}</span></div><div className="flex justify-between"><span>PPN</span><span>{money(calculation.tax)}</span></div>{Number(form.discount_amount)>0&&<div className="flex justify-between"><span>Discount</span><span>({money(form.discount_amount)})</span></div>}{Number(form.withholding_tax_amount)>0&&<div className="flex justify-between"><span>Withholding</span><span>({money(form.withholding_tax_amount)})</span></div>}<div className="flex justify-between border-t pt-2 text-lg font-bold"><span>Invoice Total</span><span>{money(calculation.total)}</span></div></div>
       <label className="block text-sm">Notes<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
       {submitError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{submitError}</div>}
     </DialogBody><DialogFooter><FormRecoveryActions failed={recovery.failed} disabled={save.isPending} onDiscard={() => { recovery.clear(); setOpen(false); setEditingId(null); setForm(emptyForm()); }} /><Button variant="outline" disabled={save.isPending} onClick={() => setOpen(false)}>Close</Button><Button type="button" loading={save.isPending} onClick={submit}>{editingId ? "Save Changes" : "Save Draft"}</Button></DialogFooter></DialogContent></Dialog>
