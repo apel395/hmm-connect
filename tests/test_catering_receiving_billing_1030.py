@@ -57,6 +57,9 @@ def test_complete_receiving_documents_auto_verify_invoice_and_charge_once(stock_
         f" document_total={posted.supplier_document_total!r} receipt_total={posted.total_amount!r}"
         f" invoice_total={invoice.total_amount!r} invoice_ref={invoice.supplier_invoice_number!r}"
         f" invoice_date={invoice.invoice_date!r} invoice_status={invoice.status!r}"
+        f" receipt_fees={(posted.shipping_fee_amount,posted.admin_fee_amount,posted.other_fee_amount)!r}"
+        f" invoice_fees={(invoice.shipping_fee_amount,invoice.admin_fee_amount,invoice.other_fee_amount)!r}"
+        f" receipt_discount={posted.discount_amount!r} invoice_discount={invoice.discount_amount!r}"
     )
     assert invoice.supplier_invoice_number == "VENDOR-CAT-1030"
     assert invoice.total_amount == invoice.subtotal + invoice.tax_amount - 1 + 3 + 2 + 1
