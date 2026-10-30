@@ -443,6 +443,16 @@ class SupplierInvoiceService:
         if not supplier_id:
             raise HTTPException(409, "Receiving has no supplier for invoice preparation")
         invoice_date = receipt.received_at.astimezone(ZoneInfo("Asia/Jakarta")).date() if receipt.received_at.tzinfo else receipt.received_at.date()
+        # Do not rely on an earlier cached receipt total: compose from the
+        # accepted goods and the recorded supplier invoice adjustments once.
+        invoice_total = (
+            Decimal(receipt.subtotal or 0) + Decimal(receipt.tax_amount or 0)
+            - Decimal(receipt.discount_amount or 0)
+            + sum((Decimal(getattr(receipt, f"{kind}_fee_amount", 0) or 0)
+                   for kind in ("shipping", "admin", "other")), ZERO)
+        )
+        if invoice_total <= ZERO:
+            raise HTTPException(409, "Supplier invoice must have a positive total")
         invoice = SupplierInvoice(
             internal_invoice_number=next_document_number(self.db, "INV"),
             supplier_invoice_number=(receipt.supplier_invoice_number or "").strip() or self._receipt_placeholder(receipt),
@@ -461,8 +471,8 @@ class SupplierInvoiceService:
             currency=(receipt.purchase_order.currency if receipt.purchase_order else "IDR"),
             subtotal=Decimal(receipt.subtotal),
             tax_amount=Decimal(receipt.tax_amount),
-            total_amount=Decimal(receipt.total_amount),
-            balance_amount=Decimal(receipt.total_amount),
+            total_amount=invoice_total,
+            balance_amount=invoice_total,
             discount_amount=Decimal(receipt.discount_amount or 0),
             withholding_tax_amount=ZERO,
             shipping_fee_amount=getattr(receipt, "shipping_fee_amount", None),
