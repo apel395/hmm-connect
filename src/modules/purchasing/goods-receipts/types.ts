@@ -1,4 +1,5 @@
 import type { ReceivingDestination } from "./destination";
+import type { ReceivingBilling } from "./billing";
 export interface GoodsReceiptItemPayload {
   purchase_order_item_id?: number | null;
   market_list_item_id?: number;
@@ -13,7 +14,7 @@ export interface GoodsReceiptItemPayload {
   tax_rate?: number;
 }
 
-export interface GoodsReceiptCreatePayload {
+export interface GoodsReceiptCreatePayload extends Partial<ReceivingBilling> {
   source_type?: "LIVE" | "HISTORICAL_ENTRY";
   market_list_id?: number;
   purchase_order_id?: number | null;
@@ -30,7 +31,7 @@ export interface GoodsReceiptCreatePayload {
   cost_correction_reason?: string | null;
 }
 
-export interface GoodsReceiptUpdatePayload {
+export interface GoodsReceiptUpdatePayload extends Partial<ReceivingBilling> {
   received_at: string;
   location_id?: number | null;
   external_reference?: string | null;
@@ -53,7 +54,7 @@ export interface GoodsReceiptItem {
   quantity: number; unit_cost: number; line_subtotal?: number; is_taxable?: boolean; tax_rate?: number; tax_amount?: number; line_total?: number;
 }
 
-export interface GoodsReceipt {
+export interface GoodsReceipt extends Partial<ReceivingBilling> {
   source_type?: "LIVE" | "HISTORICAL_ENTRY" | "HISTORICAL_IMPORT";
   id: number; receipt_number: string; status: "DRAFT" | "POSTED" | "RETURNED"; source_mode?: "PO" | "ML" | "DIRECT";
   supplier_invoice_id?: number | null; supplier_invoice_status?: string | null;
