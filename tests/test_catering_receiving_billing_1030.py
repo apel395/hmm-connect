@@ -96,3 +96,41 @@ def test_fee_requires_explicit_expense_account(stock_db):
     db.commit()
     with pytest.raises(HTTPException,match="Shipping fee requires an active"):
         GoodsReceiptService.post(db,receipt_id=receipt.id,user=user)
+
+
+def test_wrong_supplier_document_total_keeps_invoice_draft(stock_db):
+    data = _setup(stock_db)
+    db, warehouse, user, products, balances, expense, supplier = data
+    products[0].catalog_type = "CATERING"
+    db.commit()
+    receipt = create(data, items=[dict(product_id=products[0].id, quantity=2, unit_cost=10)])
+    receipt.supplier_invoice_number = "VENDOR-MISMATCH-1030"
+    receipt.supplier_invoice_date = GoodsReceiptService.business_date(receipt.received_at)
+    receipt.supplier_document_total = Decimal("21.00")
+    db.commit()
+    GoodsReceiptService.post(db, receipt_id=receipt.id, user=user)
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert invoice.total_amount == Decimal("20.00")
+    assert invoice.status == "DRAFT"
+    assert db.query(JournalEntry).filter_by(reference_type="SUPPLIER_INVOICE", reference_id=invoice.id).count() == 0
+
+
+def test_non_pkp_vat_invoice_does_not_block_physical_receiving(stock_db):
+    data = _setup(stock_db)
+    db, warehouse, user, products, balances, expense, supplier = data
+    products[0].catalog_type = "CATERING"
+    supplier.is_pkp = False
+    db.commit()
+    receipt = create(data, items=[dict(product_id=products[0].id, quantity=2,
+                                     unit_cost=10, is_taxable=True, tax_rate=11)])
+    receipt.supplier_invoice_number = "VENDOR-NON-PKP-1030"
+    receipt.supplier_invoice_date = GoodsReceiptService.business_date(receipt.received_at)
+    receipt.tax_invoice_number = "FAKTUR-1030"
+    receipt.tax_invoice_date = receipt.supplier_invoice_date
+    receipt.supplier_document_total = Decimal("22.20")
+    db.commit()
+    result = GoodsReceiptService.post(db, receipt_id=receipt.id, user=user)
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert result.status == "POSTED"
+    assert invoice.tax_amount == Decimal("2.20")
+    assert invoice.status == "DRAFT"
