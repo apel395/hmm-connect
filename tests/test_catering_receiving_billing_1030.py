@@ -43,6 +43,7 @@ def test_complete_receiving_documents_auto_verify_invoice_and_charge_once(stock_
     receipt.admin_fee_account_id = expense.id
     receipt.other_fee_account_id = expense.id
     receipt.other_fee_description = "Packing materials"
+    receipt.supplier_document_total = receipt.subtotal + receipt.tax_amount - 1 + 3 + 2 + 1
     db.commit()
 
     posted = GoodsReceiptService.post(db,receipt_id=receipt.id,user=user)
