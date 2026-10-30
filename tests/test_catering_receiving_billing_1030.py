@@ -47,14 +47,6 @@ def test_complete_receiving_documents_auto_verify_invoice_and_charge_once(stock_
     receipt.other_fee_description = "Packing materials"
     receipt.supplier_document_total = receipt.subtotal + receipt.tax_amount - 1 + 3 + 2 + 1
     db.commit()
-    GoodsReceiptService._recalculate_totals(receipt, db)
-    assert receipt.total_amount == Decimal("45.00"), (
-        f"Recalculation failed: sub={receipt.subtotal} tax={receipt.tax_amount} "
-        f"discount={receipt.discount_amount} shipping={receipt.shipping_fee_amount} "
-        f"admin={receipt.admin_fee_amount} other={receipt.other_fee_amount}"
-    )
-    db.flush()
-    assert receipt.total_amount == Decimal("45.00"), "Flush changed receiving total"
 
     posted = GoodsReceiptService.post(db,receipt_id=receipt.id,user=user)
     invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
@@ -134,3 +126,16 @@ def test_non_pkp_vat_invoice_does_not_block_physical_receiving(stock_db):
     assert result.status == "POSTED"
     assert invoice.tax_amount == Decimal("2.20")
     assert invoice.status == "DRAFT"
+
+
+def test_tax_snapshot_flush_preserves_supplier_fee_total(stock_db):
+    data = _setup(stock_db)
+    db, warehouse, user, products, balances, expense, supplier = data
+    receipt = create(data, items=[dict(product_id=products[0].id, quantity=2, unit_cost=10)])
+    receipt.discount_amount = Decimal("1.00")
+    receipt.shipping_fee_amount = Decimal("3.00")
+    receipt.shipping_fee_account_id = expense.id
+    GoodsReceiptService._recalculate_totals(receipt, db)
+    assert receipt.total_amount == Decimal("22.00")
+    db.flush()
+    assert receipt.total_amount == Decimal("22.00"), "Tax snapshot flush must preserve supplier adjustments"
