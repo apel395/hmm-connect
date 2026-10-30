@@ -397,7 +397,7 @@ export default function SupplierInvoiceListPage() {
   };
 
   return <>
-    <PageHeader title="Supplier Invoices" description="Posted receiving reports automatically prepare invoice drafts. Confirm supplier details here; manual entry is for exceptions." actions={<>
+    <PageHeader title="Supplier Invoices" description="Catering receiving verifies complete supplier documents automatically. Use Supplier Invoices for exceptions and controlled corrections; AP payments remain separate." actions={<>
 {hasPermission("supplier_invoice.create") ? <Button variant="outline" onClick={() => { const next = emptyForm(); if (businessUnits.data?.length === 1) next.business_unit_id = businessUnits.data[0].id; setEditingId(null); const saved = recovery.load("supplier-invoice:create"); setForm(saved ?? next); if (saved) recovery.notifyRestored(); setOpen(true); }}>Manual Invoice</Button> : null}
 {hasPermission("payment.manage") && <Button variant="outline" disabled={!Object.values(selectedInvoices).some(Boolean) || makeVoucher.isPending} loading={makeVoucher.isPending} onClick={() => makeVoucher.mutate()}>Payment Voucher</Button>}
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
