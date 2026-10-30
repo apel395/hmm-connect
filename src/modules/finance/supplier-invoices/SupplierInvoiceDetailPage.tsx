@@ -51,7 +51,7 @@ export default function SupplierInvoiceDetailPage(){
     <div><small>Supplier</small><div>{invoice.supplier_name}</div></div>
     <div><small>System Invoice Number</small><div>{invoice.internal_invoice_number}</div></div>
     <div><small>Supplier Reference</small><div>{invoice.supplier_reference_pending||invoice.supplier_invoice_number===invoice.internal_invoice_number?"—":invoice.supplier_invoice_number}</div></div>
-    <div><small>Invoice Date</small><div>{invoice.invoice_date}</div></div>
+    <div><small>Document Total</small><div>{invoice.supplier_document_total==null?"—":money(invoice.supplier_document_total)}</div></div><div><small>Invoice Date</small><div>{invoice.invoice_date}</div></div>
     <div><small>Due Date</small><div>{invoice.due_date||"—"}</div></div>
     <div><small>Purchase Order</small><div>{invoice.purchase_order_id?<Link className="text-emerald-700" to={`/purchase-orders/${invoice.purchase_order_id}`}>{invoice.purchase_order_number}</Link>:"—"}</div></div>
     <div><small>Receipt</small><div>{invoice.goods_receipt_id?<Link className="text-emerald-700" to={`/receiving/${invoice.goods_receipt_id}`}>{invoice.receipt_number}</Link>:"Direct invoice"}</div></div>
