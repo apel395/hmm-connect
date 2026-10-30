@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.chart_of_account import ChartOfAccount
+from app.models.accounting_setting import AccountingSetting
 from app.models.journal_entry import JournalEntry
 from app.models.supplier_invoice import SupplierInvoice
 from app.services.goods_receipt_service import GoodsReceiptService
@@ -18,7 +19,10 @@ def _setup(stock_db):
     payable = ChartOfAccount(account_number="200-101-1030",account_name="Catering payable",
                              account_type="LIABILITY",normal_balance="CREDIT",
                              is_posting=True,is_active=True)
-    db.add(payable);db.flush()
+    discount_account = ChartOfAccount(account_number="410-990-1030",account_name="Purchase discount",
+        account_type="EXPENSE",normal_balance="CREDIT",is_posting=True,is_active=True)
+    db.add_all([payable, discount_account]);db.flush()
+    db.add(AccountingSetting(setting_key="PURCHASE_DISCOUNT_ACCOUNT",account_id=discount_account.id))
     supplier.payable_account_id = payable.id
     db.commit()
     return data
