@@ -21,6 +21,7 @@ export default function ReceivingBillingFields({value, onChange, subtotal, tax, 
     </div>
     <div className="grid gap-3 md:grid-cols-3">
       <label className="text-xs font-medium">Supplier Invoice Number<input className="mt-1 w-full rounded border p-2" maxLength={100} value={value.supplier_invoice_number} onChange={e=>update("supplier_invoice_number",e.target.value)} placeholder="Vendor-issued invoice number"/></label>
+      <label className="text-xs font-medium">Supplier Invoice Total<CurrencyInput value={value.supplier_document_total ?? 0} onValueChange={v=>update("supplier_document_total",v||null)}/></label>
       <label className="text-xs font-medium">Supplier Invoice Date<input className="mt-1 w-full rounded border p-2" type="date" value={value.supplier_invoice_date} onChange={e=>update("supplier_invoice_date",e.target.value)}/></label>
       <label className="text-xs font-medium">Payment Due Date<input className="mt-1 w-full rounded border p-2" type="date" value={value.supplier_invoice_due_date} onChange={e=>update("supplier_invoice_due_date",e.target.value)}/></label>
       <label className="text-xs font-medium">Faktur Pajak Number<input className="mt-1 w-full rounded border p-2" maxLength={100} value={value.tax_invoice_number} onChange={e=>update("tax_invoice_number",e.target.value)}/></label>
@@ -36,6 +37,7 @@ export default function ReceivingBillingFields({value, onChange, subtotal, tax, 
     </div>
     {value.other_fee_amount > 0 && <label className="text-xs font-medium">Other Charge Description<input className="mt-1 w-full rounded border p-2" value={value.other_fee_description} maxLength={250} onChange={e=>update("other_fee_description",e.target.value)}/></label>}
     <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm"><span>Invoice estimate (goods + PPN − discount + charges)</span><strong className="tabular-nums">{money(billingTotal(subtotal,tax,value))}</strong></div>
+    {value.supplier_document_total!==null && Math.abs(billingTotal(subtotal,tax,value)-value.supplier_document_total)>0.01 && <p className="text-xs text-red-700">Document total does not match the calculated total. The invoice will remain DRAFT for review.</p>}
     <p className="text-xs text-amber-700">PPN rates shown at Receiving are estimates. Confirm the supplier's tax document; discounts affecting the PPN base may require invoice correction. Fees use the selected expense accounts, not inventory valuation.</p>
   </section>;
 }
