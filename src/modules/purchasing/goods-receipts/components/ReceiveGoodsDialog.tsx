@@ -29,6 +29,8 @@ import {
 } from "../hooks/useGoodsReceipts";
 
 import ReceivingDestinationField from "./ReceivingDestinationField";
+import ReceivingBillingFields from "./ReceivingBillingFields";
+import { emptyReceivingBilling, validateReceivingBilling } from "../billing";
 import { destinationFor, destinationError, type LineRouting } from "../destination";
 
 interface Props {
@@ -68,6 +70,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
   const [historical, setHistorical] = useState(false);
   const [deliveryNote, setDeliveryNote] = useState("");
   const [notes, setNotes] = useState("");
+  const [billing, setBilling] = useState(emptyReceivingBilling);
   const [costCorrectionReason, setCostCorrectionReason] = useState("");
   const [lines, setLines] = useState<ReceiveLine[]>([]);
   const hasWarehouse = lines.some(line => line.quantity > 0 && destinationFor(line) === "WAREHOUSE");
@@ -84,7 +87,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
   useEffect(() => {
     if (!open) return;
     setPurchaseOrderId(purchaseOrder?.id);
-    setHistorical(false); setWarehouseId(null); setReceivedAt(nowLocal()); setDeliveryNote(""); setNotes(""); setCostCorrectionReason(""); setLines([]);
+    setHistorical(false); setWarehouseId(null); setReceivedAt(nowLocal()); setDeliveryNote(""); setNotes(""); setCostCorrectionReason(""); setLines([]); setBilling(emptyReceivingBilling());
   }, [open, purchaseOrder]);
   useEffect(() => {
     setLines((remaining.data ?? []).map((item: any) => ({ ...item, ordered_quantity: Number(item.ordered_quantity), received_quantity: Number(item.received_quantity), remaining_quantity: Number(item.remaining_quantity), quantity: 0, unit_cost: Number(item.unit_cost ?? 0), original_unit_cost: Number(item.unit_cost ?? 0), expense_account_id: item.purchase_account_id ?? null, destination_type: null, is_taxable: false, tax_rate: 0 })));
@@ -108,6 +111,8 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
     if (selected.some((line) => line.unit_cost <= 0)) return alert("Unit cost must be greater than zero.");
     if (hasCostOverride && !canCorrectCost) return alert("Only an authorized manager can override PO unit cost.");
     if (hasCostOverride && costCorrectionReason.trim().length < 3) return alert("Enter a correction reason.");
+    const billingIssue = validateReceivingBilling(billing, subtotal);
+    if (billingIssue) return alert(billingIssue);
     try {
       await receive.mutateAsync({ purchaseOrderId, payload: { source_type: historical ? "HISTORICAL_ENTRY" : "LIVE", received_at: new Date(receivedAt).toISOString(), external_reference: deliveryNote || null, warehouse_id: hasWarehouse ? warehouseId : null, notes: notes || null, cost_correction_reason: hasCostOverride ? costCorrectionReason.trim() : null, items: selected.map((line) => ({ purchase_order_item_id: line.purchase_order_item_id, quantity: line.quantity, unit_cost: line.unit_cost, is_taxable:Number(line.tax_rate||0)>0, tax_rate:Number(line.tax_rate||0), destination_type:line.destination_type ?? null, destination_override_reason:line.destination_override_reason || null, expense_account_id:destinationFor(line) === "DIRECT_USE" ? line.expense_account_id ?? null : null })) } });
       onClose();
