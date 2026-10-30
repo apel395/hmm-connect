@@ -822,7 +822,11 @@ class GoodsReceiptService:
             has_vendor_invoice = bool((getattr(receipt, "supplier_invoice_number", None) or "").strip() and getattr(receipt, "supplier_invoice_date", None) and getattr(receipt, "supplier_document_total", None) is not None)
             has_vat_docs = invoice is not None and (Decimal(invoice.tax_amount or 0) <= ZERO or bool(
                 (getattr(receipt, "tax_invoice_number", None) or "").strip() and getattr(receipt, "tax_invoice_date", None)))
-            if has_vendor_invoice and has_vat_docs and Decimal(receipt.supplier_document_total) == Decimal(invoice.total_amount):
+            is_catering = bool(receipt.items) and all(
+                getattr(item.product, "catalog_type", None) == "CATERING" for item in receipt.items
+            )
+            if (receipt.source_type == "LIVE" and is_catering and has_vendor_invoice and has_vat_docs
+                    and Decimal(receipt.supplier_document_total) == Decimal(invoice.total_amount)):
                 FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
                 invoice_service.verify(invoice, user, commit=False)
                 invoice_service.generate_journal(invoice, user, commit=False)
