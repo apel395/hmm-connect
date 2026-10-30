@@ -28,6 +28,18 @@ PRICE_TOLERANCE = Decimal("0.01")
 
 
 class SupplierInvoiceService:
+    def _validate_fee_accounts(self, data):
+        for name in ("shipping", "admin", "other"):
+            amount = Decimal(getattr(data, f"{name}_fee_amount", 0) or 0)
+            if not amount:
+                continue
+            account_id = getattr(data, f"{name}_fee_account_id", None)
+            account = self.db.get(ChartOfAccount, account_id) if account_id else None
+            if not account or not account.is_active or not account.is_posting or account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
+                raise HTTPException(422, f"{name.title()} fee needs an active expense account")
+            if name == "other" and not (getattr(data, "other_fee_description", "") or "").strip():
+                raise HTTPException(422, "Other supplier charge needs a description")
+
     def __init__(self, db: Session):
         self.db = db
 
@@ -62,6 +74,7 @@ class SupplierInvoiceService:
             "id": x.id,
             "internal_invoice_number": x.internal_invoice_number,
             "supplier_invoice_number": x.supplier_invoice_number,
+            "supplier_document_total": getattr(x, "supplier_document_total", None),
             "auto_prepared_from_receiving": automatically_prepared,
             "supplier_reference_pending": automatically_prepared and (x.supplier_invoice_number or "").startswith("PENDING-"),
             "supplier_id": x.supplier_id,
@@ -83,6 +96,14 @@ class SupplierInvoiceService:
             "discount_amount": x.discount_amount,
             "tax_amount": x.tax_amount,
             "withholding_tax_amount": x.withholding_tax_amount,
+            "shipping_fee_amount": getattr(x, "shipping_fee_amount", 0),
+            "admin_fee_amount": getattr(x, "admin_fee_amount", 0),
+            "other_fee_amount": getattr(x, "other_fee_amount", 0),
+            "other_fee_description": getattr(x, "other_fee_description", None),
+            "shipping_fee_account_id": getattr(x, "shipping_fee_account_id", None),
+            "admin_fee_account_id": getattr(x, "admin_fee_account_id", None),
+            "other_fee_account_id": getattr(x, "other_fee_account_id", None),
+            "supplier_document_url": getattr(x, "supplier_document_url", None),
             "total_amount": x.total_amount,
             "paid_amount": x.paid_amount,
             "balance_amount": x.balance_amount,
@@ -295,7 +316,13 @@ class SupplierInvoiceService:
             else sum((Decimal(line.tax_amount or 0) for line in data.lines), ZERO)
         )
         data.tax_amount = tax_amount
-        total = subtotal - Decimal(data.discount_amount) + tax_amount - Decimal(data.withholding_tax_amount)
+        total = subtotal - Decimal(data.discount_amount) + tax_amount - Decimal(data.withholding_tax_amount) + sum(
+            (Decimal(getattr(data, f"{name}_fee_amount", 0) or 0) for name in ("shipping", "admin", "other")), ZERO)
+        if Decimal(data.discount_amount) > subtotal:
+            raise HTTPException(422, "Discount cannot exceed invoice goods subtotal")
+        self._validate_fee_accounts(data)
+        if data.supplier_document_total is not None and Decimal(data.supplier_document_total) != total:
+            raise HTTPException(422, "Invoice charges and taxes do not match the supplier document total")
         if data.total_amount is not None and Decimal(data.total_amount) != total:
             raise HTTPException(400, "Invoice total does not match line totals and adjustments")
         data.total_amount = total
@@ -416,13 +443,26 @@ class SupplierInvoiceService:
         if not supplier_id:
             raise HTTPException(409, "Receiving has no supplier for invoice preparation")
         invoice_date = receipt.received_at.astimezone(ZoneInfo("Asia/Jakarta")).date() if receipt.received_at.tzinfo else receipt.received_at.date()
+        # Do not rely on an earlier cached receipt total: compose from the
+        # accepted goods and the recorded supplier invoice adjustments once.
+        invoice_total = (
+            Decimal(receipt.subtotal or 0) + Decimal(receipt.tax_amount or 0)
+            - Decimal(receipt.discount_amount or 0)
+            + sum((Decimal(getattr(receipt, f"{kind}_fee_amount", 0) or 0)
+                   for kind in ("shipping", "admin", "other")), ZERO)
+        )
+        if invoice_total <= ZERO:
+            raise HTTPException(409, "Supplier invoice must have a positive total")
         invoice = SupplierInvoice(
             internal_invoice_number=next_document_number(self.db, "INV"),
-            supplier_invoice_number=self._receipt_placeholder(receipt),
+            supplier_invoice_number=(receipt.supplier_invoice_number or "").strip() or self._receipt_placeholder(receipt),
+            supplier_document_total=getattr(receipt, "supplier_document_total", None),
             supplier_id=supplier_id,
-            invoice_date=invoice_date,
+            invoice_date=receipt.supplier_invoice_date or invoice_date,
             received_date=invoice_date,
-            due_date=invoice_date + timedelta(days=30),
+            due_date=receipt.supplier_invoice_due_date or (invoice_date + timedelta(days=30)),
+            tax_invoice_number=receipt.tax_invoice_number,
+            tax_invoice_date=receipt.tax_invoice_date,
             purchase_order_id=receipt.purchase_order_id,
             goods_receipt_id=receipt.id,
             business_unit_id=receipt.business_unit_id,
@@ -431,14 +471,22 @@ class SupplierInvoiceService:
             currency=(receipt.purchase_order.currency if receipt.purchase_order else "IDR"),
             subtotal=Decimal(receipt.subtotal),
             tax_amount=Decimal(receipt.tax_amount),
-            total_amount=Decimal(receipt.total_amount),
-            balance_amount=Decimal(receipt.total_amount),
-            discount_amount=ZERO,
+            total_amount=invoice_total,
+            balance_amount=invoice_total,
+            discount_amount=Decimal(receipt.discount_amount or 0),
             withholding_tax_amount=ZERO,
+            shipping_fee_amount=getattr(receipt, "shipping_fee_amount", None),
+            admin_fee_amount=getattr(receipt, "admin_fee_amount", None),
+            other_fee_amount=getattr(receipt, "other_fee_amount", None),
+            other_fee_description=getattr(receipt, "other_fee_description", None),
+            shipping_fee_account_id=getattr(receipt, "shipping_fee_account_id", None),
+            admin_fee_account_id=getattr(receipt, "admin_fee_account_id", None),
+            other_fee_account_id=getattr(receipt, "other_fee_account_id", None),
+            supplier_document_url=getattr(receipt, "supplier_document_url", None),
             status="DRAFT",
             source_type="LIVE",
             external_reference=f"AUTO_RECEIPT:{receipt.id}",
-            notes=f"Prepared from {receipt.receipt_number}. Confirm supplier invoice number, date, due date, amount and tax before verification.",
+            notes=f"Prepared from {receipt.receipt_number}. Supplier document details recorded at Receiving.",
             created_by_id=user.id,
         )
         for item in receipt.items:
@@ -638,6 +686,7 @@ class SupplierInvoiceService:
         invoice = SupplierInvoice(
             internal_invoice_number=generated_number,
             supplier_invoice_number=(data.supplier_invoice_number or "").strip() or generated_number,
+            supplier_document_total=data.supplier_document_total,
             supplier_id=data.supplier_id,
             invoice_date=data.invoice_date,
             received_date=data.received_date,
@@ -652,6 +701,14 @@ class SupplierInvoiceService:
             discount_amount=data.discount_amount,
             tax_amount=data.tax_amount,
             withholding_tax_amount=data.withholding_tax_amount,
+            shipping_fee_amount=data.shipping_fee_amount,
+            admin_fee_amount=data.admin_fee_amount,
+            other_fee_amount=data.other_fee_amount,
+            other_fee_description=data.other_fee_description,
+            shipping_fee_account_id=data.shipping_fee_account_id,
+            admin_fee_account_id=data.admin_fee_account_id,
+            other_fee_account_id=data.other_fee_account_id,
+            supplier_document_url=data.supplier_document_url,
             total_amount=total,
             balance_amount=total,
             tax_invoice_number=data.tax_invoice_number,
@@ -905,6 +962,21 @@ class SupplierInvoiceService:
                 location_id=invoice.location_id,
                 supplier_id=invoice.supplier_id,
             ))
+            line_number += 1
+
+        for kind, label in (("shipping", "Shipping"), ("admin", "Administration"), ("other", "Other")):
+            amount = Decimal(getattr(invoice, f"{kind}_fee_amount", 0) or 0)
+            if amount <= ZERO:
+                continue
+            account_id = getattr(invoice, f"{kind}_fee_account_id", None)
+            account = self.db.get(ChartOfAccount, account_id) if account_id else None
+            if not account or not account.is_active or not account.is_posting or account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
+                raise HTTPException(409, f"{label} fee needs an active debit expense account")
+            journal.lines.append(JournalLine(
+                line_number=line_number, account_id=account.id, debit=amount, credit=ZERO,
+                description=(invoice.other_fee_description if kind == "other" else f"{label} supplier charge"),
+                business_unit_id=invoice.business_unit_id, department_id=invoice.department_id,
+                location_id=invoice.location_id, supplier_id=invoice.supplier_id))
             line_number += 1
 
         journal.lines.append(JournalLine(

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -38,6 +38,21 @@ class GoodsReceiptCreate(BaseModel):
     warehouse_id: int | None = None
     destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
     notes: str | None = None
+    supplier_invoice_number: str | None = Field(default=None, max_length=100)
+    supplier_document_total: Decimal | None = Field(default=None, gt=0)
+    supplier_invoice_date: date | None = None
+    supplier_invoice_due_date: date | None = None
+    tax_invoice_number: str | None = Field(default=None, max_length=100)
+    tax_invoice_date: date | None = None
+    supplier_document_url: str | None = Field(default=None, max_length=2000)
+    discount_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    shipping_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    admin_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    other_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    other_fee_description: str | None = Field(default=None, max_length=250)
+    shipping_fee_account_id: int | None = None
+    admin_fee_account_id: int | None = None
+    other_fee_account_id: int | None = None
     cost_correction_reason: str | None = Field(default=None, max_length=500)
     items: list[GoodsReceiptItemCreate]
 
@@ -109,8 +124,23 @@ class GoodsReceiptUpdate(BaseModel):
     destination_type: Literal["WAREHOUSE", "DIRECT_USE"] | None = None
     warehouse_id: int | None = None
     notes: str | None = None
+    supplier_invoice_number: str | None = Field(default=None, max_length=100)
+    supplier_invoice_date: date | None = None
+    supplier_invoice_due_date: date | None = None
+    tax_invoice_number: str | None = Field(default=None, max_length=100)
+    tax_invoice_date: date | None = None
+    supplier_document_url: str | None = Field(default=None, max_length=2000)
+    discount_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    shipping_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    admin_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    other_fee_amount: Decimal = Field(default=Decimal('0'), ge=0)
+    other_fee_description: str | None = Field(default=None, max_length=250)
+    shipping_fee_account_id: int | None = None
+    admin_fee_account_id: int | None = None
+    other_fee_account_id: int | None = None
     items: list[GoodsReceiptItemUpdate]
 
+    supplier_document_total: Decimal | None = Field(default=None, gt=0)
     @model_validator(mode="after")
     def validate_update(self):
         if not self.items:

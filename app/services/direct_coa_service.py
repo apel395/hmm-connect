@@ -243,6 +243,18 @@ class DirectCoaService:
         if Decimal(getattr(invoice, "withholding_tax_amount", 0) or 0) > 0:
             check("WITHHOLDING_TAX", self.withholding_tax_payable_account)
 
+        for kind in ("shipping", "admin", "other"):
+            amount = Decimal(getattr(invoice, f"{kind}_fee_amount", 0) or 0)
+            if amount <= 0:
+                continue
+            def validate_fee(kind=kind):
+                account = self.account(getattr(invoice, f"{kind}_fee_account_id", None), f"{kind.title()} fee")
+                if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
+                    raise HTTPException(409, f"{kind.title()} fee requires a debit-balance expense account")
+                if kind == "other" and not (getattr(invoice, "other_fee_description", None) or "").strip():
+                    raise HTTPException(409, "Other supplier charge requires a description")
+            check(f"{kind.upper()}_FEE", validate_fee)
+
         uses_grni = self.receipt_uses_grni(invoice)
         if uses_grni:
             check("GRNI", self.grni_account)

@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, event, func, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, event, func, text
 from sqlalchemy.orm import Mapped, Session as OrmSession, mapped_column, relationship
 
 from app.models.base import Base
@@ -27,6 +27,21 @@ class GoodsReceipt(Base):
     subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    supplier_invoice_number: Mapped[str | None] = mapped_column(String(100))
+    supplier_document_total: Mapped[Decimal | None] = mapped_column(Numeric(18,2))
+    supplier_invoice_date: Mapped[date | None] = mapped_column(Date)
+    supplier_invoice_due_date: Mapped[date | None] = mapped_column(Date)
+    tax_invoice_number: Mapped[str | None] = mapped_column(String(100))
+    tax_invoice_date: Mapped[date | None] = mapped_column(Date)
+    supplier_document_url: Mapped[str | None] = mapped_column(Text)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    shipping_fee_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    admin_fee_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    other_fee_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    other_fee_description: Mapped[str | None] = mapped_column(String(250))
+    shipping_fee_account_id: Mapped[int | None] = mapped_column(ForeignKey('chart_of_accounts.id'))
+    admin_fee_account_id: Mapped[int | None] = mapped_column(ForeignKey('chart_of_accounts.id'))
+    other_fee_account_id: Mapped[int | None] = mapped_column(ForeignKey('chart_of_accounts.id'))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_type: Mapped[str] = mapped_column(String(30), default="LIVE", nullable=False)
     external_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
