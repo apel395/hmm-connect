@@ -139,3 +139,20 @@ def test_tax_snapshot_flush_preserves_supplier_fee_total(stock_db):
     assert receipt.total_amount == Decimal("22.00")
     db.flush()
     assert receipt.total_amount == Decimal("22.00"), "Tax snapshot flush must preserve supplier adjustments"
+
+
+def test_closed_invoice_period_leaves_supplier_draft_without_blocking_receipt(stock_db):
+    data = _setup(stock_db)
+    db, warehouse, user, products, balances, expense, supplier = data
+    products[0].catalog_type = "CATERING"
+    db.commit()
+    receipt = create(data, items=[dict(product_id=products[0].id, quantity=2, unit_cost=10)])
+    receipt.supplier_invoice_number = "VENDOR-OLD-DATE-1030"
+    receipt.supplier_invoice_date = date(2026, 1, 2)
+    receipt.supplier_document_total = Decimal("20.00")
+    db.commit()
+    result = GoodsReceiptService.post(db, receipt_id=receipt.id, user=user)
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert result.status == "POSTED"
+    assert invoice.invoice_date == date(2026, 1, 2)
+    assert invoice.status == "DRAFT"
