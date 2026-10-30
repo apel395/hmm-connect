@@ -844,7 +844,13 @@ class GoodsReceiptService:
                     and DirectCoaService(db).supplier_invoice_readiness(invoice)["is_ready"]
                 )
             if eligible_for_auto_verify:
-                FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
+                try:
+                    FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
+                except HTTPException:
+                    # Do not reject receipt of physical goods because an older
+                    # supplier document belongs to a locked accounting period.
+                    eligible_for_auto_verify = False
+            if eligible_for_auto_verify:
                 invoice_service.verify(invoice, user, commit=False)
                 invoice_service.generate_journal(invoice, user, commit=False)
         ActivityService.log(db=db, user=user, action="POST", entity_type="GOODS_RECEIPT", entity_id=receipt.id, summary=f"Posted {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number, document_status="POSTED", reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT", details={"purchase_order_id": receipt.purchase_order_id, "warehouse_id": receipt.warehouse_id, "destination_type": receipt.destination_type})
