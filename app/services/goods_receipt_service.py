@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies.authorization import has_permission
 from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
+from app.models.chart_of_account import ChartOfAccount
 from app.models.inventory import Inventory
 from app.models.journal_entry import JournalEntry
 from app.models.journal_line import JournalLine
@@ -31,6 +32,9 @@ from app.services.direct_coa_service import DirectCoaService
 ZERO = Decimal("0")
 MONEY = Decimal("0.01")
 STOCK_CUTOFF = date(2026, 1, 1)
+
+
+RECEIVING_BILLING_FIELDS = ('supplier_invoice_number', 'supplier_invoice_date', 'supplier_invoice_due_date', 'tax_invoice_number', 'tax_invoice_date', 'supplier_document_url', 'discount_amount', 'shipping_fee_amount', 'admin_fee_amount', 'other_fee_amount', 'other_fee_description', 'shipping_fee_account_id', 'admin_fee_account_id', 'other_fee_account_id')
 
 
 class GoodsReceiptService:
@@ -209,7 +213,7 @@ class GoodsReceiptService:
         return (quantity * unit_cost * tax_rate / Decimal("100")).quantize(MONEY, rounding=ROUND_HALF_UP)
 
     @classmethod
-    def _recalculate_totals(cls, receipt: GoodsReceipt) -> None:
+    def _recalculate_totals(cls, receipt: GoodsReceipt, db: Session | None = None) -> None:
         subtotal = ZERO
         tax = ZERO
         for item in receipt.items:
@@ -221,7 +225,24 @@ class GoodsReceiptService:
             tax += Decimal(item.tax_amount or 0)
         receipt.subtotal = subtotal.quantize(MONEY, rounding=ROUND_HALF_UP)
         receipt.tax_amount = tax.quantize(MONEY, rounding=ROUND_HALF_UP)
-        receipt.total_amount = (receipt.subtotal + receipt.tax_amount).quantize(MONEY, rounding=ROUND_HALF_UP)
+        discount = Decimal(receipt.discount_amount or 0)
+        if discount < 0 or discount > receipt.subtotal:
+            raise HTTPException(422, "Invoice discount cannot exceed received subtotal")
+        for name in ("shipping", "admin", "other"):
+            amount = Decimal(getattr(receipt, f"{name}_fee_amount") or 0)
+            account_id = getattr(receipt, f"{name}_fee_account_id")
+            if amount < 0:
+                raise HTTPException(422, f"{name.title()} fee cannot be negative")
+            if amount:
+                account = db.get(ChartOfAccount, account_id) if db is not None and account_id else None
+                if not account or not account.is_active or not account.is_posting or account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
+                    raise HTTPException(422, f"{name.title()} fee requires an active debit expense account")
+                if name == "other" and not (receipt.other_fee_description or "").strip():
+                    raise HTTPException(422, "Describe the other supplier charge")
+        fees = sum((Decimal(getattr(receipt, f"{k}_fee_amount") or 0) for k in ("shipping", "admin", "other")), ZERO)
+        receipt.total_amount = (receipt.subtotal + receipt.tax_amount - discount + fees).quantize(MONEY, rounding=ROUND_HALF_UP)
+        if receipt.total_amount <= 0:
+            raise HTTPException(422, "Total supplier invoice must be greater than zero")
 
     @staticmethod
     def _accounting_journal(db: Session, receipt_id: int) -> JournalEntry | None:
@@ -386,6 +407,20 @@ class GoodsReceiptService:
             source_type=data.source_type, external_reference=data.external_reference, receipt_type=data.receipt_type,
             destination_type=data.destination_type or "DIRECT_USE", warehouse_id=data.warehouse_id,
             notes=data.notes, business_unit_id=business_unit_id, location_id=location_id, department_id=department_id,
+            supplier_invoice_number=getattr(data, "supplier_invoice_number", None),
+            supplier_invoice_date=getattr(data, "supplier_invoice_date", None),
+            supplier_invoice_due_date=getattr(data, "supplier_invoice_due_date", None),
+            tax_invoice_number=getattr(data, "tax_invoice_number", None),
+            tax_invoice_date=getattr(data, "tax_invoice_date", None),
+            supplier_document_url=getattr(data, "supplier_document_url", None),
+            discount_amount=getattr(data, "discount_amount", None),
+            shipping_fee_amount=getattr(data, "shipping_fee_amount", None),
+            admin_fee_amount=getattr(data, "admin_fee_amount", None),
+            other_fee_amount=getattr(data, "other_fee_amount", None),
+            other_fee_description=getattr(data, "other_fee_description", None),
+            shipping_fee_account_id=getattr(data, "shipping_fee_account_id", None),
+            admin_fee_account_id=getattr(data, "admin_fee_account_id", None),
+            other_fee_account_id=getattr(data, "other_fee_account_id", None),
         )
 
         seen = set()
@@ -451,7 +486,7 @@ class GoodsReceiptService:
             receipt.warehouse_id = None
         cls._validate_destination(db, receipt, location_id)
         cls._validate_hotel_expenses(receipt)
-        cls._recalculate_totals(receipt)
+        cls._recalculate_totals(receipt, db)
         db.add(receipt)
         db.flush()
         ActivityService.log(
@@ -487,6 +522,8 @@ class GoodsReceiptService:
         if accounting_journal and accounting_journal.status == "POSTED":
             raise HTTPException(409, "Unpost the receiving journal and use the correction/return workflow before changing recorded items")
 
+        for field in RECEIVING_BILLING_FIELDS:
+            setattr(receipt, field, getattr(data, field))
         old_location_id = receipt.location_id
         if data.location_id is not None and data.location_id != receipt.location_id:
             if receipt.purchase_order_id or receipt.market_list_id:
@@ -620,7 +657,7 @@ class GoodsReceiptService:
         cls._validate_destination(db, receipt, receipt.location_id)
         receipt.notes = data.notes
         cls._validate_hotel_expenses(receipt)
-        cls._recalculate_totals(receipt)
+        cls._recalculate_totals(receipt, db)
 
         from app.services.receiving_edit_policy import reopen_approved_receiving
         reopen_approved_receiving(db, receipt, user)
@@ -694,7 +731,7 @@ class GoodsReceiptService:
             if line.product.inventory_treatment == "DIRECT_USE" and line_destination(receipt,line) == "WAREHOUSE" and not getattr(line,"destination_override_reason",None):
                 raise HTTPException(409, "Item Master now uses Direct Use. Edit the receiving line or enter a warehouse exception reason before posting")
         cls._validate_hotel_expenses(receipt)
-        cls._recalculate_totals(receipt)
+        cls._recalculate_totals(receipt, db)
         if Decimal(receipt.total_amount or 0) <= 0:
             raise HTTPException(status_code=409, detail="Goods receipt total must be greater than zero")
         for receipt_item in receipt.items:
@@ -776,7 +813,19 @@ class GoodsReceiptService:
             # The RR is the source document; Finance confirms the supplier's
             # actual invoice details later. Both records commit atomically.
             from app.services.supplier_invoice_service import SupplierInvoiceService
-            SupplierInvoiceService(db).prepare_receipt_draft(receipt, user)
+            invoice_service = SupplierInvoiceService(db)
+            invoice = invoice_service.prepare_receipt_draft(receipt, user)
+            # A supplier's actual document is received with Catering goods.
+            # If its required fields are complete, finalize invoice verification
+            # and prepare a recognized open-period DRAFT accounting journal atomically.
+            # Without real billing details, keep an editable invoice DRAFT.
+            has_vendor_invoice = bool((receipt.supplier_invoice_number or "").strip() and receipt.supplier_invoice_date)
+            has_vat_docs = Decimal(invoice.tax_amount or 0) <= ZERO or bool(
+                (receipt.tax_invoice_number or "").strip() and receipt.tax_invoice_date)
+            if has_vendor_invoice and has_vat_docs:
+                FiscalPeriodService.validate_posting_date(db, invoice.invoice_date, system_closing=True)
+                invoice_service.verify(invoice, user, commit=False)
+                invoice_service.generate_journal(invoice, user, commit=False)
         ActivityService.log(db=db, user=user, action="POST", entity_type="GOODS_RECEIPT", entity_id=receipt.id, summary=f"Posted {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number, document_status="POSTED", reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT", details={"purchase_order_id": receipt.purchase_order_id, "warehouse_id": receipt.warehouse_id, "destination_type": receipt.destination_type})
         db.commit(); db.refresh(receipt); return receipt
 
@@ -813,7 +862,7 @@ class GoodsReceiptService:
             item.unit_cost = new_cost
             changes.append({"item_id": item.id, "product_id": item.product_id, "old_unit_cost": str(old_cost), "new_unit_cost": str(new_cost)})
         if not changes: raise HTTPException(status_code=400, detail="No receiving costs changed")
-        cls._recalculate_totals(receipt)
+        cls._recalculate_totals(receipt, db)
         if receipt.status == "POSTED":
             cls._sync_accounting_journal(db, receipt=receipt, user=user)
         if provisional_invoice:
