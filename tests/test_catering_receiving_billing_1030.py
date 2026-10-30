@@ -49,7 +49,13 @@ def test_complete_receiving_documents_auto_verify_invoice_and_charge_once(stock_
     posted = GoodsReceiptService.post(db,receipt_id=receipt.id,user=user)
     invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
     assert posted.status == "POSTED"
-    assert invoice.status == "VERIFIED"
+    assert invoice.status == "VERIFIED", (
+        f"receipt={posted.receipt_number} source={posted.source_type!r}"
+        f" doc_ref={posted.supplier_invoice_number!r} doc_date={posted.supplier_invoice_date!r}"
+        f" document_total={posted.supplier_document_total!r} receipt_total={posted.total_amount!r}"
+        f" invoice_total={invoice.total_amount!r} invoice_ref={invoice.supplier_invoice_number!r}"
+        f" invoice_date={invoice.invoice_date!r} invoice_status={invoice.status!r}"
+    )
     assert invoice.supplier_invoice_number == "VENDOR-CAT-1030"
     assert invoice.total_amount == invoice.subtotal + invoice.tax_amount - 1 + 3 + 2 + 1
     journal = db.query(JournalEntry).filter_by(reference_type="SUPPLIER_INVOICE",reference_id=invoice.id).one()
