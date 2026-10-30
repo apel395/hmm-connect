@@ -147,7 +147,14 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
         elif isinstance(header, GoodsReceipt):
             header.subtotal = sum((Decimal(i.quantity or 0) * Decimal(i.unit_cost or 0) for i in header.items), ZERO)
             header.tax_amount = sum((Decimal(i.tax_amount or 0) for i in header.items), ZERO)
-            header.total_amount = header.subtotal + header.tax_amount
+            # Keep the model's flush-time tax snapshot authoritative without
+            # discarding supplier document charges captured at receiving.
+            fees = sum((Decimal(getattr(header, f"{kind}_fee_amount", 0) or 0)
+                        for kind in ("shipping", "admin", "other")), ZERO)
+            header.total_amount = (
+                header.subtotal + header.tax_amount
+                - Decimal(getattr(header, "discount_amount", 0) or 0) + fees
+            )
         elif isinstance(header, SupplierInvoice):
             header.subtotal = sum((Decimal(i.quantity or 0) * Decimal(i.unit_price or 0) for i in header.lines), ZERO)
             # Historical imports can carry authoritative invoice-level PPN from
@@ -160,5 +167,7 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
                 - Decimal(header.discount_amount or 0)
                 + Decimal(header.tax_amount or 0)
                 - Decimal(header.withholding_tax_amount or 0)
+                + sum((Decimal(getattr(header, f"{kind}_fee_amount", 0) or 0)
+                       for kind in ("shipping", "admin", "other")), ZERO)
             )
 
