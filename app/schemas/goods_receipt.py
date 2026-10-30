@@ -140,6 +140,7 @@ class GoodsReceiptUpdate(BaseModel):
     other_fee_account_id: int | None = None
     items: list[GoodsReceiptItemUpdate]
 
+    supplier_document_total: Decimal | None = Field(default=None, gt=0)
     @model_validator(mode="after")
     def validate_update(self):
         if not self.items:
