@@ -16,6 +16,8 @@ import { listLocations } from "@/modules/admin/organization/api";
 import { useUpdateGoodsReceipt } from "../hooks/useGoodsReceipts";
 import type { GoodsReceipt } from "../types";
 import ReceivingDestinationField from "./ReceivingDestinationField";
+import ReceivingBillingFields from "./ReceivingBillingFields";
+import { emptyReceivingBilling, fromReceiptBilling, validateReceivingBilling } from "../billing";
 import { destinationFor, destinationError } from "../destination";
 
 function localDateTime(value: string) {
@@ -33,6 +35,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
   const [warehouseId,setWarehouseId]=useState<number|null>(null);
   const [locationId,setLocationId]=useState<number|null>(null);
   const [notes,setNotes]=useState("");
+  const [billing,setBilling]=useState(emptyReceivingBilling);
   const [items,setItems]=useState<any[]>([]);
   const [productRows,setProductRows]=useState<ProductComboboxOption[]>([]);
   const nextNewId=useRef(0);
@@ -50,6 +53,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     setWarehouseId(receipt.warehouse_id ?? null);
     setLocationId(receipt.location_id ?? null);
     setNotes(receipt.notes ?? "");
+    setBilling(fromReceiptBilling(receipt));
     setCatalogType("ALL");
     setProductRows(receipt.items.map(item=>({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom??undefined,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,purchase_account_id:item.purchase_account_id,is_taxable:item.is_taxable,tax_rate:item.tax_rate})));
     setItems(receipt.items.map(item=>({
@@ -78,6 +82,8 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     if(routingIssue)return toast.error(routingIssue);
     if(items.some(item=>destinationFor(item) === "DIRECT_USE" && item.catalog_type === "HOTEL" && item.inventory_treatment !== "FIXED_ASSET" && !item.expense_account_id))return toast.error("Choose the department expense destination for each Hotel item");
     if(items.some(item=>item.quantity<=0||item.unit_cost<=0))return toast.error("Quantity and unit cost must be greater than zero");
+    const billingIssue=validateReceivingBilling(billing,subtotal);
+    if(billingIssue)return toast.error(billingIssue);
     try{
       await update.mutateAsync({
         id:receipt.id,
@@ -86,7 +92,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           ...(directReceipt?{location_id:locationId}:{}),
           external_reference:reference.trim()||null,
           warehouse_id:hasWarehouse?warehouseId:null,
-          notes:notes.trim()||null,
+          notes:notes.trim()||null,...billing,
           items:items.map(item=>({...(item.item_id?{item_id:item.item_id}:{product_id:item.product_id}),destination_type:item.destination_type ?? null,destination_override_reason:item.destination_override_reason || null,expense_account_id:destinationFor(item) === "DIRECT_USE" ? item.expense_account_id : null,quantity:item.quantity,unit_cost:item.unit_cost,is_taxable:item.is_taxable,tax_rate:item.is_taxable?item.tax_rate:0})),
         },
       });
@@ -143,7 +149,8 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
             <div className="flex justify-between gap-8 border-t pt-2 text-sm"><span>Grand Total</span><strong>{money(subtotal+tax)}</strong></div>
           </div>
         </div>
-        <label className="block text-xs font-medium text-slate-700">Notes<textarea className="mt-1 min-h-20 w-full rounded-md border p-2 text-[13px]" value={notes} onChange={e=>setNotes(e.target.value)}/></label>
+        <ReceivingBillingFields value={billing} onChange={setBilling} subtotal={subtotal} tax={tax} open={open}/>
+         <label className="block text-xs font-medium text-slate-700">Notes<textarea className="mt-1 min-h-20 w-full rounded-md border p-2 text-[13px]" value={notes} onChange={e=>setNotes(e.target.value)}/></label>
       </DialogBody>
       <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={update.isPending} onClick={save}>{receipt.approval_status==="APPROVED"?"Save & Restart Approval":"Save Changes"}</Button></DialogFooter>
     </DialogContent>
