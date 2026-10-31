@@ -21,14 +21,14 @@ def receive(stock_db, tax_rate=0, master_rate=11):
     return db,user,supplier,p,row
 
 
-def test_receiving_uses_master_tax_even_when_payload_says_zero(stock_db):
+def test_receiving_accepts_zero_tax_despite_master_rate(stock_db):
     db,user,supplier,p,row=receive(stock_db)
-    assert row.items[0].is_taxable is True
-    assert row.tax_amount==Decimal('1.10') and row.total_amount==Decimal('11.10')
+    assert row.items[0].is_taxable is False
+    assert row.tax_amount==0 and row.total_amount==10
     assert p.tax_category=='REVIEW_REQUIRED' and p.is_taxable is True and p.tax_rate==11
 
 
-def test_receiving_master_tax_matches_payload(stock_db):
+def test_receiving_saves_entered_tax(stock_db):
     db,user,supplier,p,row=receive(stock_db,11)
     assert row.items[0].is_taxable is True
     assert row.tax_amount==Decimal('1.10') and row.total_amount==Decimal('11.10')
@@ -54,3 +54,4 @@ def test_ap_tax_can_differ_from_receiving_but_non_pkp_still_rejected(stock_db):
     assert verified.status=='VERIFIED'
     assert verified.tax_amount==Decimal('1.10') and verified.total_amount==Decimal('11.10')
     assert receipt.tax_amount==0 and p.tax_category=='REVIEW_REQUIRED'
+
