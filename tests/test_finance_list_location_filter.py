@@ -28,6 +28,12 @@ class Query:
     def options(self, *loaders):
         return self
 
+    def with_entities(self, *entities):
+        return self
+
+    def distinct(self):
+        return self
+
     def order_by(self, *expressions):
         return self
 
