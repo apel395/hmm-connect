@@ -1,3 +1,4 @@
+from app.services.document_print_tracking import print_context
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from app.models.market_list import MarketList, MarketListItem
@@ -582,7 +583,7 @@ def print_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(r
     remaining = remaining_items(receipt.purchase_order) if receipt.purchase_order else []
     payload["is_partial_receipt"] = bool(receipt.purchase_order and remaining)
     payload["remaining_items"] = remaining
-    return {**payload, "document_type": "Receiving Report", **print_metadata(user)}
+    return {**payload, "document_type": "Receiving Report", **print_metadata(user), **print_context(db,user,"GOODS_RECEIPT",receipt_id)}
 
 
 @router.post("/{receipt_id}/unpost")
