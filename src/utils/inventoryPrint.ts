@@ -7,6 +7,7 @@ export type PrintGroup = {
   footer?: PrintCell[];
 };
 export type InventoryPrintReport = {
+  printTracking?: {kind: string; id: number};
   title: string;
   context: string;
   columns: PrintColumn[];

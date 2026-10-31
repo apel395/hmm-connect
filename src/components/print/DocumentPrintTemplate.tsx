@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import api from "@/api/client";
+import { attachNativePrintTracking, createPrintSession, stampText, type PrintTarget, type PrintStamp, type PrintWindow } from "./printTracking";
 import Button from "@/components/ui/Button";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
@@ -32,6 +32,7 @@ export interface PrintSignature {
 
 interface Props<Row> {
   title: string;
+  printTarget?: PrintTarget;
   showLogo?: boolean;
   documentNumber?: ReactNode;
   documentDate?: ReactNode;
@@ -59,6 +60,7 @@ const timestamp = (value?: string | null) => {
 
 export default function DocumentPrintTemplate<Row>({
   title,
+  printTarget,
   showLogo = true,
   documentNumber,
   documentDate,
@@ -75,32 +77,52 @@ export default function DocumentPrintTemplate<Row>({
   footer,
 }: Props<Row>) {
   const [printing,setPrinting]=useState(false);
-  const [tracking,setTracking]=useState<{print_count:number;reprint_number:number;correction_count:number}|null>(null);
+  const printingRef=useRef(false);
+  const articleRef=useRef<HTMLElement>(null);
+  const [tracking,setTracking]=useState<PrintStamp|null>(null);
+  const trackingKind=printTarget?.kind;
+  const trackingId=printTarget?.id;
+  const trackingRevision=printTarget?.revision;
   useEffect(()=>{
-    const match=window.location.pathname.match(/\/(purchase-requisitions|market-lists|purchase-orders|receiving|store-requests|stock-opnames)\/(\d+)\/print/);
-    if(!match)return;
-    const kinds:Record<string,string>={"purchase-requisitions":"PURCHASE_REQUISITION","market-lists":"MARKET_LIST","purchase-orders":"PURCHASE_ORDER","receiving":"GOODS_RECEIPT","store-requests":"STORE_REQUEST","stock-opnames":"STOCK_OPNAME"};
-    const target=window as Window & {mmhPreparePrint?:()=>Promise<void>};
-    const prepare=async()=>{
-      const {data}=await api.post(`/document-events/${kinds[match[1]]}/${match[2]}/print`,{request_id:crypto.randomUUID()});
-      flushSync(()=>setTracking(data));
+    const match=window.location.pathname?.match(/\/(purchase-requisitions|market-lists|purchase-orders|receiving|goods-receipts|store-requests|stock-opnames)\/(\d+)\/print/);
+    const kinds:Record<string,string>={"purchase-requisitions":"PURCHASE_REQUISITION","market-lists":"MARKET_LIST","purchase-orders":"PURCHASE_ORDER","receiving":"GOODS_RECEIPT","goods-receipts":"GOODS_RECEIPT","store-requests":"STORE_REQUEST","stock-opnames":"STOCK_OPNAME"};
+    const context=trackingKind&&trackingId!=null?{kind:trackingKind,id:trackingId,revision:trackingRevision}:(match?{kind:kinds[match[1]],id:Number(match[2])}:undefined);
+    if(!context)return;
+    const session=createPrintSession(context);
+    const target=window as PrintWindow;
+    const issue=async()=>{const stamp=await session.issue("PRINT_DIALOG");flushSync(()=>setTracking(stamp));};
+    const native=attachNativePrintTracking(window,issue,()=>toast.error("Print attempt could not be recorded. Refresh and try again."));
+    const prepare=async()=>{await issue();native.prepared();};
+    const pdf=async()=>{
+      if(printingRef.current||!articleRef.current)return;
+      printingRef.current=true;setPrinting(true);
+      try {
+        const {downloadDocumentPdf}=await import("./documentPdf");
+        const stamp=await session.issue("PDF_DOWNLOAD");flushSync(()=>setTracking(stamp));
+        if(!articleRef.current)throw new Error("Preview closed");
+        await downloadDocumentPdf(articleRef.current,String(documentNumber??"document"));
+      } finally {printingRef.current=false;setPrinting(false);}
     };
     target.mmhPreparePrint=prepare;
-    return()=>{if(target.mmhPreparePrint===prepare)delete target.mmhPreparePrint;};
-  },[documentNumber]);
+    if(trackingKind)target.mmhDownloadPdf=pdf;
+    return()=>{native.dispose();if(target.mmhPreparePrint===prepare)delete target.mmhPreparePrint;if(target.mmhDownloadPdf===pdf)delete target.mmhDownloadPdf;};
+  },[documentNumber,trackingKind,trackingId,trackingRevision]);
   const printCopy=async()=>{
-    setPrinting(true);
-    try {
-      await (window as Window & {mmhPreparePrint?:()=>Promise<void>}).mmhPreparePrint?.();
-      window.print();
-    } catch {toast.error("Unable to issue print copy. Try again.");}
-    finally {setPrinting(false);}
+    if(printingRef.current)return;
+    printingRef.current=true;setPrinting(true);
+    try {await (window as PrintWindow).mmhPreparePrint?.();window.print();}
+    catch {toast.error("Unable to record print attempt. Refresh the preview if the document changed.");}
+    finally {printingRef.current=false;setPrinting(false);}
+  };
+  const downloadPdf=async()=>{
+    try {await (window as PrintWindow).mmhDownloadPdf?.();}
+    catch {toast.error("Unable to prepare PDF. Refresh the preview if the document changed.");}
   };
   const visibleAuthenticity = authenticity.filter((field) => field.value !== undefined && field.value !== null && field.value !== "");
-  return <article className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
+  return <article ref={articleRef} data-print-ready="true" className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
     <style>{`@page{size:A4 portrait;margin:10mm}@media print{body{background:#fff!important}.print-document{max-width:none!important;min-height:auto!important;padding:0!important}.print-document thead{display:table-header-group}.print-document tr{break-inside:avoid;page-break-inside:avoid}.avoid-break{break-inside:avoid;page-break-inside:avoid}}`}</style>
-    <div className="mb-2 flex justify-end print:hidden"><Button variant="outline" disabled={printing} aria-label="Print document" onClick={printCopy}><Printer size={16}/></Button></div>
-    {tracking && <div className="mb-2 text-right text-xs font-semibold">{`Print #${tracking.print_count}`}{tracking.reprint_number>0?" · REPRINT":""}{tracking.correction_count>0?` · CORRECTION ${tracking.correction_count}`:""}</div>}
+    <div className="mb-2 flex justify-end gap-2 print:hidden">{printTarget&&<Button variant="outline" disabled={printing} onClick={downloadPdf}>Download PDF</Button>}<Button variant="outline" disabled={printing} aria-label="Print document" onClick={printCopy}><Printer size={16}/></Button></div>
+    {tracking && <div data-print-stamp className="mb-2 text-right text-xs font-semibold">{stampText(tracking)}</div>}
     <header className="grid grid-cols-[1.35fr_1fr] items-center gap-8 border-b border-black pb-4">
       <div className="flex items-center gap-4">
         {showLogo && <img src="/logoprint.jpeg" alt="PT. Mutiara Merdeka Hotel" className="h-16 w-auto shrink-0 object-contain" />}
@@ -118,7 +140,7 @@ export default function DocumentPrintTemplate<Row>({
       </dl>
     </header>
 
-    {!!fields.length && <section className="mt-3 grid grid-cols-2 gap-x-10 gap-y-1.5">
+    {!!fields.length && <section data-print-fields className="mt-3 grid grid-cols-2 gap-x-10 gap-y-1.5">
       {fields.filter((field) => field.value !== undefined && field.value !== null && field.value !== "").map((field, index) => <div key={`${field.label}-${index}`} className="grid grid-cols-[120px_1fr] gap-2"><span className="font-semibold">{field.label}:</span><span>{field.value}</span></div>)}
     </section>}
 
@@ -129,15 +151,15 @@ export default function DocumentPrintTemplate<Row>({
       <tbody>{rows.map((row, rowIndex) => <tr key={rowKey ? rowKey(row, rowIndex) : rowIndex}>{columns.map((column, columnIndex) => <td key={columnIndex} className={`border-b border-slate-300 px-2 py-1 align-top ${alignClass[column.align ?? "left"]}`}>{column.render(row, rowIndex)}</td>)}</tr>)}</tbody>
     </table>
 
-    {!!totals.length && <div className="ml-auto mt-3 w-[48%]">
+    {!!totals.length && <div data-print-after-table className="ml-auto mt-3 w-[48%]">
       {totals.map((total, index) => <div key={`${total.label}-${index}`} className={`grid grid-cols-[1fr_auto] gap-5 border-b px-2 py-1.5 ${total.emphasis ? "border-black text-[14px] font-bold" : "border-slate-300"}`}><span className="text-right">{total.label}</span><span className="min-w-28 text-right tabular-nums">{total.value}</span></div>)}
     </div>}
 
-    {extraAfterTable}
+    <div data-print-after-table>{extraAfterTable}</div>
 
-    <section className="avoid-break mt-4"><div className="font-semibold">NOTES:</div><div className="mt-1 min-h-6 border-b border-black py-2">{notes || "—"}</div></section>
+    <section data-print-after-table className="avoid-break mt-4"><div className="font-semibold">NOTES:</div><div className="mt-1 min-h-6 border-b border-black py-2">{notes || "—"}</div></section>
 
-    {!!signatures?.length && <section className={`avoid-break mt-4 grid gap-4 text-center ${signatures.length >= 4 ? "grid-cols-4" : signatures.length === 3 ? "grid-cols-3" : signatures.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+    {!!signatures?.length && <section data-print-signatures className={`avoid-break mt-4 grid gap-4 text-center ${signatures.length >= 4 ? "grid-cols-4" : signatures.length === 3 ? "grid-cols-3" : signatures.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
       {signatures.map((signature, index) => (
         <div key={`${signature.label}-${index}`}>
           <div className="text-[10px] font-semibold">{signature.label}</div>

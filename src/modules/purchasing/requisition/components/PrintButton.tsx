@@ -1,21 +1,2 @@
-import Button from "@/components/ui/Button";
-
-export default function PrintButton(){
-
-return(
-
-<Button
-
-variant="outline"
-
-onClick={()=>window.print()}
-
->
-
-Print
-
-</Button>
-
-);
-
-}
+import PurchasingPagePrintButton from "@/components/print/PurchasingPagePrintButton";
+export default function PrintButton(){return <PurchasingPagePrintButton kind="PURCHASE_REQUISITION_LIST"/>;}

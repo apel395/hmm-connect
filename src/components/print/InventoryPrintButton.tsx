@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { attachNativePrintTracking, createPrintSession, printSnapshot, stampText } from "./printTracking";
+import { useEffect, useRef, useState } from "react";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import Button from "@/components/ui/Button";
@@ -27,20 +28,23 @@ export default function InventoryPrintButton({
   compact?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
+  const [printing,setPrinting]=useState(false);
+  const tracking=useRef<ReturnType<typeof createPrintSession> | undefined>(undefined);
+  const native=useRef<ReturnType<typeof attachNativePrintTracking> | undefined>(undefined);
+  const printingRef=useRef(false);
   const [html, setHtml] = useState("");
   const [ready, setReady] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(()=>()=>native.current?.dispose(),[]);
   const user = useAuth((state) => state.user);
   const prepare = async () => {
     setBusy(true);
     setReady(false);
     try {
-      setHtml(
-        renderInventoryPrint(
-          await loadReport(),
-          user?.full_name || user?.username || "User",
-        ),
-      );
+      const report=await loadReport();
+      const documentHtml=renderInventoryPrint(report,user?.full_name||user?.username||"User");
+      tracking.current=report.printTracking?createPrintSession(report.printTracking,await printSnapshot(documentHtml)):undefined;
+      setHtml(documentHtml);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -51,12 +55,19 @@ export default function InventoryPrintButton({
       setBusy(false);
     }
   };
+  const prepareTrackedPrint=async()=>{
+    if(!tracking.current)return;
+    const stamp=await tracking.current.issue("PRINT_DIALOG");
+    const doc=frame.current?.contentDocument;
+    if(doc){let node=doc.querySelector<HTMLElement>("[data-print-stamp]");if(!node){node=doc.createElement("div");node.dataset.printStamp="true";node.style.fontSize="9px";doc.body.prepend(node);}node.textContent=stampText(stamp);}
+  };
   const print = async () => {
     const target = frame.current?.contentWindow;
-    if (!ready || !target) return;
-    await target.document.fonts.ready;
-    target.focus();
-    target.print();
+    if (!ready || !target || printingRef.current) return;
+    printingRef.current=true;setPrinting(true);
+    try {await target.document.fonts.ready;await prepareTrackedPrint();native.current?.prepared();target.focus();target.print();}
+    catch {toast.error("Unable to record print attempt. Try again.");}
+    finally {printingRef.current=false;setPrinting(false);}
   };
   return (
     <>
@@ -75,7 +86,7 @@ export default function InventoryPrintButton({
         open={Boolean(html)}
         onOpenChange={(open) => {
           if (!open) {
-            setHtml("");
+            native.current?.dispose();setHtml("");
             setReady(false);
           }
         }}
@@ -90,7 +101,7 @@ export default function InventoryPrintButton({
               srcDoc={html}
               sandbox="allow-same-origin allow-modals"
               title={`Complete filtered ${reportLabel.toLowerCase()} report`}
-              onLoad={() => setReady(true)}
+              onLoad={() => {setReady(true);native.current?.dispose();const target=frame.current?.contentWindow;if(target&&tracking.current)native.current=attachNativePrintTracking(target,prepareTrackedPrint,()=>toast.error("Print attempt could not be recorded"));}}
               className="h-[72vh] w-full border bg-white"
             />
           </DialogBody>
@@ -98,7 +109,7 @@ export default function InventoryPrintButton({
             <Button variant="outline" onClick={() => setHtml("")}>
               Close
             </Button>
-            <Button disabled={!ready} onClick={print}>
+            <Button disabled={!ready||printing} onClick={print}>
               <Printer size={16} /><span className="sr-only">Print</span>
             </Button>
           </DialogFooter>
