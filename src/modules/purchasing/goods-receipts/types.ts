@@ -51,6 +51,7 @@ export interface GoodsReceiptItem {
   destination_type?: ReceivingDestination | null;
   destination_override_reason?: string | null;
   purchase_account_id?: number | null;
+  master_is_taxable?: boolean; master_tax_rate?: number;
   quantity: number; unit_cost: number; line_subtotal?: number; is_taxable?: boolean; tax_rate?: number; tax_amount?: number; line_total?: number;
 }
 

@@ -104,7 +104,7 @@ export default function DirectReceiveDialog({
     setBusinessUnitId(source.business_unit_id);
     setLocationId(source.location_id);
     setDepartmentId(source.department_id);
-    setLines(source.items.map((item: any) => ({market_list_item_id:item.market_list_item_id,product_id:item.product_id,quantity:Number(item.remaining_quantity),unit_cost:Number(item.unit_cost),expense_account_id:item.purchase_account_id,destination_type:null})));
+    setLines(source.items.map((item: any) => ({market_list_item_id:item.market_list_item_id,product_id:item.product_id,quantity:Number(item.remaining_quantity),unit_cost:Number(item.unit_cost),expense_account_id:item.purchase_account_id,tax_rate:item.is_taxable?Number(item.tax_rate??0):0,destination_type:null})));
     setProductRows(source.items.map((item: any) => ({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,purchase_account_id:item.purchase_account_id,is_taxable:item.is_taxable,tax_rate:item.tax_rate})));
     setWarehouseId(undefined);
   }, [marketListMode, marketListId, marketLists.data]);
@@ -311,7 +311,7 @@ export default function DirectReceiveDialog({
                           onChange={(id) =>
                             patch(index, { product_id: id || 0 })
                           }
-                          onSelect={product => { rememberProduct(product); patch(index, {product_id:product.id, destination_type:null, destination_override_reason:null, expense_account_id:product.purchase_account_id ?? null, unit_cost:Number(product.reference_cost ?? product.last_purchase_price ?? 0)}); }}
+                          onSelect={product => { rememberProduct(product); patch(index, {product_id:product.id, destination_type:null, destination_override_reason:null, expense_account_id:product.purchase_account_id ?? null, unit_cost:Number(product.reference_cost ?? product.last_purchase_price ?? 0),tax_rate:product.is_taxable?Number(product.tax_rate??0):0}); }}
                         />
 
                       </td>
@@ -335,7 +335,7 @@ export default function DirectReceiveDialog({
                         {destinationFor(routingFor(line)) === "DIRECT_USE" && product?.inventory_treatment !== "FIXED_ASSET" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" className="w-full rounded border p-1" value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}
                       </td>
                       <td>
-                        <input aria-label={`Provisional PPN rate for item ${index+1}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={line.tax_rate??0} onChange={event=>patch(index,{tax_rate:Number(event.target.value)})}/>
+                        <span title="From Item Master" className="inline-block w-14 text-right tabular-nums">{Number(line.tax_rate??0)}%</span>
 
                       </td>
                       <td className="text-right">{money(lineTax)}</td>
