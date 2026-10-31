@@ -13,7 +13,7 @@
     "test:inventory-print": "node scripts/test-inventory-print.mjs",
     "test:workspace": "node scripts/test-workspace-back.cjs",
     "test:store-request": "node scripts/test-store-request-availability.cjs",
-    "test:pos-operations": "node scripts/test-pos-outlet-operations.cjs && node scripts/test-pos-outlet-context.cjs && node scripts/test-pos-outlet-setup.cjs && node scripts/test-master-dropdowns.cjs && node scripts/test-receiving-edit.cjs && node scripts/test-receiving-edit-action.cjs"
+    "test:pos-operations": "node scripts/test-pos-outlet-operations.cjs && node scripts/test-pos-outlet-context.cjs && node scripts/test-pos-outlet-setup.cjs && node scripts/test-master-dropdowns.cjs && node scripts/test-receiving-edit.cjs && node scripts/test-receiving-edit-action.cjs && node scripts/test-receiving-optional-billing.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
