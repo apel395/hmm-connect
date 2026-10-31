@@ -207,6 +207,15 @@ class GoodsReceiptService:
         )
 
     @staticmethod
+    def _master_tax(product):
+        if product is None:
+            raise HTTPException(422, "Receiving item has no Item Master")
+        rate = Decimal(product.tax_rate or 0) if product.is_taxable else ZERO
+        if rate < 0 or rate > 100:
+            raise HTTPException(422, f"Invalid Item Master PPN for {product.code}")
+        return bool(product.is_taxable) and rate > 0, rate
+
+    @staticmethod
     def _tax_amount(quantity: Decimal, unit_cost: Decimal, is_taxable: bool, tax_rate: Decimal) -> Decimal:
         if not is_taxable or tax_rate <= 0:
             return ZERO
@@ -449,7 +458,7 @@ class GoodsReceiptService:
                 receipt.items.append(GoodsReceiptItem(
                     purchase_order_item_id=po_item.id, product_id=po_item.product_id, quantity=incoming.quantity, unit_cost=unit_cost, expense_account_id=incoming.expense_account_id,
                     destination_type=incoming.destination_type, destination_override_reason=incoming.destination_override_reason,
-                    is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
+                    is_taxable=cls._master_tax(db.get(Product, po_item.product_id))[0], tax_rate=cls._master_tax(db.get(Product, po_item.product_id))[1],
                 ))
             else:
                 # A supplier may deliver the same product in separate batches at
@@ -465,7 +474,7 @@ class GoodsReceiptService:
                 receipt.items.append(GoodsReceiptItem(
                     purchase_order_item_id=None, market_list_item_id=incoming.market_list_item_id if market else None, product_id=product.id, quantity=incoming.quantity, unit_cost=unit_cost, expense_account_id=incoming.expense_account_id,
                     destination_type=incoming.destination_type, destination_override_reason=incoming.destination_override_reason,
-                    is_taxable=bool(incoming.is_taxable), tax_rate=Decimal(incoming.tax_rate or 0),
+                    is_taxable=cls._master_tax(product)[0], tax_rate=cls._master_tax(product)[1],
                 ))
 
         resolver = DirectCoaService(db)
@@ -589,8 +598,8 @@ class GoodsReceiptService:
                     destination_type=destination,
                     destination_override_reason=override_reason,
                     expense_account_id=expense_account_id,
-                    is_taxable=bool(incoming.is_taxable),
-                    tax_rate=Decimal(incoming.tax_rate or 0) if incoming.is_taxable else ZERO,
+                    is_taxable=cls._master_tax(product)[0],
+                    tax_rate=cls._master_tax(product)[1],
                 )
                 receipt.items.append(new_line)
                 changes.append({"product_id": product.id, "action": "ADD", "quantity": str(new_line.quantity), "unit_cost": str(new_line.unit_cost)})
@@ -637,8 +646,7 @@ class GoodsReceiptService:
                 cls._receiving_debit_account(DirectCoaService(db), receipt, item.product, item.expense_account_id, item.destination_type)
             item.quantity = quantity
             item.unit_cost = unit_cost
-            item.is_taxable = bool(incoming.is_taxable)
-            item.tax_rate = Decimal(incoming.tax_rate or 0) if incoming.is_taxable else ZERO
+            item.is_taxable, item.tax_rate = cls._master_tax(item.product)
             new = {
                 "quantity": str(item.quantity),
                 "unit_cost": str(item.unit_cost),

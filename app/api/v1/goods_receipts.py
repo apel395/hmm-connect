@@ -188,6 +188,8 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
                 "quantity": item.quantity,
                 "unit_cost": item.unit_cost,
                 "line_subtotal": Decimal(item.quantity) * Decimal(item.unit_cost),
+                "master_is_taxable": bool(item.product.is_taxable) if item.product else False,
+                "master_tax_rate": item.product.tax_rate if item.product and item.product.is_taxable else 0,
                 "is_taxable": item.is_taxable,
                 "tax_rate": item.tax_rate,
                 "tax_amount": item.tax_amount,
@@ -262,8 +264,8 @@ def remaining_items(purchase_order: PurchaseOrder):
             "received_quantity": item.received_quantity,
             "remaining_quantity": Decimal(item.quantity) - Decimal(item.received_quantity or 0),
             "unit_cost": item.unit_price,
-            "is_taxable": item.is_taxable,
-            "tax_rate": item.tax_rate,
+            "is_taxable": bool(item.product.is_taxable) if item.product else False,
+            "tax_rate": item.product.tax_rate if item.product and item.product.is_taxable else 0,
         }
         for item in purchase_order.items
         if Decimal(item.quantity) > Decimal(item.received_quantity or 0)
@@ -418,6 +420,16 @@ def list_receivable_purchase_orders(date_from: date | None = None, date_to: date
     ]
 
 
+@router.get("/charge-accounts")
+def receiving_charge_accounts(db: Session = Depends(get_db), user=Depends(receiving_view_user)):
+    from app.models.accounting_setting import AccountingSetting
+    from app.models.chart_of_account import ChartOfAccount
+    setting = db.query(AccountingSetting).filter_by(setting_key="PURCHASE_DISCOUNT_ACCOUNT").first()
+    account = db.get(ChartOfAccount, setting.account_id) if setting and setting.account_id else None
+    return {"discount_account": {"id": account.id, "code": account.account_number, "name": account.account_name}
+            if account and account.is_active and account.is_posting and account.normal_balance == "CREDIT" and account.account_type in {"EXPENSE", "INCOME"} else None}
+
+
 @router.get("/receivable-market-lists")
 def receivable_market_lists(db: Session = Depends(get_db), user=Depends(receiving_create_user)):
     lists = apply_location_scope(db.query(MarketList), MarketList, user).filter(MarketList.status.in_(['APPROVED','CONVERTED'])).options(selectinload(MarketList.items).selectinload(MarketListItem.product)).order_by(MarketList.request_date,MarketList.id).all()
@@ -434,7 +446,7 @@ def receivable_market_lists(db: Session = Depends(get_db), user=Depends(receivin
                 product_code=product.code,product_name=product.name,uom=product.uom,
                 quantity=remaining,remaining_quantity=remaining,unit_cost=item.estimated_price,
                 catalog_type=product.catalog_type, inventory_treatment=product.inventory_treatment, purchase_account_id=product.purchase_account_id,
-                is_taxable=item.is_taxable,tax_rate=item.tax_rate))
+                is_taxable=bool(product.is_taxable),tax_rate=product.tax_rate if product.is_taxable else 0))
         if items:
             result.append(dict(id=market.id,ml_number=market.ml_number,request_date=market.request_date,
                 business_unit_id=market.business_unit_id,location_id=market.location_id,

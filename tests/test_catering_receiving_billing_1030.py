@@ -112,6 +112,8 @@ def test_non_pkp_vat_invoice_does_not_block_physical_receiving(stock_db):
     db, warehouse, user, products, balances, expense, supplier = data
     products[0].catalog_type = "CATERING"
     supplier.is_pkp = False
+    products[0].is_taxable = True
+    products[0].tax_rate = Decimal("11")
     db.commit()
     receipt = create(data, items=[dict(product_id=products[0].id, quantity=2,
                                      unit_cost=10, is_taxable=True, tax_rate=11)])
