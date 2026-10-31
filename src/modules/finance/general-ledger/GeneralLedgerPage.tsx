@@ -1,3 +1,4 @@
+import { unbalancedJournalPath } from "../journals/journalFilters";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { useQuery } from "@tanstack/react-query";
@@ -171,7 +172,7 @@ export default function GeneralLedgerPage() {
       </div>
       </div>}
     </Card>
-    <Card className="workspace-summary p-2"><div className="workspace-summary-fields"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit)}</small></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.credit)}</small></div><div><small>Difference</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit-filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit-pageTotals.credit)}</small></div></div></Card>
+    <Card className="workspace-summary p-2"><div className="workspace-summary-fields"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit)}</small></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.credit)}</small></div><div><small>Difference</small><div className="font-bold tabular-nums">{filteredTotals ? <Link to={unbalancedJournalPath(filters)} title="Find unbalanced posted journals in this period and scope" className="text-emerald-700 hover:underline">{amount(filteredTotals.debit-filteredTotals.credit)}</Link> : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit-pageTotals.credit)}</small></div></div></Card>
     {summary.data && <Card className="workspace-summary p-2"><div className="workspace-summary-fields"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
     </div>
     <Card className="workspace-data">
@@ -197,3 +198,4 @@ export default function GeneralLedgerPage() {
     </Card>
   </DataWorkspace>;
 }
+

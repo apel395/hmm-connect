@@ -33,6 +33,13 @@ export default function JournalRegisterPrintPage() {
       location_id: searchParams.get("location_id") || "",
       business_unit_id: searchParams.get("business_unit_id") || "",
       supplier_id: searchParams.get("supplier_id") || "",
+      date_from: searchParams.get("date_from") || "",
+      date_to: searchParams.get("date_to") || "",
+      account_id: searchParams.get("account_id") || "",
+      department_id: searchParams.get("department_id") || "",
+      reference_type: searchParams.get("reference_type") || "",
+      balance_state: searchParams.get("balance_state") || "ALL",
+      difference_amount: searchParams.get("difference_amount") || "",
     }).filter(([, value]) => value !== ""),
   );
 
@@ -91,3 +98,4 @@ export default function JournalRegisterPrintPage() {
     />
   );
 }
+
