@@ -85,4 +85,4 @@ jobs:
           cache-dependency-path: requirements.txt
       - run: python -m pip install --requirement requirements.txt
       - name: Test real PostgreSQL concurrent journal operations
-        run: pytest -q tests/test_journal_postgres_concurrency_1028.py -rA
+        run: pytest -q tests/test_journal_postgres_concurrency_1028.py tests/test_purchasing_print_concurrency_1030.py -rA

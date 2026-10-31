@@ -1,3 +1,4 @@
+from app.services.document_print_tracking import print_context
 from datetime import date
 from decimal import Decimal
 from math import ceil
@@ -257,7 +258,7 @@ def get_requisition(requisition_id: int, db: Session = Depends(get_db), user=Dep
 
 @router.get("/{requisition_id}/print")
 def print_requisition(requisition_id: int, db: Session = Depends(get_db), user=Depends(pr_view_user)):
-    return {**get_requisition(requisition_id, db, user), "document_type": "Purchase Requisition", **print_metadata(user)}
+    return {**get_requisition(requisition_id, db, user), "document_type": "Purchase Requisition", **print_metadata(user), **print_context(db,user,"PURCHASE_REQUISITION",requisition_id)}
 
 
 def _apply_login_organization_context(db: Session, data: PurchaseRequisitionCreate, user) -> None:

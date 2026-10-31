@@ -1,3 +1,4 @@
+from app.services.document_print_tracking import print_context
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -309,7 +310,7 @@ def get_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), us
 
 @router.get("/{purchase_order_id}/print")
 def print_purchase_order(purchase_order_id: int, db: Session = Depends(get_db), user=Depends(po_view_user)):
-    return {**get_purchase_order(purchase_order_id, db, user), "document_type": "Purchase Order", **print_metadata(user)}
+    return {**get_purchase_order(purchase_order_id, db, user), "document_type": "Purchase Order", **print_metadata(user), **print_context(db,user,"PURCHASE_ORDER",purchase_order_id)}
 
 
 @router.post("/{purchase_order_id}/reopen")

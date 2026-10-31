@@ -1,3 +1,4 @@
+from app.services.document_print_tracking import print_context
 from datetime import date
 from decimal import Decimal
 from math import ceil
@@ -156,7 +157,7 @@ def get_market_list(market_list_id: int, db: Session = Depends(get_db), user=Dep
 
 @router.get("/{market_list_id}/print")
 def print_market_list(market_list_id: int, db: Session = Depends(get_db), user=Depends(market_list_view_user)):
-    return {**get_market_list(market_list_id, db, user), "document_type": "Market List", **print_metadata(user)}
+    return {**get_market_list(market_list_id, db, user), "document_type": "Market List", **print_metadata(user), **print_context(db,user,"MARKET_LIST",market_list_id)}
 
 
 @router.post("", status_code=201)

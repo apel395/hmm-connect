@@ -300,13 +300,22 @@ def trace_purchase_order(
         "events": document_events(db, references),
     }
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Literal
 from uuid import UUID
-from app.services.document_print_tracking import record_print
+from app.services.document_print_tracking import record_print, print_history
 
 class PrintRequest(BaseModel):
     request_id: UUID
+    action: Literal['PRINT_DIALOG', 'PDF_DOWNLOAD'] = 'PRINT_DIALOG'
+    expected_revision: str | None = Field(default=None, pattern=r'^[a-f0-9]{64}$')
+    snapshot_hash: str | None = Field(default=None, pattern=r'^[a-f0-9]{64}$')
 
 @router.post('/document-events/{kind}/{document_id}/print')
 def issue_print(kind:str,document_id:int,data:PrintRequest,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    return record_print(db,user,kind,document_id,str(data.request_id))
+    return record_print(db,user,kind,document_id,str(data.request_id),action=data.action,expected_revision=data.expected_revision,snapshot_hash=data.snapshot_hash)
+
+
+@router.get('/document-events/{kind}/{document_id}/print-history')
+def document_print_history(kind: str, document_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    return print_history(db, user, kind, document_id)
