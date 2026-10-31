@@ -421,13 +421,13 @@ def list_receivable_purchase_orders(date_from: date | None = None, date_to: date
 
 
 @router.get("/charge-accounts")
-def receiving_charge_accounts(db: Session = Depends(get_db), user=Depends(receiving_create_user)):
+def receiving_charge_accounts(db: Session = Depends(get_db), user=Depends(receiving_view_user)):
     from app.models.accounting_setting import AccountingSetting
     from app.models.chart_of_account import ChartOfAccount
     setting = db.query(AccountingSetting).filter_by(setting_key="PURCHASE_DISCOUNT_ACCOUNT").first()
     account = db.get(ChartOfAccount, setting.account_id) if setting and setting.account_id else None
     return {"discount_account": {"id": account.id, "code": account.account_number, "name": account.account_name}
-            if account and account.is_active and account.is_posting else None}
+            if account and account.is_active and account.is_posting and account.normal_balance == "CREDIT" and account.account_type in {"EXPENSE", "INCOME"} else None}
 
 
 @router.get("/receivable-market-lists")

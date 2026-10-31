@@ -53,3 +53,16 @@ def test_receiving_po_tax_uses_master_instead_of_po_or_payload(stock_db):
     receipt=Service.create(db,user=user,data=GoodsReceiptCreate(purchase_order_id=order.id,warehouse_id=wh.id,
         items=[dict(purchase_order_item_id=order.items[0].id,quantity=2,unit_cost=10,is_taxable=True,tax_rate=99)]))
     assert receipt.tax_amount==Decimal('2.20')
+
+
+def test_receiving_discount_lookup_uses_configured_credit_account(stock_db):
+    from app.api.v1.goods_receipts import receiving_charge_accounts
+    from app.models.accounting_setting import AccountingSetting
+    from app.models.chart_of_account import ChartOfAccount
+    data=setup_receiving(stock_db);db,_,user,*_=data
+    assert receiving_charge_accounts(db,user)['discount_account'] is None
+    account=ChartOfAccount(account_number='DISC-TEST',account_name='Purchase discount',account_type='EXPENSE',normal_balance='CREDIT',is_active=True,is_posting=True)
+    db.add(account);db.flush();db.add(AccountingSetting(setting_key='PURCHASE_DISCOUNT_ACCOUNT',account_id=account.id));db.commit()
+    assert receiving_charge_accounts(db,user)['discount_account']['id']==account.id
+    account.is_active=False;db.flush()
+    assert receiving_charge_accounts(db,user)['discount_account'] is None
