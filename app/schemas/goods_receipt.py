@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class GoodsReceiptItemCreate(BaseModel):
@@ -55,6 +55,11 @@ class GoodsReceiptCreate(BaseModel):
     other_fee_account_id: int | None = None
     cost_correction_reason: str | None = Field(default=None, max_length=500)
     items: list[GoodsReceiptItemCreate]
+
+    @field_validator("supplier_invoice_date", "supplier_invoice_due_date", "tax_invoice_date", mode="before")
+    @classmethod
+    def empty_optional_invoice_dates(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
 
     @model_validator(mode="after")
     def validate_source(self):
@@ -141,6 +146,11 @@ class GoodsReceiptUpdate(BaseModel):
     items: list[GoodsReceiptItemUpdate]
 
     supplier_document_total: Decimal | None = Field(default=None, gt=0)
+    @field_validator("supplier_invoice_date", "supplier_invoice_due_date", "tax_invoice_date", mode="before")
+    @classmethod
+    def empty_optional_invoice_dates(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
+
     @model_validator(mode="after")
     def validate_update(self):
         if not self.items:
