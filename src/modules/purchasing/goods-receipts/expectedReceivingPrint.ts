@@ -25,6 +25,7 @@ export function expectedReceivingReport(orders: ExpectedReceivingOrder[], filter
   if (orderId != null && selected.length !== 1) throw new Error("This PO no longer has outstanding items in the selected dates. Refresh Expected deliveries.");
   const rowCount = selected.reduce((count, order) => count + order.items.length, 0);
   return {
+    printTracking: { kind: "EXPECTED_RECEIVING", id: orderId ?? 0 },
     title: "Expected Receiving",
     context: `Delivery dates: ${filters.date_from || "All"} to ${filters.date_to || "All"}`,
     summary: `${selected.length} purchase order${selected.length === 1 ? "" : "s"} · ${rowCount} outstanding item line${rowCount === 1 ? "" : "s"}`,

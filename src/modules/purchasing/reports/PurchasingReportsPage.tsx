@@ -1,10 +1,10 @@
+import PurchasingPagePrintButton from "@/components/print/PurchasingPagePrintButton";
 import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import PurchasingExceptionPanel from "./PurchasingExceptionPanel";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
-import { Printer } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
@@ -73,7 +73,7 @@ export default function PurchasingReportsPage() {
     <div className="space-y-6">
       <ReportUnitButtons value={unit} onChange={id=>{setUnit(id);setHistoryPage(1);}}/>
       <PurchasingExceptionPanel businessUnitId={Number(unit)||undefined} dateFrom={dateFrom} dateTo={dateTo}/>
-      <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="Purchasing Reports" description="Purchase requisition, purchase order and receiving activity summarized for the selected period." />
+      <PageHeader  actions={<PurchasingPagePrintButton kind="PURCHASING_REPORT"/>} title="Purchasing Reports" description="Purchase requisition, purchase order and receiving activity summarized for the selected period." />
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">

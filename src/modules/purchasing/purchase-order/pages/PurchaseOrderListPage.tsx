@@ -1,6 +1,7 @@
+import PurchasingPagePrintButton from "@/components/print/PurchasingPagePrintButton";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {Plus, Printer} from "lucide-react";
+import {Plus} from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
 import ListToolbar from "@/components/common/ListToolbar";
@@ -59,7 +60,7 @@ export default function PurchaseOrderListPage() {
   const dateFilter = <DateRangeFilter from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} onApply={() => { setAppliedDateFrom(dateFrom); setAppliedDateTo(dateTo); }} onClear={() => { setDateFrom(""); setDateTo(""); setAppliedDateFrom(""); setAppliedDateTo(""); }} />;
 
   return <><div className="space-y-6">
-    <PageHeader title="Purchase Orders" description="Manage supplier orders and receiving progress." actions={<div className="flex flex-wrap gap-2">{canCreate && <Button onClick={() => setOpen(true)}><Plus size={16}/> Create</Button>}<div className="flex"><Button variant={scope === "all" ? "secondary" : "outline"} onClick={() => setScope("all")}>All</Button><Button variant={scope === "active" ? "secondary" : "outline"} onClick={() => setScope("active")}>Active</Button><Button variant={scope === "history" ? "secondary" : "outline"} onClick={() => setScope("history")}>History</Button></div>  <Button variant="outline" size="sm" onClick={() => window.print()} title="Print purchase orders"><Printer size={16}/><span className="sr-only">Print</span></Button>
+    <PageHeader title="Purchase Orders" description="Manage supplier orders and receiving progress." actions={<div className="flex flex-wrap gap-2">{canCreate && <Button onClick={() => setOpen(true)}><Plus size={16}/> Create</Button>}<div className="flex"><Button variant={scope === "all" ? "secondary" : "outline"} onClick={() => setScope("all")}>All</Button><Button variant={scope === "active" ? "secondary" : "outline"} onClick={() => setScope("active")}>Active</Button><Button variant={scope === "history" ? "secondary" : "outline"} onClick={() => setScope("history")}>History</Button></div>  <PurchasingPagePrintButton kind="PURCHASE_ORDER_LIST"/>
 </div>}/>
     <PurchasingExceptionPanel dateFrom="" dateTo="" />
     <ModuleSummary metrics={[{label:"Waiting Approval",value:count("PENDING_APPROVAL")},{label:"Approved",value:count("APPROVED")},{label:"Partially Received",value:count("PARTIALLY_RECEIVED")},{label:"Fully Received",value:count("RECEIVED")}]}/>
