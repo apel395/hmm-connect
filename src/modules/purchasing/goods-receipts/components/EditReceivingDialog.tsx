@@ -55,14 +55,14 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     setNotes(receipt.notes ?? "");
     setBilling(fromReceiptBilling(receipt));
     setCatalogType("ALL");
-    setProductRows(receipt.items.map(item=>({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom??undefined,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,purchase_account_id:item.purchase_account_id,is_taxable:item.is_taxable,tax_rate:item.tax_rate})));
+    setProductRows(receipt.items.map(item=>({id:item.product_id,code:item.product_code,name:item.product_name,uom:item.uom??undefined,catalog_type:item.catalog_type,inventory_treatment:item.inventory_treatment,purchase_account_id:item.purchase_account_id,is_taxable:item.master_is_taxable,tax_rate:item.master_tax_rate})));
     setItems(receipt.items.map(item=>({
       row_key:`existing-${item.id}`,item_id:item.id,original_item_id:item.id,original_product_id:item.product_id,product_id:item.product_id, catalog_type:item.catalog_type, inventory_treatment:item.inventory_treatment, product_name:item.product_name, product_code:item.product_code, uom:item.uom,
       destination_type:item.destination_type ?? (receipt.destination_type === "DIRECT_USE" ? "DIRECT_USE" : "WAREHOUSE"),
       original_destination:item.destination_type ?? (receipt.destination_type === "DIRECT_USE" ? "DIRECT_USE" : "WAREHOUSE"),
       destination_override_reason:item.destination_override_reason ?? null,
       quantity:Number(item.quantity), unit_cost:Number(item.unit_cost), expense_account_id:item.expense_account_id ?? null,
-      is_taxable:Boolean(item.is_taxable), tax_rate:Number(item.tax_rate ?? 0),
+      is_taxable:Boolean(item.master_is_taxable), tax_rate:Number(item.master_tax_rate ?? 0),
     })));
   },[open,receipt]);
 
@@ -134,7 +134,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
               <td className="text-center">{item.uom??"—"}</td>
               <td className="p-2"><QuantityInput value={item.quantity} onValueChange={value=>patch(item.row_key,{quantity:value})}/></td>
               <td className="p-2"><CurrencyInput value={item.unit_cost} onValueChange={value=>patch(item.row_key,{unit_cost:value})}/>{destinationFor(item)==="DIRECT_USE" && item.inventory_treatment!=="FIXED_ASSET" && <label className="block text-xs">Expense destination<select aria-label={`Expense destination for ${item.product_name??"new item"}`} className="w-full rounded border p-1" value={item.expense_account_id??""} onChange={e=>patch(item.row_key,{expense_account_id:Number(e.target.value)||null})}><option value="">{item.catalog_type==="HOTEL"?"Choose department expense":"Item expense mapping"}</option>{expenses.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}</td>
-              <td className="p-2"><input aria-label={`Provisional PPN rate for ${item.product_name??"new item"}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={item.is_taxable?item.tax_rate:0} onChange={e=>patch(item.row_key,{tax_rate:Number(e.target.value),is_taxable:Number(e.target.value)>0})}/></td>
+              <td className="p-2"><span title="From Item Master" className="inline-block w-14 text-right tabular-nums">{item.is_taxable?Number(item.tax_rate??0):0}%</span></td>
               <td className="text-right">{money(Number(item.quantity||0)*Number(item.unit_cost||0)*(item.is_taxable?Number(item.tax_rate||0):0)/100)}</td>
               <td className="text-right font-medium">{money(Number(item.quantity||0)*Number(item.unit_cost||0)*(1+(item.is_taxable?Number(item.tax_rate||0):0)/100))}</td>
               <td className="p-2"><Button size="sm" variant="ghost" disabled={items.length<=1||update.isPending} aria-label={`Remove item ${item.product_name??"new line"}`} title="Remove item" onClick={()=>setItems(current=>current.filter(row=>row.row_key!==item.row_key))}><Trash2 size={14}/></Button></td>
