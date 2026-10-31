@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from math import ceil
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, and_
@@ -307,11 +308,18 @@ def listing(
     reference_type: str | None = None,
     account_id: int | None = None,
     supplier_id: int | None = None,
+    department_id: int | None = None,
+    balance_state: Literal["ALL", "BALANCED", "UNBALANCED"] = "ALL",
+    difference_amount: Decimal | None = None,
     location_id: int | None = None,
     business_unit_id: int | None = None,
     db: Session = Depends(get_db),
     user=Depends(journal_view_user),
 ):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "From date must not be after To date")
+    if difference_amount is not None and (not difference_amount.is_finite() or difference_amount < 0):
+        raise HTTPException(422, "Difference amount must be a nonnegative number")
     q = apply_location_scope(db.query(JournalEntry), JournalEntry, user)
     if location_id:
         location_id = resolve_location_id(user, location_id)
@@ -331,12 +339,28 @@ def listing(
         q = q.filter(JournalEntry.posting_date >= date_from)
     if date_to:
         q = q.filter(JournalEntry.posting_date <= date_to)
+    reference_types = [row[0] for row in q.with_entities(JournalEntry.reference_type).distinct().order_by(JournalEntry.reference_type).all() if row[0]]
     if reference_type:
         q = q.filter(JournalEntry.reference_type == reference_type)
     if account_id:
         q = q.filter(JournalEntry.lines.any(JournalLine.account_id == account_id))
     if supplier_id:
         q = q.filter(JournalEntry.lines.any(JournalLine.supplier_id == supplier_id))
+    if department_id:
+        q = q.filter(or_(JournalEntry.department_id == department_id,
+                         JournalEntry.lines.any(JournalLine.department_id == department_id)))
+    if balance_state != "ALL" or difference_amount is not None:
+        amounts = db.query(JournalLine.journal_entry_id.label("journal_id"),
+            (func.coalesce(func.sum(JournalLine.debit), 0) - func.coalesce(func.sum(JournalLine.credit), 0)).label("difference")
+        ).group_by(JournalLine.journal_entry_id).subquery()
+        q = q.outerjoin(amounts, amounts.c.journal_id == JournalEntry.id)
+        difference = func.coalesce(amounts.c.difference, 0)
+        if balance_state == "BALANCED":
+            q = q.filter(difference == 0)
+        elif balance_state == "UNBALANCED":
+            q = q.filter(difference != 0)
+        if difference_amount is not None:
+            q = q.filter(func.abs(difference) == difference_amount)
     total = q.count()
     if total:
         journal_ids = q.with_entities(JournalEntry.id)
@@ -354,7 +378,8 @@ def listing(
     ).order_by(JournalEntry.posting_date.desc(), JournalEntry.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [serialize(x, user) for x in rows],
-        "summary": {"total_debit": total_debit, "total_credit": total_credit},
+        "summary": {"total_debit": total_debit, "total_credit": total_credit, "difference": total_debit - total_credit},
+        "reference_types": reference_types,
         "page": page,
         "page_size": page_size,
         "total_items": total,
@@ -658,3 +683,4 @@ def void(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_ma
 @router.get("/{journal_id}/print")
 def printable(journal_id: int, db: Session = Depends(get_db), user=Depends(journal_view_user)):
     return {**serialize(get(db, journal_id, user), user), "document_type": "Journal Entry", **print_metadata(user)}
+
