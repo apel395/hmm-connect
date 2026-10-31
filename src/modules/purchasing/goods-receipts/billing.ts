@@ -28,6 +28,16 @@ export const fromReceiptBilling = (receipt: any): ReceivingBilling => {
     key, receipt[key] ?? empty[key as keyof ReceivingBilling],
   ])) as ReceivingBilling;
 };
+export const receivingBillingPayload = (billing: ReceivingBilling): Partial<ReceivingBilling> => {
+  const { supplier_invoice_date, supplier_invoice_due_date, tax_invoice_date, ...other } = billing;
+  return {
+    ...other,
+    ...(supplier_invoice_date ? { supplier_invoice_date } : {}),
+    ...(supplier_invoice_due_date ? { supplier_invoice_due_date } : {}),
+    ...(tax_invoice_date ? { tax_invoice_date } : {}),
+  };
+};
+
 export const billingTotal = (subtotal: number, tax: number, b: ReceivingBilling) =>
   subtotal + tax - b.discount_amount + b.shipping_fee_amount + b.admin_fee_amount + b.other_fee_amount;
 export const validateReceivingBilling = (b: ReceivingBilling, subtotal: number): string | null => {
