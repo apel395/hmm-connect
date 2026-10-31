@@ -17,7 +17,7 @@ import { useUpdateGoodsReceipt } from "../hooks/useGoodsReceipts";
 import type { GoodsReceipt } from "../types";
 import ReceivingDestinationField from "./ReceivingDestinationField";
 import ReceivingBillingFields from "./ReceivingBillingFields";
-import { emptyReceivingBilling, fromReceiptBilling, validateReceivingBilling } from "../billing";
+import { emptyReceivingBilling, fromReceiptBilling, receivingBillingPayload, validateReceivingBilling } from "../billing";
 import { destinationFor, destinationError } from "../destination";
 
 function localDateTime(value: string) {
@@ -92,7 +92,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           ...(directReceipt?{location_id:locationId}:{}),
           external_reference:reference.trim()||null,
           warehouse_id:hasWarehouse?warehouseId:null,
-          notes:notes.trim()||null,...billing,
+          notes:notes.trim()||null,...receivingBillingPayload(billing),
           items:items.map(item=>({...(item.item_id?{item_id:item.item_id}:{product_id:item.product_id}),destination_type:item.destination_type ?? null,destination_override_reason:item.destination_override_reason || null,expense_account_id:destinationFor(item) === "DIRECT_USE" ? item.expense_account_id : null,quantity:item.quantity,unit_cost:item.unit_cost,is_taxable:item.is_taxable,tax_rate:item.is_taxable?item.tax_rate:0})),
         },
       });
