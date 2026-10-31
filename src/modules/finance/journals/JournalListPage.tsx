@@ -1,8 +1,9 @@
+import { journalFilterParams } from "./journalFilters";
 import { journalAccountingLabel, journalAllowsBulk } from "./journalState";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { SlidersHorizontal } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
@@ -35,6 +36,15 @@ const validInput = (v: unknown): v is JournalInput => { const x = v as JournalIn
 
 export default function JournalListPage() {
   const nav = useNavigate();
+  const [urlFilters] = useSearchParams();
+  const appliedQuery = useRef<string | null>(null);
+  const [dateFrom,setDateFrom] = useState("");
+  const [dateTo,setDateTo] = useState("");
+  const [filterAccountId,setFilterAccountId] = useState<number>();
+  const [filterDepartmentId,setFilterDepartmentId] = useState<number>();
+  const [referenceType,setReferenceType] = useState("");
+  const [balanceState,setBalanceState] = useState("ALL");
+  const [differenceAmount,setDifferenceAmount] = useState("");
   const client = useQueryClient();
   const { isSuperuser } = useAuthorization();
   const canBulkManage = isSuperuser();
@@ -68,7 +78,12 @@ export default function JournalListPage() {
   const discardInput = () => { recovery.clear(); setCopiedFromId(undefined); setOpen(false); setPostingDate(todayLocal()); setDocumentNumber(""); setDescription("Salary journal"); setBusinessUnitId(undefined); setDepartmentId(undefined); setLocationId(undefined); setLines([blankLine(), blankLine()]); };
   const [selected, setSelected] = useState<number[]>([]);
 
-  const q = useQuery({ queryKey: ["journal-entries", page, pageSize, search, status, filterUnitId, filterLocationId, filterSupplierId], queryFn: () => listJournals({ page, page_size: pageSize, search: search || undefined, status: status || undefined, location_id: filterLocationId ?? undefined, supplier_id: filterSupplierId ?? undefined, business_unit_id: filterUnitId }), enabled: scopeReady });
+  const filterParams = journalFilterParams({search,status,business_unit_id:filterUnitId,location_id:filterLocationId,supplier_id:filterSupplierId,
+    date_from:dateFrom,date_to:dateTo,account_id:filterAccountId,department_id:filterDepartmentId,reference_type:referenceType,
+    balance_state:balanceState,difference_amount:differenceAmount});
+  const q = useQuery({ queryKey:["journal-entries",page,pageSize,filterParams],queryFn:()=>listJournals({...filterParams,page,page_size:pageSize}),enabled:scopeReady });
+  const filterAccounts = useQuery({queryKey:["journal-filter-accounts"],queryFn:()=>getAllAccountLookup(),enabled:showFilters});
+  const filterDepartments = useQuery({queryKey:["journal-filter-departments",filterUnitId,filterLocationId],queryFn:()=>listDepartments({business_unit_id:filterUnitId,location_id:filterLocationId}),enabled:showFilters});
   const accounts = useQuery({ queryKey: ["journal-account-lookup"], queryFn: () => getAllAccountLookup({ is_posting: true, is_active: true }), enabled: open });
   const businessUnits = useQuery({ queryKey: ["business-units", "manual-journal", "active"], queryFn: () => filterBusinessUnits({ is_active: true }), enabled: open });
   const departments = useQuery({ queryKey: ["journal-departments", businessUnitId, locationId], queryFn: () => listDepartments({ business_unit_id: businessUnitId, location_id: locationId, is_active: true }), enabled: open && Boolean(businessUnitId && locationId) });
@@ -77,15 +92,26 @@ export default function JournalListPage() {
   const filterSuppliers = useQuery({ queryKey: ["journal-filter-suppliers"], queryFn: () => supplierApi.lookup("", 100) });
 
   useEffect(() => {
-    if (scope.data && !scopeReady) {
-      setFilterUnitId(scope.data.default_business_unit_id ?? undefined);
-      setFilterLocationId(scope.data.default_location_id ?? undefined);
-      setBusinessUnitId(scope.data.default_business_unit_id ?? undefined);
-      setLocationId(scope.data.default_location_id ?? undefined);
-      setScopeReady(true);
-    }
-  }, [scope.data, scopeReady]);
-  useEffect(() => { setSelected([]); }, [page, pageSize, search, status, filterUnitId, filterLocationId, filterSupplierId]);
+    const query = urlFilters.toString();
+    if (!scope.data || appliedQuery.current===query) return;
+    appliedQuery.current=query;
+    const unit=Number(urlFilters.get("business_unit_id"))||undefined;
+    const location=Number(urlFilters.get("location_id"))||undefined;
+    setFilterUnitId(!scope.data.location_locked&&urlFilters.get("business_unit_id")==="all"?undefined:unit&&scope.data.units.some(row=>row.id===unit)?unit:scope.data.default_business_unit_id??undefined);
+    setFilterLocationId(scope.data.location_locked?scope.data.default_location_id??undefined:urlFilters.get("location_id")==="all"?undefined:location&&scope.data.locations.some(row=>row.id===location)?location:scope.data.default_location_id??undefined);
+    setBusinessUnitId(scope.data.default_business_unit_id??undefined);
+    setLocationId(scope.data.default_location_id??undefined);
+    setSearch(urlFilters.get("search")||"");setStatus(urlFilters.get("status")||"");
+    setDateFrom(urlFilters.get("date_from")||"");setDateTo(urlFilters.get("date_to")||"");
+    setFilterAccountId(Number(urlFilters.get("account_id"))||undefined);
+    setFilterDepartmentId(Number(urlFilters.get("department_id"))||undefined);
+    setFilterSupplierId(Number(urlFilters.get("supplier_id"))||undefined);
+    setReferenceType(urlFilters.get("reference_type")||"");
+    setBalanceState(urlFilters.get("balance_state")||"ALL");setDifferenceAmount(urlFilters.get("difference_amount")||"");
+    if(query)setShowFilters(true);
+    setPage(1);setScopeReady(true);
+  }, [scope.data,urlFilters]);
+  useEffect(() => { setSelected([]); }, [page,pageSize,search,status,filterUnitId,filterLocationId,filterSupplierId,dateFrom,dateTo,filterAccountId,filterDepartmentId,referenceType,balanceState,differenceAmount]);
   useEffect(() => window.localStorage.setItem("journal-page-size", String(pageSize)), [pageSize]);
   useEffect(() => { if (open && !businessUnitId && businessUnits.data?.length === 1) setBusinessUnitId(businessUnits.data[0].id); }, [open, businessUnitId, businessUnits.data]);
 
@@ -116,7 +142,7 @@ export default function JournalListPage() {
   const filteredJournalTotals = q.data?.summary?.total_debit != null && q.data?.summary?.total_credit != null
     ? { debit: Number(q.data.summary.total_debit), credit: Number(q.data.summary.total_credit) }
     : null;
-  const printQuery = new URLSearchParams(Object.fromEntries(Object.entries({ search, status, business_unit_id: filterUnitId ? String(filterUnitId) : "", location_id: filterLocationId ? String(filterLocationId) : "", supplier_id: filterSupplierId ? String(filterSupplierId) : "" }).filter(([, value]) => value !== ""))).toString();
+  const printQuery = new URLSearchParams(Object.fromEntries(Object.entries(filterParams).map(([key,value])=>[key,String(value)]))).toString();
   const printSrc = `/journal/register/print${printQuery ? `?${printQuery}` : ""}`;
   const selectedRows = visibleRows.filter((row) => selected.includes(row.id));
   const bulkCandidates = (action: "post" | "unpost") => { const source = selectedRows.length ? selectedRows : visibleRows; return source.filter((row) => journalAllowsBulk(row, action)).map((row) => row.id); };
@@ -134,11 +160,11 @@ export default function JournalListPage() {
     <PageHeader title="Journal Entries" description="Complete balanced draft journals are reflected in accounting while the period is open. Period closing finalizes drafts and locks the period; posted journals remain posted." actions={<div className="flex flex-wrap gap-2">{canBulkManage && <><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post All</Button><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost All</Button></>}<Button variant="outline" onClick={() => setBulkImportOpen(true)}>Import Bulk</Button><Button disabled={!scopeReady} onClick={openCreate}>Create Journal Entry</Button>  <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
 </div>} />
     <div className="flex flex-wrap gap-1" aria-label="Journal business unit">
-      {!scope.data?.location_locked && <Button size="sm" variant={!filterUnitId ? "primary" : "outline"} onClick={() => { setFilterUnitId(undefined); setFilterLocationId(undefined); setPage(1); }}>All units</Button>}
-      {scope.data?.units.map(unit => <Button key={unit.id} size="sm" variant={filterUnitId === unit.id ? "primary" : "outline"} onClick={() => { setFilterUnitId(unit.id); if (!scope.data.location_locked) setFilterLocationId(undefined); setPage(1); }}>{unit.name}</Button>)}
+      {!scope.data?.location_locked && <Button size="sm" variant={!filterUnitId ? "primary" : "outline"} onClick={() => { setFilterUnitId(undefined); setFilterLocationId(undefined); setFilterDepartmentId(undefined); setPage(1); }}>All units</Button>}
+      {scope.data?.units.map(unit => <Button key={unit.id} size="sm" variant={filterUnitId === unit.id ? "primary" : "outline"} onClick={() => { setFilterDepartmentId(undefined); setFilterUnitId(unit.id); if (!scope.data.location_locked) setFilterLocationId(undefined); setPage(1); }}>{unit.name}</Button>)}
     </div>
     {scope.isError && <p role="alert" className="text-sm text-red-700">Journal location scope could not be loaded.</p>}
-    <div className="workspace-summary"><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Journals</div><div className="mt-1 text-xl font-semibold">{q.data?.total_items ?? 0}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Debit</div><div className="mt-1 text-xl font-semibold tabular-nums">{filteredJournalTotals ? filteredJournalTotals.debit.toLocaleString("id-ID",{minimumFractionDigits:2}) : "Awaiting backend totals"}</div><div className="mt-1 text-[11px] text-slate-400">Page {visibleTotals.debit.toLocaleString("id-ID",{minimumFractionDigits:2})}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Credit</div><div className="mt-1 text-xl font-semibold tabular-nums">{filteredJournalTotals ? filteredJournalTotals.credit.toLocaleString("id-ID",{minimumFractionDigits:2}) : "Awaiting backend totals"}</div><div className="mt-1 text-[11px] text-slate-400">Page {visibleTotals.credit.toLocaleString("id-ID",{minimumFractionDigits:2})}</div></Card></div>
+    <div className="workspace-summary"><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Journals</div><div className="mt-1 text-xl font-semibold">{q.data?.total_items ?? 0}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Debit</div><div className="mt-1 text-xl font-semibold tabular-nums">{filteredJournalTotals ? filteredJournalTotals.debit.toLocaleString("id-ID",{minimumFractionDigits:2}) : "Awaiting backend totals"}</div><div className="mt-1 text-[11px] text-slate-400">Page {visibleTotals.debit.toLocaleString("id-ID",{minimumFractionDigits:2})}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Credit</div><div className="mt-1 text-xl font-semibold tabular-nums">{filteredJournalTotals ? filteredJournalTotals.credit.toLocaleString("id-ID",{minimumFractionDigits:2}) : "Awaiting backend totals"}</div><div className="mt-1 text-[11px] text-slate-400">Page {visibleTotals.credit.toLocaleString("id-ID",{minimumFractionDigits:2})}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Difference</div><div className="mt-1 font-semibold tabular-nums">{filteredJournalTotals?(filteredJournalTotals.debit-filteredJournalTotals.credit).toLocaleString("id-ID",{minimumFractionDigits:2}):"—"}</div></Card></div>
     <Card className="workspace-data p-0"><div className="workspace-toolbar mb-2 flex flex-wrap items-end gap-2">
       <label className="min-w-[240px] flex-1 text-xs font-medium text-slate-600">Search
         <input className="mt-1 h-9 w-full rounded border px-3" placeholder="Journal, document, or description" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
@@ -147,14 +173,21 @@ export default function JournalListPage() {
         <select className="mt-1 h-9 w-full rounded border px-3" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select>
       </label>
       <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
-        <SlidersHorizontal size={15}/> Filters{[filterLocationId, filterSupplierId].filter(Boolean).length ? ` (${[filterLocationId, filterSupplierId].filter(Boolean).length})` : ""}
+        <SlidersHorizontal size={15}/> Filters{[filterLocationId,filterSupplierId,dateFrom,dateTo,filterAccountId,filterDepartmentId,referenceType,balanceState!=="ALL",differenceAmount].filter(Boolean).length ? ` (${[filterLocationId,filterSupplierId,dateFrom,dateTo,filterAccountId,filterDepartmentId,referenceType,balanceState!=="ALL",differenceAmount].filter(Boolean).length})` : ""}
       </Button>
     </div>
-    {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-2">
-      <SearchableSelect label="Location" value={filterLocationId} disabled={scope.isLoading || scope.data?.location_locked} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={filterLocationOptions} onChange={(id) => { setFilterLocationId(id); setPage(1); }} />
+    {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-3">
+      <label className="text-xs">From Date<input aria-label="From Date" className="mt-1 h-9 w-full rounded border px-2" type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPage(1);}}/></label>
+      <label className="text-xs">To Date<input aria-label="To Date" className="mt-1 h-9 w-full rounded border px-2" type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setPage(1);}}/></label>
+      <label className="text-xs">Balance<select aria-label="Journal balance" className="mt-1 h-9 w-full rounded border px-2" value={balanceState} onChange={e=>{setBalanceState(e.target.value);setPage(1);}}><option value="ALL">All</option><option value="BALANCED">Balanced</option><option value="UNBALANCED">Unbalanced</option></select></label>
+      <label className="text-xs">Difference amount<input aria-label="Difference amount" className="mt-1 h-9 w-full rounded border px-2 text-right" type="number" min="0" step="0.01" placeholder="Any difference" value={differenceAmount} onChange={e=>{setDifferenceAmount(e.target.value);setPage(1);}}/></label>
+      <SearchableSelect label="Account" value={filterAccountId} placeholder="Account code or name..." options={(filterAccounts.data??[]).map(row=>({id:row.id,label:`${row.account_code} — ${row.account_name}`}))} onChange={id=>{setFilterAccountId(id);setPage(1);}}/>
+      <SearchableSelect label="Department" value={filterDepartmentId} placeholder="Department name..." options={(filterDepartments.data??[]).map(row=>({id:row.id,label:row.name}))} onChange={id=>{setFilterDepartmentId(id);setPage(1);}}/>
+      <label className="text-xs">Source type<select aria-label="Source type" className="mt-1 h-9 w-full rounded border px-2" value={referenceType} onChange={e=>{setReferenceType(e.target.value);setPage(1);}}><option value="">All sources</option>{Array.from(new Set<string>([...(q.data?.reference_types??[]),...(referenceType?[referenceType]:[])])).map(value=><option key={value} value={value}>{value.replaceAll("_"," ")}</option>)}</select></label>
+      <SearchableSelect label="Location" value={filterLocationId} disabled={scope.isLoading || scope.data?.location_locked} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={filterLocationOptions} onChange={(id) => { setFilterLocationId(id); setFilterDepartmentId(undefined); setPage(1); }} />
       <SearchableSelect label="Supplier" value={filterSupplierId} disabled={filterSuppliers.isLoading} placeholder={filterSuppliers.isLoading ? "Loading suppliers..." : "Type supplier code or name..."} options={filterSupplierOptions} onChange={(id) => { setFilterSupplierId(id); setPage(1); }} />
     </div>}
-      <Table stickyHeader className="workspace-journal-table min-w-[850px]" containerClassName="workspace-table-scroll max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible"><THead><TR className="whitespace-nowrap"><TH className="w-10"><input type="checkbox" aria-label="Select all journals on this page" checked={allVisibleSelected} onChange={toggleAllVisible} /></TH><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Amount</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead><TBody>{q.isLoading && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">Loading journals…</TD></TR>}{q.isError && <TR><TD colSpan={8} className="py-10 text-center text-red-700">Journals could not be loaded. Use Refresh to try again.</TD></TR>}{!q.isLoading && !q.isError && visibleRows.length === 0 && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No journals match these filters.</TD></TR>}{visibleRows.map((x: any) => <TR key={x.id} className="whitespace-nowrap"><TD><input type="checkbox" aria-label={`Select ${x.journal_number}`} checked={selected.includes(x.id)} onChange={() => setSelected((current) => current.includes(x.id) ? current.filter((value) => value !== x.id) : [...current, x.id])} /></TD><TD><TableCellStack primary={x.journal_number} secondary={x.reference_type?.replaceAll("_", " ")}/></TD><TD>{x.journal_date}</TD><TD className="font-medium">{sourceDocumentPath(x.reference_type, x.reference_id) ? <Link className="text-emerald-700 hover:underline" to={sourceDocumentPath(x.reference_type, x.reference_id)!} state={{ returnTo: `/journal-entries/${x.id}` }} title="Open source document">{x.reference_number || "Open Source"}</Link> : x.reference_number || "—"}</TD><TD className="max-w-[280px]"><span className="block truncate" title={x.description || undefined}>{x.description || "—"}</span></TD><TD numeric className="font-semibold">{Number(x.total_debit).toLocaleString("id-ID", { minimumFractionDigits: 2 })}</TD><TD><span>{x.status}</span><span className={`ml-2 text-xs ${x.period_locked?"text-slate-500":x.accounting_recognized?"text-emerald-700":"text-amber-700"}`} title={x.recognition_reason??x.period_name??undefined}>{journalAccountingLabel(x)}</span></TD><TD><div className="flex justify-end gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_copy && <Button size="xs" variant="outline" loading={copy.isPending} onClick={() => copy.mutate(x.id)}>Copy</Button>}{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}{x.allowed_actions?.can_void_source_payment&&<Button size="xs" variant="danger" loading={voidSourcePayment.isPending} onClick={()=>{if(window.confirm(`Void payment ${x.reference_number} and its draft journal ${x.journal_number}? This releases the invoice reservation and keeps both records as VOID.`))voidSourcePayment.mutate(x.reference_id)}}>Void Payment</Button>}</div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{q.data?.total_items ?? 0} journals · Page {page} of {Math.max(q.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div></Card>
+      <Table stickyHeader className="workspace-journal-table min-w-[850px]" containerClassName="workspace-table-scroll max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible"><THead><TR className="whitespace-nowrap"><TH className="w-10"><input type="checkbox" aria-label="Select all journals on this page" checked={allVisibleSelected} onChange={toggleAllVisible} /></TH><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Difference</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead><TBody>{q.isLoading && <TR><TD colSpan={10} className="py-10 text-center text-slate-500">Loading journals…</TD></TR>}{q.isError && <TR><TD colSpan={10} className="py-10 text-center text-red-700">Journals could not be loaded. Use Refresh to try again.</TD></TR>}{!q.isLoading && !q.isError && visibleRows.length === 0 && <TR><TD colSpan={10} className="py-10 text-center text-slate-500">No journals match these filters.</TD></TR>}{visibleRows.map((x: any) => <TR key={x.id} className="whitespace-nowrap"><TD><input type="checkbox" aria-label={`Select ${x.journal_number}`} checked={selected.includes(x.id)} onChange={() => setSelected((current) => current.includes(x.id) ? current.filter((value) => value !== x.id) : [...current, x.id])} /></TD><TD><TableCellStack primary={x.journal_number} secondary={x.reference_type?.replaceAll("_", " ")}/></TD><TD>{x.journal_date}</TD><TD className="font-medium">{sourceDocumentPath(x.reference_type, x.reference_id) ? <Link className="text-emerald-700 hover:underline" to={sourceDocumentPath(x.reference_type, x.reference_id)!} state={{ returnTo: `/journal-entries/${x.id}` }} title="Open source document">{x.reference_number || "Open Source"}</Link> : x.reference_number || "—"}</TD><TD className="max-w-[280px]"><span className="block truncate" title={x.description || undefined}>{x.description || "—"}</span></TD><TD numeric className="font-semibold">{Number(x.total_debit).toLocaleString("id-ID", { minimumFractionDigits: 2 })}</TD><TD numeric className="font-semibold">{Number(x.total_credit).toLocaleString("id-ID",{minimumFractionDigits:2})}</TD><TD numeric className={Number(x.difference)!==0?"font-semibold text-red-700":"text-slate-500"}>{Number(x.difference??Number(x.total_debit)-Number(x.total_credit)).toLocaleString("id-ID",{minimumFractionDigits:2})}</TD><TD><span>{x.status}</span><span className={`ml-2 text-xs ${x.period_locked?"text-slate-500":x.accounting_recognized?"text-emerald-700":"text-amber-700"}`} title={x.recognition_reason??x.period_name??undefined}>{journalAccountingLabel(x)}</span></TD><TD><div className="flex justify-end gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_copy && <Button size="xs" variant="outline" loading={copy.isPending} onClick={() => copy.mutate(x.id)}>Copy</Button>}{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}{x.allowed_actions?.can_void_source_payment&&<Button size="xs" variant="danger" loading={voidSourcePayment.isPending} onClick={()=>{if(window.confirm(`Void payment ${x.reference_number} and its draft journal ${x.journal_number}? This releases the invoice reservation and keeps both records as VOID.`))voidSourcePayment.mutate(x.reference_id)}}>Void Payment</Button>}</div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{q.data?.total_items ?? 0} journals · Page {page} of {Math.max(q.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div></Card>
 
     <JournalBulkImportDialog open={bulkImportOpen} onOpenChange={setBulkImportOpen} onImported={refreshFinance} />
 
@@ -173,3 +206,4 @@ export default function JournalListPage() {
     </DialogBody><DialogFooter><FormRecoveryActions failed={recovery.failed} disabled={save.isPending} onDiscard={discardInput} /><Button variant="outline" disabled={save.isPending} onClick={() => setOpen(false)}>Close</Button><Button loading={save.isPending} disabled={!valid} onClick={createJournalEntry}>Create Draft Journal</Button></DialogFooter></DialogContent></Dialog>
   </DataWorkspace>;
 }
+
