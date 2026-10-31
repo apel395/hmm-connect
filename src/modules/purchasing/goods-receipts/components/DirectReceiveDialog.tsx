@@ -335,7 +335,7 @@ export default function DirectReceiveDialog({
                         {destinationFor(routingFor(line)) === "DIRECT_USE" && product?.inventory_treatment !== "FIXED_ASSET" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" className="w-full rounded border p-1" value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}
                       </td>
                       <td>
-                        <span title="From Item Master" className="inline-block w-14 text-right tabular-nums">{Number(line.tax_rate??0)}%</span>
+                        <input aria-label={`PPN rate for item ${index+1}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={line.tax_rate??0} onChange={event=>patch(index,{tax_rate:Number(event.target.value)})}/>
 
                       </td>
                       <td className="text-right">{money(lineTax)}</td>
@@ -413,4 +413,5 @@ export default function DirectReceiveDialog({
     </Dialog>
   );
 }
+
 
