@@ -31,7 +31,7 @@ import { nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
 import ReceivingDestinationField from "./ReceivingDestinationField";
 import ReceivingBillingFields from "./ReceivingBillingFields";
-import { emptyReceivingBilling, validateReceivingBilling } from "../billing";
+import { emptyReceivingBilling, receivingBillingPayload, validateReceivingBilling } from "../billing";
 import { destinationFor, destinationError, type LineRouting } from "../destination";
 
 type Line = LineRouting & { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; tax_rate?:number; expense_account_id?: number | null };
@@ -177,7 +177,7 @@ export default function DirectReceiveDialog({
           external_reference: reference || null,
           warehouse_id: hasWarehouse ? warehouseId : null,
           notes: notes || null,
-          ...billing,
+          ...receivingBillingPayload(billing),
           items,
         },
       });
