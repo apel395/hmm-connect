@@ -30,7 +30,7 @@ import {
 
 import ReceivingDestinationField from "./ReceivingDestinationField";
 import ReceivingBillingFields from "./ReceivingBillingFields";
-import { emptyReceivingBilling, validateReceivingBilling } from "../billing";
+import { emptyReceivingBilling, receivingBillingPayload, validateReceivingBilling } from "../billing";
 import { destinationFor, destinationError, type LineRouting } from "../destination";
 
 interface Props {
@@ -114,7 +114,7 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
     const billingIssue = validateReceivingBilling(billing, subtotal);
     if (billingIssue) return alert(billingIssue);
     try {
-      await receive.mutateAsync({ purchaseOrderId, payload: { source_type: historical ? "HISTORICAL_ENTRY" : "LIVE", received_at: new Date(receivedAt).toISOString(), external_reference: deliveryNote || null, warehouse_id: hasWarehouse ? warehouseId : null, notes: notes || null, cost_correction_reason: hasCostOverride ? costCorrectionReason.trim() : null, ...billing, items: selected.map((line) => ({ purchase_order_item_id: line.purchase_order_item_id, quantity: line.quantity, unit_cost: line.unit_cost, is_taxable:Number(line.tax_rate||0)>0, tax_rate:Number(line.tax_rate||0), destination_type:line.destination_type ?? null, destination_override_reason:line.destination_override_reason || null, expense_account_id:destinationFor(line) === "DIRECT_USE" ? line.expense_account_id ?? null : null })) } });
+      await receive.mutateAsync({ purchaseOrderId, payload: { source_type: historical ? "HISTORICAL_ENTRY" : "LIVE", received_at: new Date(receivedAt).toISOString(), external_reference: deliveryNote || null, warehouse_id: hasWarehouse ? warehouseId : null, notes: notes || null, cost_correction_reason: hasCostOverride ? costCorrectionReason.trim() : null, ...receivingBillingPayload(billing), items: selected.map((line) => ({ purchase_order_item_id: line.purchase_order_item_id, quantity: line.quantity, unit_cost: line.unit_cost, is_taxable:Number(line.tax_rate||0)>0, tax_rate:Number(line.tax_rate||0), destination_type:line.destination_type ?? null, destination_override_reason:line.destination_override_reason || null, expense_account_id:destinationFor(line) === "DIRECT_USE" ? line.expense_account_id ?? null : null })) } });
       onClose();
     } catch (error) {
       const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
