@@ -2,7 +2,7 @@
 
 An active BUY item classified FIXED_ASSET automatically receives a linked
 Fixed Asset record in the same transaction. The item requires an active posting
-DEBIT ASSET account under 100-600 or 100-900. The master registration is unique
+DEBIT ASSET account under 100-600; operating supplies under 100-900 are excluded. The master registration is unique
 per item while pending and uses `FA-ITEM-<product id>` as its stable register number.
 
 Master-only intake is PENDING_REGISTRATION: acquisition date, acquisition cost
@@ -19,12 +19,12 @@ An invoice linked to the item completes its pending record using its actual
 source data instead of adding a duplicate. Later separate acquisitions retain
 the existing per-invoice-line registration behavior.
 
-Hotel linen, chinaware, silverware and glassware map respectively to the four
-100-900-100..103 operating-equipment COAs. Master taxonomy uses the existing
-ASSET/FURNITURE family (FF&E); no new Item Master subgroup is introduced.
-The XLS reader maps identifiable source linen/tableware, deferring uncertain
-material and duplicate/unit cases. Those new Hotel asset items also register
-pending automatically. The previously seeded stock items remain untouched.
+The original October Hotel seed treated linen/tableware as operating-equipment
+asset intake. That classification is superseded. Linen is MATERIAL / LINEN,
+STOCK, using inventory account 100-900-100 and actual quantity/UOM control.
+It must not auto-register or depreciate as a fixed asset. Existing empty
+linen registrations require the explicit audited cleanup in
+`linen-cleanup-1102.md`; owned quantities are never inferred from catalogue prices.
 
 Migration `20261013_asset_master_intake` permits missing details only for pending
 registrations, guarded by a check constraint and a pending-product unique index.

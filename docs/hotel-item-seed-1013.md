@@ -86,7 +86,8 @@ previous successful seed; existing values are preserved. An optional
 `--actor-id` attributes audit records to that operator. All inserts roll back
 if creating a product, auditing, writing the report or committing fails.
 
-Identifiable hotel linen and tableware now use ASSET / FURNITURE (the existing
-FF&E subgroup), FIXED_ASSET treatment and operating-equipment COA 100-900-*;
-see `asset-master-intake-1013.md`. Unknown quantities, dates and ownership costs
-remain blank in their automatically created register records.
+Historical note: the October seed placed identifiable linen/tableware in
+ASSET / FURNITURE with operating-equipment accounts. This is no longer the
+current linen rule. Linen now uses MATERIAL / LINEN, STOCK and inventory
+COA 100-900-100. Existing unvalued linen registrations are corrected explicitly
+by `cleanup_hotel_linen_assets_1102.py`; see `linen-cleanup-1102.md`.
