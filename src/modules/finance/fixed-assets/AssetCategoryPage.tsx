@@ -6,154 +6,39 @@ import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
-import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
-import type { AccountLookup } from "@/modules/master/chart-of-accounts/types";
-import { listCategories, saveCategory } from "./api";
-import { assetType, accumulatedAccountCodes, fixedAssetAccount, accumulatedDepreciationAccount, depreciationExpenseAccount } from "./accountRules";
+import { listCategories, listFiscalGroups, saveCategory } from "./api";
 
-const input = "h-9 w-full rounded border px-2 text-sm";
-const empty = {
-  code: "",
-  name: "",
-  is_depreciable: true,
-  default_useful_life_months: 48,
-  default_residual_percentage: 0,
-  asset_account_id: "",
-  accumulated_depreciation_account_id: "",
-  depreciation_expense_account_id: "",
-  disposal_gain_account_id: null,
-  disposal_loss_account_id: null,
-  is_active: true,
-  description: "",
-};
-
+const input = "h-8 w-full rounded border px-2 text-sm";
+const empty = { code:"", name:"", fiscal_group_code:null, is_depreciable:true, default_useful_life_months:48,
+  default_residual_percentage:0, asset_account_id:null, accumulated_depreciation_account_id:null,
+  depreciation_expense_account_id:null, disposal_gain_account_id:null, disposal_loss_account_id:null,
+  is_active:true, description:"" };
 export default function AssetCategoryPage() {
-  const qc = useQueryClient();
-  const [showForm,setShowForm] = useState(false);
-  const [form, setForm] = useState<any>({ ...empty });
-  const categories = useQuery({ queryKey: ["asset-categories"], queryFn: listCategories });
-  const assetLookup = useQuery({
-    queryKey: ["category-account-lookup", "ASSET"],
-    queryFn: () => getAllAccountLookup({ account_type: "ASSET", is_active: true, is_posting: true }),
-  });
-  const expenseLookup = useQuery({
-    queryKey: ["category-account-lookup", "EXPENSE"],
-    queryFn: () => getAllAccountLookup({ account_type: "EXPENSE", is_active: true, is_posting: true }),
-  });
-
-  const revenueLookup = useQuery({queryKey:["category-account-lookup","REVENUE"],queryFn:()=>getAllAccountLookup({account_type:"REVENUE",is_active:true,is_posting:true})});
-  const assetAccounts = (assetLookup.data ?? []).filter(fixedAssetAccount);
-  const selectedCode = assetAccounts.find(a => a.id === Number(form.asset_account_id))?.account_code;
-  const accumulatedAccounts = (assetLookup.data ?? []).filter(a => accumulatedDepreciationAccount(a) && (!selectedCode || !accumulatedAccountCodes[selectedCode] || a.account_code === accumulatedAccountCodes[selectedCode]));
-  const expenseAccounts = (expenseLookup.data ?? []).filter(depreciationExpenseAccount);
-
-  const save = useMutation({
-    mutationFn: () => saveCategory({
-      ...form,
-      default_useful_life_months: form.is_depreciable ? Number(form.default_useful_life_months) : null,
-      ...Object.fromEntries(
-        ["asset_account_id", "accumulated_depreciation_account_id", "depreciation_expense_account_id",
-          "disposal_gain_account_id", "disposal_loss_account_id"].map(key => [
-          key, form[key] ? Number(form[key]) : null,
-        ]),
-      ),
-    }),
-    onSuccess: () => {
-      setForm({ ...empty });
-      setShowForm(false);
-      qc.invalidateQueries({ queryKey: ["asset-categories"] });
-      toast.success("Asset category saved.");
-    },
-    onError: (error: any) => toast.error(error?.response?.data?.detail || "Could not save category."),
-  });
-
-  const accountField = (key: string, label: string, options: AccountLookup[]) => (
-    <label className="space-y-1 text-sm" key={key}>
-      <span className="font-medium">{label}</span>
-      <select
-        className={input}
-        value={form[key] ?? ""}
-        onChange={event => {
-          const value = event.target.value;
-          if (key !== "asset_account_id") { setForm({ ...form, [key]: value }); return; }
-          const code = options.find(a => a.id === Number(value))?.account_code ?? "";
-          const land = code === "100-600-100";
-          setForm({ ...form, asset_account_id: value, is_depreciable: !land,
-            default_useful_life_months: land ? "" : (form.default_useful_life_months || 48),
-            accumulated_depreciation_account_id: land ? "" : (assetLookup.data ?? []).find(a => a.account_code === accumulatedAccountCodes[code])?.id ?? "",
-            depreciation_expense_account_id: land ? "" : (expenseLookup.data ?? []).find(a => a.account_code === "700-500-133")?.id ?? "",
-          });
-        }}
-      >
-        <option value="">Select {label.toLowerCase()}</option>
-        {options.map(account => (
-          <option key={account.id} value={account.id}>
-            {account.account_code} — {account.account_name}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-
-  const ready = Boolean(form.code.trim() && form.name.trim() && form.asset_account_id && (!form.is_depreciable || (Number(form.default_useful_life_months) >= 48 && form.accumulated_depreciation_account_id && form.depreciation_expense_account_id)));
-
-  return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Asset Categories"
-        description="Default useful life and COA mappings."
-        actions={<><Button onClick={()=>setShowForm(!showForm)}><Plus size={16}/> Category</Button><Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button></>}
-      />
-      {showForm && <Card className="grid gap-3 p-4 md:grid-cols-3">
-        <label className="space-y-1 text-sm">
-          <span className="font-medium">Code</span>
-          <input className={input} value={form.code} onChange={event => setForm({ ...form, code: event.target.value })} />
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="font-medium">Category name</span>
-          <input className={input} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} />
-        </label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_depreciable} onChange={e=>setForm({...form,is_depreciable:e.target.checked,...(!e.target.checked?{default_useful_life_months:"",accumulated_depreciation_account_id:"",depreciation_expense_account_id:""}:{default_useful_life_months:48})})}/>Depreciable</label>
-        {form.is_depreciable && <label className="space-y-1 text-sm">
-          <span className="font-medium">Useful life (months, minimum 48)</span>
-          <input className={input} type="number" min={48} value={form.default_useful_life_months}
-            onChange={event => setForm({ ...form, default_useful_life_months: Number(event.target.value) })} />
-        </label>}
-        {accountField("asset_account_id", "Fixed asset account", assetAccounts)}
-        <div className="flex items-center text-xs text-slate-600">Asset type: {form.asset_account_id ? assetType(assetAccounts.find(a => a.id === Number(form.asset_account_id))?.account_code ?? "") : "Select an asset account"}</div>
-        {form.is_depreciable && accountField("accumulated_depreciation_account_id", "Accumulated depreciation account", accumulatedAccounts)}
-        {form.is_depreciable && accountField("depreciation_expense_account_id", "Depreciation expense account", expenseAccounts)}
-        <label className="space-y-1 text-sm">
-          <span className="font-medium">Residual value (%)</span>
-          <input className={input} type="number" min={0} max={99.99} step={0.01}
-            value={form.default_residual_percentage}
-            onChange={event => setForm({ ...form, default_residual_percentage: Number(event.target.value) })} />
-        </label>
-        {accountField("disposal_gain_account_id","Disposal gain account",(revenueLookup.data??[]))}
-        {accountField("disposal_loss_account_id","Disposal loss account",(expenseLookup.data??[]).filter(a=>a.normal_balance==="DEBIT"))}
-        <label className="space-y-1 text-sm md:col-span-3"><span>Description</span><textarea className="w-full rounded border p-2" rows={2} value={form.description ?? ""} onChange={e => setForm({ ...form, description: e.target.value })}/></label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>Active</label>
-        <div className="flex items-end">
-          <Button variant="outline" onClick={()=>setShowForm(false)}>Close</Button>
-          <Button disabled={!ready || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? "Saving..." : form.id ? "Update Category" : "Save Category"}
-          </Button>
-        </div>
-      </Card>}
-      <Table variant="grid" stickyHeader containerClassName="max-h-[60vh] overflow-auto">
-        <THead><TR><TH>Code</TH><TH>Name</TH><TH>Asset Type</TH><TH>Policy</TH><TH>Useful Life</TH><TH>Residual %</TH><TH>Status</TH><TH>Actions</TH></TR></THead>
-        <TBody>
-          {categories.data?.map((category: any) => (
-            <TR key={category.id}>
-              <TD>{category.code}</TD><TD>{category.name}</TD><TD>{assetType(assetAccounts.find(a => a.id === category.asset_account_id)?.account_code ?? "")}</TD>
-              <TD>{category.is_depreciable ? "Straight Line" : "Non-depreciable"}</TD><TD>{category.is_depreciable ? `${category.default_useful_life_months} months` : "—"}</TD>
-              <TD>{category.default_residual_percentage}</TD>
-              <TD>{category.is_active ? "Active" : "Inactive"}</TD>
-              <TD><Button size="xs" variant="outline" onClick={() => {setForm(category);setShowForm(true);}}>Edit</Button></TD>
-            </TR>
-          ))}
-        </TBody>
-      </Table>
-    </div>
-  );
+  const qc=useQueryClient();
+  const [form,setForm]=useState<any>(null);
+  const [inactive,setInactive]=useState(false);
+  const q=useQuery({queryKey:["asset-categories"],queryFn:listCategories});
+  const groups=useQuery({queryKey:["asset-fiscal-groups"],queryFn:listFiscalGroups});
+  const selected=groups.data?.find((g:any)=>g.code===form?.fiscal_group_code);
+  const save=useMutation({mutationFn:()=>saveCategory(form),onSuccess:()=>{setForm(null);qc.invalidateQueries({queryKey:["asset-categories"]});toast.success("Category saved");},
+    onError:(e:any)=>toast.error(typeof e?.response?.data?.detail==="string"?e.response.data.detail:"Check category fields")});
+  return <div className="space-y-2">
+    <PageHeader title="Asset Categories" actions={<><Button onClick={()=>setForm({...empty})}><Plus size={15}/>Category</Button><Button variant="outline" title="Print" aria-label="Print categories" onClick={()=>window.print()}><Printer size={15}/></Button></>}/>
+    <div className="flex justify-end print:hidden"><label className="flex gap-2 text-xs"><input type="checkbox" checked={inactive} onChange={e=>setInactive(e.target.checked)}/>Show inactive categories</label></div>
+    {form&&<Card className="grid gap-3 p-3 md:grid-cols-3">
+      <label className="text-sm">Code<input className={input} maxLength={30} value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label>
+      <label className="text-sm">Category name<input className={input} maxLength={120} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>
+      <label className="text-sm">PPh group<select className={input} value={form.fiscal_group_code??""} onChange={e=>{const g=groups.data?.find((x:any)=>x.code===e.target.value);if(g)setForm({...form,fiscal_group_code:g.code,name:!form.name||groups.data?.some((x:any)=>x.name===form.name)?g.name:form.name,is_depreciable:g.code!=="LAND",default_useful_life_months:g.months,asset_account_id:null,accumulated_depreciation_account_id:null,depreciation_expense_account_id:null});}}><option value="">{form.id&&!form.fiscal_group_code?"Existing book category":"Choose group"}</option>{groups.data?.map((g:any)=><option key={g.code} value={g.code}>{g.name}</option>)}</select></label>
+      <div className="text-sm">Fiscal useful life<br/><b>{selected?.months?`${selected.months/12} years`:selected?"Non-depreciable":"—"}</b></div>
+      <div className="text-sm">Straight-line rate<br/><b>{selected?.straight_line_rate?`${selected.straight_line_rate}% / year`:"—"}</b></div>
+      <div className="text-sm">Declining-balance rate<br/><b>{selected?.declining_balance_rate?`${selected.declining_balance_rate}% / year`:"—"}</b></div>
+      <label className="text-sm md:col-span-3">Description<textarea rows={2} className="w-full rounded border p-2" value={form.description??""} onChange={e=>setForm({...form,description:e.target.value})}/></label>
+      <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>Active</label>
+      <div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={()=>setForm(null)}>Cancel</Button><Button disabled={save.isPending||!form.code.trim()||!form.name.trim()||(!form.id&&!form.fiscal_group_code)} onClick={()=>save.mutate()}>Save category</Button></div>
+    </Card>}
+    {q.isError&&<p role="alert">Could not load categories.</p>}
+    <Table variant="grid" stickyHeader><THead><TR><TH>Code</TH><TH>Category</TH><TH>Fiscal useful life</TH><TH>Straight line / year</TH><TH>Declining balance / year</TH><TH>Description</TH><TH>Created by</TH><TH>Status</TH><TH>Actions</TH></TR></THead><TBody>
+      {q.data?.filter((c:any)=>inactive||c.is_active).map((c:any)=><TR key={c.id}><TD>{c.code}</TD><TD>{c.name}{!c.fiscal_group_code&&<span className="ml-2 text-xs text-slate-500">Existing book category</span>}</TD><TD>{c.fiscal_group_code?(c.default_useful_life_months?`${c.default_useful_life_months/12} years`:"Non-depreciable"):(c.default_useful_life_months?`${c.default_useful_life_months} months`:"—")}</TD><TD>{c.straight_line_rate?`${c.straight_line_rate}%`:"—"}</TD><TD>{c.declining_balance_rate?`${c.declining_balance_rate}%`:"—"}</TD><TD title={c.description??""}>{c.description||"—"}</TD><TD>{c.creator||(c.source==="MMH_SETUP_SCRIPT"?"MMH setup script":"Unconfirmed")}</TD><TD>{c.is_active?"Active":"Inactive"}</TD><TD><Button size="xs" variant="outline" onClick={()=>setForm({...empty,...c})}>Edit</Button></TD></TR>)}
+    </TBody></Table>
+  </div>;
 }

@@ -32,3 +32,6 @@ export async function downloadAssetReport(path: string, params: Record<string, u
 export const getFiscalProfile = async (id: number) => (await api.get(`/fixed-assets/${id}/fiscal-profile`)).data;
 export const saveFiscalProfile = async (id: number, data: unknown) => (await api.put(`/fixed-assets/${id}/fiscal-profile`, data)).data;
 export const getFiscalReport = async (params: Record<string, unknown>) => (await api.get("/reports/fixed-assets-fiscal", { params })).data;
+
+
+export const listFiscalGroups = async () => (await api.get("/fixed-assets/fiscal-groups")).data;
