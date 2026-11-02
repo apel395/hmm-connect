@@ -15,7 +15,8 @@ class CategoryInput(BaseModel):
     is_depreciable: bool = True
     default_useful_life_months: int | None = Field(default=48, gt=0)
     default_residual_percentage: Decimal = Field(default=Decimal("0"), ge=0, lt=100)
-    asset_account_id: int
+    fiscal_group_code: str | None = None
+    asset_account_id: int | None = None
     accumulated_depreciation_account_id: int | None = None
     depreciation_expense_account_id: int | None = None
     disposal_gain_account_id: int | None = None

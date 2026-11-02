@@ -73,12 +73,24 @@ class FixedAssetService:
         if value.depreciation_method == "NONE" and value.accumulated_depreciation: raise HTTPException(422,"Non-depreciable asset cannot have accumulated depreciation")
         if value.residual_value >= value.acquisition_cost: raise HTTPException(422, "Residual value must be below acquisition cost")
         validate_dimensions(self.db, value.business_unit_id, value.location_id, value.department_id, required=True)
-        if category.asset_account_id != value.asset_account_id:
+        if category.asset_account_id is not None and category.asset_account_id != value.asset_account_id:
             raise HTTPException(422, "Category must match the asset account")
+        from app.services.asset_category_policy import validate_group_account
+        account = self.account(value.asset_account_id, 'ASSET', 'Asset account')
+        validate_group_account(category.fiscal_group_code, account.account_number)
         self.validate_accounts(value)
 
+    def validate_category(self, value):
+        if value.fiscal_group_code:
+            from app.services.asset_category_policy import validate_group_category
+            validate_group_category(value)
+            if value.disposal_gain_account_id: self.account(value.disposal_gain_account_id, ("INCOME","REVENUE"), "Disposal gain")
+            if value.disposal_loss_account_id: self.account(value.disposal_loss_account_id, "EXPENSE", "Disposal loss")
+        else:
+            self.validate_accounts(value)
+
     def create_category(self, value):
-        self.validate_accounts(value)
+        self.validate_category(value)
         code = value.code.strip().upper()
         if self.db.query(FixedAssetCategory).filter(FixedAssetCategory.code == code).first():
             raise HTTPException(409, "Asset category code already exists")
@@ -122,9 +134,27 @@ class FixedAssetService:
         category = self.db.get(FixedAssetCategory, category_id)
         if not category or not category.is_active:
             raise HTTPException(422, "Active asset category is required")
-        if category.asset_account_id != asset.asset_account_id:
+        if category.asset_account_id is not None and category.asset_account_id != asset.asset_account_id:
             raise HTTPException(422, "Asset category must use the already posted asset COA")
-        self.validate_accounts(category)
+        self.validate_category(category)
+        from app.services.asset_category_policy import validate_group_account
+        account = self.account(asset.asset_account_id, 'ASSET', 'Asset account')
+        validate_group_account(category.fiscal_group_code, account.account_number)
+        accumulated_id = category.accumulated_depreciation_account_id
+        expense_id = category.depreciation_expense_account_id
+        if category.fiscal_group_code and category.is_depreciable:
+            from app.services.asset_account_policy import ASSET_ACCOUNTS, DEPRECIATION_EXPENSE
+            mapping = ASSET_ACCOUNTS.get(account.account_number)
+            accumulated = self.db.query(ChartOfAccount).filter(ChartOfAccount.account_number == (mapping[1] if mapping else '')).one_or_none()
+            expense = self.db.query(ChartOfAccount).filter(ChartOfAccount.account_number == DEPRECIATION_EXPENSE).one_or_none()
+            if not accumulated or not expense:
+                raise HTTPException(422, 'Configure the related accumulated depreciation and expense COA first')
+            accumulated_id, expense_id = accumulated.id, expense.id
+        from types import SimpleNamespace
+        self.validate_accounts(SimpleNamespace(asset_account_id=asset.asset_account_id, is_depreciable=category.is_depreciable,
+            default_useful_life_months=category.default_useful_life_months, accumulated_depreciation_account_id=accumulated_id,
+            depreciation_expense_account_id=expense_id, disposal_gain_account_id=category.disposal_gain_account_id,
+            disposal_loss_account_id=category.disposal_loss_account_id))
         asset.asset_category_id = category.id
         asset.useful_life_months = category.default_useful_life_months
         asset.depreciation_method = "STRAIGHT_LINE" if category.is_depreciable else "NONE"
@@ -133,8 +163,8 @@ class FixedAssetService:
         ).quantize(Decimal("0.01"))
         if asset.residual_value >= asset.acquisition_cost:
             raise HTTPException(422, "Residual value must be below acquisition cost")
-        asset.accumulated_depreciation_account_id = category.accumulated_depreciation_account_id
-        asset.depreciation_expense_account_id = category.depreciation_expense_account_id
+        asset.accumulated_depreciation_account_id = accumulated_id
+        asset.depreciation_expense_account_id = expense_id
         asset.disposal_gain_account_id = category.disposal_gain_account_id
         asset.disposal_loss_account_id = category.disposal_loss_account_id
         asset.status = "DRAFT"
@@ -152,7 +182,7 @@ class FixedAssetService:
         return {"can_complete_registration": asset.status == "PENDING_REGISTRATION", "can_edit": asset.status in ("DRAFT", "PENDING_SETUP"), "can_capitalize": asset.status == "DRAFT" and bool(asset.asset_category_id and (asset.depreciation_method == "NONE" or (asset.useful_life_months and asset.accumulated_depreciation_account_id and asset.depreciation_expense_account_id))), "can_generate_schedule": asset.status in ("ACTIVE", "FULLY_DEPRECIATED") and asset.depreciation_method != "NONE", "can_transfer": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_dispose": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_write_off": asset.status in ("ACTIVE", "FULLY_DEPRECIATED"), "can_print": True}
 
     def serialize(self, asset):
-        return {"id":asset.id,"asset_number":asset.asset_number,"asset_name":asset.asset_name,"product_id":asset.product_id,"product_code":asset.product.code if asset.product else None,"product_name":asset.product.name if asset.product else None,"category_id":asset.asset_category_id,"category":asset.category.name if asset.category else None,"source_invoice_line_id":asset.source_invoice_line_id,"purchase_invoice_id":asset.purchase_invoice_id,"goods_receipt_id":asset.goods_receipt_id,"asset_account_id":asset.asset_account_id,"description":asset.description,"serial_number":asset.serial_number,"barcode":asset.barcode,"acquisition_date":asset.acquisition_date,"capitalization_date":asset.capitalization_date,"acquisition_cost":asset.acquisition_cost,"quantity":asset.quantity,"residual_value":asset.residual_value,"useful_life_months":asset.useful_life_months,"depreciation_method":asset.depreciation_method,"depreciation_start_date":asset.depreciation_start_date,"accumulated_depreciation":asset.accumulated_depreciation,"net_book_value":asset.net_book_value,"status":asset.status,"business_unit_id":asset.business_unit_id,"location_id":asset.location_id,"department_id":asset.department_id,"source_type":asset.source_type,"external_reference":asset.external_reference,"notes":asset.notes,"allowed_actions":self.actions(asset),"schedules":[{"id":s.id,"period":f"{s.period_year}-{s.period_month:02d}","opening_book_value":s.opening_book_value,"depreciation_amount":s.depreciation_amount,"accumulated_depreciation":s.accumulated_depreciation,"closing_book_value":s.closing_book_value,"status":s.status,"journal_entry_id":s.journal_entry_id} for s in sorted(asset.schedules,key=lambda x:(x.period_year,x.period_month))],"movements":[{"id":m.id,"movement_type":m.movement_type,"movement_date":m.movement_date,"from_business_unit_id":m.from_business_unit_id,"to_business_unit_id":m.to_business_unit_id,"from_location_id":m.from_location_id,"to_location_id":m.to_location_id,"notes":m.notes,"journal_entry_id":m.journal_entry_id} for m in asset.movements]}
+        return {"id":asset.id,"asset_number":asset.asset_number,"asset_name":asset.asset_name,"product_id":asset.product_id,"product_code":asset.product.code if asset.product else None,"product_name":asset.product.name if asset.product else None,"category_id":asset.asset_category_id,"fiscal_group_code":asset.category.fiscal_group_code if asset.category else None,"category":asset.category.name if asset.category else None,"source_invoice_line_id":asset.source_invoice_line_id,"purchase_invoice_id":asset.purchase_invoice_id,"goods_receipt_id":asset.goods_receipt_id,"asset_account_id":asset.asset_account_id,"description":asset.description,"serial_number":asset.serial_number,"barcode":asset.barcode,"acquisition_date":asset.acquisition_date,"capitalization_date":asset.capitalization_date,"acquisition_cost":asset.acquisition_cost,"quantity":asset.quantity,"residual_value":asset.residual_value,"useful_life_months":asset.useful_life_months,"depreciation_method":asset.depreciation_method,"depreciation_start_date":asset.depreciation_start_date,"accumulated_depreciation":asset.accumulated_depreciation,"net_book_value":asset.net_book_value,"status":asset.status,"business_unit_id":asset.business_unit_id,"location_id":asset.location_id,"department_id":asset.department_id,"source_type":asset.source_type,"external_reference":asset.external_reference,"notes":asset.notes,"allowed_actions":self.actions(asset),"schedules":[{"id":s.id,"period":f"{s.period_year}-{s.period_month:02d}","opening_book_value":s.opening_book_value,"depreciation_amount":s.depreciation_amount,"accumulated_depreciation":s.accumulated_depreciation,"closing_book_value":s.closing_book_value,"status":s.status,"journal_entry_id":s.journal_entry_id} for s in sorted(asset.schedules,key=lambda x:(x.period_year,x.period_month))],"movements":[{"id":m.id,"movement_type":m.movement_type,"movement_date":m.movement_date,"from_business_unit_id":m.from_business_unit_id,"to_business_unit_id":m.to_business_unit_id,"from_location_id":m.from_location_id,"to_location_id":m.to_location_id,"notes":m.notes,"journal_entry_id":m.journal_entry_id} for m in asset.movements]}
 
     def capitalize(self, asset, value, user):
         if asset.status != "DRAFT": raise HTTPException(409, "Only configured draft assets can be capitalized")
