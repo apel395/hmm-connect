@@ -10,6 +10,8 @@ export interface StoreRequestItem {
   issued_quantity: number;
   remaining_quantity: number;
   available_stock: number;
+  reference_unit_cost?: number | string | null;
+  estimated_value?: number | string | null;
 }
 
 export interface StoreIssueItem {
@@ -50,6 +52,8 @@ export interface StoreRequest {
   warehouse_code?: string | null;
   warehouse_name?: string | null;
   notes?: string | null;
+  price_basis?: "CURRENT_WAREHOUSE_AVERAGE";
+  estimated_total?: number | string | null;
   total_requested_quantity: number;
   total_issued_quantity: number;
   total_remaining_quantity: number;

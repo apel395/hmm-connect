@@ -152,7 +152,7 @@ export default function InventoryMovementPage() {
         <label className="min-w-[180px] text-xs font-medium text-slate-600">History event
           <select className={input} value={sourceKind} onChange={e => setSourceKind(e.target.value as SourceFilter)}>
             <option value="ALL">All events</option><option value="PURCHASE">Pembelian / Receiving</option>
-            <option value="USAGE">Pemakaian</option><option value="ADJUSTMENT">Penyesuaian / Stock Opname</option>
+            <option value="USAGE">Operasional / Pemakaian</option><option value="RETURN">Retur supplier</option><option value="ADJUSTMENT">Penyesuaian / Stock Opname</option>
           </select>
         </label>
         <Button type="button" size="sm" variant="outline" title="Filters" aria-label="Filters" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>

@@ -28,7 +28,7 @@ export const storeRequestApi = {
   },
   availability: async (warehouseId: number, productIds: number[]) => {
     const ids = [...new Set(productIds)];
-    const response = await api.get<Array<{ product_id: number; available_stock: number }>>("/store-requests/availability", {
+    const response = await api.get<Array<{ product_id: number; available_stock: number; reference_unit_cost?: number | string | null }>>("/store-requests/availability", {
       params: { warehouse_id: warehouseId, product_ids: ids },
       // FastAPI reads repeated product_ids, not Axios's default product_ids[].
       paramsSerializer: { indexes: null },
