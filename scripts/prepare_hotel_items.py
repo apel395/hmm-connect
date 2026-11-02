@@ -50,7 +50,7 @@ def proposal(row):
     name = normalize(row['name'])
     prefix = name.split('-', 1)[0].strip()
     section = row['section_code']
-    # Operating equipment explicitly assigned to ASSET by the hotel owner.
+    # Legacy operating-equipment mapping; linen is now quantity-controlled stock.
     asset_coa = None
     if section in {'13', '14'} and prefix == 'LINEN' and not re.search(r'\b(?:ANAK REL|REL GORDEN)\b', name):
         asset_coa = '100-900-100'
@@ -64,6 +64,9 @@ def proposal(row):
         elif normalize(row['unit']) in {'1','PPN'}: issues.append('UNIT_REVIEW')
         if row['purchase'] < 0: issues.append('NEGATIVE_PURCHASE_REFERENCE')
         if row['expense'] < 0: issues.append('NEGATIVE_LEGACY_EXPENSE_REFERENCE')
+        if asset_coa == '100-900-100':
+            return {'group': 'MATERIAL', 'subgroup': 'LINEN', 'inventory_treatment': 'STOCK',
+                    'inventory_coa': asset_coa, 'issues': issues}
         return {'group': 'ASSET', 'subgroup': 'FURNITURE', 'inventory_treatment': 'FIXED_ASSET',
                 'asset_coa': asset_coa, 'issues': issues}
     food = {'MEAT': 'MEAT', 'POU': 'POULTRY', 'FISH': 'FISH',

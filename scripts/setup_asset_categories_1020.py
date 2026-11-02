@@ -20,7 +20,8 @@ POLICIES = [
     ('MMH-MECHANICAL', 'Mekanikal dan Elektrikal', '100-600-102', '100-800-101'),
     ('MMH-VEHICLE', 'Kendaraan', '100-600-103', '100-800-102'),
     ('MMH-FFE', 'Furniture, Fixtures and Equipment', '100-600-104', '100-800-103'),
-    ('MMH-OTHER', 'Aset Tetap Lainnya', '100-600-105', '100-800-104'),
+    ('MMH-INVENTARIS', 'Inventaris', '100-600-105', '100-800-104'),
+    ('MMH-OTHER-999', 'Asset Tetap Lainnya', '100-600-999', '100-800-999'),
 ]
 
 
@@ -32,13 +33,13 @@ def setup(db, create=True):
     for code, name, asset_code, accumulated_code in POLICIES:
         existing = db.query(FixedAssetCategory).filter_by(code=code).first()
         if existing:
-            result.append({'code': code, 'action': 'EXISTING_UNCHANGED', 'life': existing.default_useful_life_months}); continue
+            result.append({'code': code, 'action': 'EXISTING_UNCHANGED', 'life': existing.default_useful_life_months, 'mapping_matches': existing.asset_account_id == getattr(accounts.get(asset_code), 'id', None) and existing.accumulated_depreciation_account_id == getattr(accounts.get(accumulated_code), 'id', None)}); continue
         required = [asset_code] + ([accumulated_code, '700-500-133'] if accumulated_code else [])
         missing = [c for c in required if c not in accounts]
         if missing:
             result.append({'code': code, 'action': 'REVIEW_MISSING_COA', 'accounts': missing}); continue
         value = CategoryInput(code=code, name=name, asset_account_id=accounts[asset_code].id,
-            is_depreciable=bool(accumulated_code), default_useful_life_months=48 if accumulated_code else None,
+            is_depreciable=bool(accumulated_code), default_useful_life_months=(240 if asset_code == '100-600-101' else 48) if accumulated_code else None,
             accumulated_depreciation_account_id=accounts[accumulated_code].id if accumulated_code else None,
             depreciation_expense_account_id=accounts['700-500-133'].id if accumulated_code else None)
         FixedAssetService(db).validate_accounts(value)
@@ -47,7 +48,9 @@ def setup(db, create=True):
             record_audit(db, actor, 'ASSET_CATEGORY_CREATED', 'FIXED_ASSET_CATEGORY', f'Create {code}', entity_id=category.id,
                 after_data=value.model_dump(mode='json'), details={'batch': 'ASSET_POLICY_20261020', 'accounting_created': False})
         result.append({'code': code, 'action': 'CREATE' if create else 'AVAILABLE', 'life': value.default_useful_life_months})
-    reviews = [{'kind': 'CATEGORY', 'id': a.id, 'name': a.name, 'life': a.default_useful_life_months}
+    accounts_by_id = {a.id: a.account_number for a in accounts.values()}
+    reviews = [{'kind': 'LEGACY_CATEGORY_MAPPING', 'id': a.id, 'name': a.name, 'account': accounts_by_id.get(a.asset_account_id)} for a in db.query(FixedAssetCategory).all() if a.code == 'MMH-OTHER' and a.asset_account_id == getattr(accounts.get('100-600-105'), 'id', None)]
+    reviews += [{'kind': 'CATEGORY', 'id': a.id, 'name': a.name, 'life': a.default_useful_life_months}
         for a in db.query(FixedAssetCategory).all() if a.is_depreciable and (not a.default_useful_life_months or a.default_useful_life_months < 48)]
     reviews += [{'kind': 'FIXED_ASSET', 'id': a.id, 'name': a.asset_name, 'life': a.useful_life_months}
         for a in db.query(FixedAsset).all() if a.depreciation_method != 'NONE' and a.status != 'PENDING_REGISTRATION' and (not a.useful_life_months or a.useful_life_months < 48)]

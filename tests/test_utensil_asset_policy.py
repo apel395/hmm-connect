@@ -19,7 +19,7 @@ def test_utensils_reject_capitalization_while_stock_and_direct_use_are_valid():
     assert not is_utensil(SimpleNamespace(name='Hotel towel',subgroup_name='LINEN'))
 
 
-def test_manual_intake_cannot_bypass_policy_and_existing_linen_is_preserved(db):
+def test_manual_intake_cannot_bypass_policy_and_valid_equipment_is_registered(db):
     with pytest.raises(HTTPException):ensure_asset_item(db,name='Hotel utensils',account_id=1,user=None)
     assert db.query(FixedAsset).count()==0
     product=item(db)

@@ -5,12 +5,13 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
 from app.models.product import Product
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.dependencies.authorization import has_permission
 from app.models.fixed_asset import FixedAsset, FixedAssetCategory, FixedAssetDepreciationRun, FixedAssetDepreciationSchedule
+from app.schemas.asset_fiscal import FiscalProfileInput
 from app.schemas.fixed_asset import AssetInput, AssetUpdate, CapitalizeInput, CategoryAssignmentInput, CategoryInput, DisposalInput, RunInput, TransferInput, WriteOffInput
 from app.services.document_number import next_document_number
 from app.services.fixed_asset_service import DepreciationRunService, FixedAssetService, ZERO
@@ -305,3 +306,63 @@ def export_depreciation(date_from: date | None = None, date_to: date | None = No
     summary = [['MMH — Depreciation'], ['Posting status', 'Amount'], ['POSTED', report['posted_depreciation']], ['PLANNED / GENERATED', report['planned_depreciation']]]
     detail = [['MMH — Monthly depreciation'], headers] + [[r.get(k) for k in keys] for r in report['items']]
     return excel_response('depreciation.xlsx', [('Summary', summary), ('Schedule detail', detail)])
+
+
+@router.get('/{asset_id}/fiscal-profile')
+def get_fiscal_profile(asset_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from app.models.fixed_asset import FixedAssetFiscalProfile
+    from app.schemas.asset_fiscal import GROUPS
+    from app.services.asset_fiscal_service import profile_dict, fiscal_schedule
+    access(user)
+    asset = scoped_asset(FixedAssetService(db), asset_id, user)
+    profile = db.get(FixedAssetFiscalProfile, asset_id)
+    return {'profile': profile_dict(profile), 'groups': [
+        {'code': key, 'name': v[0], 'months': v[1], 'straight_line_rate': v[2], 'declining_balance_rate': v[3]}
+        for key, v in GROUPS.items()], 'schedule': fiscal_schedule(profile, min((m.movement_date for m in asset.movements if m.movement_type in ('DISPOSAL', 'WRITE_OFF')), default=None)) if profile else []}
+
+
+@router.put('/{asset_id}/fiscal-profile')
+def update_fiscal_profile(asset_id: int, data: FiscalProfileInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from app.services.asset_fiscal_service import save_profile, profile_dict
+    access(user)
+    asset = scoped_asset(FixedAssetService(db), asset_id, user, lock=True)
+    row = save_profile(db, asset, data, user)
+    db.commit()
+    return profile_dict(row)
+
+
+@reports_router.get('/fixed-assets-fiscal')
+def fiscal_asset_report(year: int, business_unit_id: int | None = None, location_id: int | None = None,
+                        department_id: int | None = None, category_id: int | None = None,
+                        db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from app.models.fixed_asset import FixedAssetFiscalProfile
+    from app.services.asset_fiscal_service import fiscal_year_row
+    access(user)
+    if not 1900 <= year <= 9998:
+        raise HTTPException(422, 'Select a valid fiscal year')
+    query = scoped_asset_query(db, user, db.query(FixedAsset).options(
+        selectinload(FixedAsset.schedules), selectinload(FixedAsset.movements)),
+        business_unit_id, location_id, department_id)
+    if category_id is not None:
+        query = query.filter(FixedAsset.asset_category_id == category_id)
+    assets = query.order_by(FixedAsset.asset_number).all()
+    ids = [a.id for a in assets]
+    profiles = {p.fixed_asset_id: p for p in db.query(FixedAssetFiscalProfile).filter(FixedAssetFiscalProfile.fixed_asset_id.in_(ids)).all()} if ids else {}
+    items = [fiscal_year_row(a, profiles.get(a.id), year) for a in assets]
+    configured = [r for r in items if r['status'] == 'CONFIGURED']
+    totals = {key: sum((r[key] for r in configured), ZERO) for key in ('opening', 'book_depreciation', 'fiscal_depreciation', 'disposal_value', 'closing', 'difference')}
+    return {'year': year, 'items': items, 'totals': totals, 'configured': len(configured), 'unconfigured': len(items)-len(configured)}
+
+
+@reports_router.get('/fixed-assets-fiscal/export')
+def export_fiscal_assets(year: int, business_unit_id: int | None = None, location_id: int | None = None,
+                         department_id: int | None = None, category_id: int | None = None,
+                         db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from app.services.asset_report_export import excel_response
+    report = fiscal_asset_report(year, business_unit_id, location_id, department_id, category_id, db, user)
+    keys = ['asset_number', 'asset_name', 'group_code', 'status', 'fiscal_cost', 'opening', 'book_depreciation', 'fiscal_depreciation', 'disposal_value', 'closing', 'difference']
+    headers = ['Asset', 'Description', 'Fiscal group', 'Setup', 'Fiscal cost', 'Fiscal opening', 'Book depreciation posted', 'Fiscal depreciation', 'Fiscal NBV removed on disposal', 'Fiscal closing', 'Book minus fiscal']
+    summary = [[f'MMH — Fiscal depreciation {year}'], ['Configured', report['configured']], ['Not configured / outside opening', report['unconfigured']], ['Measure', 'Amount']]
+    summary += [[key, value] for key, value in report['totals'].items()]
+    detail = [[f'MMH — Book and fiscal comparison {year}'], headers] + [[r[k] for k in keys] for r in report['items']]
+    return excel_response(f'asset-fiscal-{year}.xlsx', [('Summary', summary), ('Asset detail', detail)])

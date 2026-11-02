@@ -27,10 +27,11 @@ def seed_plan(source, products, groups, subgroups, accounts):
         if not normalize(row['unit']): row['issues'].append('UNIT_MISSING')
         if len(row['name'].strip()) > 150 or len(row['unit'].strip()) > 20:
             row['issues'].append('FIELD_LENGTH_REVIEW')
-        fixed_asset = row['inventory_treatment'] == 'FIXED_ASSET' and row['group'] == 'ASSET' and row.get('asset_coa') in {'100-900-100','100-900-101','100-900-102','100-900-103'}
-        if not fixed_asset and (row['inventory_treatment'] != 'STOCK' or row['group'] not in INVENTORY_COA):
+        fixed_asset = row['inventory_treatment'] == 'FIXED_ASSET' and row['group'] == 'ASSET' and row.get('asset_coa', '').startswith('100-600-')
+        linen = row['group'] == 'MATERIAL' and row.get('inventory_coa') == '100-900-100'
+        if not fixed_asset and (row['inventory_treatment'] != 'STOCK' or (row['group'] not in INVENTORY_COA and not linen)):
             row['issues'].append('CLASSIFICATION_NOT_FINAL')
-        account_number = row['asset_coa'] if fixed_asset else INVENTORY_COA.get(row['group'])
+        account_number = row['asset_coa'] if fixed_asset else row['inventory_coa'] if linen else INVENTORY_COA.get(row['group'])
         matched = [a for a in accounts if a['account_number'] == account_number
                    and a['is_active'] and a['is_posting'] and a['account_type'] == 'ASSET'
                    and a['normal_balance'] == 'DEBIT']

@@ -18,7 +18,7 @@ def db():
     engine = create_engine('sqlite://')
     Base.metadata.create_all(engine)
     with Session(engine) as db:
-        db.add(ChartOfAccount(id=1, account_number='100-900-100', account_name='Linen',
+        db.add(ChartOfAccount(id=1, account_number='100-600-104', account_name='Equipment',
                account_type='ASSET', normal_balance='DEBIT', is_active=True, is_posting=True))
         db.commit()
         yield db
@@ -26,7 +26,7 @@ def db():
 
 
 def item(db):
-    p = Product(code='4-200101', name='Synthetic hotel towel', group_code='4', group_name='ASSET',
+    p = Product(code='4-200101', name='Synthetic hotel cabinet', group_code='4', group_name='ASSET',
         subgroup_code='4-2', subgroup_name='FURNITURE', uom='PCS', usage_uom='PCS',
         item_type='BUY', catalog_type='HOTEL', inventory_treatment='FIXED_ASSET', asset_account_id=1)
     db.add(p); db.commit()
@@ -41,13 +41,13 @@ def test_master_automatically_registers_unvalued_asset_once(db):
     assert asset.acquisition_date is None and asset.acquisition_cost is None and asset.net_book_value is None
     assert not FixedAssetService(db).actions(asset)['can_capitalize']
     assert db.query(Inventory).count() == db.query(JournalEntry).count() == db.query(GeneralLedger).count() == 0
-    p.name = 'Synthetic updated towel'; db.commit()
+    p.name = 'Synthetic updated cabinet'; db.commit()
     assert db.query(FixedAsset).count() == 1
     assert db.query(FixedAsset).one().asset_name == p.name
 
 
 def test_pending_registration_and_master_roll_back_together(db):
-    p = Product(code='4-200102', name='Rollback towel', group_code='4', group_name='ASSET',
+    p = Product(code='4-200102', name='Rollback cabinet', group_code='4', group_name='ASSET',
         subgroup_code='4-2', subgroup_name='FURNITURE', uom='PCS', usage_uom='PCS', item_type='BUY',
         catalog_type='HOTEL', inventory_treatment='FIXED_ASSET', asset_account_id=1)
     db.add(p); db.flush(); db.flush(); db.rollback()
@@ -81,7 +81,7 @@ def test_invoice_reuses_master_registration_and_keeps_source_amount(db):
     db.execute(insert(SupplierInvoice).values(id=611, internal_invoice_number='INV-611', supplier_invoice_number='SOURCE-1',
         supplier_id=1, invoice_date=date(2026,1,8), business_unit_id=1, subtotal=500, tax_amount=0,
         total_amount=500, balance_amount=500, status='POSTED'))
-    db.execute(insert(SupplierInvoiceLine).values(id=900, supplier_invoice_id=611, description='Synthetic towel',
+    db.execute(insert(SupplierInvoiceLine).values(id=900, supplier_invoice_id=611, description='Synthetic cabinet',
         quantity=10, uom='PCS', unit_price=50, line_amount=500, product_id=p.id, account_id=1))
     db.commit()
     asset = register_invoice_asset(db, invoice=db.get(SupplierInvoice,611), line=db.get(SupplierInvoiceLine,900),
@@ -100,7 +100,7 @@ def test_complete_registration_retains_identity_without_journal(db):
     db.add(BusinessUnit(id=1,code='HOTEL',name='Hotel',is_active=True))
     db.add(ChartOfAccount(id=2,account_number='100-800-103',account_name='Accumulated depreciation',account_type='ASSET',normal_balance='CREDIT',is_active=True,is_posting=True))
     db.add(ChartOfAccount(id=3,account_number='700-500-133',account_name='Depreciation expense',account_type='EXPENSE',normal_balance='DEBIT',is_active=True,is_posting=True))
-    db.add(FixedAssetCategory(id=1,code='LINEN',name='Linen',asset_account_id=1,accumulated_depreciation_account_id=2,
+    db.add(FixedAssetCategory(id=1,code='FFE',name='Equipment',asset_account_id=1,accumulated_depreciation_account_id=2,
         depreciation_expense_account_id=3,default_useful_life_months=48,is_active=True))
     db.commit()
     p = item(db); asset = db.query(FixedAsset).one(); original_id = asset.id

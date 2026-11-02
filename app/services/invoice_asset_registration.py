@@ -21,6 +21,10 @@ def register_invoice_asset(
     account_id: int, journal: JournalEntry, user,
 ) -> FixedAsset:
     """Store the asset source once. Accounting was already posted by the journal."""
+    from app.models.chart_of_account import ChartOfAccount
+    account = db.get(ChartOfAccount, account_id)
+    if not account or not account.account_number.startswith('100-600-'):
+        raise HTTPException(422, 'Linen and operating supplies cannot be registered as fixed assets')
     db.query(SupplierInvoice.id).filter(SupplierInvoice.id == invoice.id).with_for_update().one()
     if invoice.status != "POSTED" or journal.status != "POSTED":
         raise HTTPException(409, "A posted invoice and accounting journal are required for asset registration")
@@ -131,7 +135,7 @@ def sync_posted_invoice_assets(db: Session, *, user) -> int:
             continue
         debit = next((item for item in journal.lines if Decimal(item.debit or 0) > 0), None)
         account = db.get(ChartOfAccount, debit.account_id) if debit else None
-        if not account or not account.account_number.startswith(("100-600-", "100-900-")):
+        if not account or not account.account_number.startswith("100-600-"):
             continue
         if not db.query(FixedAsset.id).filter(FixedAsset.source_invoice_line_id == line.id, FixedAsset.product_id.is_not(None)).first():
             register_invoice_asset(db, invoice=invoice, line=line, account_id=account.id, journal=journal, user=user)
@@ -152,7 +156,7 @@ def sync_posted_invoice_assets(db: Session, *, user) -> int:
             if line.goods_receipt_item_id or not line.account_id:
                 continue
             account = db.get(ChartOfAccount, line.account_id)
-            if not account or not account.account_number.startswith(("100-600-", "100-900-")):
+            if not account or not account.account_number.startswith("100-600-"):
                 continue
             if not db.query(FixedAsset.id).filter(FixedAsset.source_invoice_line_id == line.id, FixedAsset.product_id.is_not(None)).first():
                 register_invoice_asset(db, invoice=invoice, line=line, account_id=account.id, journal=source, user=user)

@@ -39,7 +39,7 @@ def test_four_year_minimum_and_non_depreciable_land(db, asset):
     for code in ('100-900-101', '100-900-102', '100-900-103'):
         a=ChartOfAccount(account_number=code,account_name='Utensils',account_type='ASSET',normal_balance='DEBIT',is_active=True,is_posting=True)
         db.add(a);db.flush()
-        with pytest.raises(HTTPException, match='utensils'):
+        with pytest.raises(HTTPException, match='operating supplies'):
             FixedAssetService(db).create_category(CategoryInput(code=code, name='Utensils',asset_account_id=a.id,
                 accumulated_depreciation_account_id=3,depreciation_expense_account_id=2))
 
@@ -106,8 +106,8 @@ def test_category_setup_is_audited_and_idempotent_without_changing_existing(db):
             db.flush()
     db.commit()
     first=setup(db);db.commit()
-    assert len([c for c in first['categories'] if c['action']=='CREATE'])==6
-    assert db.query(FixedAssetCategory).count()==6 and db.query(AuditLog).count()==6
+    assert len([c for c in first['categories'] if c['action']=='CREATE'])==len(POLICIES)
+    assert db.query(FixedAssetCategory).count()==len(POLICIES) and db.query(AuditLog).count()==len(POLICIES)
     land=db.query(FixedAssetCategory).filter_by(code='MMH-LAND').one()
     assert not land.is_depreciable and land.default_useful_life_months is None
     again=setup(db)
