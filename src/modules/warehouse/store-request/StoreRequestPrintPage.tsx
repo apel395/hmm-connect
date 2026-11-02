@@ -30,11 +30,14 @@ interface PrintStoreRequest {
   created_at?: string | null;
   printed_by: string;
   generated_at: string;
+  estimated_total?: number | string | null;
   items: StoreRequestItem[];
   approval_history?: PrintApproval[];
 }
 
 const number = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", { maximumFractionDigits: 4 });
+
+const money = (value: number | string | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function StoreRequestPrintPage() {
   const { id } = useParams();
@@ -57,6 +60,7 @@ export default function StoreRequestPrintPage() {
       { label: "LOCATION", value: data.location_name },
       { label: "DEPARTMENT", value: data.department_name },
       { label: "WAREHOUSE", value: data.warehouse_name },
+      { label: "PRICE BASIS", value: "Current warehouse average (reference)" },
     ]}
     columns={[
       { label: "CODE", align: "left", render: (item: StoreRequestItem) => item.product_code },
@@ -65,7 +69,10 @@ export default function StoreRequestPrintPage() {
       { label: "ISSUED", align: "right", render: (item: StoreRequestItem) => number(item.issued_quantity) },
       { label: "REMAINING", align: "right", render: (item: StoreRequestItem) => number(item.remaining_quantity) },
       { label: "UOM", align: "center", render: (item: StoreRequestItem) => item.uom },
+      { label: "REF. PRICE", align: "right", render: (item: StoreRequestItem) => money(item.reference_unit_cost) },
+      { label: "EST. VALUE", align: "right", render: (item: StoreRequestItem) => money(item.estimated_value) },
     ]}
+    totals={[{label: "Estimated total", value: money(data.estimated_total), emphasis: true}]}
     rows={data.items}
     rowKey={(item) => item.id}
     notes={data.notes}
