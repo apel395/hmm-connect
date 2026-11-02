@@ -18,7 +18,7 @@ def ensure_asset_item(db, *, name, account_id, user, product_id=None, uom="SET",
     validate_asset_item({"name":name,"inventory_treatment":"FIXED_ASSET"})
     lock_item_creation(db)
     account = db.get(ChartOfAccount, account_id)
-    if not account or not account.is_active or not account.is_posting or not account.account_number.startswith(("100-600-", "100-900-")) or account.account_type != "ASSET" or account.normal_balance != "DEBIT":
+    if not account or not account.is_active or not account.is_posting or not account.account_number.startswith("100-600-") or account.account_type != "ASSET" or account.normal_balance != "DEBIT":
         raise HTTPException(422, "Asset item requires an active posting fixed asset account")
     if product_id:
         item = db.get(Product, product_id)
@@ -37,7 +37,6 @@ def ensure_asset_item(db, *, name, account_id, user, product_id=None, uom="SET",
         return eligible[0]
     # Use existing catalog only. Computers belong to KOMPUTER, other FF&E to FURNITURE.
     if not subgroup_code:
-        if account.account_number.startswith("100-900-"): subgroup_code = "4-2"
         subgroup_code = subgroup_code or {"100-600-101": "4-1", "100-600-102": "4-3", "100-600-103": "4-5", "100-600-104": "4-2"}.get(account.account_number)
         if account.account_number == "100-600-104" and re.search(r"\b(computer|komputer|intel|laptop|desktop|pc)\b", name, re.I):
             subgroup_code = "4-4"

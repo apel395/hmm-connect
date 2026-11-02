@@ -127,3 +127,20 @@ class FixedAssetDepreciationRun(Base):
     posted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+class FixedAssetFiscalProfile(Base):
+    """Tax calculation inputs only; never an accounting opening balance or GL posting."""
+    __tablename__ = 'fixed_asset_fiscal_profiles'
+    __table_args__ = (CheckConstraint('fiscal_cost > 0', name='ck_asset_fiscal_positive_cost'), CheckConstraint('opening_book_value IS NULL OR (opening_book_value >= 0 AND opening_book_value <= fiscal_cost)', name='ck_asset_fiscal_opening'))
+    fixed_asset_id: Mapped[int] = mapped_column(ForeignKey('fixed_assets.id'), primary_key=True)
+    group_code: Mapped[str] = mapped_column(String(30))
+    method: Mapped[str] = mapped_column(String(30))
+    fiscal_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    start_date: Mapped[date | None] = mapped_column(Date)
+    useful_life_months: Mapped[int | None] = mapped_column(Integer)
+    reference: Mapped[str] = mapped_column(String(500), default='')
+    opening_date: Mapped[date | None] = mapped_column(Date)
+    opening_book_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

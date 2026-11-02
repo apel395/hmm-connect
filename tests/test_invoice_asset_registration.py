@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.fixed_asset import FixedAsset, FixedAssetCategory, FixedAssetMovement
+from app.models.chart_of_account import ChartOfAccount
 from app.models.supplier_invoice import SupplierInvoice
 from app.services import invoice_asset_registration as registration
 
@@ -43,6 +44,8 @@ class Db:
         return Query(self, model)
 
     def get(self, model, ident):
+        if model is ChartOfAccount:
+            return SimpleNamespace(account_number="100-600-104")
         return SimpleNamespace(business_unit_id=1)
 
     def add(self, item):

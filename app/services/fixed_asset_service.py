@@ -40,10 +40,10 @@ class FixedAssetService:
 
     def validate_accounts(self, value):
         account = self.account(value.asset_account_id, "ASSET", "Asset account")
-        if account.account_number in ('100-900-101', '100-900-102', '100-900-103'):
-            raise HTTPException(422, 'MMH utensils policy excludes chinaware, silverware and glassware from fixed assets')
-        if not account.account_number.startswith(("100-600-", "100-900-")) or account.normal_balance != "DEBIT":
-            raise HTTPException(422, "Select a debit fixed asset or operating-equipment account")
+        if account.account_number.startswith('100-900-'):
+            raise HTTPException(422, 'MMH operating supplies policy excludes linen, chinaware, silverware and glassware from fixed assets')
+        if not account.account_number.startswith("100-600-") or account.normal_balance != "DEBIT":
+            raise HTTPException(422, "Select a debit fixed asset account under 100-600")
         depreciable = getattr(value, "is_depreciable", value.depreciation_method != "NONE" if hasattr(value, "depreciation_method") else True)
         if account.account_number == "100-600-100" and depreciable:
             raise HTTPException(422, "Land must use a non-depreciable category")
@@ -51,7 +51,11 @@ class FixedAssetService:
             life = getattr(value, "default_useful_life_months", getattr(value, "useful_life_months", None))
             if not life: raise HTTPException(422, "Depreciable assets require useful life")
             validate_useful_life(life)
-            self.account(value.accumulated_depreciation_account_id, "ASSET", "Accumulated depreciation", True)
+            accumulated = self.account(value.accumulated_depreciation_account_id, "ASSET", "Accumulated depreciation", True)
+            from app.services.asset_account_policy import ASSET_ACCOUNTS
+            expected = ASSET_ACCOUNTS.get(account.account_number)
+            if expected and accumulated.account_number != expected[1]:
+                raise HTTPException(422, f"Accumulated depreciation for {account.account_number} must use {expected[1]}")
             expense = self.account(value.depreciation_expense_account_id, "EXPENSE", "Depreciation expense")
             if expense.normal_balance != "DEBIT": raise HTTPException(422, "Depreciation expense must be debit balance")
         elif getattr(value,"default_useful_life_months",getattr(value,"useful_life_months",None)) is not None or value.accumulated_depreciation_account_id or value.depreciation_expense_account_id:

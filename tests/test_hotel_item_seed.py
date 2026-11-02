@@ -97,10 +97,10 @@ def test_audit_failure_rolls_back_products_as_one_transaction(db, monkeypatch):
     assert db.query(Product).count() == 0
 
 
-def test_operating_equipment_seed_registers_pending_asset_without_valuation(db):
+def test_linen_seed_creates_quantity_item_without_asset_or_stock_opening(db):
     from app.models.fixed_asset import FixedAsset
-    group = ItemGroup(id=19, code='4', name='ASSET', item_type='BUY', is_active=True)
-    group.subgroups = [ItemSubgroup(id=75, code='4-2', name='FURNITURE', is_active=True)]
+    group = ItemGroup(id=19, code='3', name='MATERIAL', item_type='BUY', is_active=True)
+    group.subgroups = [ItemSubgroup(id=75, code='3-9', name='LINEN', is_active=True)]
     db.add(group)
     db.add(ChartOfAccount(id=2, account_number='100-900-100', account_name='Linen', account_type='ASSET',
                           normal_balance='DEBIT', is_active=True, is_posting=True))
@@ -111,9 +111,8 @@ def test_operating_equipment_seed_registers_pending_asset_without_valuation(db):
     assert rows[0]['seed_status'] == 'CREATE'
     apply_rows(db, data, rows); db.commit()
     product = db.query(Product).one()
-    asset = db.query(FixedAsset).one()
-    assert product.group_name == 'ASSET' and product.inventory_treatment == 'FIXED_ASSET'
-    assert product.inventory_account_id is None and product.asset_account_id == 2
-    assert asset.product_id == product.id and asset.asset_account_id == 2
-    assert asset.acquisition_cost is None and asset.acquisition_date is None
+    assert product.group_name == 'MATERIAL' and product.inventory_treatment == 'STOCK'
+    assert product.inventory_account_id == 2 and product.asset_account_id is None
+    assert product.uom == 'PCS' and product.usage_uom == 'PCS' and product.conversion == 1
+    assert db.query(FixedAsset).count() == 0
     assert db.query(JournalEntry).count() == db.query(Inventory).count() == 0

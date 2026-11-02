@@ -12,8 +12,8 @@ def register_master_asset(db, product):
     from app.models.audit_log import AuditLog
     if product.item_type != 'BUY' or not product.is_active or product.inventory_treatment != 'FIXED_ASSET': return None
     account = db.get(ChartOfAccount, product.asset_account_id) if product.asset_account_id else None
-    if not account or not account.is_active or not account.is_posting or account.account_type != 'ASSET' or account.normal_balance != 'DEBIT' or not account.account_number.startswith(('100-600-', '100-900-')):
-        raise HTTPException(422, 'Fixed asset items require a posting 100-600 or 100-900 asset account')
+    if not account or not account.is_active or not account.is_posting or account.account_type != 'ASSET' or account.normal_balance != 'DEBIT' or not account.account_number.startswith('100-600-'):
+        raise HTTPException(422, 'Fixed asset items require a posting 100-600 asset account; linen and operating supplies remain stock')
     existing = db.query(FixedAsset).filter(FixedAsset.product_id == product.id).order_by(FixedAsset.id).all()
     if existing:
         if any(a.status != "PENDING_REGISTRATION" and a.asset_account_id != product.asset_account_id for a in existing):
