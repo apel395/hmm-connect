@@ -29,8 +29,8 @@ def fiscal_schedule(profile, end_date=None):
     life = profile.useful_life_months or GROUPS[profile.group_code][1]
     start = profile.start_date.replace(day=1)
     final = month_add(start, life - 1)
-    if profile.opening_date and profile.opening_date >= month_add(final, 1):
-        raise ValueError('Fiscal opening is after the useful life')
+    if profile.opening_date and profile.opening_date >= final and profile.opening_book_value:
+        raise ValueError('An asset beyond fiscal useful life must have zero fiscal opening value')
     cursor = month_add(profile.opening_date, 1) if profile.opening_date else start
     balance = money(profile.opening_book_value if profile.opening_date else profile.fiscal_cost)
     annual_basis = balance

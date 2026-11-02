@@ -157,3 +157,10 @@ def test_migration_creates_only_empty_fiscal_table_without_backfill():
         for table in ('fixed_assets','opening_balances','general_ledger'):
             assert conn.execute(text(f'SELECT amount FROM {table}')).scalar()==123.45
     engine.dispose()
+
+
+def test_fully_depreciated_legacy_opening_is_zero_not_restarted():
+    old=profile(start_date=date(2020,1,1),opening_date=date(2025,12,31),opening_book_value=0)
+    assert fiscal_schedule(old)==[]
+    with pytest.raises(ValueError,match='zero fiscal opening'):
+        fiscal_schedule(profile(start_date=date(2020,1,1),opening_date=date(2025,12,31),opening_book_value=100))
