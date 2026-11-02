@@ -85,7 +85,7 @@ def test_pph_migration_seeds_groups_retires_only_proven_script_rows_without_chan
     engine=create_engine('sqlite://')
     with engine.begin() as conn:
         conn.execute(text('CREATE TABLE fixed_asset_categories (id INTEGER PRIMARY KEY,code VARCHAR(30) UNIQUE,name VARCHAR(120),is_depreciable BOOLEAN NOT NULL DEFAULT 1,default_useful_life_months INTEGER,default_residual_percentage NUMERIC DEFAULT 0,asset_account_id INTEGER NOT NULL,accumulated_depreciation_account_id INTEGER,depreciation_expense_account_id INTEGER,is_active BOOLEAN DEFAULT 1,description TEXT)'))
-        conn.execute(text('CREATE TABLE audit_logs (id INTEGER PRIMARY KEY, action VARCHAR(50),entity_type VARCHAR(80),entity_id INTEGER,summary VARCHAR(255),actor_name VARCHAR(150),details JSON)'))
+        conn.execute(text("CREATE TABLE audit_logs (id INTEGER PRIMARY KEY, action VARCHAR(50),entity_type VARCHAR(80),entity_id INTEGER,summary VARCHAR(255),actor_name VARCHAR(150),source VARCHAR(30) NOT NULL DEFAULT 'USER',details JSON)"))
         conn.execute(text('CREATE TABLE fixed_assets (id INTEGER PRIMARY KEY,asset_category_id INTEGER,acquisition_cost NUMERIC,net_book_value NUMERIC)'))
         conn.execute(text("INSERT INTO fixed_asset_categories (id,code,name,asset_account_id) VALUES (1,'MMH-FFE','Script category',215),(2,'FA-0001','User category',213)"))
         import json
@@ -93,6 +93,7 @@ def test_pph_migration_seeds_groups_retires_only_proven_script_rows_without_chan
         conn.execute(text('INSERT INTO fixed_assets VALUES (1,1,5500000,5500000)'))
         with Operations.context(MigrationContext.configure(conn)):migration.upgrade()
         assert conn.execute(text('SELECT COUNT(*) FROM fixed_asset_categories WHERE fiscal_group_code IS NOT NULL')).scalar()==7
+        assert conn.execute(text("SELECT COUNT(*) FROM audit_logs WHERE source='SYSTEM'")).scalar()==8
         assert conn.execute(text('SELECT is_active FROM fixed_asset_categories WHERE id=1')).scalar()==0
         assert conn.execute(text('SELECT is_active FROM fixed_asset_categories WHERE id=2')).scalar()==1
         assert tuple(conn.execute(text('SELECT asset_category_id,acquisition_cost,net_book_value FROM fixed_assets')).one())==(1,5500000,5500000)

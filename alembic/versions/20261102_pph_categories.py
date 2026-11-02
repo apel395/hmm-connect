@@ -29,7 +29,7 @@ def upgrade():
             default_useful_life_months=life,default_residual_percentage=0,asset_account_id=None,
             accumulated_depreciation_account_id=None,depreciation_expense_account_id=None,is_active=True,description=''))
         conn.execute(audit.insert().values(action='ASSET_CATEGORY_CREATED',entity_type='FIXED_ASSET_CATEGORY',entity_id=result.inserted_primary_key[0],
-            summary=f'Create PPh category {code}',actor_name='System migration',details={'batch':'PPH_CATEGORIES_20261102','group':group}))
+            summary=f'Create PPh category {code}',actor_name='System migration',source='SYSTEM',details={'batch':'PPH_CATEGORIES_20261102','group':group}))
     old=conn.execute(sa.select(categories).where(categories.c.code.in_(LEGACY),categories.c.is_active.is_(True))).mappings().all()
     for category in old:
         creation=conn.execute(sa.select(audit).where(audit.c.entity_type=='FIXED_ASSET_CATEGORY',audit.c.entity_id==category['id'],
@@ -37,7 +37,7 @@ def upgrade():
         if creation and creation['action']=='ASSET_CATEGORY_CREATED' and (creation['details'] or {}).get('batch')=='ASSET_POLICY_20261020':
             conn.execute(categories.update().where(categories.c.id==category['id']).values(is_active=False))
             conn.execute(audit.insert().values(action='ASSET_CATEGORY_REPLACED',entity_type='FIXED_ASSET_CATEGORY',entity_id=category['id'],
-                summary=f"Replaced script category {category['code']} with PPh groups",actor_name='System migration',
+                summary=f"Replaced script category {category['code']} with PPh groups",actor_name='System migration',source='SYSTEM',
                 details={'batch':'PPH_CATEGORIES_20261102','historical_assets_preserved':True}))
 
 def downgrade():
