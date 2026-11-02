@@ -139,12 +139,12 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
   const inventoryAccounts = allAccounts.filter((account) =>
     account.account_type === "ASSET" &&
     account.normal_balance === "DEBIT" &&
-    account.account_code.startsWith("100-300-")
+    (account.account_code.startsWith("100-300-") || account.account_code === "100-900-100")
   );
   const fixedAssetAccounts = allAccounts.filter((account) =>
     account.account_type === "ASSET" &&
     account.normal_balance === "DEBIT" &&
-    ["100-600-", "100-700-", "100-900-"].some((prefix) => account.account_code.startsWith(prefix))
+    account.account_code.startsWith("100-600-")
   );
   const expenseAccounts = allAccounts.filter((account) =>
     account.account_type === "EXPENSE" && account.normal_balance === "DEBIT"

@@ -9,7 +9,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import type { AccountLookup } from "@/modules/master/chart-of-accounts/types";
 import { listCategories, saveCategory } from "./api";
-import { assetType, fixedAssetAccount, accumulatedDepreciationAccount, depreciationExpenseAccount } from "./accountRules";
+import { assetType, accumulatedAccountCodes, fixedAssetAccount, accumulatedDepreciationAccount, depreciationExpenseAccount } from "./accountRules";
 
 const input = "h-9 w-full rounded border px-2 text-sm";
 const empty = {
@@ -43,7 +43,8 @@ export default function AssetCategoryPage() {
 
   const revenueLookup = useQuery({queryKey:["category-account-lookup","REVENUE"],queryFn:()=>getAllAccountLookup({account_type:"REVENUE",is_active:true,is_posting:true})});
   const assetAccounts = (assetLookup.data ?? []).filter(fixedAssetAccount);
-  const accumulatedAccounts = (assetLookup.data ?? []).filter(accumulatedDepreciationAccount);
+  const selectedCode = assetAccounts.find(a => a.id === Number(form.asset_account_id))?.account_code;
+  const accumulatedAccounts = (assetLookup.data ?? []).filter(a => accumulatedDepreciationAccount(a) && (!selectedCode || !accumulatedAccountCodes[selectedCode] || a.account_code === accumulatedAccountCodes[selectedCode]));
   const expenseAccounts = (expenseLookup.data ?? []).filter(depreciationExpenseAccount);
 
   const save = useMutation({
@@ -72,7 +73,17 @@ export default function AssetCategoryPage() {
       <select
         className={input}
         value={form[key] ?? ""}
-        onChange={event => { const land = key === "asset_account_id" && options.find(a=>a.id===Number(event.target.value))?.account_code === "100-600-100"; setForm({ ...form, [key]: event.target.value, ...(land ? { is_depreciable:false, default_useful_life_months:"", accumulated_depreciation_account_id:"", depreciation_expense_account_id:"" } : {}) }); }}
+        onChange={event => {
+          const value = event.target.value;
+          if (key !== "asset_account_id") { setForm({ ...form, [key]: value }); return; }
+          const code = options.find(a => a.id === Number(value))?.account_code ?? "";
+          const land = code === "100-600-100";
+          setForm({ ...form, asset_account_id: value, is_depreciable: !land,
+            default_useful_life_months: land ? "" : (form.default_useful_life_months || 48),
+            accumulated_depreciation_account_id: land ? "" : (assetLookup.data ?? []).find(a => a.account_code === accumulatedAccountCodes[code])?.id ?? "",
+            depreciation_expense_account_id: land ? "" : (expenseLookup.data ?? []).find(a => a.account_code === "700-500-133")?.id ?? "",
+          });
+        }}
       >
         <option value="">Select {label.toLowerCase()}</option>
         {options.map(account => (
@@ -120,6 +131,7 @@ export default function AssetCategoryPage() {
         </label>
         {accountField("disposal_gain_account_id","Disposal gain account",(revenueLookup.data??[]))}
         {accountField("disposal_loss_account_id","Disposal loss account",(expenseLookup.data??[]).filter(a=>a.normal_balance==="DEBIT"))}
+        <label className="space-y-1 text-sm md:col-span-3"><span>Description</span><textarea className="w-full rounded border p-2" rows={2} value={form.description ?? ""} onChange={e => setForm({ ...form, description: e.target.value })}/></label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>Active</label>
         <div className="flex items-end">
           <Button variant="outline" onClick={()=>setShowForm(false)}>Close</Button>
