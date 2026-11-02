@@ -1,3 +1,4 @@
+import { categoryDefaults, postingDefaults, groupAcceptsAccount } from "./categoryRules";
 import { fixedAssetAccount, accumulatedDepreciationAccount, depreciationExpenseAccount } from "./accountRules";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
@@ -44,7 +45,8 @@ export default function FixedAssetFormPage() {
   }, [bus.data, f.business_unit_id]);
 
   const set = (k: string, v: any) => setF((current: any) => ({ ...current, [k]: v }));
-  const account = (k: string) => <select disabled={Boolean(registrationId && k === "asset_account_id")} className={input} value={f[k]} onChange={(e) => set(k, e.target.value)}><option value="">Select account</option>{accounts.data?.filter(k === "asset_account_id" ? fixedAssetAccount : k === "accumulated_depreciation_account_id" ? accumulatedDepreciationAccount : depreciationExpenseAccount).map((a: any) => <option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}</select>;
+  const selectedCategory = cats.data?.find((c:any)=>c.id===Number(f.asset_category_id));
+  const account = (k: string) => <select disabled={Boolean(registrationId && k === "asset_account_id")} className={input} value={f[k]} onChange={(e) => k === "asset_account_id" ? setF({...f,...postingDefaults(e.target.value,f.depreciation_method!=="NONE",accounts.data??[])}) : set(k, e.target.value)}><option value="">Select account</option>{accounts.data?.filter(k === "asset_account_id" ? (a:any)=>fixedAssetAccount(a)&&groupAcceptsAccount(selectedCategory?.fiscal_group_code,a.account_code) : k === "accumulated_depreciation_account_id" ? accumulatedDepreciationAccount : depreciationExpenseAccount).map((a: any) => <option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}</select>;
 
   const save = async () => {
     if (registrationId && registration.data?.status !== "PENDING_REGISTRATION") return toast.error("Pending registration is required");
@@ -67,7 +69,7 @@ export default function FixedAssetFormPage() {
 </>} />
     <Card className="grid gap-3 p-4 md:grid-cols-3">
       <label>Asset Name *<input className={`${input} block w-full`} value={f.asset_name} onChange={(e) => set("asset_name", e.target.value)} /></label>
-      <label>Category *<select className={`${input} block w-full`} value={f.asset_category_id} onChange={(e) => { const c = cats.data?.find((x: any) => x.id === Number(e.target.value)); setF({ ...f, asset_category_id: e.target.value, depreciation_method: c?.is_depreciable === false ? "NONE" : "STRAIGHT_LINE", useful_life_months: c?.default_useful_life_months || 48, asset_account_id: c?.asset_account_id || "", accumulated_depreciation_account_id: c?.accumulated_depreciation_account_id || "", depreciation_expense_account_id: c?.depreciation_expense_account_id || "", disposal_gain_account_id: c?.disposal_gain_account_id || null, disposal_loss_account_id: c?.disposal_loss_account_id || null }); }}><option value="">Select</option>{cats.data?.filter((x: any) => x.is_active && (!registrationId || x.asset_account_id === registration.data?.asset_account_id)).map((x: any) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+      <label>Category *<select className={`${input} block w-full`} value={f.asset_category_id} onChange={(e) => { const c = cats.data?.find((x: any) => x.id === Number(e.target.value)); if(c)setF(categoryDefaults(f,c,accounts.data??[])); }}><option value="">Select</option>{cats.data?.filter((x: any) => x.is_active && (!registrationId || ((!x.asset_account_id || x.asset_account_id === registration.data?.asset_account_id) && groupAcceptsAccount(x.fiscal_group_code, accounts.data?.find(a=>a.id===registration.data?.asset_account_id)?.account_code??"")))).map((x: any) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
       <label>Acquisition Date *<input className={`${input} block w-full`} type="date" data-accounting-date="true" value={f.acquisition_date} onChange={(e) => set("acquisition_date", e.target.value)} /></label>
       <label>Acquisition Cost *<input className={`${input} block w-full text-right`} type="number" min={0} value={f.acquisition_cost} onChange={(e) => set("acquisition_cost", e.target.value)} /></label>
       <label>Quantity<input className={`${input} block w-full`} type="number" min={0.0001} step="any" value={f.quantity} onChange={e=>set("quantity",e.target.value)}/></label>
