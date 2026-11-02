@@ -108,7 +108,7 @@ def test_category_setup_is_audited_and_idempotent_without_changing_existing(db):
     first=setup(db);db.commit()
     assert len([c for c in first['categories'] if c['action']=='CREATE'])==len(POLICIES)
     assert db.query(FixedAssetCategory).count()==len(POLICIES) and db.query(AuditLog).count()==len(POLICIES)
-    land=db.query(FixedAssetCategory).filter_by(code='MMH-LAND').one()
+    land=db.query(FixedAssetCategory).filter_by(code='PPH-LAND').one()
     assert not land.is_depreciable and land.default_useful_life_months is None
     again=setup(db)
     assert all(c['action']=='EXISTING_UNCHANGED' for c in again['categories'])

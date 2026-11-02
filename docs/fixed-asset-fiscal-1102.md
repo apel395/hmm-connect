@@ -18,7 +18,7 @@ Book depreciation expense: **700-500-133**. IDs are looked up by code. Related a
 
 ## Book policy
 
-The existing company minimum of 48 months remains for depreciable book assets. This is a company rule, not a universal tax rule. Categories supply book defaults; changing defaults does not rewrite existing asset schedules. Land is non-depreciable. Disposal gain/loss mappings remain optional and are used by the existing disposal workflow.
+The existing company minimum of 48 months remains for depreciable book assets. This is a company rule, not a universal tax rule. PPh categories supply life defaults; book life can be set per asset. Changing defaults does not rewrite existing asset schedules. See pph-asset-categories-1102.md for the replacement category design. Land is non-depreciable. Disposal gain/loss mappings remain optional and are used by the existing disposal workflow.
 
 ## Fiscal policy
 
@@ -42,7 +42,7 @@ Fiscal schedules stop at the effective disposal/write-off month. Reports show th
 
 ## Use
 
-1. Fixed Assets → Categories: select the asset account, review its matched accumulated account and book life, then save.
+1. Fixed Assets → Categories: choose the PPh group and description. Select the actual posting accounts during asset registration.
 2. Open a registered asset → Fiscal depreciation → Configure. Select the actual fiscal group and basis. Saving is audited and uses a version check; a stale edit must be reloaded.
 3. Fixed Assets → Reports → Fiscal comparison: choose year and authorized unit/location/department/category. Export Excel or print. Assets without confirmed profiles display `NOT_CONFIGURED`; do not read their blank amounts as a completed zero calculation.
 4. Book-minus-fiscal compares **posted book depreciation schedules** against calculated fiscal depreciation, for configured profiles only. It is not a tax return or a reconciliation of arbitrary manual GL depreciation entries.
@@ -59,7 +59,7 @@ Optional category preparation:
 python scripts/setup_asset_categories_1020.py
 ```
 
-This is a rolled-back preview. `--apply` creates missing categories plus audit records only. Existing categories remain unchanged. Legacy `MMH-OTHER` mapped to 100-600-105 is reported for review; its posted mappings are not changed automatically. New explicit categories are `MMH-INVENTARIS` and `MMH-OTHER-999`.
+This is a rolled-back preview. After 20261102_pph_categories, `--apply` creates missing PPh groups and deactivates only family defaults proven to originate from the old setup script. Asset accounting and historical category references remain unchanged. The PPh migration already performs this setup; see pph-asset-categories-1102.md.
 
 Sources:
 - https://jdih.kemenkeu.go.id/dok/pmk-72-tahun-2023

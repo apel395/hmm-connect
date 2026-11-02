@@ -32,13 +32,29 @@ def access(user):
 @router.get("/categories")
 def categories(db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
-    return db.query(FixedAssetCategory).order_by(FixedAssetCategory.code).all()
+    from app.services.asset_category_policy import provenance
+    from app.schemas.asset_fiscal import GROUPS
+    rows=db.query(FixedAssetCategory).order_by(FixedAssetCategory.code).all()
+    return [{**{key:getattr(c,key) for key in CategoryInput.model_fields}, 'id':c.id,
+             'straight_line_rate':GROUPS[c.fiscal_group_code][2] if c.fiscal_group_code else None,
+             'declining_balance_rate':GROUPS[c.fiscal_group_code][3] if c.fiscal_group_code else None,
+             **provenance(db,c)} for c in rows]
+
+
+@router.get('/fiscal-groups')
+def fiscal_groups(user=Depends(get_current_user)):
+    access(user)
+    from app.schemas.asset_fiscal import GROUPS
+    return [{'code':k,'name':v[0],'months':v[1],'straight_line_rate':v[2],'declining_balance_rate':v[3]} for k,v in GROUPS.items()]
 
 
 @router.post("/categories")
 def create_category(data: CategoryInput, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
     item = FixedAssetService(db).create_category(data)
+    from app.services.audit import record_audit
+    record_audit(db,user,'ASSET_CATEGORY_CREATED','FIXED_ASSET_CATEGORY',f'Create category {item.code}',entity_id=item.id,
+                 after_data=data.model_dump(mode='json'))
     db.commit(); db.refresh(item)
     return item
 
@@ -51,10 +67,14 @@ def update_category(category_id: int, data: CategoryInput, db: Session = Depends
         raise HTTPException(404, "Category not found")
     data=data.model_copy(update={"code":data.code.strip().upper(),"name":data.name.strip()})
     if db.query(FixedAssetCategory).filter(FixedAssetCategory.code==data.code,FixedAssetCategory.id!=category_id).first(): raise HTTPException(409,"Asset category code already exists")
-    FixedAssetService(db).validate_accounts(data)
-    if (item.asset_account_id != data.asset_account_id or item.is_depreciable != data.is_depreciable) and db.query(FixedAsset.id).filter(FixedAsset.asset_category_id == item.id).first():
+    FixedAssetService(db).validate_category(data)
+    if (item.asset_account_id != data.asset_account_id or item.is_depreciable != data.is_depreciable or item.fiscal_group_code != data.fiscal_group_code) and db.query(FixedAsset.id).filter(FixedAsset.asset_category_id == item.id).first():
         raise HTTPException(409,"Category is in use; create a new category for another asset account or depreciation policy")
+    from app.services.audit import record_audit
+    before={key:getattr(item,key) for key in ('code','name','fiscal_group_code','is_active','description')}
     for key, value in data.model_dump().items(): setattr(item, key, value)
+    record_audit(db,user,'ASSET_CATEGORY_UPDATED','FIXED_ASSET_CATEGORY',f'Update category {item.code}',entity_id=item.id,
+                 before_data=before,after_data=data.model_dump(mode='json'))
     db.commit(); db.refresh(item)
     return item
 
