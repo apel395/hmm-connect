@@ -91,6 +91,7 @@ def _detail(db: Session, request: StoreRequest, user) -> dict:
         requested = Decimal(item.requested_quantity or 0)
         issued = Decimal(item.issued_quantity or 0)
         available = Decimal(inventory.quantity or 0) if inventory else Decimal("0")
+        reference_cost = Decimal(inventory.average_cost or 0) if inventory else None
         payload["items"].append({
             "id": item.id,
             "product_id": item.product_id,
@@ -101,7 +102,14 @@ def _detail(db: Session, request: StoreRequest, user) -> dict:
             "issued_quantity": issued,
             "remaining_quantity": requested - issued,
             "available_stock": available,
+            "reference_unit_cost": reference_cost,
+            "estimated_value": (requested * reference_cost).quantize(Decimal("0.01")) if reference_cost is not None else None,
         })
+    payload["price_basis"] = "CURRENT_WAREHOUSE_AVERAGE"
+    payload["estimated_total"] = (
+        sum((item["estimated_value"] for item in payload["items"]), Decimal("0"))
+        if all(item["estimated_value"] is not None for item in payload["items"]) else None
+    )
     payload.update(document_context(db, "STORE_REQUEST", request.id, request.status, user))
     return payload
 
@@ -159,8 +167,10 @@ def warehouse_availability(
         Inventory.product_id.in_(set(product_ids)),
     ).all()
     quantities = {row.product_id: Decimal(row.quantity or 0) for row in rows}
+    costs = {row.product_id: Decimal(row.average_cost or 0) for row in rows}
     return [
-        {"product_id": product_id, "available_stock": quantities.get(product_id, Decimal("0"))}
+        {"product_id": product_id, "available_stock": quantities.get(product_id, Decimal("0")),
+         "reference_unit_cost": costs.get(product_id)}
         for product_id in dict.fromkeys(product_ids)
     ]
 

@@ -350,7 +350,9 @@ def _stock_source(movement: StockMovement) -> tuple[str, str]:
     if reference == "GOODS_RECEIPT" and movement.movement_type == "IN":
         return "PURCHASE", "Pembelian / Receiving"
     if reference == "STORE_REQUEST" and movement.movement_type == "OUT":
-        return "USAGE", "Pemakaian"
+        return "USAGE", "Operasional / Pemakaian"
+    if reference == "GOODS_RECEIPT_RETURN" and movement.movement_type == "OUT":
+        return "RETURN", "Retur supplier"
     if reference in {"OPENING_STOCK", "STOCK_OPENING", "OPENING_BALANCE"}:
         return "OPENING", "Stock awal"
     if reference == "STOCK_OPNAME":
@@ -462,7 +464,7 @@ def list_movements(
 ):
     if date_from and date_to and date_from > date_to:
         raise HTTPException(422, "From date must not exceed To date")
-    if source_kind not in (None, "PURCHASE", "USAGE", "OPENING", "ADJUSTMENT"):
+    if source_kind not in (None, "PURCHASE", "USAGE", "RETURN", "OPENING", "ADJUSTMENT"):
         raise HTTPException(422, "Invalid stock source")
     location_id = resolve_location_id(user, location_id)
     effective_date = _effective_movement_date()
@@ -494,6 +496,9 @@ def list_movements(
                              StockMovement.movement_type == "IN")
     elif source_kind == "USAGE":
         query = query.filter(StockMovement.reference_type == "STORE_REQUEST",
+                             StockMovement.movement_type == "OUT")
+    elif source_kind == "RETURN":
+        query = query.filter(StockMovement.reference_type == "GOODS_RECEIPT_RETURN",
                              StockMovement.movement_type == "OUT")
     elif source_kind == "OPENING":
         query = query.filter(StockMovement.reference_type.in_(

@@ -1,6 +1,6 @@
 # Inventory patch preparation — 3 November 2026
 
-Status: preparation only; no inventory behavior, database schema or production data changed.
+Status: first implementation batch ready for review on feature branches. No database schema or production data changed.
 Backend base: 49e0e75fa9abc28626fb723368e4fa6f6780b7b8.
 Frontend base: 26dae84879d26adeb8fe66399ddd7ff3bbdc18d2.
 User confirmed linen cleanup completed; no repeat linen data conversion is planned.
@@ -75,3 +75,11 @@ Before release test:
 ## Release boundary
 
 Feature branches only. Preparation does not authorize a merge, deployment, data cleanup or posting a test transaction in production.
+
+## First implementation batch
+
+Implemented: live read-only warehouse-average reference prices and estimated requested values on Store Request availability/detail/print; missing cost remains unknown rather than a fake zero. UI create/detail/print shows reference prices without including them in create/update payloads. Existing GOODS_RECEIPT_RETURN outbound movements now have an explicit RETURN source filter and label; operational usage remains the existing USAGE key and posting flow. Full filtered return totals retain pagination behavior.
+
+Validation: 19 focused backend tests passed, including warehouse isolation, missing cost, unchanged posted issue/GL after reference cost changes, and RETURN totals across pages. Store Request availability and inventory print tests passed; frontend production build passed.
+
+Not implemented in this batch: new partial supplier-credit/AP settlement or reversal logic, persisted return documents, or a general stock report redesign. Existing confirmed/paid invoice protections stay intact. No migration is required for this batch. Issues #493/#495/#497 remain partial, not completed by the source filter alone.
