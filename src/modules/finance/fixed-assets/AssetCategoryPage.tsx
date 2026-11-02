@@ -6,6 +6,7 @@ import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listCategories, listFiscalGroups, saveCategory } from "./api";
 
 const input = "h-8 w-full rounded border px-2 text-sm";
@@ -19,6 +20,7 @@ export default function AssetCategoryPage() {
   const [inactive,setInactive]=useState(false);
   const q=useQuery({queryKey:["asset-categories"],queryFn:listCategories});
   const groups=useQuery({queryKey:["asset-fiscal-groups"],queryFn:listFiscalGroups});
+  const expenses=useQuery({queryKey:["asset-category-disposal-expenses"],queryFn:()=>getAllAccountLookup({account_type:"EXPENSE",is_active:true,is_posting:true}),enabled:Boolean(form)});
   const selected=groups.data?.find((g:any)=>g.code===form?.fiscal_group_code);
   const save=useMutation({mutationFn:()=>saveCategory(form),onSuccess:()=>{setForm(null);qc.invalidateQueries({queryKey:["asset-categories"]});toast.success("Category saved");},
     onError:(e:any)=>toast.error(typeof e?.response?.data?.detail==="string"?e.response.data.detail:"Check category fields")});
@@ -32,6 +34,7 @@ export default function AssetCategoryPage() {
       <div className="text-sm">Fiscal useful life<br/><b>{selected?.months?`${selected.months/12} years`:selected?"Non-depreciable":"—"}</b></div>
       <div className="text-sm">Straight-line rate<br/><b>{selected?.straight_line_rate?`${selected.straight_line_rate}% / year`:"—"}</b></div>
       <div className="text-sm">Declining-balance rate<br/><b>{selected?.declining_balance_rate?`${selected.declining_balance_rate}% / year`:"—"}</b></div>
+      <label className="text-sm">Disposal loss account (optional)<select className={input} value={form.disposal_loss_account_id??""} onChange={e=>setForm({...form,disposal_loss_account_id:e.target.value?Number(e.target.value):null})}><option value="">Select account</option>{expenses.data?.filter(a=>a.normal_balance==="DEBIT").map(a=><option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}</select></label>
       <label className="text-sm md:col-span-3">Description<textarea rows={2} className="w-full rounded border p-2" value={form.description??""} onChange={e=>setForm({...form,description:e.target.value})}/></label>
       <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>Active</label>
       <div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={()=>setForm(null)}>Cancel</Button><Button disabled={save.isPending||!form.code.trim()||!form.name.trim()||(!form.id&&!form.fiscal_group_code)} onClick={()=>save.mutate()}>Save category</Button></div>

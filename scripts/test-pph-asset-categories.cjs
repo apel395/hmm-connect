@@ -30,8 +30,8 @@ async function run(){
  {id:4,code:'MMH-FFE',name:'Old script default',is_active:false,fiscal_group_code:null,source:'MMH_SETUP_SCRIPT'}];
  global.__pphGroups=groups;
  const Page=(await bundle('src/modules/finance/fixed-assets/AssetCategoryPage.tsx',[{name:'fixtures',setup(b){
-  b.onResolve({filter:/^(\.\/api|@\/components\/|sonner$|lucide-react$)/},a=>({path:a.path,namespace:'mock'}));
-  b.onLoad({filter:/.*/,namespace:'mock'},a=>({loader:'js',contents:a.path==='./api'?`export const listCategories=async()=>globalThis.__pphData;export const listFiscalGroups=async()=>globalThis.__pphGroups;export const saveCategory=async data=>{globalThis.__pphSaves.push(data);return data}`:a.path==='sonner'?`export const toast={success(){},error(){}}`:a.path==='lucide-react'?`export const Plus=()=>null,Printer=()=>null`:a.path.endsWith('PageHeader')?`import React from 'react';export default p=>React.createElement('header',null,p.title,p.actions)`:a.path.endsWith('/Table')?`import React from 'react';export const Table=p=>React.createElement('table',null,p.children),THead=p=>React.createElement('thead',null,p.children),TBody=p=>React.createElement('tbody',null,p.children),TR=p=>React.createElement('tr',null,p.children),TH=p=>React.createElement('th',null,p.children),TD=p=>React.createElement('td',null,p.children)`:`import React from 'react';export default p=>React.createElement(${a.path.endsWith('/Button')?"'button'":"'section'"},p,p.children)`}));
+  b.onResolve({filter:/^(\.\/api|@\/components\/|@\/modules\/master\/chart-of-accounts\/api$|sonner$|lucide-react$)/},a=>({path:a.path,namespace:'mock'}));
+  b.onLoad({filter:/.*/,namespace:'mock'},a=>({loader:'js',contents:a.path==='./api'?`export const listCategories=async()=>globalThis.__pphData;export const listFiscalGroups=async()=>globalThis.__pphGroups;export const saveCategory=async data=>{globalThis.__pphSaves.push(data);return data}`:a.path.includes('chart-of-accounts/api')?`export const getAllAccountLookup=async()=>[]`:a.path==='sonner'?`export const toast={success(){},error(){}}`:a.path==='lucide-react'?`export const Plus=()=>null,Printer=()=>null`:a.path.endsWith('PageHeader')?`import React from 'react';export default p=>React.createElement('header',null,p.title,p.actions)`:a.path.endsWith('/Table')?`import React from 'react';export const Table=p=>React.createElement('table',null,p.children),THead=p=>React.createElement('thead',null,p.children),TBody=p=>React.createElement('tbody',null,p.children),TR=p=>React.createElement('tr',null,p.children),TH=p=>React.createElement('th',null,p.children),TD=p=>React.createElement('td',null,p.children)`:`import React from 'react';export default p=>React.createElement(${a.path.endsWith('/Button')?"'button'":"'section'"},p,p.children)`}));
  }}])).default;
  const client=new QueryClient({defaultOptions:{queries:{retry:false}}});let tree;
  await renderer.act(async()=>{tree=renderer.create(React.createElement(QueryClientProvider,{client},React.createElement(Page)));await new Promise(r=>setTimeout(r,20))});
@@ -41,7 +41,7 @@ async function run(){
  await renderer.act(async()=>tree.root.findByType('input').props.onChange({target:{checked:true}}));
  assert.ok(JSON.stringify(tree.toJSON()).includes('Old script default'));
  await renderer.act(async()=>tree.root.findAllByType('button').find(b=>b.children.includes('Category')).props.onClick());
- await renderer.act(async()=>tree.root.findByType('select').props.onChange({target:{value:'GROUP_2'}}));
+ await renderer.act(async()=>tree.root.findAllByType('select')[0].props.onChange({target:{value:'GROUP_2'}}));
  const inputs=tree.root.findAllByType('input');
  await renderer.act(async()=>inputs.find(x=>x.props.maxLength===30).props.onChange({target:{value:'PPH-TEST'}}));
  assert.ok(!JSON.stringify(tree.toJSON()).includes('Disposal gain account'));
