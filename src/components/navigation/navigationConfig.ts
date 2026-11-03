@@ -31,6 +31,8 @@ export const navigationGroups: NavigationGroup[] = [
   { title: "Inventory", icon: Boxes, roles: [...INVENTORY_ROLES, "DEPARTMENT"], children: [
     { title: "Stock", url: "/inventory", exact: true, permission: "inventory.view", roles: INVENTORY_ROLES },
     { title: "Stock Movement", url: "/inventory/movements", permission: "inventory.view", roles: INVENTORY_ROLES },
+    { title: "Supplier Returns", url: "/inventory/returns", permission: "inventory.view", roles: INVENTORY_ROLES },
+    { title: "Stock Movement Summary", url: "/inventory/period-report", permission: "inventory.view", roles: INVENTORY_ROLES },
     { title: "Store Request", url: "/store-requests", permission: "store_request.view", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "DEPARTMENT", "PURCHASING", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Stock Opname", url: "/stock-opnames", permission: "stock_opname.view", roles: ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Stock Adjustment", url: "/stock-adjustments", permission: "inventory.view", roles: INVENTORY_ROLES },

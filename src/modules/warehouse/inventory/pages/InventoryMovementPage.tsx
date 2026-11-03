@@ -51,6 +51,7 @@ function sourceDocuments(row: InventoryMovement) {
     {row.purchase_order_id && <Link className={TABLE_UI.documentLink} to={`/purchase-orders/${row.purchase_order_id}`}>
       {row.purchase_order_number ?? `PO #${row.purchase_order_id}`}
     </Link>}
+    {row.reference_type === "SUPPLIER_RETURN" && row.reference_id && <Link className={TABLE_UI.documentLink} to={`/inventory/returns?id=${row.reference_id}`}>Supplier Return #{row.reference_id}</Link>}
     {row.reference_type === "STORE_REQUEST" && row.reference_id &&
       <Link className={TABLE_UI.documentLink} to={`/store-requests/${row.reference_id}`}>{row.reference_number ?? `Store Request #${row.reference_id}`}</Link>}
     {row.reference_type === "STOCK_OPNAME" && row.reference_id &&
@@ -152,7 +153,7 @@ export default function InventoryMovementPage() {
         <label className="min-w-[180px] text-xs font-medium text-slate-600">History event
           <select className={input} value={sourceKind} onChange={e => setSourceKind(e.target.value as SourceFilter)}>
             <option value="ALL">All events</option><option value="PURCHASE">Pembelian / Receiving</option>
-            <option value="USAGE">Operasional / Pemakaian</option><option value="RETURN">Retur supplier</option><option value="ADJUSTMENT">Penyesuaian / Stock Opname</option>
+            <option value="USAGE">Operasional / Pemakaian</option><option value="RETURN">Retur supplier</option><option value="REPLACEMENT">Barang pengganti</option><option value="ADJUSTMENT">Penyesuaian / Stock Opname</option>
           </select>
         </label>
         <Button type="button" size="sm" variant="outline" title="Filters" aria-label="Filters" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>

@@ -1,6 +1,6 @@
 export interface InventoryMovement {
   id:number; movement_number:string; movement_date:string; movement_type:string;
-  source_kind:"PURCHASE"|"USAGE"|"RETURN"|"OPENING"|"ADJUSTMENT"|"OTHER"; source_label:string;
+  source_kind:"PURCHASE"|"USAGE"|"RETURN"|"REPLACEMENT"|"OPENING"|"ADJUSTMENT"|"OTHER"; source_label:string;
   in_quantity:number; out_quantity:number; running_quantity?:number|null;
   inventory_account_id?:number|null; inventory_account_code?:string|null; inventory_account_name?:string|null;
   product_id:number; product_code:string; product_name:string;
@@ -14,7 +14,7 @@ export interface InventoryMovement {
 export interface InventoryMovementFilters {
   product_id?:number; warehouse_id?:number; purchase_order_id?:number; goods_receipt_id?:number; location_id?:number; department_id?:number;
   account_id?:number; date_from?:string; date_to?:string;
-  source_kind?:"PURCHASE"|"USAGE"|"RETURN"|"OPENING"|"ADJUSTMENT";
+  source_kind?:"PURCHASE"|"USAGE"|"RETURN"|"REPLACEMENT"|"OPENING"|"ADJUSTMENT";
   page?:number; page_size?:number; search?:string;
 }
 
