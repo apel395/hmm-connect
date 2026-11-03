@@ -1,6 +1,7 @@
 from decimal import Decimal
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
 from app.models.goods_receipt import GoodsReceiptItem
 from app.models.supplier_invoice import SupplierInvoice
 from app.models.journal_entry import JournalEntry
@@ -49,6 +50,43 @@ def test_depost_edit_and_repost_preserve_receipt_and_journal_identity(stock_db,s
     # Repeating the operation after another successful post reverses only this cycle.
     depost_receiving(db,receipt.id,user,'Second correction')
     assert Decimal(inventory[0].quantity)==before[0][0]
+
+
+def test_repost_keeps_void_invoices_and_uses_unique_placeholder_each_time(stock_db):
+    db = stock_db[0]
+    # Mirror the production PostgreSQL index that excludes no invoice statuses.
+    db.execute(text("""
+        CREATE UNIQUE INDEX test_invoice_supplier_number_ci
+        ON supplier_invoices (supplier_id, lower(trim(supplier_invoice_number)))
+    """))
+    db.commit()
+    data, receipt, _ = posted(stock_db)
+    _, warehouse, user, products, *_ = data
+    original_journal = db.query(JournalEntry).filter_by(
+        reference_type="GOODS_RECEIPT", reference_id=receipt.id,
+    ).one()
+    first_number = f"PENDING-{receipt.receipt_number}"
+
+    for cycle in (2, 3):
+        depost_receiving(db, receipt.id, user, f"Correction cycle {cycle}")
+        if cycle == 2:
+            Service.update(db, receipt=receipt, user=user, data=GoodsReceiptUpdate(
+                received_at=receipt.received_at,
+                warehouse_id=warehouse.id,
+                items=[dict(product_id=products[0].id, quantity=3, unit_cost=12, is_taxable=False)],
+            ))
+        Service.post(db, receipt_id=receipt.id, user=user)
+        invoices = db.query(SupplierInvoice).filter_by(
+            goods_receipt_id=receipt.id,
+        ).order_by(SupplierInvoice.id).all()
+        assert len(invoices) == cycle
+        assert [invoice.supplier_invoice_number for invoice in invoices] == [
+            first_number, *(f"{first_number}-R{i}" for i in range(2, cycle + 1))
+        ]
+        assert [invoice.status for invoice in invoices] == ["VOID"] * (cycle - 1) + ["DRAFT"]
+        assert db.query(JournalEntry).filter_by(
+            reference_type="GOODS_RECEIPT", reference_id=receipt.id,
+        ).one().id == original_journal.id
 
 
 @pytest.mark.parametrize('kind',['confirmed_invoice','closed_period','subsequent_stock','permissions'])
