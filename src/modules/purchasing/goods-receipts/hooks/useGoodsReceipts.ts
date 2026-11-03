@@ -5,6 +5,13 @@ import type { GoodsReceipt, GoodsReceiptCostCorrectionPayload, GoodsReceiptCreat
 export function useAllGoodsReceipts(params: GoodsReceiptListParams = {}) {
   return useQuery({ queryKey: ["goods-receipts", params], queryFn: async () => (await goodsReceiptApi.list(params)).data, placeholderData: (previous) => previous });
 }
+export function useReceivedItemHistory(search: string, page: number) {
+  return useQuery({
+    queryKey: ["receiving-item-history", search, page],
+    queryFn: async () => (await goodsReceiptApi.itemHistory(search, page)).data,
+    enabled: search.length >= 2,
+  });
+}
 export function useGoodsReceipt(id:number){return useQuery({queryKey:["goods-receipt",id],queryFn:async()=>(await goodsReceiptApi.detail(id)).data as GoodsReceipt,enabled:Boolean(id)})}
 export function useReceivablePurchaseOrders(enabled=true){return useQuery({queryKey:["receivable-purchase-orders"],queryFn:async()=>(await goodsReceiptApi.receivablePurchaseOrders()).data,enabled})}
 export function useRemainingPurchaseOrderItems(purchaseOrderId?:number){return useQuery({queryKey:["remaining-purchase-order-items",purchaseOrderId],queryFn:async()=>(await goodsReceiptApi.remainingItems(purchaseOrderId!)).data,enabled:Boolean(purchaseOrderId)})}
