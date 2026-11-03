@@ -385,13 +385,38 @@ class SupplierInvoiceService:
         return f"PENDING-{receipt.receipt_number}"
 
     @classmethod
+    def _is_receipt_placeholder(cls, receipt: GoodsReceipt, number: str) -> bool:
+        base = cls._receipt_placeholder(receipt)
+        if number == base:
+            return True
+        prefix = f"{base}-R"
+        suffix = number[len(prefix):] if number.startswith(prefix) else ""
+        return suffix.isdigit() and int(suffix) >= 2
+
+    def _next_receipt_placeholder(self, receipt: GoodsReceipt, supplier_id: int) -> str:
+        base = self._receipt_placeholder(receipt)
+        reserved = {
+            value.strip().casefold()
+            for (value,) in self.db.query(SupplierInvoice.supplier_invoice_number).filter(
+                SupplierInvoice.supplier_id == supplier_id,
+                func.lower(func.trim(SupplierInvoice.supplier_invoice_number)).like(f"{base.lower()}%"),
+            ).all()
+        }
+        if base.casefold() not in reserved:
+            return base
+        revision = 2
+        while f"{base}-R{revision}".casefold() in reserved:
+            revision += 1
+        return f"{base}-R{revision}"
+
+    @classmethod
     def is_unconfirmed_receipt_draft(cls, invoice: SupplierInvoice, receipt: GoodsReceipt) -> bool:
         """Only untouched automatic drafts can follow receiving corrections/returns."""
         if not (
             invoice.status == "DRAFT"
             and invoice.goods_receipt_id == receipt.id
             and invoice.external_reference == f"AUTO_RECEIPT:{receipt.id}"
-            and invoice.supplier_invoice_number == cls._receipt_placeholder(receipt)
+            and cls._is_receipt_placeholder(receipt, invoice.supplier_invoice_number)
             and Decimal(invoice.discount_amount or 0) == ZERO
             and Decimal(invoice.withholding_tax_amount or 0) == ZERO
         ):
@@ -457,9 +482,12 @@ class SupplierInvoiceService:
         )
         if invoice_total <= ZERO:
             raise HTTPException(409, "Supplier invoice must have a positive total")
+        invoice_number = (receipt.supplier_invoice_number or "").strip()
+        if not invoice_number:
+            invoice_number = self._next_receipt_placeholder(receipt, supplier_id)
         invoice = SupplierInvoice(
             internal_invoice_number=next_document_number(self.db, "INV"),
-            supplier_invoice_number=(receipt.supplier_invoice_number or "").strip() or self._receipt_placeholder(receipt),
+            supplier_invoice_number=invoice_number,
             supplier_document_total=getattr(receipt, "supplier_document_total", None),
             supplier_id=supplier_id,
             invoice_date=receipt.supplier_invoice_date or invoice_date,
