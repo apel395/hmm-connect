@@ -83,6 +83,8 @@ import ApprovalCenterPage from "@/modules/approval/ApprovalCenterPage";
 import ApprovalConfigurationPage from "@/modules/approval/ApprovalConfigurationPage";
 import InventoryPage from "@/modules/warehouse/inventory/pages/InventoryPage";
 import InventoryMovementPage from "@/modules/warehouse/inventory/pages/InventoryMovementPage";
+import InventoryReturnsPage from "@/modules/warehouse/inventory-returns/InventoryReturnsPage";
+import InventoryPeriodReportPage from "@/modules/warehouse/inventory/pages/InventoryPeriodReportPage";
 import InventoryReportsPage from "@/modules/warehouse/inventory/pages/InventoryReportsPage";
 import StoreRequestPage from "@/modules/warehouse/store-request/StoreRequestPage";
 import StoreRequestDetailPage from "@/modules/warehouse/store-request/StoreRequestDetailPage";
@@ -293,6 +295,8 @@ const router = createBrowserRouter([
       { path: "budgets/:id", element: <BudgetDetailPage /> },
       { path: "profit-loss/print", element: <FinancialReportPrintPage kind="PROFIT_LOSS" /> },
       { path: "profit-loss", element: <ProfitLossPage /> },
+      { path: "inventory/returns", element: <InventoryReturnsPage /> },
+      { path: "inventory/period-report", element: <InventoryPeriodReportPage /> },
       { path: "inventory", element: <InventoryPage /> },
       { path: "inventory/movements", element: <InventoryMovementPage /> },
       { path: "reports/inventory", element: <InventoryReportsPage /> },
