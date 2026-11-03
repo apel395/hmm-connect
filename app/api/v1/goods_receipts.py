@@ -18,8 +18,9 @@ from app.dependencies.authorization import has_permission, require_permission
 from app.models.approval_request import ApprovalRequest
 from app.services.receiving_destination import line_destination
 from app.models.department import Department
-from app.models.goods_receipt import GoodsReceipt
+from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
 from app.models.location import Location
+from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice
@@ -278,6 +279,70 @@ def inherit_purchase_order_dimensions(order: PurchaseOrder, data: GoodsReceiptCr
     data.location_id = location_id
     data.department_id = department_id
     db.flush()
+
+
+@router.get("/item-history")
+def received_item_history(
+    search: str = Query(min_length=1, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user=Depends(receiving_view_user),
+):
+    """Find individual received items without changing the document list or postings."""
+    term = f"%{search.strip()}%"
+    if not search.strip():
+        return {"items": [], "page": page, "page_size": page_size,
+                "total_items": 0, "total_pages": 0}
+
+    query = apply_location_scope(
+        db.query(GoodsReceiptItem)
+        .join(GoodsReceipt, GoodsReceiptItem.goods_receipt_id == GoodsReceipt.id)
+        .join(Product, GoodsReceiptItem.product_id == Product.id),
+        GoodsReceipt.location_id,
+        user,
+    ).filter(or_(Product.name.ilike(term), Product.code.ilike(term)))
+
+    total = query.count()
+    lines = (query.options(
+        selectinload(GoodsReceiptItem.product),
+        selectinload(GoodsReceiptItem.goods_receipt).selectinload(GoodsReceipt.supplier),
+        selectinload(GoodsReceiptItem.goods_receipt)
+        .selectinload(GoodsReceipt.purchase_order)
+        .selectinload(PurchaseOrder.supplier),
+    ).order_by(GoodsReceipt.received_at.desc(), GoodsReceipt.id.desc(),
+               GoodsReceiptItem.id.desc())
+        .offset((page - 1) * page_size).limit(page_size).all())
+
+    return {
+        "items": [
+            {
+                "goods_receipt_item_id": line.id,
+                "goods_receipt_id": receipt.id,
+                "receipt_number": receipt.receipt_number,
+                "received_at": receipt.received_at,
+                "status": receipt.status,
+                "supplier_name": (
+                    receipt.purchase_order.supplier.name
+                    if receipt.purchase_order and receipt.purchase_order.supplier
+                    else receipt.supplier.name if receipt.supplier else None
+                ),
+                "product_id": line.product_id,
+                "product_code": line.product.code,
+                "product_name": line.product.name,
+                "uom": line.product.uom,
+                "quantity": line.quantity,
+                "unit_cost": line.unit_cost,
+                "line_subtotal": Decimal(line.quantity) * Decimal(line.unit_cost),
+            }
+            for line in lines
+            for receipt in [line.goods_receipt]
+        ],
+        "page": page,
+        "page_size": page_size,
+        "total_items": total,
+        "total_pages": ceil(total / page_size) if total else 0,
+    }
 
 
 @router.get("")
