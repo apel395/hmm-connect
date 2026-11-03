@@ -60,3 +60,26 @@ class InventoryReplacement(Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     return_item = relationship('InventoryReturnItem')
     receipt_item = relationship('GoodsReceiptItem')
+
+
+class InventoryReturnEvent(Base, TimestampMixin):
+    """Append-only supplier credit use/refund and document reversal history."""
+    __tablename__ = 'inventory_return_events'
+    __table_args__ = (
+        CheckConstraint("kind IN ('APPLY','REFUND','REVERSE_USE','REVERSE_RETURN')", name='ck_return_event_kind'),
+        CheckConstraint('amount > 0', name='ck_return_event_amount'),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    return_id: Mapped[int] = mapped_column(ForeignKey('inventory_returns.id'), index=True)
+    request_key: Mapped[str] = mapped_column(String(36), unique=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    event_date: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    reference: Mapped[str] = mapped_column(String(150))
+    reason: Mapped[str] = mapped_column(Text)
+    supplier_invoice_id: Mapped[int | None] = mapped_column(ForeignKey('supplier_invoices.id'), index=True)
+    cash_account_id: Mapped[int | None] = mapped_column(ForeignKey('chart_of_accounts.id'))
+    reverses_event_id: Mapped[int | None] = mapped_column(ForeignKey('inventory_return_events.id'), unique=True)
+    journal_entry_id: Mapped[int | None] = mapped_column(ForeignKey('journal_entries.id'), unique=True)
+    supplier_adjustment_id: Mapped[int | None] = mapped_column(ForeignKey('supplier_adjustments.id'), unique=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))

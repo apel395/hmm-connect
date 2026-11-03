@@ -49,7 +49,7 @@ def period_report(date_from: date, date_to: date, warehouse_id: int | None = Non
     groups = {
         'receiving': source == 'GOODS_RECEIPT',
         'operational': source == 'STORE_REQUEST',
-        'return': source.in_(['GOODS_RECEIPT_RETURN', 'SUPPLIER_RETURN']),
+        'return': source.in_(['GOODS_RECEIPT_RETURN', 'SUPPLIER_RETURN', 'SUPPLIER_RETURN_REVERSAL']),
         'replacement': source == 'SUPPLIER_REPLACEMENT',
         'adjustment': source.in_(['STOCK_ADJUSTMENT', 'STOCK_OPNAME']),
     }

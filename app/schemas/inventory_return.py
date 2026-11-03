@@ -39,3 +39,17 @@ class ReturnCreditInput(BaseModel):
     tax_amount: Decimal = Field(default=0, ge=0, max_digits=18, decimal_places=2)
     supplier_credit_account_id: int | None = None
     variance_account_id: int | None = None
+
+
+class ReturnEventInput(BaseModel):
+    request_key: UUID = Field(default_factory=uuid4)
+    event_date: date
+    reference: str = Field(min_length=1, max_length=150)
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class SupplierCreditUseInput(ReturnEventInput):
+    kind: Literal['APPLY', 'REFUND']
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
+    supplier_invoice_id: int | None = None
+    cash_account_id: int | None = None

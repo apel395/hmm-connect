@@ -352,7 +352,7 @@ def _stock_source(movement: StockMovement) -> tuple[str, str]:
         return "PURCHASE", "Pembelian / Receiving"
     if reference == "STORE_REQUEST" and movement.movement_type == "OUT":
         return "USAGE", "Operasional / Pemakaian"
-    if reference in {"GOODS_RECEIPT_RETURN", "SUPPLIER_RETURN"} and movement.movement_type == "OUT":
+    if reference == "SUPPLIER_RETURN_REVERSAL" or (reference in {"GOODS_RECEIPT_RETURN", "SUPPLIER_RETURN"} and movement.movement_type == "OUT"):
         return "RETURN", "Retur supplier"
     if reference == "SUPPLIER_REPLACEMENT" and movement.movement_type == "IN":
         return "REPLACEMENT", "Barang pengganti"
@@ -501,8 +501,9 @@ def list_movements(
         query = query.filter(StockMovement.reference_type == "STORE_REQUEST",
                              StockMovement.movement_type == "OUT")
     elif source_kind == "RETURN":
-        query = query.filter(StockMovement.reference_type.in_(["GOODS_RECEIPT_RETURN", "SUPPLIER_RETURN"]),
-                             StockMovement.movement_type == "OUT")
+        query = query.filter(or_(
+            (StockMovement.reference_type.in_(["GOODS_RECEIPT_RETURN", "SUPPLIER_RETURN"]) & (StockMovement.movement_type == "OUT")),
+            StockMovement.reference_type == "SUPPLIER_RETURN_REVERSAL"))
     elif source_kind == "REPLACEMENT":
         query = query.filter(StockMovement.reference_type == "SUPPLIER_REPLACEMENT", StockMovement.movement_type == "IN")
     elif source_kind == "OPENING":

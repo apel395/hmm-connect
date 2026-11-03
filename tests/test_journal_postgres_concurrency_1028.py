@@ -274,7 +274,7 @@ def test_partial_return_migration_on_populated_schema(pg):
     from alembic.operations import Operations
     engine=pg.factory.kw['bind']
     with engine.begin() as connection:
-        for table in ('inventory_return_replacements','inventory_return_items','inventory_returns'):
+        for table in ('inventory_return_events','inventory_return_replacements','inventory_return_items','inventory_returns'):
             connection.execute(text(f'DROP TABLE {table}'))
         connection.execute(text('ALTER TABLE goods_receipt_items DROP COLUMN replacement_line_value'))
         connection.execute(text('ALTER TABLE stock_movements DROP COLUMN recorded_value'))
@@ -290,3 +290,93 @@ def test_partial_return_migration_on_populated_schema(pg):
         assert 'inventory_returns' in inspector.get_table_names()
         assert next(c for c in inspector.get_columns('stock_movements') if c['name']=='unit_cost')['type'].scale==4
         assert connection.execute(text('SELECT COUNT(*) FROM opening_balances')).scalar()==1
+
+
+def test_return_completion_migration_preserves_existing_financial_data(pg):
+    import importlib.util
+    from pathlib import Path
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import inspect
+    engine=pg.factory.kw['bind']
+    with engine.begin() as connection:
+        connection.execute(text('DROP TABLE inventory_return_events'))
+        before=connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()
+        path=Path(__file__).resolve().parents[1]/'alembic/versions/20261103_return_completion.py'
+        spec=importlib.util.spec_from_file_location('return_completion_migration',path)
+        migration=importlib.util.module_from_spec(spec);spec.loader.exec_module(migration)
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        assert 'inventory_return_events' in inspect(connection).get_table_names()
+        assert connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()==before
+        assert connection.execute(text('SELECT amount FROM opening_balances')).scalar()==1000
+
+
+def completion_source(pg):
+    from datetime import datetime, timezone
+    from app.models.department import Department
+    from app.models.supplier import Supplier
+    from app.models.product import Product
+    from app.models.warehouse import Warehouse
+    from app.models.inventory import Inventory
+    from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
+    from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
+    from app.schemas.inventory_return import ReturnInput, ReturnCreditInput
+    from app.services.inventory_return_service import create_return, post_return, settle_credit
+    with pg.factory() as db:
+        dept=Department(code='COMP',name='Completion',business_unit_id=pg.unit_id)
+        supplier=Supplier(code='COMP',name='Completion',payable_account_id=pg.accounts[3])
+        coas=[ChartOfAccount(account_number=code,account_name=code,account_type='ASSET',normal_balance='DEBIT',is_active=True,is_posting=True)
+              for code in ('COMP-INV','COMP-CLEAR','COMP-CREDIT')]
+        db.add_all([dept,supplier,*coas]);db.flush()
+        warehouse=Warehouse(code='COMP',name='Completion',location_id=pg.location_id,is_active=True)
+        product=Product(code='COMP',name='Completion item',uom='PCS',usage_uom='PCS',group_code='1',group_name='Food',
+            subgroup_code='1',subgroup_name='Test',inventory_account_id=coas[0].id,is_active=True)
+        db.add_all([warehouse,product]);db.flush()
+        source=GoodsReceipt(receipt_number='COMP-GR',status='POSTED',supplier_id=supplier.id,warehouse_id=warehouse.id,
+            business_unit_id=pg.unit_id,location_id=pg.location_id,department_id=dept.id,destination_type='WAREHOUSE',received_at=datetime(2026,1,10,tzinfo=timezone.utc))
+        source.items=[GoodsReceiptItem(product_id=product.id,quantity=10,unit_cost=10,destination_type='WAREHOUSE')]
+        db.add_all([source,Inventory(product_id=product.id,warehouse_id=warehouse.id,quantity=10,average_cost=10)]);db.flush()
+        invoices=[]
+        for code,paid in [('COMP-ORIGINAL',100),('COMP-TARGET',0)]:
+            inv=SupplierInvoice(internal_invoice_number=code,supplier_invoice_number=code,supplier_id=supplier.id,
+                invoice_date=date(2026,1,10),status='POSTED',currency='IDR',goods_receipt_id=source.id if paid else None,
+                business_unit_id=pg.unit_id,location_id=pg.location_id,department_id=dept.id,paid_amount=paid)
+            inv.lines=[SupplierInvoiceLine(product_id=product.id,goods_receipt_item_id=source.items[0].id if paid else None,
+                description='Goods',quantity=10,unit_price=10,line_amount=100,account_id=coas[0].id)]
+            db.add(inv);invoices.append(inv)
+        db.commit()
+        row=create_return(db,ReturnInput(goods_receipt_id=source.id,purpose='AP_CREDIT',return_date=date(2026,1,10),
+            reason='Credit concurrency',clearing_account_id=coas[1].id,items=[{'goods_receipt_item_id':source.items[0].id,'quantity':3}]),pg.user)
+        post_return(db,row.id,pg.user)
+        settle_credit(db,row.id,ReturnCreditInput(supplier_invoice_id=invoices[0].id,credit_date=date(2026,1,10),
+            credit_reference='COMP-CN',net_amount=30,supplier_credit_account_id=coas[2].id),pg.user)
+        db.commit()
+        return row.id,invoices[1].id
+
+
+def test_supplier_credit_concurrent_uses_cannot_overspend(pg):
+    from app.schemas.inventory_return import SupplierCreditUseInput
+    from app.services.inventory_return_completion import apply_credit,remaining_credit
+    from app.models.inventory_return import InventoryReturn,InventoryReturnEvent
+    from app.models.supplier_invoice import SupplierInvoice
+    row_id,invoice_id=completion_source(pg)
+    data=SupplierCreditUseInput(kind='APPLY',amount=20,supplier_invoice_id=invoice_id,event_date=date(2026,1,10),reference='Use',reason='Use credit')
+    _,second=race(pg,lambda db:apply_credit(db,row_id,data,pg.user),lambda db:apply_credit(db,row_id,data.model_copy(update={'request_key':uuid.uuid4()}),pg.user))
+    assert isinstance(second,HTTPException) and second.status_code==409
+    with pg.factory() as db:
+        assert remaining_credit(db,db.get(InventoryReturn,row_id))==10
+        assert db.query(InventoryReturnEvent).filter_by(kind='APPLY').count()==1
+        assert db.get(SupplierInvoice,invoice_id).adjustment_amount==20
+
+
+def test_return_reversal_concurrent_retry_posts_once(pg):
+    from app.schemas.inventory_return import ReturnEventInput
+    from app.services.inventory_return_completion import reverse_return
+    from app.models.inventory_return import InventoryReturnEvent
+    row_id,_=completion_source(pg)
+    data=ReturnEventInput(event_date=date(2026,1,10),reference='Correction',reason='Wrong return')
+    race(pg,lambda db:reverse_return(db,row_id,data,pg.user),lambda db:reverse_return(db,row_id,data,pg.user))
+    with pg.factory() as db:
+        assert db.query(InventoryReturnEvent).filter_by(kind='REVERSE_RETURN').count()==1
+        assert db.query(JournalEntry).filter_by(reference_type='SUPPLIER_RETURN_REVERSAL').count()==1
