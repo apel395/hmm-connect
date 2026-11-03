@@ -1,3 +1,4 @@
+from app.services.stock_movement_value import sql_movement_value, sql_signed_movement_value, movement_value
 from app.models.journal_entry import JournalEntry
 from datetime import date
 from decimal import Decimal
@@ -136,7 +137,7 @@ def list_inventory(
             (StockMovement.movement_type == "OUT", -func.abs(StockMovement.quantity)),
             else_=func.abs(StockMovement.quantity),
         )
-        signed_value = signed_qty * func.coalesce(StockMovement.unit_cost, 0)
+        signed_value = sql_signed_movement_value()
         later = (
             db.query(
                 StockMovement.product_id.label("product_id"),
@@ -351,8 +352,10 @@ def _stock_source(movement: StockMovement) -> tuple[str, str]:
         return "PURCHASE", "Pembelian / Receiving"
     if reference == "STORE_REQUEST" and movement.movement_type == "OUT":
         return "USAGE", "Operasional / Pemakaian"
-    if reference == "GOODS_RECEIPT_RETURN" and movement.movement_type == "OUT":
+    if reference in {"GOODS_RECEIPT_RETURN", "SUPPLIER_RETURN"} and movement.movement_type == "OUT":
         return "RETURN", "Retur supplier"
+    if reference == "SUPPLIER_REPLACEMENT" and movement.movement_type == "IN":
+        return "REPLACEMENT", "Barang pengganti"
     if reference in {"OPENING_STOCK", "STOCK_OPENING", "OPENING_BALANCE"}:
         return "OPENING", "Stock awal"
     if reference == "STOCK_OPNAME":
@@ -464,7 +467,7 @@ def list_movements(
 ):
     if date_from and date_to and date_from > date_to:
         raise HTTPException(422, "From date must not exceed To date")
-    if source_kind not in (None, "PURCHASE", "USAGE", "RETURN", "OPENING", "ADJUSTMENT"):
+    if source_kind not in (None, "PURCHASE", "USAGE", "RETURN", "REPLACEMENT", "OPENING", "ADJUSTMENT"):
         raise HTTPException(422, "Invalid stock source")
     location_id = resolve_location_id(user, location_id)
     effective_date = _effective_movement_date()
@@ -498,8 +501,10 @@ def list_movements(
         query = query.filter(StockMovement.reference_type == "STORE_REQUEST",
                              StockMovement.movement_type == "OUT")
     elif source_kind == "RETURN":
-        query = query.filter(StockMovement.reference_type == "GOODS_RECEIPT_RETURN",
+        query = query.filter(StockMovement.reference_type.in_(["GOODS_RECEIPT_RETURN", "SUPPLIER_RETURN"]),
                              StockMovement.movement_type == "OUT")
+    elif source_kind == "REPLACEMENT":
+        query = query.filter(StockMovement.reference_type == "SUPPLIER_REPLACEMENT", StockMovement.movement_type == "IN")
     elif source_kind == "OPENING":
         query = query.filter(StockMovement.reference_type.in_(
             ("OPENING_STOCK", "STOCK_OPENING", "OPENING_BALANCE")
@@ -519,8 +524,8 @@ def list_movements(
     absolute_qty = func.abs(StockMovement.quantity)
     in_qty = case((StockMovement.movement_type == "IN", absolute_qty), else_=0)
     out_qty = case((StockMovement.movement_type == "OUT", absolute_qty), else_=0)
-    in_value = in_qty * func.coalesce(StockMovement.unit_cost, 0)
-    out_value = out_qty * func.coalesce(StockMovement.unit_cost, 0)
+    in_value = case((StockMovement.movement_type == "IN", sql_movement_value()), else_=0)
+    out_value = case((StockMovement.movement_type == "OUT", sql_movement_value()), else_=0)
     totals = query.with_entities(
         func.coalesce(func.sum(in_qty), 0), func.coalesce(func.sum(out_qty), 0),
         func.coalesce(func.sum(in_value), 0), func.coalesce(func.sum(out_value), 0),
@@ -568,7 +573,7 @@ def list_movements(
             "product_id": product.id, "product_code": product.code, "product_name": product.name,
             "warehouse_id": warehouse.id, "warehouse_name": warehouse.name,
             "quantity": abs(Decimal(movement.quantity or 0)), "unit_cost": movement.unit_cost,
-            "movement_value": abs(Decimal(movement.quantity or 0)) * Decimal(movement.unit_cost or 0),
+            "movement_value": movement_value(movement),
             "in_quantity": abs(Decimal(movement.quantity or 0)) if movement.movement_type == "IN" else Decimal("0"),
             "out_quantity": abs(Decimal(movement.quantity or 0)) if movement.movement_type == "OUT" else Decimal("0"),
             "running_quantity": running.get(movement.id),

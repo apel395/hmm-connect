@@ -1,4 +1,4 @@
-from app.api.v1 import purchasing_exceptions, pos_operations
+from app.api.v1 import purchasing_exceptions, pos_operations, inventory_returns, inventory_period_report
 from . import financial_reports, budgets, cashier, ar_invoice_print
 from app.api.v1 import statistics
 from fastapi import APIRouter
@@ -37,6 +37,8 @@ for router in (
     pos_metadata.router,
     pos_operations.router,
     stock_opnames.router,
+    inventory_returns.router,
+    inventory_period_report.router,
     inventory.router,
     dashboard.router,
     accounting.router,

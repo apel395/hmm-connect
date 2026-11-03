@@ -1,3 +1,4 @@
+from app.services.stock_movement_value import sql_signed_movement_value
 from app.services.document_accounting import accounted_invoice_filter, accounted_payment_filter, accounted_adjustment_filter, invoice_is_accounted
 from datetime import date, datetime, timedelta, timezone
 
@@ -138,10 +139,7 @@ class FinancialReconciliationService:
     def _stock_ledger(self, account_ids: list[int] | None, location_id: int | None = None,
                       as_of: date | None = None) -> dict[int, Decimal]:
         """Signed movement values, retained as a diagnostic beside stock valuation."""
-        signed = case(
-            (StockMovement.movement_type == "OUT", -func.abs(StockMovement.quantity)),
-            else_=func.abs(StockMovement.quantity),
-        ) * StockMovement.unit_cost
+        signed = sql_signed_movement_value()
         query = (
             self.db.query(StockMovement.inventory_account_id, func.coalesce(func.sum(signed), 0))
             .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
@@ -177,7 +175,7 @@ class FinancialReconciliationService:
             movements = (self.db.query(
                 StockMovement.product_id, StockMovement.warehouse_id,
                 func.coalesce(func.sum(signed_qty), 0),
-                func.coalesce(func.sum(signed_qty * StockMovement.unit_cost), 0),
+                func.coalesce(func.sum(sql_signed_movement_value()), 0),
             ).outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)
              .filter(self._movement_date() > as_of))
             if location_id is not None or self.business_unit_id is not None:
@@ -216,8 +214,7 @@ class FinancialReconciliationService:
         value = sum((Decimal(item.quantity or 0) * Decimal(item.average_cost or 0)
                      for item in query.all()), ZERO)
         if as_of is not None:
-            signed = case((StockMovement.movement_type == "OUT", -func.abs(StockMovement.quantity)),
-                          else_=func.abs(StockMovement.quantity)) * StockMovement.unit_cost
+            signed = sql_signed_movement_value()
             later = (self.db.query(func.coalesce(func.sum(signed), 0))
                      .join(Product, Product.id == StockMovement.product_id)
                      .outerjoin(GoodsReceipt, GoodsReceipt.id == StockMovement.goods_receipt_id)

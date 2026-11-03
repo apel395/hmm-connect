@@ -166,3 +166,7 @@ One-item EC2 repair is also available: `python scripts/repair_item_code.py --old
 ## Hotel POS outlet operations (Phase 2, feature branch)
 
 See [Hotel POS operations](docs/hotel-pos-operations-1024.md) for review dependencies, rollout, table/counter/event policies, cashier shifts, reports and exclusions. Requires the additive `20261024_pos_operations` migration on EC2 before an approved API release. This branch does not deploy itself; no production balances or posted records are changed.
+
+## Partial supplier returns and stock period report
+
+See [the return workflow, account setup and migration guide](docs/inventory-returns-1103.md). Requires `20261103_inventory_returns`; no production balances are converted.
