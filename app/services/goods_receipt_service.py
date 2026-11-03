@@ -2,6 +2,7 @@ from app.models.market_list import MarketList
 from app.services.market_list_receiving import allocated_market_items
 from app.services.receiving_destination import (line_destination, master_destination, resolve_destination, receipt_destination, warehouse_items)
 from app.services.location_access import enforce_location_access
+import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
@@ -854,7 +855,21 @@ class GoodsReceiptService:
                 invoice_service.verify(invoice, user, commit=False)
                 invoice_service.generate_journal(invoice, user, commit=False)
         ActivityService.log(db=db, user=user, action="POST", entity_type="GOODS_RECEIPT", entity_id=receipt.id, summary=f"Posted {receipt.receipt_number}", document_type="GR", document_number=receipt.receipt_number, document_status="POSTED", reference_document=purchase_order.po_number if purchase_order else "DIRECT_RECEIPT", details={"purchase_order_id": receipt.purchase_order_id, "warehouse_id": receipt.warehouse_id, "destination_type": receipt.destination_type})
-        db.commit(); db.refresh(receipt); return receipt
+        db.commit()
+        # Asset registration follows the posted physical receipt, but must never
+        # block Receiving or alter its inventory/accounting transaction.
+        if any(item.product.inventory_treatment == "FIXED_ASSET" for item in receipt.items):
+            try:
+                from app.services.receipt_asset_registration import register_posted_receipt_assets
+                if register_posted_receipt_assets(db, receipt=receipt, user=user):
+                    db.commit()
+            except Exception:
+                db.rollback()
+                logging.getLogger(__name__).exception(
+                    "Fixed asset source link failed for posted receiving %s", receipt_id,
+                )
+        db.refresh(receipt)
+        return receipt
 
     @classmethod
     def correct_costs(cls, db: Session, *, receipt_id: int, data: GoodsReceiptCostCorrection, user):
