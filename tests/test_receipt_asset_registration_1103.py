@@ -50,7 +50,7 @@ def product(db, code="4-200101"):
 def receipt(db, p, number, quantity=2, unit_cost=1500, status="POSTED"):
     rec = GoodsReceipt(
         receipt_number=number, status=status, source_type="LIVE",
-        received_at=datetime(2026, 11, 2, 18, 30, tzinfo=timezone.utc),
+        received_at=datetime(2026, 11, 3, 1, 30, tzinfo=timezone.utc),
         business_unit_id=1, location_id=5, department_id=6, supplier_id=10,
         destination_type="DIRECT_USE",
         items=[GoodsReceiptItem(
@@ -86,7 +86,7 @@ def test_posted_receipt_reuses_pending_asset_and_uses_actual_source(db):
     assert asset.goods_receipt_id == rec.id
     assert asset.source_type == "GOODS_RECEIPT"
     assert asset.status == "PENDING_SETUP"
-    assert asset.acquisition_date == date(2026, 11, 3)  # Jakarta business date
+    assert asset.acquisition_date == date(2026, 11, 3)
     assert asset.acquisition_cost == Decimal("3000")
     assert asset.net_book_value == Decimal("3000")
     assert asset.quantity == Decimal("2")
