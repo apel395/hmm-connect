@@ -1,6 +1,7 @@
-/* global require, __dirname, global, console, process, URLSearchParams */
+/* global require, __dirname, global, console, process */
 /* eslint @typescript-eslint/no-require-imports: "off" */
 const assert = require('node:assert/strict');
+const {setTimeout} = require('node:timers');
 const root = require('node:path').resolve(__dirname, '..');
 const req = require('node:module').createRequire(root + '/package.json');
 const React = req('react'), renderer = req('react-test-renderer');
