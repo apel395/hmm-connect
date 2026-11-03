@@ -1,3 +1,4 @@
+import ReturnCompletion, { type ReturnEvent } from "./ReturnCompletion";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -58,6 +59,8 @@ type ReturnDocument = {
   credit_applied: number | null;
   supplier_credit: number | null;
   items: ReturnLine[];
+  remaining_supplier_credit: number;
+  events: ReturnEvent[];
   replacement_receipts: Array<{ id: number; number: string }>;
 };
 type Source = {
@@ -172,6 +175,7 @@ export default function InventoryReturnsPage() {
         client.invalidateQueries({ queryKey: ["inventory"] }),
         client.invalidateQueries({ queryKey: ["inventory-period-report"] }),
         ...[
+          "inventory-credit-invoices",
           "supplier-invoices",
           "supplier-invoice",
           "supplier-adjustments",
@@ -757,6 +761,17 @@ export default function InventoryReturnsPage() {
               credit: <strong>{money(row.supplier_credit)}</strong>
             </div>
           )}
+          <ReturnCompletion
+            key={`${row.id}-${row.events?.length ?? 0}`}
+            id={row.id}
+            status={row.status}
+            balance={Number(row.remaining_supplier_credit ?? 0)}
+            history={row.events ?? []}
+            canManage={can("finance.manage")}
+            pending={action.isPending}
+            accounts={accounts.data ?? []}
+            submit={(value) => action.mutate(value)}
+          />
         </Card>
       )}
       <Card className="overflow-hidden">
