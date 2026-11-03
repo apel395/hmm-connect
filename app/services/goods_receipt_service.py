@@ -858,16 +858,16 @@ class GoodsReceiptService:
         db.commit()
         # Asset registration follows the posted physical receipt, but must never
         # block Receiving or alter its inventory/accounting transaction.
-        if any(item.product.inventory_treatment == "FIXED_ASSET" for item in receipt.items):
-            try:
+        try:
+            if any(item.product.inventory_treatment == "FIXED_ASSET" for item in receipt.items):
                 from app.services.receipt_asset_registration import register_posted_receipt_assets
                 if register_posted_receipt_assets(db, receipt=receipt, user=user):
                     db.commit()
-            except Exception:
-                db.rollback()
-                logging.getLogger(__name__).exception(
-                    "Fixed asset source link failed for posted receiving %s", receipt_id,
-                )
+        except Exception:
+            db.rollback()
+            logging.getLogger(__name__).exception(
+                "Fixed asset source link failed for posted receiving %s", receipt_id,
+            )
         db.refresh(receipt)
         return receipt
 
