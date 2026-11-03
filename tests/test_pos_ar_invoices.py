@@ -121,3 +121,25 @@ def test_legacy_paid_posting_is_corrected_once_without_duplicate_revenue(db,monk
     assert sum((l.credit for l in s.query(JournalLine).filter_by(account_id=liability.id)),D(0))==10000
     with pytest.raises(HTTPException):correct_posted_invoice(s,tx,data,ADMIN)
     assert s.query(AccountReceivable).count()==1 and s.query(JournalLine).count()==5
+
+
+def test_pos_print_reuses_phr_ar_layout_without_writing_financial_data(db,monkeypatch):
+    from app.api.v1.sales import print_sale
+    from app.models.ar_invoice_layout import ARInvoiceLayout
+    s,tx,customer,account,base,_=invoice_setup(db,monkeypatch)
+    Service.post(s,transaction_id=tx.id,data=SalesTransactionPost(),user=ADMIN)
+    ar=s.query(AccountReceivable).one()
+    before=(s.query(GeneralLedger).count(),s.query(JournalLine).count(),ar.amount,ar.received_amount,ar.invoice_number)
+    printed=print_sale(tx.id,s,ADMIN)
+    client=printed['client_invoice']
+    assert client['layout']['template']=='phr' and client['print_ready']
+    assert client['invoice_number']==ar.invoice_number and client['amount']==110000
+    assert client['document']['tax_amount']=='10000.00'
+    assert 'receipts' not in client
+    assert before==(s.query(GeneralLedger).count(),s.query(JournalLine).count(),ar.amount,ar.received_amount,ar.invoice_number)
+    assert s.query(ARInvoiceLayout).count()==0
+    limited=SimpleNamespace(**{**vars(ADMIN),'roles':[SimpleNamespace(name='FINANCE', permissions=[SimpleNamespace(code='pos.view')])],'default_location_id':999})
+    with pytest.raises(HTTPException): print_sale(tx.id,s,limited)
+    # An explicit standard template remains available to the client.
+    s.add(ARInvoiceLayout(customer_id=customer.id,configuration={'template':'standard'}));s.commit()
+    assert print_sale(tx.id,s,ADMIN)['client_invoice'] is None

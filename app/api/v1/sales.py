@@ -457,6 +457,19 @@ def print_sale(
     payload = serialize_sale(transaction)
     payload["printed_by"] = (user.full_name or user.username) if user else "System"
     payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+    # Use the same authorized AR document for client-specific invoice printing.
+    # The POS source is scoped above; the receivable is additionally scoped below.
+    payload["client_invoice"] = None
+    if transaction.transaction_type == "INVOICE" and payload.get("account_receivable_id"):
+        from app.services.ar_invoice_service import scoped_receivables
+        from app.api.v1.ar_invoice_print import invoice_payload
+        receivable = scoped_receivables(db, user).filter_by(id=payload["account_receivable_id"], source_sale_id=transaction.id).first()
+        if receivable:
+            document = invoice_payload(db, receivable)
+            if document["layout"]["template"] == "phr":
+                # Collection history stays in Finance; POS only needs the invoice.
+                document.pop("receipts", None)
+                payload["client_invoice"] = document
     return payload
 
 

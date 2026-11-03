@@ -56,6 +56,19 @@ class InvoiceDocument(BaseModel):
         return sum((line.amount for line in self.lines), Decimal("0")) + self.tax_amount
 
 
+def resolved_layout(configuration, customer):
+    """Default PHR clients to their approved print format; never persist a GET."""
+    config = dict(configuration or {})
+    name = ' '.join(str(getattr(customer, 'customer_name', '') or '').upper().replace('.', ' ').split())
+    code = str(getattr(customer, 'customer_code', '') or '').strip().upper()
+    if 'template' not in config and (name == 'PHR' or code == 'PHR' or 'PERTAMINA HULU ROKAN' in name):
+        config['template'] = 'phr'
+        config.setdefault('billing_name', 'PT. Pertamina Hulu Rokan')
+        if not getattr(customer, 'address', None):
+            config.setdefault('billing_address', '16th Floor, RDTX Place Building\nJl. Prof. Dr. Satrio Kav. E-IV Kuningan\nJakarta Selatan 12930')
+    return InvoiceLayout(**config).model_dump()
+
+
 def consolidated(user):
     # Legacy receivables have no location dimension; never imply a scoped read.
     if assigned_location_id(user) is not None:
@@ -67,6 +80,11 @@ def invoice(invoice_id: int, db: Session = Depends(get_db), user=Depends(view)):
     row = scoped_receivables(db,user).filter_by(id=invoice_id).first()
     if not row:
         raise HTTPException(404, "Invoice not found")
+    return invoice_payload(db, row)
+
+
+def invoice_payload(db, row):
+    """Print-only representation of an already authorized receivable."""
     layout = db.get(ARInvoiceLayout, row.customer_id)
     config = layout.configuration if layout else {}
     saved = config.get("invoice_documents", {}).get(str(row.id))
@@ -80,7 +98,7 @@ def invoice(invoice_id: int, db: Session = Depends(get_db), user=Depends(view)):
             if index==len(source_lines)-1:share=discount-allocated
             allocated+=share
             lines.append(ServiceLine(description=line.product.name if line.product else 'Service',amount=Decimal(line.line_amount)-share+Decimal(line.service_charge_amount or 0)))
-        document=InvoiceDocument(lines=lines,tax_label='PBJT' if any(line.tax_type=='PBJT' for line in source_lines) else 'Tax',tax_amount=source.tax_amount)
+        document=InvoiceDocument(description=source.notes or '', lines=lines,tax_label='PBJT' if any(line.tax_type=='PBJT' for line in source_lines) else 'Tax',tax_amount=source.tax_amount)
     else:
         document = InvoiceDocument(**(saved or {}))
     receipts=[{"id":payment.id,"payment_number":payment.payment_number,"payment_date":payment.payment_date,"amount":payment.amount,"payment_method":payment.payment_method,"reference_number":payment.reference_number,"journal_entry_id":payment.journal_entry_id} for payment in db.query(CustomerPayment).filter_by(account_receivable_id=row.id,status="POSTED").order_by(CustomerPayment.id).all()]
@@ -90,7 +108,7 @@ def invoice(invoice_id: int, db: Session = Depends(get_db), user=Depends(view)):
         due_date=row.due_date, amount=row.amount, received_amount=row.received_amount,
         outstanding_amount=row.outstanding_amount, customer_id=row.customer_id,
         customer_name=row.customer.customer_name, customer_address=row.customer.address,
-        layout=InvoiceLayout(**(layout.configuration if layout else {})).model_dump())
+        layout=resolved_layout(config, row.customer))
 
 
 @router.put("/clients/{customer_id}")

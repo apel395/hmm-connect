@@ -75,3 +75,27 @@ def test_saved_document_readiness_and_no_historical_defaults():
     db, _ = db_for(configuration={"template":"phr"})
     with patch("app.api.v1.ar_invoice_print.consolidated"):
         assert not invoice(7, db, USER)["print_ready"]
+
+
+def test_phr_default_is_read_only_and_respects_explicit_client_template():
+    from app.api.v1.ar_invoice_print import resolved_layout
+    phr = SimpleNamespace(customer_name='PHR', customer_code='PHR', address=None)
+    config = {'invoice_documents': {'7': {'description': 'Keep'}}}
+    result = resolved_layout(config, phr)
+    assert result['template'] == 'phr'
+    assert result['billing_name'] == 'PT. Pertamina Hulu Rokan'
+    assert 'RDTX' in result['billing_address']
+    assert config == {'invoice_documents': {'7': {'description': 'Keep'}}}
+    assert result['contract_number'] == '' and result['payment_instructions'] == ''
+    assert result['signer_name'] == ''
+    assert resolved_layout({'template': 'standard'}, phr)['template'] == 'standard'
+    assert resolved_layout({}, SimpleNamespace(customer_name='Other client', customer_code='OTHER', address=None))['template'] == 'standard'
+
+
+def test_phr_ar_print_uses_actual_invoice_identity_and_amount():
+    db, _ = db_for(configuration={})
+    result = invoice(7, db, USER)
+    assert result['layout']['template'] == 'phr'
+    assert result['invoice_number'] == 'AR-7' and result['amount'] == Decimal('110')
+    db.commit.assert_not_called()
+    db.add.assert_not_called()
