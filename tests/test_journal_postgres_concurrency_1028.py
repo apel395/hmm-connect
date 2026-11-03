@@ -226,3 +226,67 @@ def test_double_payment_settlement_updates_invoice_once(pg):
         assert invoice.paid_amount==60 and invoice.balance_amount==40
         assert db.query(GeneralLedger).filter_by(reference_type='SUPPLIER_PAYMENT').count()==2
 
+
+
+@pytest.mark.parametrize('same_document', [True, False])
+def test_partial_returns_serialize_source_and_inventory(pg, same_document):
+    from datetime import datetime, timezone
+    from app.models.department import Department
+    from app.models.supplier import Supplier
+    from app.models.product import Product
+    from app.models.warehouse import Warehouse
+    from app.models.inventory import Inventory
+    from app.models.goods_receipt import GoodsReceipt, GoodsReceiptItem
+    from app.models.stock_movement import StockMovement
+    from app.schemas.inventory_return import ReturnInput
+    from app.services.inventory_return_service import create_return, post_return
+    with pg.factory() as db:
+        dept = Department(code='RETURN', name='Returns', business_unit_id=pg.unit_id)
+        supplier = Supplier(code='RETURN', name='Returns')
+        inventory_coa = ChartOfAccount(account_number='RET-INV',account_name='Return inventory',account_type='ASSET',normal_balance='DEBIT',is_posting=True,is_active=True)
+        clearing = ChartOfAccount(account_number='RET-CLEAR',account_name='Return clearing',account_type='ASSET',normal_balance='DEBIT',is_posting=True,is_active=True)
+        db.add_all([dept,supplier,inventory_coa,clearing]);db.flush()
+        warehouse = Warehouse(code='RET',name='Returns',location_id=pg.location_id,is_active=True)
+        product = Product(code='RET',name='Return item',uom='PCS',usage_uom='PCS',group_code='1',group_name='Food',subgroup_code='1',subgroup_name='Test',inventory_account_id=inventory_coa.id,is_active=True)
+        db.add_all([warehouse,product]);db.flush()
+        source = GoodsReceipt(receipt_number='PG-RET',status='POSTED',supplier_id=supplier.id,warehouse_id=warehouse.id,
+            business_unit_id=pg.unit_id,location_id=pg.location_id,department_id=dept.id,destination_type='WAREHOUSE',
+            received_at=datetime(2026,1,10,tzinfo=timezone.utc),subtotal=100,tax_amount=0,total_amount=100)
+        source.items=[GoodsReceiptItem(product_id=product.id,quantity=10,unit_cost=10,destination_type='WAREHOUSE')]
+        db.add_all([source,Inventory(product_id=product.id,warehouse_id=warehouse.id,quantity=10,average_cost=10)]);db.commit()
+        payload=ReturnInput(goods_receipt_id=source.id,purpose='REPLACEMENT',return_date=date(2026,1,10),reason='Concurrent return',clearing_account_id=clearing.id,items=[{'goods_receipt_item_id':source.items[0].id,'quantity':6}])
+        first=create_return(db,payload,pg.user);db.commit();first_id=first.id
+        if same_document: second_id=first_id
+        else:
+            second=create_return(db,payload.model_copy(update={"request_key":uuid.uuid4()}),pg.user);db.commit();second_id=second.id
+    first_result,second_result=race(pg,lambda db:post_return(db,first_id,pg.user),lambda db:post_return(db,second_id,pg.user))
+    assert isinstance(second_result,HTTPException) and second_result.status_code==409
+    with pg.factory() as db:
+        assert db.query(Inventory).filter_by(product_id=product.id,warehouse_id=warehouse.id).one().quantity==4
+        assert db.query(StockMovement).filter_by(reference_type='SUPPLIER_RETURN').count()==1
+        assert db.query(JournalEntry).filter_by(reference_type='SUPPLIER_RETURN').count()==1
+
+
+def test_partial_return_migration_on_populated_schema(pg):
+    import importlib.util
+    from pathlib import Path
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    engine=pg.factory.kw['bind']
+    with engine.begin() as connection:
+        for table in ('inventory_return_replacements','inventory_return_items','inventory_returns'):
+            connection.execute(text(f'DROP TABLE {table}'))
+        connection.execute(text('ALTER TABLE goods_receipt_items DROP COLUMN replacement_line_value'))
+        connection.execute(text('ALTER TABLE stock_movements DROP COLUMN recorded_value'))
+        for table in ('goods_receipt_items','stock_movements'):
+            connection.execute(text(f'ALTER TABLE {table} ALTER COLUMN unit_cost TYPE NUMERIC(12,2)'))
+        path=Path(__file__).resolve().parents[1]/'alembic/versions/20261103_inventory_returns.py'
+        spec=importlib.util.spec_from_file_location('partial_return_migration',path)
+        migration=importlib.util.module_from_spec(spec);spec.loader.exec_module(migration)
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        from sqlalchemy import inspect
+        inspector=inspect(connection)
+        assert 'inventory_returns' in inspector.get_table_names()
+        assert next(c for c in inspector.get_columns('stock_movements') if c['name']=='unit_cost')['type'].scale==4
+        assert connection.execute(text('SELECT COUNT(*) FROM opening_balances')).scalar()==1

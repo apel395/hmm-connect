@@ -84,6 +84,8 @@ def _sync_invoice_payable(db: Session, invoice: SupplierInvoice) -> None:
 
 
 def _assert_invoice_has_no_posted_dependents(db: Session, invoice: SupplierInvoice) -> None:
+    from app.services.inventory_return_service import guard_invoice
+    guard_invoice(db, invoice.id)
     posted_payment = db.query(PaymentAllocation).join(Payment).filter(
         PaymentAllocation.supplier_invoice_id == invoice.id,
         accounted_payment_filter(),
@@ -262,6 +264,8 @@ def _reverse_source_state(db: Session, journal: JournalEntry) -> None:
         return
 
     if source == "GOODS_RECEIPT":
+        from app.services.inventory_return_service import guard_receipt
+        guard_receipt(db, journal.reference_id)
         receipt = db.get(GoodsReceipt, journal.reference_id)
         if not receipt:
             raise HTTPException(409, "Goods receipt linked to this journal was not found")

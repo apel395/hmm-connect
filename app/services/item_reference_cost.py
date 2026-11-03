@@ -40,7 +40,7 @@ def receipt_costs(db, product_ids, user, business_unit_id=None):
         func.row_number().over(partition_by=GoodsReceiptItem.product_id,
             order_by=(GoodsReceipt.received_at.desc(), GoodsReceipt.id.desc(), GoodsReceiptItem.id.desc())).label("rank"))
     query = query.join(GoodsReceipt, GoodsReceipt.id == GoodsReceiptItem.goods_receipt_id).filter(
-        GoodsReceipt.status == "POSTED", GoodsReceipt.received_at >= datetime(2026, 1, 1, tzinfo=timezone.utc),
+        GoodsReceipt.status == "POSTED", GoodsReceipt.source_type != "SUPPLIER_REPLACEMENT", GoodsReceipt.received_at >= datetime(2026, 1, 1, tzinfo=timezone.utc),
         GoodsReceiptItem.product_id.in_(product_ids), GoodsReceiptItem.quantity > 0)
     query = apply_location_scope(query, GoodsReceipt.location_id, user)
     unit_id = purchasing_unit(db, user, business_unit_id)

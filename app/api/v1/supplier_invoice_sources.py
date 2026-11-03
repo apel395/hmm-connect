@@ -38,7 +38,7 @@ def eligible_receipts(
 
     receipts = (
         apply_location_scope(db.query(GoodsReceipt), GoodsReceipt.location_id, user)
-        .filter(GoodsReceipt.status == "POSTED")
+        .filter(GoodsReceipt.status == "POSTED", GoodsReceipt.source_type != "SUPPLIER_REPLACEMENT")
         .order_by(GoodsReceipt.received_at.desc(), GoodsReceipt.id.desc())
         .all()
     )

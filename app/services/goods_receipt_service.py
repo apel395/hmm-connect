@@ -499,6 +499,8 @@ class GoodsReceiptService:
 
     @classmethod
     def update(cls, db: Session, *, receipt: GoodsReceipt, data: GoodsReceiptUpdate, user):
+        from app.services.inventory_return_service import guard_receipt
+        guard_receipt(db, receipt.id)
         if receipt.source_type == "LIVE":
             data = data.model_copy(update={"received_at": receipt.received_at})
         if cls.business_date(data.received_at) < STOCK_CUTOFF:
@@ -861,6 +863,8 @@ class GoodsReceiptService:
         if not cls.can_correct_cost(user): raise HTTPException(status_code=403, detail="Only an authorized manager can correct receiving costs")
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
+        from app.services.inventory_return_service import guard_receipt
+        guard_receipt(db, receipt.id)
         if receipt.status not in {"DRAFT", "POSTED"}: raise HTTPException(status_code=409, detail="Only draft or posted receipts can have their costs corrected")
         downstream_invoice = db.query(SupplierInvoice).filter(SupplierInvoice.goods_receipt_id == receipt.id, SupplierInvoice.status.notin_({"VOID", "REJECTED"})).first()
         provisional_invoice = None
@@ -903,6 +907,8 @@ class GoodsReceiptService:
         receipt = db.query(GoodsReceipt).filter(GoodsReceipt.id == receipt_id).with_for_update().first()
         if not receipt: raise HTTPException(status_code=404, detail="Goods receipt not found")
         if receipt.status != "POSTED": raise HTTPException(status_code=409, detail="Only posted receipts can be returned")
+        from app.services.inventory_return_service import guard_receipt
+        guard_receipt(db, receipt.id)
         accounting_journal = cls._accounting_journal(db, receipt.id)
         if accounting_journal and accounting_journal.status == "POSTED":
             raise HTTPException(

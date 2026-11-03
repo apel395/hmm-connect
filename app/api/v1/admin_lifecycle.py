@@ -70,6 +70,8 @@ def reopen_supplier_invoice(
     if invoice.status == "DRAFT":
         raise HTTPException(409, "Supplier invoice is already draft")
 
+    from app.services.inventory_return_service import guard_invoice
+    guard_invoice(db, invoice.id)
     blocking_payment = db.query(PaymentAllocation).join(Payment).filter(
         PaymentAllocation.supplier_invoice_id == invoice.id,
         Payment.status.in_(["APPROVED", "POSTED"]),

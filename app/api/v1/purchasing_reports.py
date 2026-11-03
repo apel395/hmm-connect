@@ -43,7 +43,7 @@ def purchasing_summary(
 
     pr_query = apply_location_scope(db.query(PurchaseRequisition), PurchaseRequisition.location_id, user)
     po_query = apply_location_scope(db.query(PurchaseOrder), PurchaseOrder.location_id, user)
-    gr_query = apply_location_scope(db.query(GoodsReceipt), GoodsReceipt.location_id, user)
+    gr_query = apply_location_scope(db.query(GoodsReceipt), GoodsReceipt.location_id, user).filter(GoodsReceipt.source_type != "SUPPLIER_REPLACEMENT")
 
     scope=resolve_organization_access(db,user,business_unit_id=business_unit_id)
     for model,name in ((PurchaseRequisition,"pr"),(PurchaseOrder,"po"),(GoodsReceipt,"gr")):

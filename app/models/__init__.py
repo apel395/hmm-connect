@@ -82,3 +82,5 @@ from app.models.item_department import ItemDepartment
 from app.models.department_outlet import DepartmentOutlet
 
 from app.models.pos_operations import PosOutletPolicy, PosTable, PosCashierSession
+
+from app.models.inventory_return import InventoryReturn, InventoryReturnItem, InventoryReplacement

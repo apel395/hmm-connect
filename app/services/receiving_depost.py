@@ -42,6 +42,8 @@ def _depost(db, receipt_id, user, reason):
     if not receipt:
         raise HTTPException(404,'Receiving not found')
     enforce_location_access(user,receipt.location_id)
+    from app.services.inventory_return_service import guard_receipt
+    guard_receipt(db, receipt.id)
     if receipt.status != 'POSTED':
         raise HTTPException(409,'Only posted receiving can be deposted; refresh its current status')
     from app.services.goods_receipt_service import GoodsReceiptService as Service

@@ -208,6 +208,8 @@ class SupplierInvoiceService:
     @staticmethod
     def _validate_receipt_set(receipts, supplier_id, business_unit_id, location_id, department_id):
         for receipt in receipts:
+            if receipt.source_type == "SUPPLIER_REPLACEMENT":
+                raise HTTPException(409, "Replacement Receiving must not generate another supplier invoice")
             if receipt.status != "POSTED":
                 raise HTTPException(409, "Supplier invoice can only use posted receipts")
             source_supplier_id=receipt.supplier_id or (receipt.purchase_order.supplier_id if receipt.purchase_order else None)
@@ -414,6 +416,8 @@ class SupplierInvoiceService:
         The supplier's real invoice number, invoice date and tax documents are
         deliberately NOT invented. They must be confirmed before verification.
         """
+        if receipt.source_type == "SUPPLIER_REPLACEMENT":
+            raise HTTPException(409, "Replacement Receiving has no additional supplier invoice")
         if receipt.status != "POSTED":
             raise HTTPException(409, "Receiving must be posted before preparing its invoice")
         existing = (

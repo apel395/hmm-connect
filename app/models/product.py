@@ -146,6 +146,8 @@ def _sync_purchasing_tax_snapshots(session, _flush_context, _instances):
             header.total_amount = header.subtotal - Decimal(header.discount_amount or 0) + header.tax_amount
         elif isinstance(header, GoodsReceipt):
             header.subtotal = sum((Decimal(i.quantity or 0) * Decimal(i.unit_cost or 0) for i in header.items), ZERO)
+            if header.source_type == "SUPPLIER_REPLACEMENT":
+                header.subtotal = sum((Decimal(i.replacement_line_value) if i.replacement_line_value is not None else (Decimal(i.quantity or 0) * Decimal(i.unit_cost or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) for i in header.items), ZERO)
             header.tax_amount = sum((Decimal(i.tax_amount or 0) for i in header.items), ZERO)
             # Keep the model's flush-time tax snapshot authoritative without
             # discarding supplier document charges captured at receiving.
