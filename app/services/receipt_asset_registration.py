@@ -76,6 +76,14 @@ def register_posted_receipt_assets(
             continue
         if pending and pending.asset_account_id != product.asset_account_id:
             continue
+        # A manual Item Master registration may already represent this purchase.
+        # Without an explicit source link, do not create a duplicate asset.
+        if pending is None and db.query(FixedAsset.id).filter(
+            FixedAsset.product_id == product_id,
+            FixedAsset.source_type == "ITEM_MASTER",
+            FixedAsset.status != "PENDING_REGISTRATION",
+        ).first():
+            continue
 
         asset = pending or FixedAsset(
             asset_number=f"FA-GR-{receipt.id:08d}-{product_id:08d}",
