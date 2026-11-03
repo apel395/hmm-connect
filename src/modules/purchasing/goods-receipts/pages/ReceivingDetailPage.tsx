@@ -1,68 +1,353 @@
-import { destinationLabel } from "../destination";
-import CurrencyInput from "@/components/form/CurrencyInput";
-import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, RotateCcw } from "lucide-react";
+import axios from "axios";
+import { toast } from "sonner";
+
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
-import Dialog,{ DialogBody,DialogContent,DialogFooter,DialogHeader,DialogTitle } from "@/components/ui/Dialog";
+import CurrencyInput from "@/components/form/CurrencyInput";
+import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import Loading from "@/components/ui/Loading";
-import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useAuthorization from "@/hooks/useAuthorization";
 import { prepareInvoiceFromReceipt } from "@/modules/finance/supplier-invoices/api";
-import DocumentAttachments from "@/modules/document-attachments/DocumentAttachments";
-import axios from "axios";
-import { FileCheck2,FilePlus2,Pencil,PencilLine,RotateCcw } from "lucide-react";
-import { useEffect,useState } from "react";
-import { useMutation,useQueryClient } from "@tanstack/react-query";
-import { Link,useNavigate,useParams } from "react-router-dom";
-import { toast } from "sonner";
-import DocumentActivity from "../../components/DocumentActivity";
+import { destinationLabel } from "../destination";
+import ReceivingDetailActions, { type ReceivingMenuAction, type ReceivingPrimaryAction } from "../components/ReceivingDetailActions";
+import ReceivingDetailSections from "../components/ReceivingDetailSections";
 import EditReceivingDialog from "../components/EditReceivingDialog";
-import { useDepostGoodsReceipt,useApproveGoodsReceipt,useCorrectGoodsReceiptCosts,useGoodsReceipt,usePostGoodsReceipt,useRejectGoodsReceipt,useReturnGoodsReceipt,useSubmitGoodsReceipt } from "../hooks/useGoodsReceipts";
+import {
+  useDepostGoodsReceipt,
+  useApproveGoodsReceipt,
+  useCorrectGoodsReceiptCosts,
+  useGoodsReceipt,
+  usePostGoodsReceipt,
+  useRejectGoodsReceipt,
+  useReturnGoodsReceipt,
+  useSubmitGoodsReceipt,
+} from "../hooks/useGoodsReceipts";
 
-const money=(value:unknown)=>Number(value??0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
-const approvalLabel=(role?:string)=>({STORE:"Store",CHEF:"Chef","PM/CAMP BOSS":"PM / Camp Boss",PM:"PM / Camp Boss","HO PURCHASING":"HO Purchasing",FINANCE:"Finance","GENERAL MANAGER":"General Manager"}[String(role??"").toUpperCase()]??role??"Approval");
+const money = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
 
-export default function ReceivingDetailPage(){
- const navigate=useNavigate();const{id}=useParams();const{data,isLoading}=useGoodsReceipt(Number(id));const qc=useQueryClient();
- const prepareInvoice=useMutation({mutationFn:prepareInvoiceFromReceipt,onSuccess:invoice=>{qc.invalidateQueries({queryKey:["goods-receipt",Number(id)]});qc.invalidateQueries({queryKey:["supplier-invoices"]});toast.success("Supplier invoice draft is ready for confirmation.");navigate(`/supplier-invoices/${invoice.id}`)},onError:(error:any)=>toast.error(error?.response?.data?.detail||"Unable to prepare invoice draft")});
- const depost=useDepostGoodsReceipt();const[depostOpen,setDepostOpen]=useState(false);const[depostReason,setDepostReason]=useState("");
- const submitApproval=useSubmitGoodsReceipt(),approve=useApproveGoodsReceipt(),reject=useRejectGoodsReceipt(),post=usePostGoodsReceipt(),returned=useReturnGoodsReceipt(),correctCosts=useCorrectGoodsReceiptCosts();
- const{canPerform,isSuperuser,hasPermission}=useAuthorization();
- const[editOpen,setEditOpen]=useState(false),[costDialogOpen,setCostDialogOpen]=useState(false),[reason,setReason]=useState(""),[costs,setCosts]=useState<Record<number,number>>({}),[rejectOpen,setRejectOpen]=useState(false),[rejectComment,setRejectComment]=useState("");
- useEffect(()=>{if(data)setCosts(Object.fromEntries(data.items.map(item=>[item.id,Number(item.unit_cost)])))},[data]);
- if(isLoading)return <Loading/>;if(!data)return null;
- const historical=data.source_type==="HISTORICAL_ENTRY";
- const actions=data.allowed_actions;const canSubmit=Boolean(actions?.can_submit)||(isSuperuser()&&!historical&&data.status==="DRAFT"&&!data.approval_status);const approvalPending=data.approval_status==="PENDING";const canApprove=approvalPending&&Boolean(actions?.can_approve);const canReject=approvalPending&&Boolean(actions?.can_reject);const canReturn=canPerform("receive",["WAREHOUSE","PURCHASING"],actions?.can_return??false);const correctedTotal=data.items.reduce((sum,item)=>sum+Number(item.quantity)*Number(costs[item.id]??item.unit_cost),0);const changedItems=data.items.filter(item=>Number(costs[item.id]??item.unit_cost)!==Number(item.unit_cost));
- const approvalHistory=(data.approval_history??[]) as any[];
- const subtotal=Number(data.subtotal??data.items.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_cost),0));const taxAmount=Number(data.tax_amount??data.items.reduce((sum,item)=>sum+Number(item.tax_amount??0),0));const grandTotal=Number(data.total_amount??subtotal+taxAmount);
- const submitCostCorrection=async()=>{if(!changedItems.length)return toast.error("Change at least one unit cost.");if(reason.trim().length<3)return toast.error("Correction reason is required.");try{await correctCosts.mutateAsync({id:data.id,payload:{reason:reason.trim(),items:changedItems.map(item=>({item_id:item.id,unit_cost:Number(costs[item.id])}))}});toast.success("Receiving cost corrected.");setCostDialogOpen(false);setReason("")}catch(error){const detail=axios.isAxiosError(error)?error.response?.data?.detail:null;toast.error(typeof detail==="string"?detail:"Cost correction failed")}};
- return <div className="space-y-6">
-  {data.market_list_id && <div className="text-sm"><Link className="text-blue-700 hover:underline" to={`/market-lists/${data.market_list_id}`}>{data.market_list_number}</Link></div>}
- <div className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-4"><WorkspaceBackButton /><div><div className="text-sm text-slate-500">Receiving Report</div><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-bold">{data.receipt_number}</h1><Badge>{data.status}</Badge>{data.approval_status&&<Badge variant={data.approval_status==="APPROVED"?"success":data.approval_status==="REJECTED"?"danger":"warning"}>{data.approval_status}</Badge>}{data.source_mode==="ML"&&<Badge variant="primary">Market List</Badge>}{data.source_mode==="DIRECT"&&<Badge variant="warning">Direct</Badge>}</div></div></div>
-   <div className="flex flex-wrap gap-2">{data.status==="POSTED"&&data.supplier_invoice_id&&hasPermission("supplier_invoice.view")&&<Button onClick={()=>navigate(`/supplier-invoices/${data.supplier_invoice_id}`)}><FileCheck2 size={16}/> Open Supplier Invoice ({data.supplier_invoice_status})</Button>}{data.status==="POSTED"&&!data.supplier_invoice_id&&hasPermission("supplier_invoice.create")&&<Button variant="outline" loading={prepareInvoice.isPending} disabled={prepareInvoice.isPending} onClick={()=>prepareInvoice.mutate(data.id)}><FilePlus2 size={16}/> Prepare Invoice</Button>}{actions?.can_depost&&<Button variant="outline" onClick={()=>{setDepostReason("");setDepostOpen(true)}}>Depost for Edit</Button>}{hasPermission("receiving.edit")&&<Button variant="outline" onClick={()=>setEditOpen(true)}><Pencil size={16}/> Edit Receiving</Button>}{actions?.can_correct_cost&&<Button variant="outline" onClick={()=>{setCosts(Object.fromEntries(data.items.map(item=>[item.id,Number(item.unit_cost)])));setReason("");setCostDialogOpen(true)}}><PencilLine size={16}/> Correct Cost</Button>}{actions?.can_print!==false&&<PrintPreviewButton src={`/receiving/${data.id}/print`} title={`Receiving ${data.receipt_number}`} ariaLabel="Preview receiving document"/>}{canSubmit&&<Button loading={submitApproval.isPending} onClick={()=>submitApproval.mutate(data.id,{onSuccess:()=>toast.success("Receiving submitted for approval")})}>Submit for Approval</Button>}{canApprove&&<Button loading={approve.isPending} onClick={()=>approve.mutate({id:data.id},{onSuccess:()=>toast.success("Approval stage completed")})}>Approve</Button>}{canReject&&<Button variant="danger" onClick={()=>setRejectOpen(true)}>Reject</Button>}{canPerform("post",["WAREHOUSE","PURCHASING"],actions?.can_post??false,"receiving.post")&&<Button loading={post.isPending} onClick={()=>post.mutate(data.id,{onSuccess:()=>toast.success("Receiving posted"),onError:(error)=>{const detail=axios.isAxiosError(error)?error.response?.data?.detail:null;toast.error(typeof detail==="string"?detail:"Receiving could not be posted")}})}>{data.destination_type==="DIRECT_USE"?"Post Direct Use":data.destination_type==="MIXED"||historical?"Post Receiving":"Post to Inventory"}</Button>}{canReturn&&<Button variant="danger" loading={returned.isPending} onClick={()=>{if(window.confirm("Return all quantities from this receipt?"))returned.mutate(data.id,{onSuccess:()=>toast.success("Receipt returned")})}}><RotateCcw size={16}/> Return</Button>}</div></div>
-  {!historical&&data.status==="DRAFT"&&data.approval_status!=="APPROVED"&&<div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Receiving has <strong>not</strong> been posted yet. Receiving must complete Store → Chef → PM/Camp Boss approval before posting.</div>}
-  <Card><div className="grid gap-5 md:grid-cols-3 lg:grid-cols-6"><Info label="Source">{data.purchase_order_id?<Link className="font-medium text-emerald-700 hover:underline" to={`/purchase-orders/${data.purchase_order_id}`}>{data.purchase_order_number}</Link>:"Direct Receiving"}</Info><Info label="Supplier">{data.supplier_name??"—"}</Info><Info label="Business Unit">{data.business_unit_name??data.business_unit_id??"—"}</Info><Info label="Location">{data.location_name??data.location_id??"—"}</Info><Info label="Department">{data.department_name??data.department_id??"—"}</Info><Info label="Warehouse">{data.destination_type!=="DIRECT_USE"?data.warehouse_name??"—":"Direct Use"}</Info></div></Card>
-  <Card className="overflow-hidden p-0"><div className="border-b bg-slate-50 px-5 py-4 font-semibold">Received Items</div><div className="overflow-x-auto"><table className="table-grid min-w-[1250px] w-full text-sm"><thead><tr><th className="p-3 text-left">Item</th><th className="p-3 text-left">Destination</th><th>UOM</th><th className="text-right">Qty</th><th className="text-right">Unit Cost</th><th>PPN</th><th className="text-right">Subtotal</th><th className="text-right">PPN Amount</th><th className="p-3 text-right">Line Total</th></tr></thead><tbody>{data.items.map(item=>{const lineSubtotal=Number(item.line_subtotal??Number(item.quantity)*Number(item.unit_cost));const lineTax=Number(item.tax_amount??0);return <tr key={item.id} className="border-t"><td className="p-3"><div className="font-medium">{item.product_name}</div><div className="text-xs text-slate-500">{item.product_code??"—"}</div></td><td className="p-3"><span>{destinationLabel(item.destination_type??data.destination_type,item.inventory_treatment)}</span>{item.destination_override_reason&&<div className="max-w-60 truncate text-xs text-slate-500" title={item.destination_override_reason}>{item.destination_override_reason}</div>}</td><td>{item.uom??"—"}</td><td className="text-right">{item.quantity}</td><td className="text-right">{money(item.unit_cost)}</td><td>{item.is_taxable?`${Number(item.tax_rate??0)}%`:"Non-PPN"}</td><td className="text-right">{money(lineSubtotal)}</td><td className="text-right">{money(lineTax)}</td><td className="p-3 text-right font-semibold">{money(item.line_total??lineSubtotal+lineTax)}</td></tr>})}</tbody></table></div><div className="ml-auto grid max-w-md gap-2 border-t bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Subtotal</span><strong>{money(subtotal)}</strong></div><div className="flex justify-between"><span>PPN</span><strong>{money(taxAmount)}</strong></div><div className="flex justify-between border-t pt-2 text-base"><span>Grand Total</span><strong>{money(grandTotal)}</strong></div></div></Card>
-  <Card><h2 className="mb-2 font-semibold">Supplier Billing</h2><div className="grid gap-3 text-sm md:grid-cols-3">
-      <div><small>Supplier Invoice</small><div>{data.supplier_invoice_number||"Not yet provided"}</div></div>
-      <div><small>Supplier Invoice Date</small><div>{data.supplier_invoice_date||"—"}</div></div>
-      <div><small>Supplier Document Total</small><div>{data.supplier_document_total==null?"—":money(Number(data.supplier_document_total))}</div></div>
-      <div><small>Invoice Discount</small><div>{money(Number(data.discount_amount||0))}</div></div>
-      <div><small>Shipping Fee</small><div>{money(Number(data.shipping_fee_amount||0))}</div></div>
-      <div><small>Administration Fee</small><div>{money(Number(data.admin_fee_amount||0))}</div></div>
-      <div><small>Other Fee</small><div>{money(Number(data.other_fee_amount||0))} {data.other_fee_description||""}</div></div>
-      <div><small>Invoice Status</small><div>{data.supplier_invoice_status||"Not generated yet"}</div></div>
-      <div>{data.supplier_document_url&&<a className="text-emerald-700 underline" href={data.supplier_document_url} target="_blank" rel="noopener noreferrer">Open supplier document</a>}</div>
-    </div></Card>
-    {!historical&&<Card><h2 className="mb-4 font-semibold">Approval Timeline</h2>{!approvalHistory.length?<p className="text-sm text-slate-500">Not submitted for approval yet.</p>:<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{approvalHistory.map((step:any,index:number)=><div key={step.id??index} className="rounded-lg border p-3"><div className="flex items-start justify-between gap-2"><div><div className="text-xs text-slate-500">Stage {step.level??step.step_order??index+1}</div><div className="font-medium">{approvalLabel(step.approver_role??step.approver_role_name??step.name)}</div></div><Badge variant={String(step.status).toUpperCase()==="APPROVED"?"success":String(step.status).toUpperCase()==="REJECTED"?"danger":"warning"}>{step.status??"PENDING"}</Badge></div>{step.approver_name&&<div className="mt-2 text-xs text-slate-600">By {step.approver_name}</div>}{step.decided_at&&<div className="text-xs text-slate-500">{new Date(step.decided_at).toLocaleString()}</div>}{step.comment&&<div className="mt-2 rounded bg-slate-50 p-2 text-xs">{step.comment}</div>}</div>)}</div>}</Card>}
-  <Card><h2 className="mb-2 font-semibold">Notes</h2><p className="text-sm text-slate-700">{data.notes||"No notes provided."}</p></Card>
-  {actions?.can_manage_attachments!==false&&<DocumentAttachments entityType="GOODS_RECEIPT" entityId={data.id}/>}
-  {actions?.can_view_history!==false&&<DocumentActivity events={data.activity_history}/>}
-  {actions?.can_edit?<EditReceivingDialog open={editOpen} receipt={data} onClose={()=>setEditOpen(false)}/>:<Dialog open={editOpen} onOpenChange={setEditOpen}><DialogContent><DialogHeader><DialogTitle>Edit Receiving</DialogTitle></DialogHeader><DialogBody className="space-y-3"><p>{actions?.edit_block_reason??"This receiving cannot be edited at its current posting or approval stage."}</p>{data.supplier_invoice_id&&hasPermission("supplier_invoice.view")&&<Link className="text-emerald-700 underline" to={`/supplier-invoices/${data.supplier_invoice_id}`}>Open linked invoice ({data.supplier_invoice_status})</Link>}<p className="text-sm text-slate-600">Creating an invoice does not remove the Edit action. Posted receiving uses a correction or return so stock and accounting history stay traceable.</p></DialogBody><DialogFooter><Button variant="outline" onClick={()=>setEditOpen(false)}>Close</Button>{actions?.can_correct_cost&&<Button onClick={()=>{setEditOpen(false);setCostDialogOpen(true);setReason("");}}>Correct Cost</Button>}</DialogFooter></DialogContent></Dialog>}
-  <Dialog open={depostOpen} onOpenChange={value=>!depost.isPending&&setDepostOpen(value)}><DialogContent><DialogHeader><DialogTitle>Depost Receiving for Edit</DialogTitle></DialogHeader><DialogBody className="space-y-3"><p>This returns receiving to Draft, reverses its stock entries, and resets its journal for correction. An untouched automatic invoice draft will be withdrawn. Confirmed invoices and subsequent stock movements block this action.</p><label className="block text-sm">Reason *<textarea aria-label="Receiving depost reason" className="mt-1 min-h-20 w-full rounded border p-2" maxLength={500} value={depostReason} disabled={depost.isPending} onChange={e=>setDepostReason(e.target.value)}/></label></DialogBody><DialogFooter><Button variant="outline" disabled={depost.isPending} onClick={()=>setDepostOpen(false)}>Cancel</Button><Button disabled={depostReason.trim().length<3} loading={depost.isPending} onClick={()=>depost.mutate({id:data.id,reason:depostReason.trim()},{onSuccess:()=>{setDepostOpen(false);setEditOpen(true);toast.success("Receiving deposted. Correct the draft, complete approval and post it again.")},onError:(error:any)=>toast.error(error?.response?.data?.detail||"Receiving could not be deposted")})}>Depost and Edit</Button></DialogFooter></DialogContent></Dialog>
-  <Dialog open={rejectOpen} onOpenChange={setRejectOpen}><DialogContent><DialogHeader><DialogTitle>Reject Receiving Approval</DialogTitle></DialogHeader><DialogBody><label className="text-sm font-medium">Reason *<textarea className="mt-1 min-h-24 w-full rounded border p-2" value={rejectComment} onChange={e=>setRejectComment(e.target.value)}/></label></DialogBody><DialogFooter><Button variant="outline" onClick={()=>setRejectOpen(false)}>Cancel</Button><Button variant="danger" disabled={!rejectComment.trim()} loading={reject.isPending} onClick={()=>reject.mutate({id:data.id,comment:rejectComment.trim()},{onSuccess:()=>{toast.success("Receiving rejected");setRejectOpen(false);setRejectComment("")}})}>Reject</Button></DialogFooter></DialogContent></Dialog>
-  <Dialog open={costDialogOpen} onOpenChange={setCostDialogOpen}><DialogContent className="max-w-4xl"><DialogHeader><DialogTitle>Correct Receiving Cost</DialogTitle></DialogHeader><DialogBody className="space-y-4"><div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Cost corrections are audited. Backend blocks unsafe historical revaluation when downstream documents already depend on this receipt.</div><div className="overflow-x-auto rounded border"><table className="min-w-[760px] w-full text-sm"><thead><tr><th className="p-3 text-left">Item</th><th className="text-right">Qty</th><th className="text-right">Current Cost</th><th>Corrected Cost</th><th className="p-3 text-right">Amount</th></tr></thead><tbody>{data.items.map(item=><tr key={item.id} className="border-t"><td className="p-3">{item.product_name}</td><td className="text-right">{item.quantity}</td><td className="text-right">{money(item.unit_cost)}</td><td className="p-2"><CurrencyInput value={Number(costs[item.id]??item.unit_cost)} onValueChange={value=>setCosts(current=>({...current,[item.id]:value}))}/></td><td className="p-3 text-right">{money(Number(item.quantity)*Number(costs[item.id]??item.unit_cost))}</td></tr>)}</tbody><tfoot><tr><td colSpan={4} className="p-3 text-right font-semibold">Corrected Total</td><td className="p-3 text-right font-bold">{money(correctedTotal)}</td></tr></tfoot></table></div><label className="block text-sm font-medium">Correction Reason *<textarea className="mt-1 min-h-24 w-full rounded border p-2" value={reason} onChange={e=>setReason(e.target.value)}/></label></DialogBody><DialogFooter><Button variant="outline" onClick={()=>setCostDialogOpen(false)}>Cancel</Button><Button loading={correctCosts.isPending} onClick={submitCostCorrection}>Save Correction</Button></DialogFooter></DialogContent></Dialog>
- </div>
+const receivingDate = (value?: string) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" :
+    date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Jakarta" });
+};
+
+export default function ReceivingDetailPage() {
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const receiptId = Number(id);
+  const { data, isLoading } = useGoodsReceipt(receiptId);
+  const qc = useQueryClient();
+  const { canPerform, isSuperuser, hasPermission } = useAuthorization();
+
+  const prepareInvoice = useMutation({
+    mutationFn: prepareInvoiceFromReceipt,
+    onSuccess: invoice => {
+      qc.invalidateQueries({ queryKey: ["goods-receipt", receiptId] });
+      qc.invalidateQueries({ queryKey: ["supplier-invoices"] });
+      toast.success("Supplier invoice draft is ready for confirmation.");
+      navigate("/supplier-invoices/" + invoice.id);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.detail || "Unable to prepare invoice draft"),
+  });
+  const depost = useDepostGoodsReceipt();
+  const submitApproval = useSubmitGoodsReceipt();
+  const approve = useApproveGoodsReceipt();
+  const reject = useRejectGoodsReceipt();
+  const post = usePostGoodsReceipt();
+  const returned = useReturnGoodsReceipt();
+  const correctCosts = useCorrectGoodsReceiptCosts();
+
+  const [depostOpen, setDepostOpen] = useState(false);
+  const [depostReason, setDepostReason] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [costDialogOpen, setCostDialogOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [costs, setCosts] = useState<Record<number, number>>({});
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectComment, setRejectComment] = useState("");
+  const [returnOpen, setReturnOpen] = useState(false);
+
+  useEffect(() => {
+    if (data) setCosts(Object.fromEntries(data.items.map(item => [item.id, Number(item.unit_cost)])));
+  }, [data]);
+
+  if (isLoading) return <Loading />;
+  if (!data) return null;
+
+  const actions = data.allowed_actions;
+  const historical = data.source_type === "HISTORICAL_ENTRY";
+  const canSubmit = Boolean(actions?.can_submit) ||
+    (isSuperuser() && !historical && data.status === "DRAFT" && !data.approval_status);
+  const canApprove = data.approval_status === "PENDING" && Boolean(actions?.can_approve);
+  const canReject = data.approval_status === "PENDING" && Boolean(actions?.can_reject);
+  const canPost = canPerform("post", ["WAREHOUSE", "PURCHASING"], actions?.can_post ?? false, "receiving.post");
+  const canReturn = canPerform("receive", ["WAREHOUSE", "PURCHASING"], actions?.can_return ?? false);
+
+  const postReceipt = () => post.mutate(data.id, {
+    onSuccess: () => toast.success("Receiving posted"),
+    onError: error => {
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
+      toast.error(typeof detail === "string" ? detail : "Receiving could not be posted");
+    },
+  });
+  const openCostCorrection = () => {
+    setCosts(Object.fromEntries(data.items.map(item => [item.id, Number(item.unit_cost)])));
+    setReason("");
+    setCostDialogOpen(true);
+  };
+
+  let primary: ReceivingPrimaryAction | undefined;
+  if (canPost) {
+    primary = { label: "Post Receiving", onClick: postReceipt, loading: post.isPending };
+  } else if (canApprove) {
+    primary = {
+      label: "Approve Receiving",
+      onClick: () => approve.mutate({ id: data.id }, { onSuccess: () => toast.success("Approval stage completed") }),
+      loading: approve.isPending,
+    };
+  } else if (canSubmit) {
+    primary = {
+      label: "Submit for Approval",
+      onClick: () => submitApproval.mutate(data.id, { onSuccess: () => toast.success("Receiving submitted for approval") }),
+      loading: submitApproval.isPending,
+    };
+  } else if (data.status === "POSTED" && data.supplier_invoice_id && hasPermission("supplier_invoice.view")) {
+    primary = {
+      label: data.supplier_invoice_status === "DRAFT" ? "Review Supplier Invoice" : "View Supplier Invoice",
+      icon: "invoice",
+      onClick: () => navigate("/supplier-invoices/" + data.supplier_invoice_id),
+    };
+  } else if (data.status === "POSTED" && !data.supplier_invoice_id && hasPermission("supplier_invoice.create")) {
+    primary = {
+      label: "Prepare Supplier Invoice",
+      icon: "prepare",
+      loading: prepareInvoice.isPending,
+      onClick: () => prepareInvoice.mutate(data.id),
+    };
+  }
+
+  const menuActions: ReceivingMenuAction[] = [];
+  if (actions?.can_edit) {
+    menuActions.push({ label: "Edit Receiving", kind: "edit", onSelect: () => setEditOpen(true) });
+  }
+  if (actions?.can_depost) {
+    menuActions.push({
+      label: "Depost for Edit", kind: "depost",
+      onSelect: () => { setDepostReason(""); setDepostOpen(true); },
+    });
+  }
+  if (actions?.can_correct_cost) {
+    menuActions.push({ label: "Correct Cost", kind: "cost", onSelect: openCostCorrection });
+  }
+  if (canReject) {
+    menuActions.push({ label: "Reject Approval", kind: "reject", onSelect: () => setRejectOpen(true) });
+  }
+  if (canReturn) {
+    menuActions.push({ label: "Return Goods", kind: "return", onSelect: () => setReturnOpen(true) });
+  }
+
+  const correctedTotal = data.items.reduce((sum, item) =>
+    sum + Number(item.quantity) * Number(costs[item.id] ?? item.unit_cost), 0);
+  const changedItems = data.items.filter(item =>
+    Number(costs[item.id] ?? item.unit_cost) !== Number(item.unit_cost));
+  const submitCostCorrection = async () => {
+    if (!changedItems.length) return toast.error("Change at least one unit cost.");
+    if (reason.trim().length < 3) return toast.error("Correction reason is required.");
+    try {
+      await correctCosts.mutateAsync({
+        id: data.id,
+        payload: {
+          reason: reason.trim(),
+          items: changedItems.map(item => ({ item_id: item.id, unit_cost: Number(costs[item.id]) })),
+        },
+      });
+      toast.success("Receiving cost corrected.");
+      setCostDialogOpen(false);
+      setReason("");
+    } catch (error) {
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
+      toast.error(typeof detail === "string" ? detail : "Cost correction failed");
+    }
+  };
+
+  return (
+    <div className="space-y-5 pb-6">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 border-b border-slate-200 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">Receiving Report</p>
+            <h1 className="break-words text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{data.receipt_number}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Badge variant={data.status === "POSTED" ? "success" : data.status === "RETURNED" ? "danger" : "warning"}>{data.status}</Badge>
+              {data.approval_status && <Badge variant={data.approval_status === "APPROVED" ? "success" : data.approval_status === "REJECTED" ? "danger" : "warning"}>{data.approval_status}</Badge>}
+              <Badge variant="secondary">{data.source_mode === "ML" ? "Market List" :
+                data.source_mode === "DIRECT" ? "Direct Receiving" : "Purchase Order"}</Badge>
+              {data.supplier_invoice_status && <Badge variant={data.supplier_invoice_status === "DRAFT" ? "warning" : "secondary"}>Invoice {data.supplier_invoice_status}</Badge>}
+            </div>
+          </div>
+          <ReceivingDetailActions
+            receiptId={data.id}
+            receiptNumber={data.receipt_number}
+            canPrint={actions?.can_print !== false}
+            primary={primary}
+            menuActions={menuActions}
+          />
+        </div>
+        <dl className="grid grid-cols-2 gap-x-5 gap-y-5 px-4 py-5 sm:grid-cols-3 sm:px-6 lg:grid-cols-4 xl:grid-cols-6">
+          <Info label="Supplier">{data.supplier_name ?? "—"}</Info>
+          <Info label="Receiving Date">{receivingDate(data.received_at)}</Info>
+          <Info label="Source Document">
+            {data.purchase_order_id ? <Link className="font-medium text-emerald-700 hover:underline" to={"/purchase-orders/" + data.purchase_order_id}>{data.purchase_order_number}</Link> :
+              data.market_list_id ? <Link className="font-medium text-emerald-700 hover:underline" to={"/market-lists/" + data.market_list_id}>{data.market_list_number ?? "Market List"}</Link> :
+                "Direct Receiving"}
+          </Info>
+          <Info label="Business Unit">{data.business_unit_name ?? data.business_unit_id ?? "—"}</Info>
+          <Info label="Location">{data.location_name ?? data.location_id ?? "—"}</Info>
+          <Info label="Department">{data.department_name ?? data.department_id ?? "—"}</Info>
+          {data.destination_type !== "DIRECT_USE" && <Info label="Warehouse">{data.warehouse_name ?? "—"}</Info>}
+        </dl>
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/70 px-4 py-4 sm:px-6">
+          <div className="text-sm text-slate-600">
+            <span className="font-semibold text-slate-800">{data.items.length} received items</span>
+            <span className="px-2 text-slate-300">•</span>
+            {destinationLabel(data.destination_type)}
+          </div>
+          <div className="flex items-baseline gap-3">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Receiving Total</span>
+            <strong className="text-lg tabular-nums text-emerald-800 sm:text-xl">Rp {money(data.total_amount)}</strong>
+          </div>
+        </div>
+      </div>
+
+      {!historical && data.status === "DRAFT" && data.approval_status !== "APPROVED" &&
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          Receiving is not posted yet. It must complete Store → Chef → PM/Camp Boss approval before posting.
+        </div>}
+
+      <ReceivingDetailSections receipt={data} />
+
+      {actions?.can_edit && <EditReceivingDialog open={editOpen} receipt={data} onClose={() => setEditOpen(false)} />}
+
+      <Dialog open={depostOpen} onOpenChange={value => !depost.isPending && setDepostOpen(value)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Depost Receiving for Edit</DialogTitle></DialogHeader>
+          <DialogBody className="space-y-3">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              This returns Receiving to Draft, reverses stock movements, and resets its journal. The current automatic invoice draft will be withdrawn. Confirmed invoices and subsequent stock movements block Depost.
+            </div>
+            <label className="block text-sm font-medium">Correction reason *
+              <textarea aria-label="Receiving depost reason" className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3"
+                maxLength={500} value={depostReason} disabled={depost.isPending}
+                onChange={event => setDepostReason(event.target.value)} />
+            </label>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" disabled={depost.isPending} onClick={() => setDepostOpen(false)}>Cancel</Button>
+            <Button disabled={depostReason.trim().length < 3} loading={depost.isPending}
+              onClick={() => depost.mutate({ id: data.id, reason: depostReason.trim() }, {
+                onSuccess: () => {
+                  setDepostOpen(false);
+                  setEditOpen(true);
+                  toast.success("Receiving deposted. Correct the draft, complete approval and post it again.");
+                },
+                onError: (error: any) => toast.error(error?.response?.data?.detail || "Receiving could not be deposted"),
+              })}>Depost and Edit</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Reject Receiving Approval</DialogTitle></DialogHeader>
+          <DialogBody>
+            <label className="block text-sm font-medium">Reason *
+              <textarea className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3"
+                value={rejectComment} onChange={event => setRejectComment(event.target.value)} />
+            </label>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
+            <Button variant="danger" disabled={!rejectComment.trim()} loading={reject.isPending}
+              onClick={() => reject.mutate({ id: data.id, comment: rejectComment.trim() }, {
+                onSuccess: () => { toast.success("Receiving rejected"); setRejectOpen(false); setRejectComment(""); },
+              })}>Reject</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={returnOpen} onOpenChange={value => !returned.isPending && setReturnOpen(value)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Return Received Goods?</DialogTitle></DialogHeader>
+          <DialogBody>
+            <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <AlertTriangle className="mt-0.5 shrink-0" size={18} />
+              <p>This returns all quantities from {data.receipt_number}. Stock and linked accounting will be affected. Review the document before continuing.</p>
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" disabled={returned.isPending} onClick={() => setReturnOpen(false)}>Cancel</Button>
+            <Button variant="danger" loading={returned.isPending}
+              onClick={() => returned.mutate(data.id, {
+                onSuccess: () => { setReturnOpen(false); toast.success("Receiving returned"); },
+                onError: (error: any) => toast.error(error?.response?.data?.detail || "Unable to return Receiving"),
+              })}><RotateCcw size={16} /> Return Goods</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={costDialogOpen} onOpenChange={setCostDialogOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader><DialogTitle>Correct Receiving Cost</DialogTitle></DialogHeader>
+          <DialogBody className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Cost corrections are audited. The backend blocks unsafe historical revaluation when downstream documents depend on this receipt.
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="bg-slate-50">
+                  <tr><th className="p-3 text-left">Item</th><th className="p-3 text-right">Qty</th>
+                    <th className="p-3 text-right">Current Cost</th><th className="p-3">Corrected Cost</th>
+                    <th className="p-3 text-right">Amount</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {data.items.map(item => <tr key={item.id}>
+                    <td className="p-3">{item.product_name}</td>
+                    <td className="p-3 text-right">{item.quantity}</td>
+                    <td className="p-3 text-right">{money(item.unit_cost)}</td>
+                    <td className="p-3"><CurrencyInput value={Number(costs[item.id] ?? item.unit_cost)}
+                      onValueChange={value => setCosts(current => ({ ...current, [item.id]: value }))} /></td>
+                    <td className="p-3 text-right">{money(Number(item.quantity) * Number(costs[item.id] ?? item.unit_cost))}</td>
+                  </tr>)}
+                </tbody>
+                <tfoot className="bg-slate-50">
+                  <tr><td colSpan={4} className="p-3 text-right font-semibold">Corrected Total</td>
+                    <td className="p-3 text-right font-bold">{money(correctedTotal)}</td></tr>
+                </tfoot>
+              </table>
+            </div>
+            <label className="block text-sm font-medium">Correction Reason *
+              <textarea className="mt-1 min-h-24 w-full rounded-lg border border-slate-300 p-3"
+                value={reason} onChange={event => setReason(event.target.value)} />
+            </label>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCostDialogOpen(false)}>Cancel</Button>
+            <Button loading={correctCosts.isPending} onClick={submitCostCorrection}>Save Correction</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
-function Info({label,children}:{label:string;children:any}){return <div><div className="text-xs text-slate-500">{label}</div><div>{children}</div></div>}
+
+function Info({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="min-w-0"><dt className="mb-1 text-xs text-slate-500">{label}</dt>
+    <dd className="break-words text-sm font-medium text-slate-800">{children}</dd></div>;
+}
