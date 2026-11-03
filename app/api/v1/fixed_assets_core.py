@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from math import ceil
@@ -16,6 +17,7 @@ from app.schemas.fixed_asset import AssetInput, AssetUpdate, CapitalizeInput, Ca
 from app.services.document_number import next_document_number
 from app.services.fixed_asset_service import DepreciationRunService, FixedAssetService, ZERO
 from app.services.invoice_asset_registration import sync_posted_invoice_assets
+from app.services.receipt_asset_registration import sync_pending_receipt_assets
 from app.services.organization_access import resolve_organization_access
 from app.services.asset_useful_life import useful_life_review
 
@@ -84,7 +86,15 @@ def sync_invoice_assets(db: Session = Depends(get_db), user=Depends(get_current_
     access(user)
     created = sync_posted_invoice_assets(db, user=user)
     db.commit()
-    return {"registered": created}
+    receipt_linked = 0
+    try:
+        receipt_linked = sync_pending_receipt_assets(db, user=user)
+        if receipt_linked:
+            db.commit()
+    except Exception:
+        db.rollback()
+        logging.getLogger(__name__).exception("Failed to reconcile pending asset receipt sources")
+    return {"registered": created, "receipt_linked": receipt_linked}
 
 
 @router.get("")
