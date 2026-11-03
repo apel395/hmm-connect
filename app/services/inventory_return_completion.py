@@ -127,7 +127,7 @@ def apply_credit(db, document_id, data, user):
     event = new_event(db, row, data, user, data.kind, amount,
         supplier_invoice_id=data.supplier_invoice_id, cash_account_id=data.cash_account_id)
     entry = journal(db, row, source, user, data.event_date, 'SUPPLIER_CREDIT_USE', event.id,
-        event.reference, [(debit.id, amount, ZERO), (asset.id, ZERO, amount)])
+        event.reference, [(debit.id, amount, ZERO), (asset.id, ZERO, amount)], reason=event.reason)
     event.journal_entry_id = entry.id
     if invoice:
         adjustment = SupplierAdjustment(adjustment_number=next_document_number(db, 'SCN'), adjustment_type='CREDIT_NOTE',
@@ -150,6 +150,7 @@ def undo_adjustment(db, invoice, adjustment_id, amount):
     if not adjustment or adjustment.status != 'POSTED' or Decimal(invoice.adjustment_amount or 0) < amount:
         raise HTTPException(409, 'Source invoice adjustment changed; reconcile it before reversal')
     adjustment.status = 'VOID'
+    adjustment.voided_at = datetime.now(timezone.utc)
     invoice.adjustment_amount = Decimal(invoice.adjustment_amount or 0) - amount
     _sync_invoice_payable(db, invoice)
 
@@ -169,7 +170,7 @@ def reverse_use(db, document_id, event_id, data, user):
     FiscalPeriodService.validate_posting_date(db, original.event_date)
     entries = reverse_entries(db, [original.journal_entry_id])
     event = new_event(db, row, data, user, 'REVERSE_USE', original.amount, reverses_event_id=original.id)
-    entry = journal(db, row, source, user, data.event_date, 'SUPPLIER_CREDIT_USE_REVERSAL', event.id, event.reference, entries)
+    entry = journal(db, row, source, user, data.event_date, 'SUPPLIER_CREDIT_USE_REVERSAL', event.id, event.reference, entries, reason=event.reason)
     event.journal_entry_id = entry.id
     if invoice:
         undo_adjustment(db, invoice, original.supplier_adjustment_id, original.amount)
@@ -252,7 +253,7 @@ def reverse_return(db, document_id, data, user):
             raise HTTPException(409, 'Inventory history is incomplete; reconcile before reversal')
         stocks[product_id] = stock
     event = new_event(db, row, data, user, 'REVERSE_RETURN', row.total_cost)
-    entry = journal(db, row, source, user, data.event_date, 'SUPPLIER_RETURN_REVERSAL', event.id, event.reference, entries)
+    entry = journal(db, row, source, user, data.event_date, 'SUPPLIER_RETURN_REVERSAL', event.id, event.reference, entries, reason=event.reason)
     event.journal_entry_id = entry.id
     for product_id, (qty, raw_value, value, coa) in prepared.items():
         stock = stocks[product_id]

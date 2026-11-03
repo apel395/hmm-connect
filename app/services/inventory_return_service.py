@@ -140,13 +140,13 @@ def create_return(db, data, user):
     return row
 
 
-def journal(db, row, source, user, posting_date, reference_type, reference_id, number, entries):
+def journal(db, row, source, user, posting_date, reference_type, reference_id, number, entries, reason=None):
     result = JournalEntry(journal_number=next_document_number(db, 'JV', digits=6), posting_date=posting_date,
         status='DRAFT', document_type=reference_type, document_number=number, reference_type=reference_type,
-        reference_id=reference_id, description=f'{reference_type}: {row.number}', created_by_id=user.id,
+        reference_id=reference_id, description=f'{reference_type}: {row.number}' + (f' / {reason}' if reason else ''), created_by_id=user.id,
         business_unit_id=source.business_unit_id, department_id=source.department_id, location_id=source.location_id)
     result.lines = [JournalLine(line_number=index, account_id=coa, debit=debit, credit=credit,
-        description=row.reason, supplier_id=source.supplier_id, business_unit_id=source.business_unit_id,
+        description=reason or row.reason, supplier_id=source.supplier_id, business_unit_id=source.business_unit_id,
         department_id=source.department_id, location_id=source.location_id)
         for index, (coa, debit, credit) in enumerate(entries, 1) if debit or credit]
     db.add(result)
