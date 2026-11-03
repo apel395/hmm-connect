@@ -8,7 +8,7 @@ from app.dependencies.authorization import has_permission
 from app.models.goods_receipt import GoodsReceipt
 from app.models.inventory_return import InventoryReturn
 from app.models.supplier_invoice import SupplierInvoice
-from app.schemas.inventory_return import ReturnInput, ReplacementInput, ReturnCreditInput
+from app.schemas.inventory_return import ReturnInput, ReplacementInput, ReturnCreditInput, SupplierCreditUseInput, ReturnEventInput
 from app.services.inventory_return_service import (
     create_return, post_return, replace_goods, settle_credit, serialize, receipt, source_lines, get_return, audit,
 )
@@ -120,3 +120,43 @@ def replacement(document_id: int, data: ReplacementInput, db=Depends(get_db), us
 def credit(document_id: int, data: ReturnCreditInput, db=Depends(get_db), user=Depends(view_user)):
     require(user, 'finance.manage')
     return commit_result(db, lambda: settle_credit(db, document_id, data, user))
+
+
+@router.get('/{document_id}/credit-invoices')
+def credit_invoices(document_id: int, search: str = '', page: int = Query(1, ge=1),
+                    db=Depends(get_db), user=Depends(view_user)):
+    require(user, 'finance.manage')
+    _, source = get_return(db, document_id, user)
+    from app.services.document_accounting import accounted_invoice_filter
+    q = db.query(SupplierInvoice).filter(SupplierInvoice.supplier_id == source.supplier_id,
+        SupplierInvoice.location_id == source.location_id, SupplierInvoice.business_unit_id == source.business_unit_id,
+        SupplierInvoice.currency == 'IDR', accounted_invoice_filter(),
+        SupplierInvoice.total_amount > SupplierInvoice.paid_amount + SupplierInvoice.adjustment_amount)
+    if search.strip():
+        q = q.filter(or_(SupplierInvoice.internal_invoice_number.ilike(f'%{search.strip()}%'),
+                         SupplierInvoice.supplier_invoice_number.ilike(f'%{search.strip()}%')))
+    total = q.count()
+    eligible = q.order_by(SupplierInvoice.invoice_date, SupplierInvoice.id).offset((page - 1) * 30).limit(30)
+    return {'items': [{'id': i.id, 'number': i.internal_invoice_number, 'balance': i.total_amount - i.paid_amount - i.adjustment_amount}
+                     for i in eligible], 'total_pages': ceil(total / 30)}
+
+
+@router.post('/{document_id}/credit-use')
+def credit_use(document_id: int, data: SupplierCreditUseInput, db=Depends(get_db), user=Depends(view_user)):
+    require(user, 'finance.manage')
+    from app.services.inventory_return_completion import apply_credit
+    return commit_result(db, lambda: apply_credit(db, document_id, data, user))
+
+
+@router.post('/{document_id}/events/{event_id}/reverse')
+def reverse_credit_use(document_id: int, event_id: int, data: ReturnEventInput, db=Depends(get_db), user=Depends(view_user)):
+    require(user, 'finance.manage')
+    from app.services.inventory_return_completion import reverse_use
+    return commit_result(db, lambda: reverse_use(db, document_id, event_id, data, user))
+
+
+@router.post('/{document_id}/reverse')
+def reverse_posted(document_id: int, data: ReturnEventInput, db=Depends(get_db), user=Depends(view_user)):
+    require(user, 'finance.manage')
+    from app.services.inventory_return_completion import reverse_return
+    return commit_result(db, lambda: reverse_return(db, document_id, data, user))

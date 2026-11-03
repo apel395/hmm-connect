@@ -36,15 +36,21 @@ def guard_receipt(db, receipt_id):
         GoodsReceiptItem.id == InventoryReplacement.goods_receipt_item_id).filter(
             GoodsReceiptItem.goods_receipt_id == receipt_id).first()
     active = db.query(InventoryReturn).filter(InventoryReturn.goods_receipt_id == receipt_id,
-                                            InventoryReturn.status != 'VOID').first()
+                                            ((InventoryReturn.status != 'VOID') | InventoryReturn.journal_entry_id.is_not(None))).first()
     if active or replacement:
         raise HTTPException(409, 'Receiving is linked to an inventory return/replacement; preserve its source quantities and accounting')
 
 
 def guard_invoice(db, invoice_id):
-    if db.query(InventoryReturn).filter(InventoryReturn.supplier_invoice_id == invoice_id,
+    if db.query(InventoryReturn).filter(InventoryReturn.status == 'POSTED', InventoryReturn.supplier_invoice_id == invoice_id,
                                        InventoryReturn.credit_journal_id.is_not(None)).first():
-        raise HTTPException(409, 'Invoice has a settled inventory return credit; preserve the source invoice and payment history')
+        raise HTTPException(409, 'Invoice has a settled inventory return credit; reverse the return before correcting the invoice')
+    from app.models.inventory_return import InventoryReturnEvent
+    from sqlalchemy.orm import aliased
+    reversal = aliased(InventoryReturnEvent)
+    if db.query(InventoryReturnEvent).outerjoin(reversal, reversal.reverses_event_id == InventoryReturnEvent.id).filter(
+            InventoryReturnEvent.supplier_invoice_id == invoice_id, InventoryReturnEvent.kind == 'APPLY', reversal.id.is_(None)).first():
+        raise HTTPException(409, 'Reverse supplier credit applications before correcting the invoice')
 
 
 def account(db, account_id, kind='ASSET'):
@@ -291,7 +297,7 @@ def settle_credit(db, document_id, data, user):
     net, tax = money(data.net_amount), money(data.tax_amount)
     gross = net + tax
     previous_credit = db.query(func.coalesce(func.sum(InventoryReturn.supplier_credit), 0)).filter(
-        InventoryReturn.supplier_invoice_id == invoice.id, InventoryReturn.credit_journal_id.is_not(None)).scalar()
+        InventoryReturn.status == 'POSTED', InventoryReturn.supplier_invoice_id == invoice.id, InventoryReturn.credit_journal_id.is_not(None)).scalar()
     if gross <= ZERO or gross > Decimal(invoice.total_amount) - Decimal(invoice.adjustment_amount or 0) - Decimal(previous_credit):
         raise HTTPException(409, 'Supplier credit exceeds the remaining original invoice value')
     from app.models.payment import Payment, PaymentAllocation
@@ -309,7 +315,7 @@ def settle_credit(db, document_id, data, user):
         max_net += Decimal(invoice_line.line_amount) * line.quantity / Decimal(invoice_line.quantity)
         max_tax += Decimal(invoice_line.tax_amount or 0) * line.quantity / Decimal(invoice_line.quantity)
     previous_tax = db.query(func.coalesce(func.sum(InventoryReturn.credit_tax), 0)).filter(
-        InventoryReturn.supplier_invoice_id == invoice.id, InventoryReturn.credit_journal_id.is_not(None)).scalar()
+        InventoryReturn.status == 'POSTED', InventoryReturn.supplier_invoice_id == invoice.id, InventoryReturn.credit_journal_id.is_not(None)).scalar()
     if net > money(max_net) or tax > min(money(max_tax), Decimal(invoice.tax_amount or 0) - Decimal(previous_tax)):
         raise HTTPException(409, 'Credit base/tax exceeds the source invoice evidence')
     clearing = account(db, row.clearing_account_id)
@@ -357,6 +363,9 @@ def settle_credit(db, document_id, data, user):
 
 
 def serialize(db, row):
+    from app.services.inventory_return_completion import events, remaining_credit
+    history = events(db, row)
+    undone = {e.reverses_event_id for e in history if e.reverses_event_id}
     replacements = db.query(InventoryReplacement).filter(InventoryReplacement.return_item_id.in_([line.id for line in row.items])).all()
     replaced = {}
     for link in replacements:
@@ -369,11 +378,16 @@ def serialize(db, row):
         'warehouse_id': row.receipt.warehouse_id, 'return_date': row.return_date, 'purpose': row.purpose,
         'reason': row.reason, 'status': row.status, 'clearing_account_id': row.clearing_account_id,
         'total_cost': row.total_cost, 'journal_entry_id': row.journal_entry_id,
-        'clearing_balance': ZERO if row.credit_journal_id else Decimal(row.total_cost or 0) - Decimal(replacement_credit),
+        'clearing_balance': ZERO if row.status == 'VOID' or row.credit_journal_id else Decimal(row.total_cost or 0) - Decimal(replacement_credit),
         'credit_journal_id': row.credit_journal_id, 'credit_reference': row.credit_reference,
         'supplier_invoice_id': row.supplier_invoice_id, 'credit_net': row.credit_net, 'credit_tax': row.credit_tax,
         'credit_applied': row.credit_applied, 'supplier_credit': row.supplier_credit,
         'supplier_credit_account_id': row.supplier_credit_account_id,
+        'remaining_supplier_credit': remaining_credit(db, row),
+        'events': [{'id': e.id, 'kind': e.kind, 'date': e.event_date, 'amount': e.amount,
+                    'reference': e.reference, 'reason': e.reason, 'supplier_invoice_id': e.supplier_invoice_id,
+                    'cash_account_id': e.cash_account_id, 'journal_entry_id': e.journal_entry_id,
+                    'reverses_event_id': e.reverses_event_id, 'reversed': e.id in undone} for e in history],
         'items': [{'id': line.id, 'goods_receipt_item_id': line.goods_receipt_item_id,
             'product_id': line.receipt_item.product_id, 'code': line.receipt_item.product.code,
             'name': line.receipt_item.product.name, 'uom': line.uom,

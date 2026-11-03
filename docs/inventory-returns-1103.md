@@ -53,11 +53,11 @@ The invoice is locked while credit is settled. Complete/void pending approved pa
 
 - Apply credit to remaining invoice outstanding. Create a posted linked Supplier Credit Note for that AP-applied amount.
 - Preserve all payment amounts and allocations.
-- If the credit exceeds outstanding, record the excess as a separate supplier-credit asset. It is displayed on the return; applying/refunding that balance in a subsequent transaction is a separate Finance workflow.
+- If the credit exceeds outstanding, record the excess as a separate supplier-credit asset. It is displayed on the return; Finance can apply/refund that balance using the workflow below.
 - Reverse input VAT only for the explicit supplier-document amount.
 - If supplier credit base differs from stock carrying cost, require an explicit variance account. The app does not invent an automatic balancing adjustment.
 
-Credit settlement is once per return. Settled credit/source invoice and source Receiving are protected against reopening, cost changes or unposting that would detach this accounting. Posted returns/replacements/credit journals have no generic unpost handler; preserve history and request a reviewed source reversal rather than editing a posted event.
+Credit settlement is once per return. Settled credit/source invoice and source Receiving are protected against reopening, cost changes or unposting that would detach this accounting. Posted returns/replacements/credit journals have no generic unpost handler; use the source reversal workflow below rather than editing a posted event.
 
 ## Period report, print and Excel
 
@@ -70,3 +70,41 @@ Click an item code to drill into its warehouse stock movements. Returns link to 
 ## Validation
 
 Regression coverage includes draft versus posted changes, duplicate/over-return prevention, later-line failure, four-decimal costs, partial replacements with remaining-cent allocation, unpaid/part-paid/paid invoice credits, preserved paid amounts, explicit variance, PPN bounds, closed periods, permissions, original invoice/source guards, source filters and period totals across pagination. PostgreSQL tests exercise concurrent source returns and migration against a populated isolated schema, never production.
+
+## Supplier credit usage and corrections
+
+Migration `20261103_return_completion` adds an append-only event table. Existing
+stock, journals, invoices and opening balances are not updated by the migration.
+Apply the database migration before deploying the updated API.
+
+From Supplier Returns, Finance can expand **Use / refund supplier credit**:
+
+- Apply the remaining credit to an accounted, outstanding IDR invoice from the
+  same supplier, location and business unit. The target invoice receives a linked
+  credit adjustment; payments and payment allocations remain unchanged.
+- Record money refunded by the supplier into a selected active cash/bank COA.
+  This posts debit cash/bank and credit the original supplier-credit asset.
+- Every use requires date, reference, reason and amount. Remaining credit is
+  calculated from the immutable usage and reversal events under the source lock.
+  Retries use a UUID; reusing it with a different payload is rejected.
+
+**Correct posted return** provides two controlled reversal actions for Finance:
+
+1. Reverse a credit use/refund. This adds a compensating journal and restores the
+   available supplier credit. Applied invoice adjustments are voided and the
+   outstanding balance recalculated; recorded payments stay intact.
+2. Reverse the entire return, including its replacement receipts and initial
+   supplier-credit settlement. Active uses/refunds must be reversed first.
+   Linked replacement receipts become VOID; their original records and posted
+   journals remain. The remaining returned quantity is restored to warehouse
+   stock at its original return carrying cost, with a new movement and journal.
+
+Reversal dates must follow their source events. Both the source accounting period
+and reversal accounting period must be open. Dependencies or changed source
+journals prevent reversal. Original journal numbers/GL rows and opening balances
+are preserved; there are no automatic balancing lines. A corrected return is a
+new document rather than reuse of a reversed return.
+
+The API wraps each action in one commit/rollback. Source receipt/return locks
+serialize competing uses/reversals; invoice NOWAIT locks avoid a deadlock with
+payment processing. Posted return events remain source-controlled in Journal.
