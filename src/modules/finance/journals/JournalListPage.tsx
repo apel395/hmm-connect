@@ -1,27 +1,27 @@
 import { journalFilterParams } from "./journalFilters";
-import { journalAccountingLabel, journalAllowsBulk } from "./journalState";
+import { journalAllowsBulk } from "./journalState";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, SlidersHorizontal } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Input from "@/components/ui/Input";
-import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import JournalBulkImportDialog from "./JournalBulkImportDialog";
+import JournalRegisterTable from "./JournalRegisterTable";
+import { journalMonthRange, journalSelectedMonth } from "./journalRegisterPeriod";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { supplierApi } from "@/modules/master/suppliers/api/supplierApi";
 import { todayLocal } from "@/utils/dateConstraints";
 import { bulkJournalAction, createJournal, journalAction, listJournals, getJournalScope, getJournalCopyTemplate } from "./api";
-import { sourceDocumentPath } from "./sourceDocument";
 import { paymentAction } from "@/modules/finance/payments/api";
 import useAuthorization from "@/hooks/useAuthorization";
 
@@ -145,8 +145,8 @@ export default function JournalListPage() {
   const printQuery = new URLSearchParams(Object.fromEntries(Object.entries(filterParams).map(([key,value])=>[key,String(value)]))).toString();
   const printSrc = `/journal/register/print${printQuery ? `?${printQuery}` : ""}`;
   const selectedRows = visibleRows.filter((row) => selected.includes(row.id));
-  const bulkCandidates = (action: "post" | "unpost") => { const source = selectedRows.length ? selectedRows : visibleRows; return source.filter((row) => journalAllowsBulk(row, action)).map((row) => row.id); };
-  const runBulk = (action: "post" | "unpost") => { const ids = bulkCandidates(action); if (!ids.length) return toast.error(`No ${action === "post" ? "draft" : "posted"} journals available on this page.`); const verb = action === "post" ? "Post" : "Unpost"; if (!window.confirm(`${verb} ${ids.length} journal(s)?\n\nThis operation is atomic. If one journal fails validation, none will be changed.`)) return; bulkLifecycle.mutate({ ids, action }); };
+  const bulkCandidates = (action: "post" | "unpost") => selectedRows.filter((row) => journalAllowsBulk(row, action)).map((row) => row.id);
+  const runBulk = (action: "post" | "unpost") => { const ids = bulkCandidates(action); if (!ids.length) return toast.error(`No eligible ${action === "post" ? "draft" : "posted"} journals selected.`); const verb = action === "post" ? "Post" : "Unpost"; if (!window.confirm(`${verb} ${ids.length} selected journal(s)?\n\nThis operation is atomic. If one journal fails validation, none will be changed.`)) return; bulkLifecycle.mutate({ ids, action }); };
   const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((row) => selected.includes(row.id));
   const toggleAllVisible = () => setSelected(allVisibleSelected ? [] : visibleRows.map((row) => row.id));
   const buOptions=(businessUnits.data??[]).filter(item => !scope.data?.location_locked || scope.data.units.some(unit => unit.id === item.id)).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
@@ -155,27 +155,66 @@ export default function JournalListPage() {
   const filterLocationOptions=(scope.data?.locations??filterLocations.data??[]).filter(item => !filterUnitId || item.business_unit_id === filterUnitId).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const filterSupplierOptions=(filterSuppliers.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}));
   const accountOptions=(accounts.data??[]).map((account:any)=>({id:account.id,label:`${account.account_code} — ${account.account_name}`,keywords:[account.account_code,account.account_name,account.account_type,account.account_subtype]}));
+  const selectedMonth = journalSelectedMonth(dateFrom, dateTo);
+  const changeMonth = (month: string) => {
+    const range = journalMonthRange(month);
+    setDateFrom(range?.from ?? "");
+    setDateTo(range?.to ?? "");
+    setPage(1);
+  };
+  const clearJournalFilters = () => {
+    setSearch(""); setStatus(""); setDateFrom(""); setDateTo("");
+    setReferenceType(""); setBalanceState("ALL"); setDifferenceAmount("");
+    setFilterAccountId(undefined); setFilterDepartmentId(undefined); setFilterSupplierId(undefined);
+    if (!scope.data?.location_locked) setFilterLocationId(undefined);
+    setPage(1);
+  };
+  const advancedFilterCount = [filterAccountId, filterDepartmentId, filterSupplierId, filterLocationId, balanceState !== "ALL", differenceAmount, dateFrom && !selectedMonth, dateTo && !selectedMonth].filter(Boolean).length;
+  const filteredDifference = filteredJournalTotals ? filteredJournalTotals.debit - filteredJournalTotals.credit : null;
+  const hasDifference = filteredDifference !== null && Math.abs(filteredDifference) > 0.005;
+  const formatAmount = (value: number) => value.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return <DataWorkspace area="Accounting">
-    <PageHeader title="Journal Entries" description="Complete balanced draft journals are reflected in accounting while the period is open. Period closing finalizes drafts and locks the period; posted journals remain posted." actions={<div className="flex flex-wrap gap-2">{canBulkManage && <><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post All</Button><Button variant="outline" loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost All</Button></>}<Button variant="outline" onClick={() => setBulkImportOpen(true)}>Import Bulk</Button><Button disabled={!scopeReady} onClick={openCreate}>Create Journal Entry</Button>  <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
-</div>} />
+    <PageHeader title="Journal Register" description="Balanced draft journals are recognized while the period is open. Closing the period finalizes and locks its journals." actions={<div className="flex flex-wrap items-center gap-2">
+      <Button variant="outline" onClick={() => setBulkImportOpen(true)}>Import Excel</Button>
+      <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
+      <Button disabled={!scopeReady} onClick={openCreate}>+ New Journal</Button>
+    </div>} />
     <div className="flex flex-wrap gap-1" aria-label="Journal business unit">
       {!scope.data?.location_locked && <Button size="sm" variant={!filterUnitId ? "primary" : "outline"} onClick={() => { setFilterUnitId(undefined); setFilterLocationId(undefined); setFilterDepartmentId(undefined); setPage(1); }}>All units</Button>}
       {scope.data?.units.map(unit => <Button key={unit.id} size="sm" variant={filterUnitId === unit.id ? "primary" : "outline"} onClick={() => { setFilterDepartmentId(undefined); setFilterUnitId(unit.id); if (!scope.data.location_locked) setFilterLocationId(undefined); setPage(1); }}>{unit.name}</Button>)}
     </div>
     {scope.isError && <p role="alert" className="text-sm text-red-700">Journal location scope could not be loaded.</p>}
-    <div className="workspace-summary"><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Journals</div><div className="mt-1 text-xl font-semibold">{q.data?.total_items ?? 0}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Debit</div><div className="mt-1 text-xl font-semibold tabular-nums">{filteredJournalTotals ? filteredJournalTotals.debit.toLocaleString("id-ID",{minimumFractionDigits:2}) : "Awaiting backend totals"}</div><div className="mt-1 text-[11px] text-slate-400">Page {visibleTotals.debit.toLocaleString("id-ID",{minimumFractionDigits:2})}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Credit</div><div className="mt-1 text-xl font-semibold tabular-nums">{filteredJournalTotals ? filteredJournalTotals.credit.toLocaleString("id-ID",{minimumFractionDigits:2}) : "Awaiting backend totals"}</div><div className="mt-1 text-[11px] text-slate-400">Page {visibleTotals.credit.toLocaleString("id-ID",{minimumFractionDigits:2})}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Difference</div><div className="mt-1 font-semibold tabular-nums">{filteredJournalTotals?(filteredJournalTotals.debit-filteredJournalTotals.credit).toLocaleString("id-ID",{minimumFractionDigits:2}):"—"}</div></Card></div>
-    <Card className="workspace-data p-0"><div className="workspace-toolbar mb-2 flex flex-wrap items-end gap-2">
-      <label className="min-w-[240px] flex-1 text-xs font-medium text-slate-600">Search
-        <input className="mt-1 h-9 w-full rounded border px-3" placeholder="Journal, document, or description" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Filtered journal totals">
+      <Card className="p-3.5"><div className="text-xs font-medium text-slate-500">Journal entries</div><div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{(q.data?.total_items ?? 0).toLocaleString("id-ID")}</div><div className="mt-1 text-[11px] text-slate-500">Matching the current filters</div></Card>
+      <Card className="p-3.5"><div className="text-xs font-medium text-slate-500">Total debit</div><div className="mt-1 break-all text-lg font-semibold tabular-nums text-slate-900">{filteredJournalTotals ? formatAmount(filteredJournalTotals.debit) : "—"}</div><div className="mt-1 text-[11px] tabular-nums text-slate-500">This page: {formatAmount(visibleTotals.debit)}</div></Card>
+      <Card className="p-3.5"><div className="text-xs font-medium text-slate-500">Total credit</div><div className="mt-1 break-all text-lg font-semibold tabular-nums text-slate-900">{filteredJournalTotals ? formatAmount(filteredJournalTotals.credit) : "—"}</div><div className="mt-1 text-[11px] tabular-nums text-slate-500">This page: {formatAmount(visibleTotals.credit)}</div></Card>
+      <Card className={`p-3.5 ${hasDifference ? "border-red-200 bg-red-50/70" : "border-emerald-100"}`}>
+        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">Debit − credit {hasDifference && <AlertTriangle className="text-red-600" size={14}/>}</div>
+        <div className={`mt-1 break-all text-lg font-semibold tabular-nums ${hasDifference ? "text-red-700" : "text-slate-900"}`}>{filteredDifference === null ? "—" : formatAmount(filteredDifference)}</div>
+        {hasDifference ? <button type="button" className="mt-1 text-xs font-semibold text-red-700 underline underline-offset-2 hover:text-red-900" onClick={() => { setBalanceState("UNBALANCED"); setShowFilters(true); setPage(1); }}>Review unbalanced journals</button> : <div className="mt-1 text-[11px] text-slate-500">{filteredDifference === null ? "Totals are not available" : "Debits and credits match"}</div>}
+      </Card>
+    </div>
+    <Card className="workspace-data overflow-hidden p-0">
+    <div className="workspace-toolbar flex flex-wrap items-end gap-3 border-b border-slate-100 pb-3">
+      <label className="min-w-[210px] flex-[2] text-xs font-medium text-slate-600">Find a journal
+        <input className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus:border-emerald-600" placeholder="Journal no., document, or description" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
       </label>
-      <label className="min-w-[145px] text-xs font-medium text-slate-600">Status
-        <select className="mt-1 h-9 w-full rounded border px-3" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option><option>DRAFT</option><option>POSTED</option><option>VOID</option></select>
+      <label className="min-w-[145px] flex-1 text-xs font-medium text-slate-600">Period
+        <input type="month" aria-label="Journal period" className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 outline-none focus:border-emerald-600" value={selectedMonth} onChange={e => changeMonth(e.target.value)} />
+      </label>
+      <label className="min-w-[140px] flex-1 text-xs font-medium text-slate-600">Status
+        <select className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="POSTED">Posted</option><option value="VOID">Void</option></select>
+      </label>
+      <label className="min-w-[150px] flex-1 text-xs font-medium text-slate-600">Source
+        <select aria-label="Source type" className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2" value={referenceType} onChange={e=>{setReferenceType(e.target.value);setPage(1);}}><option value="">All sources</option>{Array.from(new Set<string>([...(q.data?.reference_types??[]),...(referenceType?[referenceType]:[])])).map(value=><option key={value} value={value}>{value.replaceAll("_"," ")}</option>)}</select>
       </label>
       <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
-        <SlidersHorizontal size={15}/> Filters{[filterLocationId,filterSupplierId,dateFrom,dateTo,filterAccountId,filterDepartmentId,referenceType,balanceState!=="ALL",differenceAmount].filter(Boolean).length ? ` (${[filterLocationId,filterSupplierId,dateFrom,dateTo,filterAccountId,filterDepartmentId,referenceType,balanceState!=="ALL",differenceAmount].filter(Boolean).length})` : ""}
+        <SlidersHorizontal size={15}/> More filters{advancedFilterCount ? ` (${advancedFilterCount})` : ""}
       </Button>
+      {(search || status || dateFrom || dateTo || referenceType || advancedFilterCount > 0) && <button type="button" className="h-9 text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline" onClick={clearJournalFilters}>Clear filters</button>}
     </div>
+    {(dateFrom || dateTo) && !selectedMonth && <p className="mb-2 text-xs text-slate-500">Custom date range: {dateFrom || "Any"} – {dateTo || "Any"}. Change it in More filters.</p>}
     {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-3">
       <label className="text-xs">From Date<input aria-label="From Date" className="mt-1 h-9 w-full rounded border px-2" type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPage(1);}}/></label>
       <label className="text-xs">To Date<input aria-label="To Date" className="mt-1 h-9 w-full rounded border px-2" type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setPage(1);}}/></label>
@@ -183,11 +222,30 @@ export default function JournalListPage() {
       <label className="text-xs">Difference amount<input aria-label="Difference amount" className="mt-1 h-9 w-full rounded border px-2 text-right" type="number" min="0" step="0.01" placeholder="Any difference" value={differenceAmount} onChange={e=>{setDifferenceAmount(e.target.value);setPage(1);}}/></label>
       <SearchableSelect label="Account" value={filterAccountId} placeholder="Account code or name..." options={(filterAccounts.data??[]).map(row=>({id:row.id,label:`${row.account_code} — ${row.account_name}`}))} onChange={id=>{setFilterAccountId(id);setPage(1);}}/>
       <SearchableSelect label="Department" value={filterDepartmentId} placeholder="Department name..." options={(filterDepartments.data??[]).map(row=>({id:row.id,label:row.name}))} onChange={id=>{setFilterDepartmentId(id);setPage(1);}}/>
-      <label className="text-xs">Source type<select aria-label="Source type" className="mt-1 h-9 w-full rounded border px-2" value={referenceType} onChange={e=>{setReferenceType(e.target.value);setPage(1);}}><option value="">All sources</option>{Array.from(new Set<string>([...(q.data?.reference_types??[]),...(referenceType?[referenceType]:[])])).map(value=><option key={value} value={value}>{value.replaceAll("_"," ")}</option>)}</select></label>
       <SearchableSelect label="Location" value={filterLocationId} disabled={scope.isLoading || scope.data?.location_locked} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={filterLocationOptions} onChange={(id) => { setFilterLocationId(id); setFilterDepartmentId(undefined); setPage(1); }} />
       <SearchableSelect label="Supplier" value={filterSupplierId} disabled={filterSuppliers.isLoading} placeholder={filterSuppliers.isLoading ? "Loading suppliers..." : "Type supplier code or name..."} options={filterSupplierOptions} onChange={(id) => { setFilterSupplierId(id); setPage(1); }} />
     </div>}
-      <Table stickyHeader className="workspace-journal-table min-w-[850px]" containerClassName="workspace-table-scroll max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible"><THead><TR className="whitespace-nowrap"><TH className="w-10"><input type="checkbox" aria-label="Select all journals on this page" checked={allVisibleSelected} onChange={toggleAllVisible} /></TH><TH>Journal</TH><TH>Date</TH><TH>Document</TH><TH>Description</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Difference</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead><TBody>{q.isLoading && <TR><TD colSpan={10} className="py-10 text-center text-slate-500">Loading journals…</TD></TR>}{q.isError && <TR><TD colSpan={10} className="py-10 text-center text-red-700">Journals could not be loaded. Use Refresh to try again.</TD></TR>}{!q.isLoading && !q.isError && visibleRows.length === 0 && <TR><TD colSpan={10} className="py-10 text-center text-slate-500">No journals match these filters.</TD></TR>}{visibleRows.map((x: any) => <TR key={x.id} className="whitespace-nowrap"><TD><input type="checkbox" aria-label={`Select ${x.journal_number}`} checked={selected.includes(x.id)} onChange={() => setSelected((current) => current.includes(x.id) ? current.filter((value) => value !== x.id) : [...current, x.id])} /></TD><TD><TableCellStack primary={x.journal_number} secondary={x.reference_type?.replaceAll("_", " ")}/></TD><TD>{x.journal_date}</TD><TD className="font-medium">{sourceDocumentPath(x.reference_type, x.reference_id) ? <Link className="text-emerald-700 hover:underline" to={sourceDocumentPath(x.reference_type, x.reference_id)!} state={{ returnTo: `/journal-entries/${x.id}` }} title="Open source document">{x.reference_number || "Open Source"}</Link> : x.reference_number || "—"}</TD><TD className="max-w-[280px]"><span className="block truncate" title={x.description || undefined}>{x.description || "—"}</span></TD><TD numeric className="font-semibold">{Number(x.total_debit).toLocaleString("id-ID", { minimumFractionDigits: 2 })}</TD><TD numeric className="font-semibold">{Number(x.total_credit).toLocaleString("id-ID",{minimumFractionDigits:2})}</TD><TD numeric className={Number(x.difference)!==0?"font-semibold text-red-700":"text-slate-500"}>{Number(x.difference??Number(x.total_debit)-Number(x.total_credit)).toLocaleString("id-ID",{minimumFractionDigits:2})}</TD><TD><span>{x.status}</span><span className={`ml-2 text-xs ${x.period_locked?"text-slate-500":x.accounting_recognized?"text-emerald-700":"text-amber-700"}`} title={x.recognition_reason??x.period_name??undefined}>{journalAccountingLabel(x)}</span></TD><TD><div className="flex justify-end gap-2"><Button size="xs" variant="outline" onClick={() => nav(`/journal-entries/${x.id}`)}>View</Button>{x.allowed_actions?.can_copy && <Button size="xs" variant="outline" loading={copy.isPending} onClick={() => copy.mutate(x.id)}>Copy</Button>}{x.allowed_actions?.can_post&&<Button size="xs" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"post"})}>Post</Button>}{x.allowed_actions?.can_unpost&&<Button size="xs" variant="outline" loading={lifecycle.isPending} onClick={()=>lifecycle.mutate({id:x.id,action:"unpost"})}>Unpost</Button>}{x.allowed_actions?.can_void_source_payment&&<Button size="xs" variant="danger" loading={voidSourcePayment.isPending} onClick={()=>{if(window.confirm(`Void payment ${x.reference_number} and its draft journal ${x.journal_number}? This releases the invoice reservation and keeps both records as VOID.`))voidSourcePayment.mutate(x.reference_id)}}>Void Payment</Button>}</div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{q.data?.total_items ?? 0} journals · Page {page} of {Math.max(q.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div></Card>
+      {canBulkManage && selectedRows.length > 0 && <div role="toolbar" aria-label="Selected journal actions" className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
+        <span className="mr-1 font-semibold text-emerald-900">{selectedRows.length} selected on this page</span>
+        <Button size="sm" disabled={bulkLifecycle.isPending || bulkCandidates("post").length === 0} loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post selected ({bulkCandidates("post").length})</Button>
+        <Button size="sm" variant="outline" disabled={bulkLifecycle.isPending || bulkCandidates("unpost").length === 0} loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost selected ({bulkCandidates("unpost").length})</Button>
+        <button type="button" className="ml-auto font-medium text-emerald-800 hover:underline" onClick={() => setSelected([])}>Clear selection</button>
+      </div>}
+      <JournalRegisterTable
+        rows={visibleRows} loading={q.isLoading} error={q.isError} selectedIds={selected}
+        allPageSelected={allVisibleSelected} onTogglePage={toggleAllVisible}
+        onToggleRow={(id) => setSelected(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}
+        onView={(id) => nav(`/journal-entries/${id}`)} onCopy={(id) => copy.mutate(id)}
+        onPost={(id) => lifecycle.mutate({ id, action: "post" })}
+        onUnpost={(id) => lifecycle.mutate({ id, action: "unpost" })}
+        onVoidPayment={(row) => { if (window.confirm(`Void payment ${row.reference_number} and its draft journal ${row.journal_number}? This releases the invoice reservation and keeps both records as VOID.`)) voidSourcePayment.mutate(row.reference_id); }}
+        actionPending={copy.isPending || lifecycle.isPending || voidSourcePayment.isPending}
+      />
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs">
+        <label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label>
+        <div className="flex items-center gap-2"><span>{q.data?.total_items ?? 0} journals · Page {page} of {Math.max(q.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div>
+      </div>
+    </Card>
 
     <JournalBulkImportDialog open={bulkImportOpen} onOpenChange={setBulkImportOpen} onImported={refreshFinance} />
 
