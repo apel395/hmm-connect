@@ -34,7 +34,7 @@ async function run(){
  b.onResolve({filter:/^(@\/|sonner$|lucide-react$|@radix-ui\/react-dropdown-menu$|\.\/JournalBulkImportDialog$)/},a=>({path:a.path,namespace:'mock'}));
  b.onLoad({filter:/.*/,namespace:'mock'},a=>{
  let contents;
- if(a.path==='./api')contents=`export const getJournalScope=async()=>({units:[{id:1,name:'Hotel'}],locations:[{id:8,name:'Hotel',business_unit_id:1}],default_business_unit_id:null,default_location_id:null,location_locked:false});export const listJournals=async p=>{globalThis.__journalRequests.push(p);return {items:[{id:1,journal_number:'DIFF-45000',journal_date:'2026-01-02',reference_type:'MANUAL',total_debit:1,total_credit:45001,difference:-45000,status:'POSTED',allowed_actions:{can_unpost:true}}],summary:{total_debit:1,total_credit:45001},reference_types:['MANUAL'],total_items:1,total_pages:1}};export const bulkJournalAction=async(ids,action)=>{globalThis.__journalBulkActions.push({ids,action});return {processed:ids.length,status:'DRAFT'};},createJournal=async()=>{},journalAction=async()=>{},getJournalCopyTemplate=async()=>{};`;
+ if(a.path==='./api')contents=`export const getJournalScope=async()=>({units:[{id:1,name:'Hotel'}],locations:[{id:8,name:'Hotel',business_unit_id:1}],default_business_unit_id:null,default_location_id:null,location_locked:false});export const listJournals=async p=>{globalThis.__journalRequests.push(p);return {items:[{id:1,journal_number:'DIFF-45000',journal_date:'2026-01-02',reference_type:'MANUAL',business_unit_name:'Hotel',location_name:'Rumin',department_name:'Operasional',created_by_name:'Finance',total_debit:1,total_credit:45001,difference:-45000,status:'POSTED',allowed_actions:{can_unpost:true}}],summary:{total_debit:1,total_credit:45001},reference_types:['MANUAL'],total_items:1,total_pages:1}};export const bulkJournalAction=async(ids,action)=>{globalThis.__journalBulkActions.push({ids,action});return {processed:ids.length,status:'DRAFT'};},createJournal=async()=>{},journalAction=async()=>{},getJournalCopyTemplate=async()=>{};`;
  else if(a.path.includes('organization/api'))contents="export const filterBusinessUnits=async()=>[],listDepartments=async()=>[{id:3,name:'Accounting'}],listLocations=async()=>[];";
  else if(a.path.includes('chart-of-accounts'))contents="export const getAllAccountLookup=async()=>[{id:55,account_code:'100',account_name:'Cash'}];";
  else if(a.path.includes('suppliers/api'))contents="export const supplierApi={lookup:async()=>[]};";
@@ -67,8 +67,10 @@ async function run(){
  assert.equal(last().difference_amount,'45000');assert.equal(last().page,1);
  const picker=view.root.findAllByType('picker').find(n=>n.props.label==='Account');await renderer.act(async()=>picker.props.onChange(55));
  await renderer.act(async()=>{await new Promise(resolve=>global.setTimeout(resolve,15));});assert.equal(last().account_id,55);
- assert.ok(view.root.findAllByType('span').some(n=>n.children.some(c=>typeof c==='string'&&c.startsWith('Difference '))));
- assert.ok(view.root.findAllByType('span').some(n=>String(n.props.className).includes('text-red-700')));
+ assert.ok(view.root.findAllByType('cell').some(n=>n.children.includes('Difference')));
+ assert.ok(view.root.findAllByType('cell').some(n=>String(n.props.className).includes('text-red-700')));
+ for (const value of ['Source','Unit','Location','Department','Created by']) assert.ok(view.root.findAllByType('cell').some(n=>n.children.includes(value)),`${value} column visible`);
+ for (const value of ['Hotel','Rumin','Operasional','Finance']) assert.ok(view.root.findAllByType('span').some(n=>n.children.includes(value)),`${value} dimension visible`);
  assert.ok(view.root.findByType('print-preview').props.src.includes('difference_amount=45000'));
  assert.ok(view.root.findAllByType('input').some(n=>n.props['aria-label']==='Journal period'));
  const bulkButtons=()=>view.root.findAllByType('button').filter(n=>n.children.some(c=>typeof c==='string'&&c.includes('selected (')));
@@ -81,6 +83,6 @@ async function run(){
  await renderer.act(async()=>unpostSelected.props.onClick());
  assert.deepEqual(global.__journalBulkActions,[{ids:[1],action:'unpost'}]);
  await renderer.act(async()=>view.unmount());client.clear();
- console.log('Journal filters PASS: scope, month range, account filtering, imbalance, print parameters, and selected-only bulk unpost.');
+ console.log('Journal filters PASS: scope, month range, single-line journal columns and dimensions, imbalance, print parameters, selected-only bulk unpost.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
