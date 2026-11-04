@@ -94,6 +94,7 @@ import StockOpnamePage from "@/modules/warehouse/stock-opname/StockOpnamePage";
 import StockOpnameDetailPage from "@/modules/warehouse/stock-opname/StockOpnameDetailPage";
 import StockOpnamePrintPage from "@/modules/warehouse/stock-opname/StockOpnamePrintPage";
 import StockAdjustmentPage from "@/modules/warehouse/inventory-adjustment/pages/StockAdjustmentPage";
+import PosSettingsPage from "@/modules/pos/pages/PosSettingsPage";
 import PosRegisterPage from "@/modules/pos/pages/PosRegisterPage";
 import PosShiftPrintPage from "@/modules/pos/pages/PosShiftPrintPage";
 import PosOperationsPage from "@/modules/pos/pages/PosOperationsPage";
@@ -322,6 +323,7 @@ const router = createBrowserRouter([
       { path: "warehouses", element: <WarehousePage /> },
       { path: "users", element: <UserPage /> },
       { path: "roles", element: <RolePage /> },
+      { path: "settings/pos", element: <PermissionGuard permission="pos.view"><PosSettingsPage /></PermissionGuard> },
       { path: "settings", element: <SettingPage /> },
       { path: "active-sessions", element: <ActiveSessionsPage /> },
       { path: "organization-dimensions", element: <OrganizationDimensionsPage /> },

@@ -22,8 +22,8 @@ const profit = (data: Report, period: Period, metric: keyof Amounts) => {
 };
 
 const css = `
-@page { size: A4 landscape; margin: 10mm 10mm 14mm; @bottom-left { content: "MMH-Connect · IDR"; font: 8pt Arial; } @bottom-right { content: "Page " counter(page); font: 8pt Arial; } }
-.statement-print { color:#111; font: 9pt Arial, sans-serif; background:white; margin:auto; padding:10mm; }
+@page { size: A4 landscape; margin: 10mm 10mm 14mm; @bottom-left { content: "MMH-Connect · IDR"; font: 8pt Roboto, Arial, sans-serif; } @bottom-right { content: "Page " counter(page); font: 8pt Roboto, Arial, sans-serif; } }
+.statement-print { color:#111; font: 9pt Roboto, Arial, sans-serif; background:white; margin:auto; padding:10mm; }
 .statement-header { text-align:center; border-bottom:2px solid #222; margin-bottom:4mm; padding-bottom:3mm; break-inside:avoid; }
 .statement-header h1 { font-size:14pt; margin:2mm 0; }.statement-header p { margin:1mm 0; }.statement-company { font-weight:bold; font-size:11pt; }
 .statement-print table { width:100%; border-collapse:collapse; font-size:8pt; }.statement-print th,.statement-print td { padding:1.2mm 1mm; vertical-align:top; border-bottom:1px solid #ddd; }

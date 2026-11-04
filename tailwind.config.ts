@@ -6,7 +6,7 @@ export default {
     "./src/**/*.{ts,tsx}"
   ],
   theme: {
-    extend: {},
+    extend: { fontFamily: { sans: ["Roboto", "Arial", "sans-serif"] } },
   },
   plugins: [],
 } satisfies Config;

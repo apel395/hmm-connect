@@ -27,11 +27,11 @@ export default function PHRInvoice({ data }: { data: Invoice }) {
     >
       <style>{`
       .phr-invoice,.phr-invoice * { box-sizing:border-box; }
-      .phr-invoice { width:198mm; max-width:100%; margin:0 auto; padding:0; background:#fff; color:#161616; font:10pt Arial,sans-serif; line-height:1.35; }
+      .phr-invoice { width:198mm; max-width:100%; margin:0 auto; padding:0; background:#fff; color:#161616; font:10pt Roboto,Arial,sans-serif; line-height:1.35; }
       .phr-letterhead { display:flex; align-items:center; gap:7mm; border:1.5px solid #26365b; border-radius:4mm; padding:2mm 6mm; min-height:29mm; text-align:center; margin-bottom:1.5mm; }
       .phr-letterhead img { width:24mm; height:24mm; object-fit:contain; flex-shrink:0; }
       .phr-letterhead-copy { flex:1; }
-      .phr-letterhead h1 { font:bold 19pt Georgia,'Times New Roman',serif; color:#26365b; margin:0 0 3mm; white-space:nowrap; }
+      .phr-letterhead h1 { font:bold 19pt Roboto,Arial,sans-serif; color:#26365b; margin:0 0 3mm; white-space:nowrap; }
       .phr-letterhead p { font-size:8.5pt; font-weight:600; color:#26365b; }
       .phr-body { border:1.5px solid #26365b; border-radius:4mm; padding:4mm; min-height:228mm; }
       .phr-body h2 { font-size:20pt; font-weight:700; text-decoration:underline; text-align:center; margin:0 0 5mm; }

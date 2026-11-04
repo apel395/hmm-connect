@@ -45,3 +45,5 @@ jobs:
       - run: node scripts/test-purchasing-pdf-browser.mjs
       - name: Verify PHR invoice layout and pagination
         run: node scripts/test-phr-invoice-browser.mjs
+      - name: Verify self-hosted Roboto on screen and browser PDF
+        run: node scripts/test-roboto-browser.mjs

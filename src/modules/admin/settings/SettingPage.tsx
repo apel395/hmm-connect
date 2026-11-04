@@ -1,14 +1,19 @@
-import {Building2, KeyRound, Landmark, Network, ShieldCheck, Users, Printer} from "lucide-react";
+import {Building2, KeyRound, Landmark, Network, ShieldCheck, Users, Printer, Store} from "lucide-react";
 import { Link } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
+import useAuthStore from "@/store/auth";
+import { hasPermission } from "@/lib/access";
 import Button from "@/components/ui/Button";
 
 export default function SettingPage() {
+  const user=useAuthStore(s=>s.user);
+  const posSetup=hasPermission(user,"pos.view")&&(hasPermission(user,"finance.manage")||hasPermission(user,"admin.settings.manage"));
   return <div className="space-y-6">
     <PageHeader  actions={<Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>} title="System Settings" description="Configure organization, security, approvals, finance policy, and system behavior from one place."/>
 
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {posSetup&&<Card><Store className="mb-3 h-5 w-5 text-emerald-700"/><h2 className="font-semibold">Point of Sales</h2><p className="mt-1 text-sm text-slate-500">Hotel outlets, order modes, tables, and Catering billing defaults.</p><Link className="mt-4 inline-block text-sm font-semibold text-emerald-700 hover:underline" to="/settings/pos">Configure POS</Link></Card>}
       <Card>
         <ShieldCheck className="mb-3 h-5 w-5 text-emerald-700"/>
         <h2 className="font-semibold">Roles & Permissions</h2>
