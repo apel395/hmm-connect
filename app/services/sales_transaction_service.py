@@ -152,12 +152,9 @@ class SalesTransactionService:
         *,
         incoming: list[SalesTransactionItemIn],
     ) -> list[SalesTransactionLine]:
-        seen: set[int] = set()
+        seen: dict[int, set[Decimal]] = {}
         materialized: list[SalesTransactionLine] = []
         for index, line in enumerate(incoming, start=1):
-            if line.product_id in seen:
-                raise HTTPException(400, f"Duplicate product {line.product_id} in sale items")
-            seen.add(line.product_id)
             product = db.get(Product, line.product_id)
             cls._sell_item(db, product, transaction)
             tax_type, tax_rate = tax_profile(product)
@@ -170,6 +167,12 @@ class SalesTransactionService:
             )
             if unit_price <= ZERO:
                 raise HTTPException(400, f"Unit price for {product.code} must be greater than zero")
+            comparison_price = unit_price.quantize(MONEY, rounding=ROUND_HALF_UP)
+            if line.product_id in seen:
+                catering_invoice = transaction.transaction_type == "INVOICE" and product.catalog_type == "CATERING"
+                if not catering_invoice or comparison_price in seen[line.product_id]:
+                    raise HTTPException(400, "Use quantity for matching-price items; separate prices are supported for Catering invoices")
+            seen.setdefault(line.product_id, set()).add(comparison_price)
             gross = (quantity * unit_price).quantize(MONEY, rounding=ROUND_HALF_UP)
             tax_amount = (gross * tax_rate / Decimal("100")).quantize(MONEY, rounding=ROUND_HALF_UP) if tax_rate > 0 else ZERO
             materialized.append(

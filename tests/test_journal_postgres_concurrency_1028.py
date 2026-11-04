@@ -380,3 +380,27 @@ def test_return_reversal_concurrent_retry_posts_once(pg):
     with pg.factory() as db:
         assert db.query(InventoryReturnEvent).filter_by(kind='REVERSE_RETURN').count()==1
         assert db.query(JournalEntry).filter_by(reference_type='SUPPLIER_RETURN_REVERSAL').count()==1
+
+
+def test_catering_price_migration_preserves_invoices_and_opening_balances(pg):
+    import importlib.util
+    from pathlib import Path
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import inspect
+    engine=pg.factory.kw['bind']
+    with engine.begin() as connection:
+        # Reproduce the production schema before the new migration.
+        connection.execute(text('ALTER TABLE sales_transaction_lines ADD CONSTRAINT uq_sales_transaction_product UNIQUE (sales_transaction_id, product_id)'))
+        before=connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()
+        path=Path(__file__).resolve().parents[1]/'alembic/versions/20261104_catering_prices.py'
+        spec=importlib.util.spec_from_file_location('catering_price_migration',path)
+        migration=importlib.util.module_from_spec(spec);spec.loader.exec_module(migration)
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        assert not any(c['name']=='uq_sales_transaction_product' for c in inspect(connection).get_unique_constraints('sales_transaction_lines'))
+        assert connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()==before
+        assert connection.execute(text('SELECT amount FROM opening_balances')).scalar()==1000
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.downgrade()
+        assert any(c['name']=='uq_sales_transaction_product' for c in inspect(connection).get_unique_constraints('sales_transaction_lines'))
