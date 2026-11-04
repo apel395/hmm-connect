@@ -174,26 +174,26 @@ export default function JournalListPage() {
   const hasDifference = filteredDifference !== null && Math.abs(filteredDifference) > 0.005;
   const formatAmount = (value: number) => value.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  return <DataWorkspace area="Accounting">
+  return <DataWorkspace area="Accounting" className="journal-register-workspace">
     <PageHeader title="Journal Register" description="Balanced draft journals are recognized while the period is open. Closing the period finalizes and locks its journals." actions={<div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1 border-r border-slate-200 pr-3" aria-label="Journal business unit">
+        {!scope.data?.location_locked && <Button size="sm" variant={!filterUnitId ? "primary" : "outline"} onClick={() => { setFilterUnitId(undefined); setFilterLocationId(undefined); setFilterDepartmentId(undefined); setPage(1); }}>All units</Button>}
+        {scope.data?.units.map(unit => <Button key={unit.id} size="sm" variant={filterUnitId === unit.id ? "primary" : "outline"} onClick={() => { setFilterDepartmentId(undefined); setFilterUnitId(unit.id); if (!scope.data.location_locked) setFilterLocationId(undefined); setPage(1); }}>{unit.name}</Button>)}
+      </div>
       <Button variant="outline" onClick={() => setBulkImportOpen(true)}>Import Excel</Button>
       <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
       <Button disabled={!scopeReady} onClick={openCreate}>+ New Journal</Button>
     </div>} />
-    <div className="flex flex-wrap gap-1" aria-label="Journal business unit">
-      {!scope.data?.location_locked && <Button size="sm" variant={!filterUnitId ? "primary" : "outline"} onClick={() => { setFilterUnitId(undefined); setFilterLocationId(undefined); setFilterDepartmentId(undefined); setPage(1); }}>All units</Button>}
-      {scope.data?.units.map(unit => <Button key={unit.id} size="sm" variant={filterUnitId === unit.id ? "primary" : "outline"} onClick={() => { setFilterDepartmentId(undefined); setFilterUnitId(unit.id); if (!scope.data.location_locked) setFilterLocationId(undefined); setPage(1); }}>{unit.name}</Button>)}
-    </div>
     {scope.isError && <p role="alert" className="text-sm text-red-700">Journal location scope could not be loaded.</p>}
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Filtered journal totals">
-      <Card className="p-3.5"><div className="text-xs font-medium text-slate-500">Journal entries</div><div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{(q.data?.total_items ?? 0).toLocaleString("id-ID")}</div><div className="mt-1 text-[11px] text-slate-500">Matching the current filters</div></Card>
-      <Card className="p-3.5"><div className="text-xs font-medium text-slate-500">Total debit</div><div className="mt-1 break-all text-lg font-semibold tabular-nums text-slate-900">{filteredJournalTotals ? formatAmount(filteredJournalTotals.debit) : "—"}</div><div className="mt-1 text-[11px] tabular-nums text-slate-500">This page: {formatAmount(visibleTotals.debit)}</div></Card>
-      <Card className="p-3.5"><div className="text-xs font-medium text-slate-500">Total credit</div><div className="mt-1 break-all text-lg font-semibold tabular-nums text-slate-900">{filteredJournalTotals ? formatAmount(filteredJournalTotals.credit) : "—"}</div><div className="mt-1 text-[11px] tabular-nums text-slate-500">This page: {formatAmount(visibleTotals.credit)}</div></Card>
-      <Card className={`p-3.5 ${hasDifference ? "border-red-200 bg-red-50/70" : "border-emerald-100"}`}>
-        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">Debit − credit {hasDifference && <AlertTriangle className="text-red-600" size={14}/>}</div>
-        <div className={`mt-1 break-all text-lg font-semibold tabular-nums ${hasDifference ? "text-red-700" : "text-slate-900"}`}>{filteredDifference === null ? "—" : formatAmount(filteredDifference)}</div>
-        {hasDifference ? <button type="button" className="mt-1 text-xs font-semibold text-red-700 underline underline-offset-2 hover:text-red-900" onClick={() => { setBalanceState("UNBALANCED"); setShowFilters(true); setPage(1); }}>Review unbalanced journals</button> : <div className="mt-1 text-[11px] text-slate-500">{filteredDifference === null ? "Totals are not available" : "Debits and credits match"}</div>}
-      </Card>
+    <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm xl:grid-cols-4" aria-label="Filtered journal totals">
+      <div className="min-w-0 border-b border-r border-slate-100 px-3 py-2 xl:border-b-0"><div className="text-[11px] font-medium text-slate-500">Journal entries</div><div className="text-lg font-semibold tabular-nums leading-6 text-slate-900">{(q.data?.total_items ?? 0).toLocaleString("id-ID")}</div><div className="text-[10px] text-slate-500">Matching current filters</div></div>
+      <div className="min-w-0 border-b border-slate-100 px-3 py-2 xl:border-b-0 xl:border-r"><div className="text-[11px] font-medium text-slate-500">Total debit</div><div className="truncate text-base font-semibold tabular-nums leading-6 text-slate-900" title={filteredJournalTotals ? formatAmount(filteredJournalTotals.debit) : undefined}>{filteredJournalTotals ? formatAmount(filteredJournalTotals.debit) : "—"}</div><div className="truncate text-[10px] tabular-nums text-slate-500" title={`This page: ${formatAmount(visibleTotals.debit)}`}>Page: {formatAmount(visibleTotals.debit)}</div></div>
+      <div className="min-w-0 border-r border-slate-100 px-3 py-2"><div className="text-[11px] font-medium text-slate-500">Total credit</div><div className="truncate text-base font-semibold tabular-nums leading-6 text-slate-900" title={filteredJournalTotals ? formatAmount(filteredJournalTotals.credit) : undefined}>{filteredJournalTotals ? formatAmount(filteredJournalTotals.credit) : "—"}</div><div className="truncate text-[10px] tabular-nums text-slate-500" title={`This page: ${formatAmount(visibleTotals.credit)}`}>Page: {formatAmount(visibleTotals.credit)}</div></div>
+      <div className={`min-w-0 px-3 py-2 ${hasDifference ? "bg-red-50/70" : "bg-emerald-50/30"}`}>
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">Debit − credit {hasDifference && <AlertTriangle className="text-red-600" size={13}/>}</div>
+        <div className={`truncate text-base font-semibold tabular-nums leading-6 ${hasDifference ? "text-red-700" : "text-slate-900"}`} title={filteredDifference === null ? undefined : formatAmount(filteredDifference)}>{filteredDifference === null ? "—" : formatAmount(filteredDifference)}</div>
+        {hasDifference ? <button type="button" className="text-[10px] font-semibold text-red-700 underline underline-offset-2 hover:text-red-900" onClick={() => { setBalanceState("UNBALANCED"); setShowFilters(true); setPage(1); }}>Review unbalanced journals</button> : <div className="text-[10px] text-slate-500">{filteredDifference === null ? "Totals unavailable" : "Balanced"}</div>}
+      </div>
     </div>
     <Card className="workspace-data overflow-hidden p-0">
     <div className="workspace-toolbar flex flex-wrap items-end gap-3 border-b border-slate-100 pb-3">
