@@ -248,6 +248,8 @@ class SalesTransactionService:
                 incoming = [(r.product_id, Decimal(r.quantity), Decimal(r.unit_price) if r.unit_price is not None else None) for r in data.items]
                 saved = [(r.product_id, Decimal(r.quantity), Decimal(r.unit_price)) for r in existing.lines]
                 same_lines = len(incoming)==len(saved) and all(a[:2]==b[:2] and (a[2] is None or a[2]==b[2]) for a,b in zip(incoming,saved))
+                if data.checkout_version is not None and ((existing.checkout_snapshot or {}).get('version') != data.checkout_version or ((existing.checkout_snapshot or {}).get('discount_preset') or {}).get('id') != data.discount_preset_id):
+                    raise HTTPException(409, 'Order retry key belongs to different checkout choices')
                 if existing.created_by_id != user.id or not same_lines or (data.sale_date is not None and existing.sale_date != data.sale_date) or existing.customer_id != data.customer_id or (data.revenue_account_id is not None and existing.revenue_account_id != data.revenue_account_id) or existing.notes != data.notes or (existing.location_id,existing.department_id,existing.cashier_session_id,existing.pos_table_id,existing.event_name,existing.transaction_type)!=(data.location_id,data.department_id,data.cashier_session_id,data.pos_table_id,(data.event_name or '').strip() or None,data.transaction_type):
                     raise HTTPException(409, 'Order retry key belongs to different order details')
                 return existing
@@ -300,7 +302,10 @@ class SalesTransactionService:
         bind_order(db, transaction, data, user)
         if data.items:
             transaction.lines = cls._materialize_items(db, transaction, incoming=data.items)
-            totals = cls._totals(transaction.lines, ZERO)
+            from app.services.pos_checkout import draft_discount
+            discount = draft_discount(db,transaction,data,sum((Decimal(line.line_amount) for line in transaction.lines),ZERO))
+            transaction.discount_amount = discount
+            totals = cls._totals(transaction.lines, discount)
             transaction.subtotal = totals["subtotal"]
             transaction.service_charge_amount = totals["service_charge_amount"]
             transaction.tax_amount = totals["tax_amount"]
@@ -354,7 +359,7 @@ class SalesTransactionService:
             context = cls._master_dimensions(db, context)
             unit_id, loc_id, dept_id = cls._dimensions(db, None, context, user)
             transaction.business_unit_id, transaction.location_id, transaction.department_id = unit_id, loc_id, dept_id
-        before = {"location_id":old_location,"department_id":old_department,"billing_details":old_billing,"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
+        before = {"location_id":old_location,"department_id":old_department,"billing_details":old_billing,"checkout_snapshot":transaction.checkout_snapshot,"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
             "items":[{"product_id":r.product_id,"quantity":str(r.quantity),"unit_price":str(r.unit_price),"description":r.description,"registration_number":r.registration_number,"service_period_from":str(r.service_period_from) if r.service_period_from else None,"service_period_to":str(r.service_period_to) if r.service_period_to else None,"uom":r.uom,"tax_rate":str(r.tax_rate),"service_charge_rate":str(r.service_charge_rate)} for r in transaction.lines]}
         if data.invoice_due_date is not None:
             transaction.invoice_due_date=data.invoice_due_date
@@ -379,7 +384,10 @@ class SalesTransactionService:
         transaction.lines.clear()
         db.flush()
         transaction.lines = new_lines
-        totals = cls._totals(transaction.lines, ZERO)
+        from app.services.pos_checkout import draft_discount
+        discount = draft_discount(db,transaction,data,sum((Decimal(line.line_amount) for line in transaction.lines),ZERO))
+        transaction.discount_amount = discount
+        totals = cls._totals(transaction.lines, discount)
         transaction.subtotal = totals["subtotal"]
         transaction.service_charge_amount = totals["service_charge_amount"]
         transaction.tax_amount = totals["tax_amount"]
@@ -395,7 +403,7 @@ class SalesTransactionService:
             document_number=transaction.transaction_number,
             document_status=transaction.status,
             before_data=before,
-            after_data={"location_id":transaction.location_id,"department_id":transaction.department_id,"billing_details":transaction.billing_details,"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
+            after_data={"location_id":transaction.location_id,"department_id":transaction.department_id,"billing_details":transaction.billing_details,"checkout_snapshot":transaction.checkout_snapshot,"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
                 "items":[{"product_id":r.product_id,"quantity":str(r.quantity),"unit_price":str(r.unit_price),"description":r.description,"registration_number":r.registration_number,"service_period_from":str(r.service_period_from) if r.service_period_from else None,"service_period_to":str(r.service_period_to) if r.service_period_to else None,"uom":r.uom,"tax_rate":str(r.tax_rate),"service_charge_rate":str(r.service_charge_rate)} for r in transaction.lines]},
             details={"item_count": len(transaction.lines)},
         )
@@ -465,7 +473,14 @@ class SalesTransactionService:
         from app.services.pos_operations import assert_open_order
         assert_open_order(db, transaction, user)
         subtotal = Decimal(transaction.subtotal or 0)
-        discount = cls._discount(subtotal, data.discount_amount or ZERO)
+        from app.services import pos_checkout
+        outlet_payment_account = None
+        if pos_checkout.applies(db, transaction):
+            discount, outlet_payment_account = pos_checkout.settlement(db,transaction,data,subtotal)
+        else:
+            if data.discount_preset_id is not None or data.checkout_version is not None:
+                raise HTTPException(422,"Outlet checkout settings apply only to Hotel F&B POS")
+            discount = cls._discount(subtotal, data.discount_amount or ZERO)
         totals = cls._totals(transaction.lines, discount)
         tax_amount, service_charge, total = totals["tax_amount"], totals["service_charge_amount"], totals["total"]
 
@@ -498,7 +513,7 @@ class SalesTransactionService:
             line.unit_cost = ZERO
 
         resolver = DirectCoaService(db)
-        cash_account = ar_account if is_invoice else cls._debit_account(
+        cash_account = ar_account if is_invoice else outlet_payment_account or cls._debit_account(
             db,
             resolver.setting_account(PAYMENT_ACCOUNT_SETTINGS[data.payment_method], f"POS {data.payment_method}"),
             f"POS {data.payment_method}",
@@ -604,6 +619,7 @@ class SalesTransactionService:
             document_number=transaction.transaction_number,
             document_status=transaction.status,
             details={
+                "checkout_snapshot": transaction.checkout_snapshot,
                 "payment_method": data.payment_method,
                 "total": str(total),
                 "journal_number": journal.journal_number,

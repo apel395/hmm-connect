@@ -7,6 +7,7 @@ from app.dependencies.authorization import has_permission
 from app.models.pos_operations import PosTable, PosCashierSession
 from app.models.sales_transaction import SalesTransaction
 from app.models.journal_entry import JournalEntry
+from app.schemas.pos_checkout import CheckoutConfigurationSave
 from app.schemas.pos_operations import OutletPolicyIn, TableIn, ShiftOpen, ShiftClose, OutletSetupIn
 from app.services import pos_operations as ops
 from app.services.sales_transaction_service import SalesTransactionService as Sales
@@ -91,3 +92,21 @@ def create_outlet(data:OutletSetupIn,db:Session=Depends(get_db),user=Depends(get
 def edit_outlet(outlet_id:int,data:OutletSetupIn,db:Session=Depends(get_db),user=Depends(get_current_user)):
     from app.services.pos_outlet_setup import save_outlet
     return save_outlet(db,user,data,outlet_id)
+
+
+@router.get('/checkout-options')
+def checkout_options(location_id:int,department_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    from app.services.pos_checkout import choices
+    return choices(db,user,location_id,department_id)
+
+
+@router.get('/checkout-settings')
+def checkout_settings(location_id:int,department_id:int,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    from app.services.pos_checkout import choices
+    return choices(db,user,location_id,department_id,management=True)
+
+
+@router.put('/checkout-settings')
+def update_checkout_settings(data:CheckoutConfigurationSave,db:Session=Depends(get_db),user=Depends(get_current_user)):
+    from app.services.pos_checkout import save
+    return save(db,user,data)

@@ -444,3 +444,31 @@ def test_catering_billing_migration_preserves_existing_sales_and_balances(pg):
             with pytest.raises(RuntimeError,match='discard'):
                 migration.downgrade()
         assert inspect(connection).has_table('catering_location_billing')
+
+
+def test_outlet_checkout_migration_preserves_financial_rows_and_guards_rollback(pg):
+    import importlib.util
+    from pathlib import Path
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import inspect
+    from app.models.sales_transaction import SalesTransaction
+    with pg.factory() as db:
+        sale=SalesTransaction(transaction_number='LEGACY-CHECKOUT',transaction_type='POS',status='DRAFT',sale_date=date(2026,1,5),created_by_id=pg.user.id,location_id=pg.location_id,business_unit_id=pg.unit_id,total_amount=110)
+        db.add(sale);db.commit();sale_id=sale.id
+    with pg.factory.kw['bind'].begin() as connection:
+        connection.execute(text('ALTER TABLE sales_transactions DROP COLUMN checkout_snapshot'))
+        connection.execute(text('ALTER TABLE pos_outlet_policies DROP COLUMN checkout_settings'))
+        before=connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()
+        spec=importlib.util.spec_from_file_location('checkout_migration',Path(__file__).resolve().parents[1]/'alembic/versions/20261104_pos_checkout.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        with Operations.context(MigrationContext.configure(connection)):module.upgrade()
+        assert {'checkout_snapshot'} <= {c['name'] for c in inspect(connection).get_columns('sales_transactions')}
+        assert connection.execute(text('SELECT total_amount FROM sales_transactions WHERE id=:id'),{'id':sale_id}).scalar()==110
+        assert connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()==before
+        assert connection.execute(text('SELECT amount FROM opening_balances')).scalar()==1000
+        with Operations.context(MigrationContext.configure(connection)):module.downgrade()
+        with Operations.context(MigrationContext.configure(connection)):module.upgrade()
+        connection.execute(text("UPDATE sales_transactions SET checkout_snapshot='{}'::json WHERE id=:id"),{'id':sale_id})
+        with Operations.context(MigrationContext.configure(connection)):
+            with pytest.raises(RuntimeError,match='discard'):module.downgrade()

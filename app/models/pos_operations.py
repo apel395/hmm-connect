@@ -1,7 +1,7 @@
 """Outlet operations: no inventory or opening-balance accounting."""
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Integer, Numeric, ForeignKey, DateTime, Boolean, Text, Index, CheckConstraint, UniqueConstraint, text
+from sqlalchemy import String, Integer, Numeric, ForeignKey, DateTime, Boolean, Text, Index, CheckConstraint, UniqueConstraint, text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
@@ -12,6 +12,7 @@ class PosOutletPolicy(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     location_id: Mapped[int] = mapped_column(ForeignKey('locations.id', ondelete='RESTRICT'))
     department_id: Mapped[int] = mapped_column(ForeignKey('departments.id', ondelete='RESTRICT'))
+    checkout_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     order_mode: Mapped[str] = mapped_column(String(10), nullable=False)
 
 

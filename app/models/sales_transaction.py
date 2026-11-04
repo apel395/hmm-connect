@@ -52,6 +52,7 @@ class SalesTransaction(Base, TimestampMixin):
     service_charge_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    checkout_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     billing_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_id: Mapped[int] = mapped_column(
