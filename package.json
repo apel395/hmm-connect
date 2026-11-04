@@ -12,7 +12,7 @@
     "test:finance": "node scripts/test-finance-print-recovery.mjs && node scripts/test-form-recovery-hook.cjs && node scripts/test-executive-summary.mjs && node scripts/test-approval-print.mjs && node scripts/test-expected-receiving-print.mjs && node scripts/test-phr-invoice.mjs && node scripts/test-pos-invoice-print.mjs && node scripts/test-sell-item-form.cjs && node scripts/test-item-number-input.cjs && node scripts/test-pos-register.cjs && node scripts/test-ar-receipt.cjs && node scripts/test-journal-accounting-state.mjs && node scripts/test-purchasing-print-tracking.mjs && node scripts/test-fixed-asset-receipt-link.cjs && node scripts/test-journal-filters.cjs && node scripts/test-asset-fiscal.cjs && node scripts/test-pph-asset-categories.cjs",
     "test:inventory-print": "node scripts/test-inventory-print.mjs",
     "test:workspace": "node scripts/test-workspace-back.cjs",
-    "test:purchasing-forms": "node scripts/test-purchase-order-form-system.cjs && node scripts/test-form-recovery-hook.cjs",
+    "test:purchasing-forms": "node scripts/test-purchase-order-form-system.cjs && node scripts/test-purchasing-form-migrations.cjs && node scripts/test-form-recovery-hook.cjs",
     "test:store-request": "node scripts/test-store-request-availability.cjs && node scripts/test-inventory-returns.cjs && node scripts/test-inventory-completion.cjs",
     "test:pos-operations": "node scripts/test-pos-outlet-operations.cjs && node scripts/test-pos-outlet-context.cjs && node scripts/test-pos-outlet-setup.cjs && node scripts/test-master-dropdowns.cjs && node scripts/test-receiving-edit.cjs && node scripts/test-receiving-edit-action.cjs && node scripts/test-receiving-optional-billing.cjs"
   },
