@@ -1,3 +1,4 @@
+import { discountFor } from "../checkoutTypes";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,7 +27,7 @@ const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text
 
 interface CartLine extends ServiceDetails { catering_shared?: boolean; line_key?: string; sales_location_id?: number; sales_business_unit_id?: number; department_id?: number; catalog_type?: string; product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
 
-type PosDraft = { billingDetails?:BillingDetails; saleDate?:string; notes?:string; posTableId?: number; cashierSessionId?: number; eventName?: string; orderRequestKey?: string; customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
+type PosDraft = { discountPresetId?:string; billingDetails?:BillingDetails; saleDate?:string; notes?:string; posTableId?: number; cashierSessionId?: number; eventName?: string; orderRequestKey?: string; customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
 const validDraft = (value: unknown): value is PosDraft => {
   if (!value || typeof value !== "object") return false;
   const d = value as PosDraft;
@@ -34,6 +35,7 @@ const validDraft = (value: unknown): value is PosDraft => {
     && [d.tableNumber, d.search, d.groupFilter, d.discount, d.amountReceived].every(v => typeof v === "string")
     && [d.locationId, d.departmentId, d.orderLocationId, d.orderDepartmentId, d.revenueAccountId, d.pendingDraftId, d.customerId, d.receivableAccountId, d.posTableId, d.cashierSessionId].every(v => v === undefined || (Number.isInteger(v) && v > 0))
     && [d.eventName,d.orderRequestKey].every(v=>v===undefined||typeof v==="string")
+    && (d.discountPresetId===undefined||typeof d.discountPresetId==="string")
     && [d.saleDate,d.notes].every(v=>v===undefined||typeof v==='string')
     && (d.billingDetails===undefined || (d.billingDetails!==null && typeof d.billingDetails==='object' && ['phr','standard'].includes(d.billingDetails.template) && Object.entries(d.billingDetails).every(([key,value])=>key==='contract_date'?(value===null||typeof value==='string'):typeof value==='string')))
     && Array.isArray(d.cart) && d.cart.every(l => l && Number.isInteger(l.product_id) && l.product_id > 0
@@ -62,7 +64,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     const saved=owner != null && storage ? readDraft(storage, draftKey(String(owner), recoveryName), validDraft) : null;
     if(saved)return saved;
     if(!existing)return null;
-    return {billingDetails:existing.billing_details??undefined,saleDate:existing.sale_date,notes:existing.notes??"",transactionType:existing.transaction_type,pendingDraftId:existing.id,locationId:existing.location_id,departmentId:existing.department_id,
+    return {discountPresetId:existing.checkout_snapshot?.discount_preset?.id,billingDetails:existing.billing_details??undefined,saleDate:existing.sale_date,notes:existing.notes??"",transactionType:existing.transaction_type,pendingDraftId:existing.id,locationId:existing.location_id,departmentId:existing.department_id,
       orderLocationId:existing.location_id,orderDepartmentId:existing.department_id,revenueAccountId:existing.revenue_account_id??undefined,
       customerId:existing.customer_id??undefined,invoiceDueDate:existing.invoice_due_date||"",receivableAccountId:existing.receivable_account_id??undefined,
       posTableId:existing.pos_table_id??undefined,cashierSessionId:existing.cashier_session_id??undefined,eventName:existing.event_name||"",orderRequestKey:existing.order_request_key,
@@ -78,6 +80,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const [search, setSearch] = useState(initial?.search ?? "");
   const [groupFilter, setGroupFilter] = useState(initial?.groupFilter ?? "");
   const [cart, setCart] = useState<CartLine[]>(() => (initial?.cart ?? []).map(line => ({...line, line_key: crypto.randomUUID()})));
+  const [discountPresetId,setDiscountPresetId]=useState(initial?.discountPresetId??"");
   const [discount, setDiscount] = useState(initial?.discount ?? "");
   const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>(initial?.paymentMethod ?? "CASH");
   const [amountReceived, setAmountReceived] = useState(initial?.amountReceived ?? "");
@@ -106,7 +109,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const [pendingDraftId, setPendingDraftId] = useState<number | undefined>(initial?.pendingDraftId);
   const saleLocationId = orderLocationId ?? cart.find(line => line.sales_location_id)?.sales_location_id;
   const saleDepartmentId = orderDepartmentId ?? cart.find(line => line.department_id)?.department_id;
-  const recovery = useFormRecovery(recoveryName, { billingDetails,saleDate,notes,posTableId, cashierSessionId, eventName, orderRequestKey, transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
+  const recovery = useFormRecovery(recoveryName, { discountPresetId,billingDetails,saleDate,notes,posTableId, cashierSessionId, eventName, orderRequestKey, transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
   const cateringInvoice = transactionType === "INVOICE" && locations.find((l: any) => l.id === (saleLocationId ?? locationId))?.catalog_type === "CATERING";
@@ -115,6 +118,10 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const hotelSelection=hotelOutletContext(optionsQuery.data,locationId,departmentId);
   const operations=useQuery({queryKey:["pos-operations",user?.id,locationId,departmentId],queryFn:async()=>(await operationsApi.context({location_id:locationId!,department_id:departmentId!})).data,enabled:hotelSelection.valid,refetchInterval:15000});
   const managed=hotelOutletsRequired&&transactionType==="POS";
+  const checkoutQuery=useQuery({queryKey:["pos-checkout",user?.id,locationId,departmentId],queryFn:async()=>(await operationsApi.checkoutOptions({location_id:locationId!,department_id:departmentId!})).data,enabled:managed&&hotelSelection.valid});
+  const presets=checkoutQuery.data?.configuration?.discount_presets.filter(p=>p.enabled)??[];
+  const selectedPreset=presets.find(p=>p.id===discountPresetId);
+  const paymentMethods=checkoutQuery.data?.configuration?.payment_methods.filter(p=>p.enabled)??[];
   const myShift=operations.data?.shifts.find(r=>r.status==="OPEN"&&r.cashier_id===user?.id);
   const mode=operations.data?.order_mode;
   const selectedTable=operations.data?.tables.find(t=>t.id===posTableId);
@@ -144,7 +151,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const groups = useMemo(() => Array.from(new Set(products.map((p) => p.group_name).filter(Boolean))) as string[], [products]);
   const visibleProducts = groupFilter ? products.filter((p) => p.group_name === groupFilter) : products;
   const subtotal = cart.reduce((sum, line) => sum + line.quantity * line.unit_price, 0);
-  const discountValue = Math.max(0, Math.min(Number(discount) || 0, subtotal));
+  const discountValue = managed?discountFor(subtotal,selectedPreset):Math.max(0, Math.min(Number(discount) || 0, subtotal));
   let allocatedDiscount = 0;
   const tax = cart.reduce((sum, line, index) => {
     const gross = Math.round(line.quantity * line.unit_price * 100) / 100;
@@ -184,7 +191,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     if (!next.length) { clear(); return; }
     setCart(next);
   };
-  const clear = () => { recovery.clear(); if(existing){navigate(hotelSelection.valid?operationsLink:"/pos/sales");return;} setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); setNotes(""); if(cateringInvoice&&profileQuery.data)applyDefaults(profileQuery.data,false); };
+  const clear = () => { recovery.clear(); if(existing){navigate(hotelSelection.valid?operationsLink:"/pos/sales");return;} setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount("");setDiscountPresetId(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); setNotes(""); if(cateringInvoice&&profileQuery.data)applyDefaults(profileQuery.data,false); };
 
   const invoiceItems = ():PosItemIn[] => cart.map(line=>({product_id:line.product_id,quantity:line.quantity,unit_price:line.unit_price,...(cateringInvoice?{description:line.description,registration_number:line.registration_number,service_period_from:line.service_period_from||null,service_period_to:line.service_period_to||null,uom:line.uom}:{})}));
   const profileQuery=useQuery<CateringProfile>({queryKey:["catering-billing",user?.id,locationId],queryFn:async()=>(await posApi.cateringSettings(locationId!)).data,enabled:cateringInvoice&&Boolean(locationId)});
@@ -238,13 +245,16 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     if(managed && mode==="EVENT" && !eventName.trim())throw new Error("Enter the banquet event name.");
     if (cart.some(line => !Number.isFinite(line.unit_price) || line.unit_price <= 0)) throw new Error("Enter a unit price greater than zero for every item.");
     if(cateringInvoice&&cart.some(line=>line.quantity<=0||!line.uom.trim()||(line.service_period_from&&line.service_period_to&&line.service_period_to<line.service_period_from)))throw new Error("Enter positive quantities, a unit, and a valid service period for every line.");
+    if(managed&&(!checkoutQuery.data?.version||checkoutQuery.isError))throw new Error("Load the outlet checkout settings before saving or settling.");
+    if(managed&&discountPresetId&&!selectedPreset)throw new Error("The discount preset is unavailable. Select an active preset or No discount.");
+    const checkoutFields=managed?{discount_preset_id:discountPresetId||null,checkout_version:checkoutQuery.data!.version}:{};
     const items = invoiceItems();
     const invoiceFields=cateringInvoice?{billing_details:billingDetails,sale_date:saleDate,notes,location_id:saleLocationId,department_id:saleDepartmentId??null}:{};
     let created;
     if (pendingDraftId) {
-      created = (await posApi.update(pendingDraftId, { ...invoiceFields,revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, items })).data;
+      created = (await posApi.update(pendingDraftId, { ...checkoutFields,...invoiceFields,revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, items })).data;
     } else {
-      created = (await posApi.create({ location_id: saleLocationId, department_id: saleDepartmentId,...invoiceFields, ...(managed?{cashier_session_id:myShift!.id,pos_table_id:posTableId,event_name:eventName.trim()||undefined,order_request_key:orderRequestKey}:{}), revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, transaction_type: transactionType, items })).data;
+      created = (await posApi.create({ ...checkoutFields,location_id: saleLocationId, department_id: saleDepartmentId,...invoiceFields, ...(managed?{cashier_session_id:myShift!.id,pos_table_id:posTableId,event_name:eventName.trim()||undefined,order_request_key:orderRequestKey}:{}), revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, transaction_type: transactionType, items })).data;
       setPendingDraftId(created.id);setCashierSessionId(created.cashier_session_id);
     }
     const metadata = (await posApi.metadata(created.id, { transaction_type: transactionType, table_number: transactionType === "POS" ? (managed ? (created.table_number||null) : tableNumber.trim()) : null, queue_number: created.transaction_number })).data;
@@ -252,8 +262,9 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   };
   const createAndPost = useMutation({
     mutationFn: async () => {
+      if(managed&&!paymentMethods.some(p=>p.method===paymentMethod))throw new Error("Choose an enabled payment method for this outlet.");
       const { created, metadata } = await persistOrder();
-      const posted = (await posApi.post(created.id, { revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, payment_method: paymentMethod, payment_received: transactionType === "POS" ? (paymentMethod === "CASH" ? Number(amountReceived) : total) : undefined, discount_amount: discountValue > 0 ? discountValue : null })).data;
+      const posted = (await posApi.post(created.id, { revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, payment_method: paymentMethod, payment_received: transactionType === "POS" ? (paymentMethod === "CASH" ? Number(amountReceived) : total) : undefined, ...(managed?{discount_preset_id:discountPresetId||null,checkout_version:checkoutQuery.data!.version}:{discount_amount: discountValue > 0 ? discountValue : null}) })).data;
       return { created, metadata, posted };
     },
     onSuccess: ({ created, metadata }) => { clear(); setQueueNumber(metadata.queue_number || created.transaction_number); setLastNumber(metadata.transaction_number || created.transaction_number); void queryClient.invalidateQueries({ queryKey: ["pos-products"] }); void queryClient.invalidateQueries({ queryKey: ["pos-sales"] }); void queryClient.invalidateQueries({queryKey:["pos-operations"]});void queryClient.invalidateQueries({queryKey:["pos-outlet-report"]}); void queryClient.invalidateQueries({ queryKey: ["ar-reporting"] }); },
@@ -267,6 +278,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
 
   const checkout = () => {
     setError("");
+    if(managed&&!paymentMethods.some(p=>p.method===paymentMethod))return setError("Choose an enabled payment method for this outlet.");
     if (!canSell) return setError("You do not have permission to sell.");
     if (!saleLocationId) return setError("Choose the order sales location.");
     if (hotelOutletsRequired && !saleDepartmentId) return setError("Choose a hotel outlet before checkout.");
@@ -298,6 +310,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
 
         {profileQuery.isError&&<p role="alert" className="text-sm text-red-700">Could not load location billing settings. Refresh after the database migration.</p>}
       </div>}
+      {managed&&checkoutQuery.isError&&<p role="alert" className="text-sm text-red-700">Checkout settings could not load. <button type="button" className="underline" onClick={()=>void checkoutQuery.refetch()}>Retry</button></p>}
       {managed&&departmentId&&<Card className="p-3 space-y-2">
         {operations.isError?<p role="alert" className="text-sm text-red-700">Outlet controls could not load. Check migration and refresh.</p>:<div className="flex flex-wrap items-end gap-3">
           <div className="text-sm">{mode||"Outlet not configured"} · {myShift?`My shift #${myShift.id}`:"No open cashier shift"} <Link className="ml-2 text-emerald-700 underline" to={operationsLink}>Manage shift / tables</Link></div>
@@ -343,8 +356,8 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
             <label className="text-xs">Unit<input className={input} maxLength={30} value={line.uom} onChange={e=>setCart(rows=>rows.map(item=>item.line_key===line.line_key?{...item,uom:e.target.value}:item))}/></label>
           </div>}
           <div className="mt-2 flex items-center justify-between"><div className="flex items-center gap-1"><button type="button" onClick={() => changeQty(line.line_key, -1)} className="grid h-7 w-7 place-items-center rounded border"><Minus className="h-3.5 w-3.5" /></button><span className="w-8 text-center text-sm">{line.quantity}</span><button type="button" onClick={() => changeQty(line.line_key, 1)} className="grid h-7 w-7 place-items-center rounded border"><Plus className="h-3.5 w-3.5" /></button></div><span className="text-sm font-semibold">{money(line.quantity * line.unit_price)}</span></div></div>)}</fieldset>
-          <div className="mt-4 space-y-2 border-t pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div><div className="flex items-center justify-between"><span>Discount</span><input className="h-9 w-32 rounded border px-2 text-right" type="number" min={0} value={discount} onChange={(e) => setDiscount(e.target.value)} /></div><div className="flex justify-between"><span>Service charge</span><span>{money(serviceCharge)}</span></div><div className="flex justify-between"><span>{taxLabel}</span><span>{money(tax)}</span></div><div className="flex justify-between border-t pt-2 text-base font-bold"><span>Total</span><span>{money(total)}</span></div></div>
-          {transactionType === "POS" && <div className="mt-4 space-y-2"><select className={input} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PosPaymentMethod)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></select>{paymentMethod === "CASH" && <><input className={input} type="number" min={0} placeholder="Cash received" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} /><div className="flex justify-between text-xs text-slate-500"><span>Change</span><span>{money(change)}</span></div></>}</div>}
+          <div className="mt-4 space-y-2 border-t pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div><div className="flex items-center justify-between"><span>Discount</span>{managed?<select aria-label="Discount preset" className="h-9 max-w-64 rounded border px-2 text-sm" value={discountPresetId} disabled={checkoutQuery.isLoading||checkoutQuery.isError} onChange={e=>setDiscountPresetId(e.target.value)}><option value="">No discount</option>{discountPresetId&&!selectedPreset&&<option value={discountPresetId} disabled>Unavailable preset — choose again</option>}{presets.map(p=><option key={p.id} value={p.id}>{p.name} · {p.kind==='PERCENT'?`${p.value}%`:money(p.value)}</option>)}</select>:<input className="h-9 w-32 rounded border px-2 text-right" type="number" min={0} value={discount} onChange={(e) => setDiscount(e.target.value)} />}</div><div className="flex justify-between"><span>Service charge</span><span>{money(serviceCharge)}</span></div><div className="flex justify-between"><span>{taxLabel}</span><span>{money(tax)}</span></div><div className="flex justify-between border-t pt-2 text-base font-bold"><span>Total</span><span>{money(total)}</span></div></div>
+          {transactionType === "POS" && <div className="mt-4 space-y-2"><select aria-label="Payment method" className={input} value={managed&&!paymentMethods.some(p=>p.method===paymentMethod)?"":paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PosPaymentMethod)}>{managed?<><option value="" disabled>Choose payment method</option>{paymentMethods.map(p=><option key={p.method} value={p.method}>{p.method==='BANK_TRANSFER'?'Bank Transfer':p.method==='CARD'?'Card':'Cash'}</option>)}</>:<><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></>}</select>{paymentMethod === "CASH" && <><input className={input} type="number" min={0} placeholder="Cash received" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} /><div className="flex justify-between text-xs text-slate-500"><span>Change</span><span>{money(change)}</span></div></>}</div>}
           {error && <div className="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
           {lastNumber && <div className="mt-3 rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">Saved: <strong>{lastNumber}</strong></div>}
           <div className="mt-4 grid grid-cols-2 gap-2"><Button variant="outline" disabled={busy || !cart.length || saveDraft.isPending || createAndPost.isPending} onClick={() => saveDraft.mutate()}>Save Draft</Button><Button variant="primary" disabled={busy || !cart.length || createAndPost.isPending || saveDraft.isPending} onClick={checkout}><Receipt className="h-4 w-4" /> {transactionType === "POS" ? "Ambil Nomor & Bayar" : "Post Invoice"}</Button></div>

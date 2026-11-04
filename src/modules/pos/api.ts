@@ -23,6 +23,8 @@ export type PosItemIn = ServiceDetails & {
 };
 
 export type PosCreatePayload = {
+  discount_preset_id?: string | null;
+  checkout_version?: string;
   billing_details?: BillingDetails;
   pos_table_id?: number;
   cashier_session_id?: number;
@@ -45,6 +47,8 @@ export type PosCreatePayload = {
 };
 
 export type PosUpdatePayload = {
+  discount_preset_id?: string | null;
+  checkout_version?: string;
   billing_details?: BillingDetails;
   location_id?: number;
   department_id?: number | null;
@@ -67,6 +71,8 @@ export type PosMetadataPayload = {
 };
 
 export type PosPostPayload = {
+  discount_preset_id?: string | null;
+  checkout_version?: string;
   invoice_due_date?: string;
   receivable_account_id?: number;
   customer_id?: number;
