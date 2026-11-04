@@ -83,12 +83,14 @@ export function renderInventoryPrint(
           `<${tag} class="${col.numeric ? "numeric" : ""} ${col.code ? "code" : ""}">${escape(row[i])}</${tag}>`,
       )
       .join("");
+  const fontBase = typeof window !== "undefined" ? window.location.origin : "";
   const timestamp = generatedAt.toLocaleString("id-ID", {
     timeZone: "Asia/Jakarta",
   });
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escape(report.title)}</title><style>
-    @page { size: A4 landscape; margin: 12mm 10mm 15mm; @bottom-left { content: "MMH-Connect"; font: 8pt Arial; color: #555; } @bottom-right { content: "Page " counter(page) " / " counter(pages); font: 8pt Arial; color: #555; } }
-    * { box-sizing: border-box; } body { margin: 0; color: #17211b; font: 9pt Arial, Helvetica, sans-serif; }
+    @font-face { font-family: Roboto; font-weight: 100 900; font-style: normal; font-display: swap; src: url("${fontBase}/fonts/roboto-latin-wght-normal.woff2") format("woff2"); }
+    @page { size: A4 landscape; margin: 12mm 10mm 15mm; @bottom-left { content: "MMH-Connect"; font: 8pt Roboto, Arial, sans-serif; color: #555; } @bottom-right { content: "Page " counter(page) " / " counter(pages); font: 8pt Roboto, Arial, sans-serif; color: #555; } }
+    * { box-sizing: border-box; } body { margin: 0; color: #17211b; font: 9pt Roboto, Arial, sans-serif; }
     .company { font-size: 9pt; font-weight: bold; } h1 { margin: 3mm 0 2mm; font-size: 15pt; } .meta { font-size: 8pt; line-height: 1.5; } .summary { margin-top: 3mm; font-weight: bold; }
     table { width: 100%; border-collapse: collapse; margin-top: 4mm; font-size: 8.5pt; } thead { display: table-header-group; } th { background: #edf1ee; border-top: 1px solid #7b887e; border-bottom: 1px solid #7b887e; text-align: left; } th, td { padding: 1.6mm 1.2mm; vertical-align: top; } td { border-bottom: 1px solid #e1e5e2; } .numeric { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; } .code { font-weight: bold; white-space: nowrap; } tr { break-inside: avoid; } .group td { padding-top: 3mm; background: #f4f6f4; font-weight: bold; } .group { break-after: avoid; } .detail { font-weight: normal; font-size: 8pt; } .subtotal td { border-top: 1px solid #a8b2aa; font-weight: bold; } .grand td { border-top: 2px solid #56645a; font-weight: bold; } .empty { padding: 8mm; text-align: center; } th, .group td { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     @media screen { body { padding: 16px; background: white; } }

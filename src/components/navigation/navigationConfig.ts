@@ -2,7 +2,7 @@ import { BarChart3, Crown, Boxes, Building2, CheckSquare2, FileBarChart, Landmar
 import { canAccess } from "@/lib/access";
 
 
-export interface NavigationChild { title: string; url?: string; roles?: string[]; permission?: string; disabled?: boolean; badge?: string; exact?: boolean }
+export interface NavigationChild { title: string; url?: string; roles?: string[]; permission?: string; permissions?: string[]; disabled?: boolean; badge?: string; exact?: boolean }
 export interface NavigationGroup { title: string; icon: LucideIcon; url?: string; roles?: string[]; permission?: string; permissions?: string[]; children?: NavigationChild[] }
 const INVENTORY_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "PURCHASING", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
 const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANAGER", "AUDITOR"];
@@ -74,6 +74,7 @@ export const navigationGroups: NavigationGroup[] = [
     { title: "Roles", url: "/roles", permission: "admin.roles.manage" },
     { title: "Report Setup", url: "/finance-setup/reports", permission: "finance.manage" },
     { title: "Finance Setup", url: "/finance-setup", permission: "finance.manage" },
+    { title: "POS Settings", url: "/settings/pos", permission: "pos.view", permissions: ["finance.manage", "admin.settings.manage"] },
     { title: "System Settings", url: "/settings", permission: "admin.settings.manage" },
   ] },
 ];
@@ -83,7 +84,7 @@ type NavigationUser = Parameters<typeof canAccess>[0];
 export function visibleNavigation(user: NavigationUser): NavigationGroup[] {
   return navigationGroups.flatMap(group => {
     if (group.url) return (group.permissions ? group.permissions.some(permission => canAccess(user, group.roles, permission)) : canAccess(user, group.roles, group.permission)) ? [group] : [];
-    const children = group.children?.filter(child => canAccess(user, child.roles, child.permission));
+    const children = group.children?.filter(child => canAccess(user, child.roles, child.permission) && (!child.permissions || child.permissions.some(permission=>canAccess(user,undefined,permission))));
     return children?.length ? [{ ...group, children }] : [];
   });
 }

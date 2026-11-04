@@ -51,7 +51,7 @@ export default function FinancialReportPrintTemplate<Row>({
           .finance-report tfoot { display: table-row-group; }
           .finance-report th { color: #111; }
           .finance-report td { font-variant-numeric: tabular-nums; }
-          .finance-report { font-family: Arial, sans-serif; }
+          .finance-report { font-family: Roboto, Arial, sans-serif; }
           .finance-report-header + table { table-layout: auto; }
           .finance-report tr { break-inside: avoid; page-break-inside: avoid; }
           .finance-report-header { break-inside: avoid; page-break-inside: avoid; }

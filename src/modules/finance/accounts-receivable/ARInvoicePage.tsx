@@ -128,7 +128,7 @@ export default function ARInvoicePage() {
           className="print-document mx-auto max-w-4xl bg-white p-6 font-sans text-sm"
           data-print-ready="true"
         >
-          <style>{`@page { size:A4 portrait; margin:15mm; } @media print { article { font:10pt Arial; } .print-document { padding:0!important; } }`}</style>
+          <style>{`@page { size:A4 portrait; margin:15mm; } @media print { article { font:10pt Roboto, Arial, sans-serif; } .print-document { padding:0!important; } }`}</style>
           <header className="mb-5 flex justify-between border-b-2 border-slate-800 pb-3">
             <div>
               <h1 className="text-xl font-bold">PT. MUTIARA MERDEKA HOTEL</h1>

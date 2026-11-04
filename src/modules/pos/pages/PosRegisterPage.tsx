@@ -13,7 +13,6 @@ import PosCustomerField from "../components/PosCustomerField";
 import useAuthStore from "@/store/auth";
 import useFormRecovery from "@/hooks/useFormRecovery";
 import CateringBillingFields from "../components/CateringBillingFields";
-import CateringLocationSetup from "../components/CateringLocationSetup";
 import { emptyBilling, type BillingDetails, type CateringProfile, type ServiceDetails } from "../cateringTypes";
 import { browserDraftStorage, draftKey, readDraft } from "@/utils/formDraftStorage";
 import { canAccess } from "@/lib/access";
@@ -94,7 +93,6 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const [saleDate,setSaleDate]=useState(initial?.saleDate??new Date().toLocaleDateString('en-CA'));
   const [notes,setNotes]=useState(initial?.notes??"");
   const [changingContext,setChangingContext]=useState(false);
-  const [showSetup,setShowSetup]=useState(false);
   const contextRequest=useRef(0);
   const defaultsApplied=useRef(initial?.locationId);
   const [customerId, setCustomerId] = useState<number | undefined>(initial?.customerId);
@@ -226,7 +224,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
       if(request!==contextRequest.current)return;
       setLocationId(value);setOrderLocationId(value);setDepartmentId(context.department_id??undefined);setOrderDepartmentId(context.department_id??undefined);
       setCart(rows=>rows.map(line=>({...line,sales_location_id:value,sales_business_unit_id:context.business_unit_id,department_id:context.department_id??undefined})));
-      defaultsApplied.current=value;applyDefaults(profile,cart.length>0||Boolean(pendingDraftId));setShowSetup(false);setGroupFilter("");
+      defaultsApplied.current=value;applyDefaults(profile,cart.length>0||Boolean(pendingDraftId));setGroupFilter("");
     }catch(e:any){if(request===contextRequest.current)setError(e?.response?.data?.detail||"Could not validate services at the selected location.");}
     finally{if(request===contextRequest.current)setChangingContext(false);}
   };
@@ -296,8 +294,8 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
         </div>
       </Card>
       {cateringInvoice&&locationId&&<div className="space-y-3">
-        <div className="flex items-center gap-3 text-sm"><span>Invoice jasa Catering</span>{profileQuery.data?.can_manage&&<button type="button" className="text-emerald-700 underline" disabled={busy} onClick={()=>setShowSetup(v=>!v)}>Location billing settings</button>}<button type="button" className="text-emerald-700 underline" disabled={busy||!profileQuery.data} onClick={()=>profileQuery.data&&applyDefaults(profileQuery.data,false)}>Use location defaults</button></div>
-        {showSetup&&profileQuery.data&&<CateringLocationSetup key={locationId} locationId={locationId} profile={profileQuery.data} customers={billingQuery.data?.customers??[]} departments={departments} revenueAccounts={revenueAccounts} receivableAccounts={billingQuery.data?.receivable_accounts??[]} onClose={()=>setShowSetup(false)} onSaved={()=>{setShowSetup(false);void queryClient.invalidateQueries({queryKey:["catering-billing"]});void queryClient.invalidateQueries({queryKey:["pos-products"]});}}/>}
+        <div className="flex items-center gap-3 text-sm"><span>Invoice jasa Catering</span>{profileQuery.data?.can_manage&&<Link className="text-emerald-700 underline" to={`/settings/pos?location=${locationId}`}>Location billing settings</Link>}<button type="button" className="text-emerald-700 underline" disabled={busy||!profileQuery.data} onClick={()=>profileQuery.data&&applyDefaults(profileQuery.data,false)}>Use location defaults</button></div>
+
         {profileQuery.isError&&<p role="alert" className="text-sm text-red-700">Could not load location billing settings. Refresh after the database migration.</p>}
       </div>}
       {managed&&departmentId&&<Card className="p-3 space-y-2">
@@ -308,6 +306,8 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
           {selectedTable&&<span className="text-xs text-slate-500">{selectedTable.seats} seats</span>}
         </div>}
       </Card>}
+      {optionsQuery.isError&&<p role="alert" className="text-sm text-red-700">Sales locations could not load. <button type="button" className="underline" onClick={()=>void optionsQuery.refetch()}>Retry</button></p>}
+      {!optionsQuery.isLoading&&!optionsQuery.isError&&locations.length===0&&<p role="status" className="text-sm text-slate-600">No accessible sales locations. Check this account's business unit and location assignments.</p>}
       {hotelOutletsRequired && !departmentId && <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">Select the outlet first. Its menu and sales will be recorded separately from other hotel outlets.</p>}
       {error&&cart.length===0&&<p role="alert" className="text-sm text-red-700">{error}</p>}
       {recovery.failed && <p className="text-xs text-amber-700">Browser storage is unavailable. Save Draft before leaving this page.</p>}

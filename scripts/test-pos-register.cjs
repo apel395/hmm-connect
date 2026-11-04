@@ -120,10 +120,7 @@ async function run() {
  await renderer.act(async()=>{v.root.findByProps({'aria-label':'Sales location'}).props.onChange({target:{value:'9'}});await new Promise(resolve=>setImmediate(resolve));});
  assert.equal(v.root.findByProps({'aria-label':'Customer'}).props.value,10);
  assert.ok(v.root.findAllByType('input').some(n=>n.props.value==='SITE-9'));
- await click(v,'Location billing settings');
- assert.equal(v.root.findAllByProps({'aria-label':'Catering location billing settings'}).length,1);
- let settingsSaved=false;global.__api.saveCateringSettings=async(id,value)=>{assert.equal(id,9);assert.deepEqual(value.service_product_ids,[7]);assert.equal(value.billing.contract_number,'SITE-9');settingsSaved=true;return {data:{}};};
- await click(v,'Save location defaults');assert.ok(settingsSaved);
+ assert.equal(v.root.findAllByType('a').find(n=>text(n)==='Location billing settings').props.href,'/settings/pos?location=9','Configuration now opens central POS Settings');
  await renderer.act(async()=>v.unmount());
  console.log('POS PASS: refresh recovery, user isolation, non-destructive filters, unfiltered paginated menus, explicit clear and saved draft cleanup.');
 }
