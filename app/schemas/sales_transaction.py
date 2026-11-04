@@ -25,6 +25,8 @@ class SalesTransactionItemIn(BaseModel):
 
 
 class SalesTransactionCreate(BaseModel):
+    discount_preset_id: str | None = Field(default=None, max_length=64)
+    checkout_version: str | None = Field(default=None, max_length=64)
     billing_details: CateringBilling | None = None
     pos_table_id: int | None = Field(default=None, gt=0)
     cashier_session_id: int | None = Field(default=None, gt=0)
@@ -47,6 +49,8 @@ class SalesTransactionCreate(BaseModel):
 
 
 class SalesTransactionUpdate(BaseModel):
+    discount_preset_id: str | None = Field(default=None, max_length=64)
+    checkout_version: str | None = Field(default=None, max_length=64)
     billing_details: CateringBilling | None = None
     location_id: int | None = Field(default=None, gt=0)
     department_id: int | None = Field(default=None, gt=0)
@@ -63,6 +67,8 @@ class SalesTransactionUpdate(BaseModel):
 
 
 class SalesTransactionPost(BaseModel):
+    discount_preset_id: str | None = Field(default=None, max_length=64)
+    checkout_version: str | None = Field(default=None, max_length=64)
     invoice_due_date: date | None = None
     receivable_account_id: int | None = Field(default=None, gt=0)
     customer_id: int | None = Field(default=None, gt=0)

@@ -132,6 +132,7 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
         "service_charge_amount": transaction.service_charge_amount,
         "tax_amount": transaction.tax_amount,
         "total_amount": transaction.total_amount,
+        "checkout_snapshot": transaction.checkout_snapshot,
         "billing_details": transaction.billing_details,
         "notes": transaction.notes,
         "created_by_id": transaction.created_by_id,
