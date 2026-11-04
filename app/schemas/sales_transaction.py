@@ -2,16 +2,30 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from app.schemas.catering_billing import CateringBilling
 
 
 class SalesTransactionItemIn(BaseModel):
+    description: str | None = Field(default=None, max_length=1000)
+    registration_number: str | None = Field(default=None, max_length=150)
+    service_period_from: date | None = None
+    service_period_to: date | None = None
+    uom: str | None = Field(default=None, min_length=1, max_length=30)
     product_id: int
     quantity: Decimal = Field(gt=0)
     unit_price: Decimal | None = Field(default=None, ge=0)
 
 
+    @model_validator(mode="after")
+    def valid_period(self):
+        if self.service_period_from and self.service_period_to and self.service_period_to < self.service_period_from:
+            raise ValueError("Service period end cannot precede its start")
+        return self
+
+
 class SalesTransactionCreate(BaseModel):
+    billing_details: CateringBilling | None = None
     pos_table_id: int | None = Field(default=None, gt=0)
     cashier_session_id: int | None = Field(default=None, gt=0)
     event_name: str | None = Field(default=None, max_length=200)
@@ -33,6 +47,9 @@ class SalesTransactionCreate(BaseModel):
 
 
 class SalesTransactionUpdate(BaseModel):
+    billing_details: CateringBilling | None = None
+    location_id: int | None = Field(default=None, gt=0)
+    department_id: int | None = Field(default=None, gt=0)
     invoice_due_date: date | None = None
     receivable_account_id: int | None = Field(default=None, gt=0)
     revenue_account_id: int | None = Field(default=None, gt=0)
@@ -63,6 +80,11 @@ class SalesTransactionItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    description: str | None = Field(default=None, max_length=1000)
+    registration_number: str | None = Field(default=None, max_length=150)
+    service_period_from: date | None = None
+    service_period_to: date | None = None
+    uom: str | None = Field(default=None, min_length=1, max_length=30)
     product_id: int
     line_number: int | None
     quantity: Decimal

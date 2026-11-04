@@ -1,10 +1,11 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Index, text
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Index, text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+from app.models.catering_billing import CateringLocationBilling  # noqa: F401
 
 
 class SalesTransaction(Base, TimestampMixin):
@@ -51,6 +52,7 @@ class SalesTransaction(Base, TimestampMixin):
     service_charge_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    billing_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -88,6 +90,10 @@ class SalesTransactionLine(Base):
     product_id: Mapped[int] = mapped_column(
         ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    registration_number: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    service_period_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    service_period_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)

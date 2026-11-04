@@ -170,3 +170,11 @@ See [Hotel POS operations](docs/hotel-pos-operations-1024.md) for review depende
 ## Partial supplier returns and stock period report
 
 See [the return workflow, account setup and migration guide](docs/inventory-returns-1103.md). Requires `20261103_inventory_returns`; no production balances are converted.
+
+## Catering service invoices by location
+
+Optional billing defaults, explicitly shared SELL services, draft location changes
+and immutable invoice print snapshots are described in
+[the Catering invoice guide](docs/catering-location-billing-1104.md).
+Apply `20261104_catering_billing` before the API release; no existing financial
+values or opening balances are migrated.

@@ -97,8 +97,11 @@ def invoice_payload(db, row):
             share=min(discount-allocated,(discount*Decimal(line.line_amount)/subtotal).quantize(Decimal('.01'))) if subtotal else Decimal(0)
             if index==len(source_lines)-1:share=discount-allocated
             allocated+=share
-            lines.append(ServiceLine(description=line.product.name if line.product else 'Service',amount=Decimal(line.line_amount)-share+Decimal(line.service_charge_amount or 0)))
-        document=InvoiceDocument(description=source.notes or '', lines=lines,tax_label='PBJT' if any(line.tax_type=='PBJT' for line in source_lines) else 'Tax',tax_amount=source.tax_amount)
+            description = line.description or (line.product.name if line.product else 'Service')
+            if line.service_period_from or line.service_period_to:
+                description += f"\n{line.service_period_from or ''} — {line.service_period_to or ''}"
+            lines.append(ServiceLine(registration_number=line.registration_number or '', description=description,amount=Decimal(line.line_amount)-share+Decimal(line.service_charge_amount or 0)))
+        document=InvoiceDocument(description=source.notes or '', contract_number=(source.billing_details or {}).get("contract_number", ""), contract_date=(source.billing_details or {}).get("contract_date"), lines=lines,tax_label='PBJT' if any(line.tax_type=='PBJT' for line in source_lines) else 'Tax',tax_amount=source.tax_amount)
     else:
         document = InvoiceDocument(**(saved or {}))
     receipts=[{"id":payment.id,"payment_number":payment.payment_number,"payment_date":payment.payment_date,"amount":payment.amount,"payment_method":payment.payment_method,"reference_number":payment.reference_number,"journal_entry_id":payment.journal_entry_id} for payment in db.query(CustomerPayment).filter_by(account_receivable_id=row.id,status="POSTED").order_by(CustomerPayment.id).all()]
@@ -108,7 +111,7 @@ def invoice_payload(db, row):
         due_date=row.due_date, amount=row.amount, received_amount=row.received_amount,
         outstanding_amount=row.outstanding_amount, customer_id=row.customer_id,
         customer_name=row.customer.customer_name, customer_address=row.customer.address,
-        layout=resolved_layout(config, row.customer))
+        layout=resolved_layout({**config, **(source.billing_details or {})} if source else config, row.customer))
 
 
 @router.put("/clients/{customer_id}")

@@ -91,11 +91,13 @@ class SalesTransactionService:
         if any(not p or p.item_type != "SELL" or not p.is_active for p in products):
             raise HTTPException(422, "Choose active SELL Item Master items")
         owners = item_departments.payloads(db, [p.id for p in products])
+        from app.services.catering_billing import explicitly_shared
+        shared = {p.id for p in products if data.transaction_type == "INVOICE" and data.location_id and explicitly_shared(db, p, data.location_id)}
         update = {}
         for field, values in (
-            ("location_id", {p.sales_location_id for p in products if p.sales_location_id}),
+            ("location_id", {p.sales_location_id for p in products if p.sales_location_id and p.id not in shared}),
             ("business_unit_id", {p.sales_business_unit_id for p in products if p.sales_business_unit_id}),
-            ("department_id", {owners[p.id]["department_id"] for p in products if p.id in owners}),
+            ("department_id", {owners[p.id]["department_id"] for p in products if p.id in owners and p.id not in shared}),
         ):
             if len(values) > 1:
                 raise HTTPException(422, "Menus from different sales locations, business units or departments require separate orders")
@@ -127,7 +129,9 @@ class SalesTransactionService:
             raise HTTPException(422, "POS accepts active SELL Item Master items only")
         if product.inventory_treatment != "NON_STOCK":
             raise HTTPException(422, "SELL items must use NON_STOCK treatment")
-        if product.sales_location_id not in (None, transaction.location_id) or product.sales_business_unit_id not in (None, transaction.business_unit_id):
+        from app.services.catering_billing import explicitly_shared
+        shared = transaction.transaction_type == "INVOICE" and explicitly_shared(db, product, transaction.location_id)
+        if (not shared and product.sales_location_id not in (None, transaction.location_id)) or product.sales_business_unit_id not in (None, transaction.business_unit_id):
             raise HTTPException(422, "SELL item is unavailable at this sales location")
         unit = db.get(BusinessUnit, transaction.business_unit_id)
         catalog = "HOTEL" if unit and "hotel" in unit.name.casefold() else "CATERING"
@@ -135,7 +139,7 @@ class SalesTransactionService:
             raise HTTPException(422, "SELL item belongs to another item catalog")
         from app.services import item_departments
         department = item_departments.payloads(db, [product.id]).get(product.id, {}).get("department_id")
-        if department is not None and department != transaction.department_id:
+        if not shared and department is not None and department != transaction.department_id:
             raise HTTPException(422, "Choose the item's sales department / outlet")
 
     @staticmethod
@@ -152,11 +156,14 @@ class SalesTransactionService:
         *,
         incoming: list[SalesTransactionItemIn],
     ) -> list[SalesTransactionLine]:
-        seen: dict[int, set[Decimal]] = {}
+        seen: dict[int, set[tuple]] = {}
         materialized: list[SalesTransactionLine] = []
         for index, line in enumerate(incoming, start=1):
             product = db.get(Product, line.product_id)
             cls._sell_item(db, product, transaction)
+            catering_invoice = transaction.transaction_type == "INVOICE" and product.catalog_type == "CATERING"
+            if not catering_invoice and any(getattr(line, f) is not None for f in ("description", "registration_number", "service_period_from", "service_period_to", "uom")):
+                raise HTTPException(422, "Custom service details are supported for Catering invoices only")
             tax_type, tax_rate = tax_profile(product)
             tax_account = pbjt_account(db) if tax_type == "PBJT" else None
             quantity = Decimal(line.quantity)
@@ -168,11 +175,12 @@ class SalesTransactionService:
             if unit_price <= ZERO:
                 raise HTTPException(400, f"Unit price for {product.code} must be greater than zero")
             comparison_price = unit_price.quantize(MONEY, rounding=ROUND_HALF_UP)
+            comparison = (comparison_price, line.description or '', line.registration_number or '', line.service_period_from, line.service_period_to, line.uom or product.uom)
             if line.product_id in seen:
                 catering_invoice = transaction.transaction_type == "INVOICE" and product.catalog_type == "CATERING"
-                if not catering_invoice or comparison_price in seen[line.product_id]:
+                if not catering_invoice or comparison in seen[line.product_id]:
                     raise HTTPException(400, "Use quantity for matching-price items; separate prices are supported for Catering invoices")
-            seen.setdefault(line.product_id, set()).add(comparison_price)
+            seen.setdefault(line.product_id, set()).add(comparison)
             gross = (quantity * unit_price).quantize(MONEY, rounding=ROUND_HALF_UP)
             tax_amount = (gross * tax_rate / Decimal("100")).quantize(MONEY, rounding=ROUND_HALF_UP) if tax_rate > 0 else ZERO
             materialized.append(
@@ -189,7 +197,11 @@ class SalesTransactionService:
                     tax_amount=tax_amount,
                     line_amount=gross,
                     unit_cost=ZERO,
-                    uom=product.uom,
+                    uom=line.uom if catering_invoice and line.uom else product.uom,
+                    description=(line.description or product.name) if catering_invoice else None,
+                    registration_number=line.registration_number if catering_invoice else None,
+                    service_period_from=line.service_period_from if catering_invoice else None,
+                    service_period_to=line.service_period_to if catering_invoice else None,
                 )
             )
         return materialized
@@ -282,6 +294,8 @@ class SalesTransactionService:
             notes=data.notes,
             created_by_id=user.id,
         )
+        from app.services.catering_billing import snapshot
+        transaction.billing_details = snapshot(db, transaction, data.billing_details)
         from app.services.pos_operations import bind_order
         bind_order(db, transaction, data, user)
         if data.items:
@@ -324,8 +338,24 @@ class SalesTransactionService:
             raise HTTPException(409, "Only draft POS sales can be edited")
         from app.services.pos_operations import assert_open_order
         assert_open_order(db, transaction, user)
-        before = {"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
-            "items":[{"product_id":r.product_id,"quantity":str(r.quantity),"unit_price":str(r.unit_price),"tax_rate":str(r.tax_rate),"service_charge_rate":str(r.service_charge_rate)} for r in transaction.lines]}
+        old_location = transaction.location_id
+        old_department = transaction.department_id
+        old_billing = transaction.billing_details
+        if "location_id" in data.model_fields_set or "department_id" in data.model_fields_set:
+            from app.services.catering_billing import catering_location
+            if transaction.transaction_type != "INVOICE" or transaction.cashier_session_id or transaction.warehouse_id or transaction.journal_entry_id:
+                raise HTTPException(409, "Only unposted Catering invoice drafts can change location")
+            catering_location(db, user, old_location, old_department)
+            target = catering_location(db, user, data.location_id or old_location, data.department_id)
+            from app.models.account_receivable import AccountReceivable
+            if db.query(AccountReceivable).filter_by(source_sale_id=transaction.id).first():
+                raise HTTPException(409, "An invoice with an AR entry cannot change location")
+            context = SalesTransactionCreate(transaction_type="INVOICE", location_id=target.id, department_id=data.department_id, items=data.items)
+            context = cls._master_dimensions(db, context)
+            unit_id, loc_id, dept_id = cls._dimensions(db, None, context, user)
+            transaction.business_unit_id, transaction.location_id, transaction.department_id = unit_id, loc_id, dept_id
+        before = {"location_id":old_location,"department_id":old_department,"billing_details":old_billing,"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
+            "items":[{"product_id":r.product_id,"quantity":str(r.quantity),"unit_price":str(r.unit_price),"description":r.description,"registration_number":r.registration_number,"service_period_from":str(r.service_period_from) if r.service_period_from else None,"service_period_to":str(r.service_period_to) if r.service_period_to else None,"uom":r.uom,"tax_rate":str(r.tax_rate),"service_charge_rate":str(r.service_charge_rate)} for r in transaction.lines]}
         if data.invoice_due_date is not None:
             transaction.invoice_due_date=data.invoice_due_date
         if data.receivable_account_id is not None:
@@ -338,11 +368,14 @@ class SalesTransactionService:
             transaction.customer_id = data.customer_id
         if data.notes is not None:
             transaction.notes = data.notes
+        from app.services.catering_billing import snapshot
+        supplied = data.billing_details
+        if supplied is not None or transaction.customer_id != before['customer_id'] or transaction.location_id != old_location or transaction.billing_details is None:
+            transaction.billing_details = snapshot(db, transaction, supplied)
         if not data.items:
             raise HTTPException(422, "A sale must contain at least one item")
         new_lines = cls._materialize_items(db, transaction, incoming=data.items)
-        # The unique (sale, product) constraint still covers existing draft rows.
-        # Flush their removal before inserting replacement rows for the same items.
+        # Replace draft lines under the existing sale lock; retain invoice identity.
         transaction.lines.clear()
         db.flush()
         transaction.lines = new_lines
@@ -362,8 +395,8 @@ class SalesTransactionService:
             document_number=transaction.transaction_number,
             document_status=transaction.status,
             before_data=before,
-            after_data={"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
-                "items":[{"product_id":r.product_id,"quantity":str(r.quantity),"unit_price":str(r.unit_price),"tax_rate":str(r.tax_rate),"service_charge_rate":str(r.service_charge_rate)} for r in transaction.lines]},
+            after_data={"location_id":transaction.location_id,"department_id":transaction.department_id,"billing_details":transaction.billing_details,"customer_id":transaction.customer_id,"invoice_due_date":str(transaction.invoice_due_date) if transaction.invoice_due_date else None,"revenue_account_id":transaction.revenue_account_id,
+                "items":[{"product_id":r.product_id,"quantity":str(r.quantity),"unit_price":str(r.unit_price),"description":r.description,"registration_number":r.registration_number,"service_period_from":str(r.service_period_from) if r.service_period_from else None,"service_period_to":str(r.service_period_to) if r.service_period_to else None,"uom":r.uom,"tax_rate":str(r.tax_rate),"service_charge_rate":str(r.service_charge_rate)} for r in transaction.lines]},
             details={"item_count": len(transaction.lines)},
         )
         db.commit()
@@ -437,7 +470,11 @@ class SalesTransactionService:
         tax_amount, service_charge, total = totals["tax_amount"], totals["service_charge_amount"], totals["total"]
 
         is_invoice = transaction.transaction_type == "INVOICE"
+        previous_customer = transaction.customer_id
         ar_account = invoice_party(db, transaction, data.customer_id, data.invoice_due_date, data.receivable_account_id) if is_invoice else None
+        if is_invoice and (transaction.billing_details is None or transaction.customer_id != previous_customer):
+            from app.services.catering_billing import snapshot
+            transaction.billing_details = snapshot(db, transaction)
         payment_received = Decimal(data.payment_received or ZERO)
         if is_invoice:
             payment_received=ZERO
