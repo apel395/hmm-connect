@@ -1,5 +1,5 @@
 import CurrencyInput from "@/components/form/CurrencyInput";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Minus, Plus, Receipt, ShoppingCart, Trash2, CopyPlus } from "lucide-react";
@@ -12,6 +12,9 @@ import SearchableSelect from "@/components/form/SearchableSelect";
 import PosCustomerField from "../components/PosCustomerField";
 import useAuthStore from "@/store/auth";
 import useFormRecovery from "@/hooks/useFormRecovery";
+import CateringBillingFields from "../components/CateringBillingFields";
+import CateringLocationSetup from "../components/CateringLocationSetup";
+import { emptyBilling, type BillingDetails, type CateringProfile, type ServiceDetails } from "../cateringTypes";
 import { browserDraftStorage, draftKey, readDraft } from "@/utils/formDraftStorage";
 import { canAccess } from "@/lib/access";
 import { operationsApi } from "../operationsApi";
@@ -22,9 +25,9 @@ const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANA
 const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
-interface CartLine { line_key?: string; sales_location_id?: number; sales_business_unit_id?: number; department_id?: number; catalog_type?: string; product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
+interface CartLine extends ServiceDetails { catering_shared?: boolean; line_key?: string; sales_location_id?: number; sales_business_unit_id?: number; department_id?: number; catalog_type?: string; product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
 
-type PosDraft = { posTableId?: number; cashierSessionId?: number; eventName?: string; orderRequestKey?: string; customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
+type PosDraft = { billingDetails?:BillingDetails; saleDate?:string; notes?:string; posTableId?: number; cashierSessionId?: number; eventName?: string; orderRequestKey?: string; customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
 const validDraft = (value: unknown): value is PosDraft => {
   if (!value || typeof value !== "object") return false;
   const d = value as PosDraft;
@@ -32,8 +35,11 @@ const validDraft = (value: unknown): value is PosDraft => {
     && [d.tableNumber, d.search, d.groupFilter, d.discount, d.amountReceived].every(v => typeof v === "string")
     && [d.locationId, d.departmentId, d.orderLocationId, d.orderDepartmentId, d.revenueAccountId, d.pendingDraftId, d.customerId, d.receivableAccountId, d.posTableId, d.cashierSessionId].every(v => v === undefined || (Number.isInteger(v) && v > 0))
     && [d.eventName,d.orderRequestKey].every(v=>v===undefined||typeof v==="string")
+    && [d.saleDate,d.notes].every(v=>v===undefined||typeof v==='string')
+    && (d.billingDetails===undefined || (d.billingDetails!==null && typeof d.billingDetails==='object' && ['phr','standard'].includes(d.billingDetails.template) && Object.entries(d.billingDetails).every(([key,value])=>key==='contract_date'?(value===null||typeof value==='string'):typeof value==='string')))
     && Array.isArray(d.cart) && d.cart.every(l => l && Number.isInteger(l.product_id) && l.product_id > 0
       && [l.quantity, l.unit_price, l.service_charge_rate, l.tax_rate].every(v => Number.isFinite(v) && v >= 0)
+      && [l.description,l.registration_number,l.service_period_from,l.service_period_to].every(v=>v==null||typeof v==='string')
       && (l.line_key === undefined || typeof l.line_key === "string")
       && l.quantity > 0 && [l.product_code, l.product_name, l.group_name, l.uom].every(v => typeof v === "string")
       && typeof l.is_taxable === "boolean" && typeof l.sale_available === "boolean");
@@ -57,12 +63,12 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     const saved=owner != null && storage ? readDraft(storage, draftKey(String(owner), recoveryName), validDraft) : null;
     if(saved)return saved;
     if(!existing)return null;
-    return {transactionType:existing.transaction_type,pendingDraftId:existing.id,locationId:existing.location_id,departmentId:existing.department_id,
+    return {billingDetails:existing.billing_details??undefined,saleDate:existing.sale_date,notes:existing.notes??"",transactionType:existing.transaction_type,pendingDraftId:existing.id,locationId:existing.location_id,departmentId:existing.department_id,
       orderLocationId:existing.location_id,orderDepartmentId:existing.department_id,revenueAccountId:existing.revenue_account_id??undefined,
       customerId:existing.customer_id??undefined,invoiceDueDate:existing.invoice_due_date||"",receivableAccountId:existing.receivable_account_id??undefined,
       posTableId:existing.pos_table_id??undefined,cashierSessionId:existing.cashier_session_id??undefined,eventName:existing.event_name||"",orderRequestKey:existing.order_request_key,
       tableNumber:existing.table_number||"",search:"",groupFilter:"",discount:String(existing.discount_amount||""),paymentMethod:existing.payment_method||"CASH",amountReceived:"",
-      cart:existing.items.map((line:any)=>({product_id:line.product_id,product_code:line.product_code||"",product_name:line.product_name||"",group_name:"",uom:line.uom||"",
+      cart:existing.items.map((line:any)=>({description:line.description??undefined,registration_number:line.registration_number??undefined,service_period_from:line.service_period_from,service_period_to:line.service_period_to,product_id:line.product_id,product_code:line.product_code||"",product_name:line.product_name||"",group_name:"",uom:line.uom||"",
         sales_location_id:existing.location_id,sales_business_unit_id:existing.business_unit_id,department_id:existing.department_id,
         quantity:Number(line.quantity),unit_price:Number(line.unit_price),service_charge_rate:Number(line.service_charge_rate||0),tax_rate:Number(line.tax_rate||0),tax_type:line.tax_type,is_taxable:Number(line.tax_rate||0)>0,sale_available:true}))} as PosDraft;
   });
@@ -84,6 +90,13 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const [orderLocationId, setOrderLocationId] = useState<number | undefined>(initial?.orderLocationId ?? (initial?.cart.length ? initial.locationId : undefined));
   const [orderDepartmentId, setOrderDepartmentId] = useState<number | undefined>(initial?.orderDepartmentId ?? (initial?.cart.length ? initial.departmentId : undefined));
   const [revenueAccountId, setRevenueAccountId] = useState<number | undefined>(initial?.revenueAccountId);
+  const [billingDetails,setBillingDetails]=useState<BillingDetails>(initial?.billingDetails??{...emptyBilling});
+  const [saleDate,setSaleDate]=useState(initial?.saleDate??new Date().toLocaleDateString('en-CA'));
+  const [notes,setNotes]=useState(initial?.notes??"");
+  const [changingContext,setChangingContext]=useState(false);
+  const [showSetup,setShowSetup]=useState(false);
+  const contextRequest=useRef(0);
+  const defaultsApplied=useRef(initial?.locationId);
   const [customerId, setCustomerId] = useState<number | undefined>(initial?.customerId);
   const [invoiceDueDate, setInvoiceDueDate] = useState(initial?.invoiceDueDate ?? "");
   const [receivableAccountId, setReceivableAccountId] = useState<number | undefined>(initial?.receivableAccountId);
@@ -95,7 +108,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const [pendingDraftId, setPendingDraftId] = useState<number | undefined>(initial?.pendingDraftId);
   const saleLocationId = orderLocationId ?? cart.find(line => line.sales_location_id)?.sales_location_id;
   const saleDepartmentId = orderDepartmentId ?? cart.find(line => line.department_id)?.department_id;
-  const recovery = useFormRecovery(recoveryName, { posTableId, cashierSessionId, eventName, orderRequestKey, transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
+  const recovery = useFormRecovery(recoveryName, { billingDetails,saleDate,notes,posTableId, cashierSessionId, eventName, orderRequestKey, transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
   const cateringInvoice = transactionType === "INVOICE" && locations.find((l: any) => l.id === (saleLocationId ?? locationId))?.catalog_type === "CATERING";
@@ -111,17 +124,17 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any) => !hotelOutletsRequired || (d.is_outlet && d.is_fnb_outlet)).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId, hotelOutletsRequired]);
   const orderLocations = locations.filter((location: any) => cart.every(line => (!line.sales_business_unit_id || line.sales_business_unit_id === location.business_unit_id) && (!line.catalog_type || !location.catalog_type || line.catalog_type === location.catalog_type)));
   const orderDepartments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => d.location_id === saleLocationId && (!hotelOutletsRequired || (d.is_outlet && d.is_fnb_outlet))), [optionsQuery.data, saleLocationId, hotelOutletsRequired]);
-  const revenueQuery = useQuery({ queryKey: ["pos-revenue-accounts", user?.id, saleLocationId], queryFn: async () => (await posApi.revenueAccounts(saleLocationId)).data, enabled: Boolean(cart.length && saleLocationId) });
+  const revenueQuery = useQuery({ queryKey: ["pos-revenue-accounts", user?.id, saleLocationId], queryFn: async () => (await posApi.revenueAccounts(saleLocationId)).data, enabled: Boolean(saleLocationId) });
   const revenueAccounts = useMemo(() => revenueQuery.data ?? [], [revenueQuery.data]);
 
   const productsQuery = useQuery({
-    queryKey: ["pos-products", user?.id, locationId, departmentId, search],
+    queryKey: ["pos-products", user?.id, locationId, departmentId, transactionType, search],
     enabled: Boolean(selectedLocation && (!hotelOutletsRequired || hotelSelection.valid)),
     queryFn: async () => {
       const items = [];
       let page = 1, hasNext = true;
       while (hasNext) {
-        const { data } = await posApi.products({ location_id: locationId, department_id: departmentId, search: search.trim() || undefined, page, page_size: 200 });
+        const { data } = await posApi.products({ transaction_type:transactionType, location_id: locationId, department_id: departmentId, search: search.trim() || undefined, page, page_size: 200 });
         items.push(...data.items);
         hasNext = data.has_next;
         page += 1;
@@ -152,30 +165,73 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     setError("");
     if (!product.sale_available) return;
     if (!selectedLocation || (hotelOutletsRequired && !hotelSelection.valid)) return setError("Select the location and hotel outlet before adding a menu item.");
-    if (product.sales_location_id && product.sales_location_id !== locationId) return setError("Menu belongs to another sales location.");
-    if (product.department_id && product.department_id !== departmentId) return setError("Menu belongs to another outlet.");
+    if (!product.catering_shared && product.sales_location_id && product.sales_location_id !== locationId) return setError("Menu belongs to another sales location.");
+    if (!product.catering_shared && product.department_id && product.department_id !== departmentId) return setError("Menu belongs to another outlet.");
     const conflict = cart.length > 0 && (
-      (product.sales_location_id && saleLocationId && product.sales_location_id !== saleLocationId)
-      || (product.department_id && saleDepartmentId && product.department_id !== saleDepartmentId)
+      (!product.catering_shared && product.sales_location_id && saleLocationId && product.sales_location_id !== saleLocationId)
+      || (!product.catering_shared && product.department_id && saleDepartmentId && product.department_id !== saleDepartmentId)
       || cart.some(line => (line.catalog_type && product.catalog_type && line.catalog_type !== product.catalog_type)
         || (line.sales_business_unit_id && product.sales_business_unit_id && line.sales_business_unit_id !== product.sales_business_unit_id)));
     if (conflict) return setError("This menu belongs to another location, business unit or department. Use a separate order.");
-    if (!cart.length) { setOrderLocationId(locationId); setOrderDepartmentId(departmentId ?? product.department_id); setRevenueAccountId(undefined); }
+    if (!cart.length) { setOrderLocationId(locationId); setOrderDepartmentId(departmentId ?? (product.catering_shared?undefined:product.department_id)); if(!cateringInvoice)setRevenueAccountId(undefined); }
     const existing = inCart(product.product_id);
     if (existing) {
       setCart((rows) => rows.map((line) => line.line_key === existing.line_key ? { ...line, quantity: line.quantity + 1 } : line));
       return;
     }
-    setCart((rows) => [...rows, { line_key: crypto.randomUUID(), sales_location_id: product.sales_location_id ?? undefined, sales_business_unit_id: product.sales_business_unit_id ?? undefined, department_id: product.department_id ?? undefined, catalog_type: product.catalog_type, product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), service_charge_rate:Number(product.service_charge_rate??0), tax_rate: Number(product.tax_rate ?? 0), tax_type: product.tax_type, is_taxable: Boolean(product.is_taxable), sale_available: Boolean(product.sale_available) }]);
+    setCart((rows) => [...rows, { description:cateringInvoice?product.product_name:undefined,catering_shared:product.catering_shared,line_key: crypto.randomUUID(), sales_location_id: product.catering_shared?locationId:product.sales_location_id ?? undefined, sales_business_unit_id: product.sales_business_unit_id ?? undefined, department_id: product.catering_shared?departmentId:product.department_id ?? undefined, catalog_type: product.catalog_type, product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), service_charge_rate:Number(product.service_charge_rate??0), tax_rate: Number(product.tax_rate ?? 0), tax_type: product.tax_type, is_taxable: Boolean(product.is_taxable), sale_available: Boolean(product.sale_available) }]);
   };
   const changeQty = (key: string | undefined, delta: number) => {
     const next = cart.map(line => line.line_key === key ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line).filter(line => line.quantity > 0);
     if (!next.length) { clear(); return; }
     setCart(next);
   };
-  const clear = () => { recovery.clear(); if(existing){navigate(hotelSelection.valid?operationsLink:"/pos/sales");return;} setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); };
+  const clear = () => { recovery.clear(); if(existing){navigate(hotelSelection.valid?operationsLink:"/pos/sales");return;} setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); setNotes(""); if(cateringInvoice&&profileQuery.data)applyDefaults(profileQuery.data,false); };
 
+  const invoiceItems = ():PosItemIn[] => cart.map(line=>({product_id:line.product_id,quantity:line.quantity,unit_price:line.unit_price,...(cateringInvoice?{description:line.description,registration_number:line.registration_number,service_period_from:line.service_period_from||null,service_period_to:line.service_period_to||null,uom:line.uom}:{})}));
+  const profileQuery=useQuery<CateringProfile>({queryKey:["catering-billing",user?.id,locationId],queryFn:async()=>(await posApi.cateringSettings(locationId!)).data,enabled:cateringInvoice&&Boolean(locationId)});
+  const busy=changingContext;
+  const chooseCustomer=(id:number|undefined)=>{setCustomerId(id);const customer=billingQuery.data?.customers?.find((c:{id:number})=>c.id===id);setBillingDetails(value=>({...value,billing_name:customer?.name||"",billing_address:customer?.address||""}));};
+  const applyDefaults=useCallback((profile:CateringProfile, keepFields:boolean)=>{
+    const config=profile.configuration;
+    const customer=billingQuery.data?.customers?.find((c:{id:number})=>c.id===config.customer_id);
+    if(!keepFields){
+      setCustomerId(config.customer_id??undefined);
+      setBillingDetails({...emptyBilling,...config.billing,billing_name:config.billing.billing_name||customer?.name||"",billing_address:config.billing.billing_address||customer?.address||""});
+      setRevenueAccountId(config.revenue_account_id??undefined);setReceivableAccountId(config.receivable_account_id??undefined);
+      if(config.payment_term_days!=null){const due=new Date(`${saleDate}T00:00:00Z`);due.setUTCDate(due.getUTCDate()+config.payment_term_days);setInvoiceDueDate(due.toISOString().slice(0,10));}
+    }
+  },[billingQuery.data,saleDate]);
+  useEffect(()=>{
+    if(!cateringInvoice||!locationId||!profileQuery.data||cart.length||pendingDraftId||defaultsApplied.current===locationId)return;
+    defaultsApplied.current=locationId;
+    applyDefaults(profileQuery.data,false);
+    setDepartmentId(profileQuery.data.configuration.department_id??undefined);
+    setOrderDepartmentId(profileQuery.data.configuration.department_id??undefined);
+    setOrderLocationId(locationId);
+  },[cateringInvoice,locationId,profileQuery.data,cart.length,pendingDraftId,applyDefaults]);
+  const changeLocation=async(value:number|undefined, targetDepartment?:number, departmentChange=false)=>{
+    if(!value)return;
+    const target=locations.find((loc:any)=>loc.id===value);
+    const canMove=transactionType==="INVOICE"&&target?.catalog_type==="CATERING"&&(!cart.length||cateringInvoice)&&!cashierSessionId;
+    if(!canMove){
+      if(cart.length||pendingDraftId||existing){setError("Clear or complete the current order before changing location.");return;}
+      setLocationId(value);setOrderLocationId(value);setDepartmentId(undefined);setOrderDepartmentId(undefined);setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID());setGroupFilter("");setError("");return;
+    }
+    const request=++contextRequest.current;setChangingContext(true);setError("");
+    try{
+      const {data:profile}=await posApi.cateringSettings(value) as {data:CateringProfile};
+      const dept=departmentChange?targetDepartment:profile.configuration.department_id??undefined;
+      const {data:context}=await posApi.validateCateringLocation(value,{department_id:dept,items:invoiceItems()});
+      if(request!==contextRequest.current)return;
+      setLocationId(value);setOrderLocationId(value);setDepartmentId(context.department_id??undefined);setOrderDepartmentId(context.department_id??undefined);
+      setCart(rows=>rows.map(line=>({...line,sales_location_id:value,sales_business_unit_id:context.business_unit_id,department_id:context.department_id??undefined})));
+      defaultsApplied.current=value;applyDefaults(profile,cart.length>0||Boolean(pendingDraftId));setShowSetup(false);setGroupFilter("");
+    }catch(e:any){if(request===contextRequest.current)setError(e?.response?.data?.detail||"Could not validate services at the selected location.");}
+    finally{if(request===contextRequest.current)setChangingContext(false);}
+  };
   const persistOrder = async () => {
+    if(changingContext)throw new Error("Wait for location validation to finish.");
     if (!saleLocationId) throw new Error("Choose the order location for menus shared across locations.");
     if (hotelOutletsRequired && !saleDepartmentId) throw new Error("Choose a hotel outlet for this order.");
     if (!revenueAccountId) throw new Error("Choose a revenue account.");
@@ -183,12 +239,14 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     if(managed && mode==="TABLE" && !posTableId)throw new Error("Choose an available table.");
     if(managed && mode==="EVENT" && !eventName.trim())throw new Error("Enter the banquet event name.");
     if (cart.some(line => !Number.isFinite(line.unit_price) || line.unit_price <= 0)) throw new Error("Enter a unit price greater than zero for every item.");
-    const items = cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity, unit_price:line.unit_price }));
+    if(cateringInvoice&&cart.some(line=>line.quantity<=0||!line.uom.trim()||(line.service_period_from&&line.service_period_to&&line.service_period_to<line.service_period_from)))throw new Error("Enter positive quantities, a unit, and a valid service period for every line.");
+    const items = invoiceItems();
+    const invoiceFields=cateringInvoice?{billing_details:billingDetails,sale_date:saleDate,notes,location_id:saleLocationId,department_id:saleDepartmentId??null}:{};
     let created;
     if (pendingDraftId) {
-      created = (await posApi.update(pendingDraftId, { revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, items })).data;
+      created = (await posApi.update(pendingDraftId, { ...invoiceFields,revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, items })).data;
     } else {
-      created = (await posApi.create({ location_id: saleLocationId, department_id: saleDepartmentId, ...(managed?{cashier_session_id:myShift!.id,pos_table_id:posTableId,event_name:eventName.trim()||undefined,order_request_key:orderRequestKey}:{}), revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, transaction_type: transactionType, items })).data;
+      created = (await posApi.create({ location_id: saleLocationId, department_id: saleDepartmentId,...invoiceFields, ...(managed?{cashier_session_id:myShift!.id,pos_table_id:posTableId,event_name:eventName.trim()||undefined,order_request_key:orderRequestKey}:{}), revenue_account_id: revenueAccountId, customer_id: customerId, invoice_due_date: invoiceDueDate || undefined, receivable_account_id: receivableAccountId, transaction_type: transactionType, items })).data;
       setPendingDraftId(created.id);setCashierSessionId(created.cashier_session_id);
     }
     const metadata = (await posApi.metadata(created.id, { transaction_type: transactionType, table_number: transactionType === "POS" ? (managed ? (created.table_number||null) : tableNumber.trim()) : null, queue_number: created.transaction_number })).data;
@@ -232,11 +290,16 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
           <div className="ml-auto text-xs text-slate-500">{transactionType === "POS" ? "Pilih meja → pilih menu → ambil nomor → bayar" : "Pilih pelanggan → buat tagihan → terima pembayaran di AR"}</div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="Choose hotel / property location" onChange={(value) => { if(cart.length || pendingDraftId || existing) { setError("Clear or complete the current order before changing location."); return; } setLocationId(value); setDepartmentId(undefined);setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setOrderLocationId(value); setOrderDepartmentId(undefined); setGroupFilter(""); setError(""); }} />
-          <SearchableSelect label={hotelOutletsRequired ? "Hotel outlet" : "Sales department / outlet"} required={hotelOutletsRequired} value={departmentId} options={departments.map((d: any) => ({...d, label: d.display_name ?? d.name}))} placeholder={hotelOutletsRequired ? "Select Restaurant, Café, Banquet..." : "Choose department"} onChange={(value) => { if(cart.length || pendingDraftId || existing) { setError("Clear or complete the current order before changing outlet."); return; } setDepartmentId(value);setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setOrderDepartmentId(value); setGroupFilter(""); setError(""); }} />
+          <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="Choose hotel / property location" disabled={busy} onChange={value=>{void changeLocation(value);}} />
+          <SearchableSelect label={hotelOutletsRequired ? "Hotel outlet" : "Sales department / outlet"} required={hotelOutletsRequired} value={departmentId} options={departments.map((d: any) => ({...d, label: d.display_name ?? d.name}))} placeholder={hotelOutletsRequired ? "Select Restaurant, Café, Banquet..." : "Choose department"} disabled={busy} onChange={(value) => { if(cateringInvoice&&locationId){void changeLocation(locationId,value,true);return;} if(cart.length || pendingDraftId || existing) {setError("Clear or complete the current order before changing outlet.");return;} setDepartmentId(value);setOrderDepartmentId(value);setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID());setGroupFilter("");setError("");}} />
           {transactionType === "POS" && !managed ? <div><label className="mb-1 block text-xs font-medium text-slate-500">Meja <span className="text-red-500">*</span></label><input className={input} value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} placeholder="Contoh: M-01 / 12" /></div> : transactionType === "INVOICE" ? <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500">Invoice dicatat sebagai piutang pelanggan.</div> : null}
         </div>
       </Card>
+      {cateringInvoice&&locationId&&<div className="space-y-3">
+        <div className="flex items-center gap-3 text-sm"><span>Invoice jasa Catering</span>{profileQuery.data?.can_manage&&<button type="button" className="text-emerald-700 underline" disabled={busy} onClick={()=>setShowSetup(v=>!v)}>Location billing settings</button>}<button type="button" className="text-emerald-700 underline" disabled={busy||!profileQuery.data} onClick={()=>profileQuery.data&&applyDefaults(profileQuery.data,false)}>Use location defaults</button></div>
+        {showSetup&&profileQuery.data&&<CateringLocationSetup key={locationId} locationId={locationId} profile={profileQuery.data} customers={billingQuery.data?.customers??[]} departments={departments} revenueAccounts={revenueAccounts} receivableAccounts={billingQuery.data?.receivable_accounts??[]} onClose={()=>setShowSetup(false)} onSaved={()=>{setShowSetup(false);void queryClient.invalidateQueries({queryKey:["catering-billing"]});void queryClient.invalidateQueries({queryKey:["pos-products"]});}}/>}
+        {profileQuery.isError&&<p role="alert" className="text-sm text-red-700">Could not load location billing settings. Refresh after the database migration.</p>}
+      </div>}
       {managed&&departmentId&&<Card className="p-3 space-y-2">
         {operations.isError?<p role="alert" className="text-sm text-red-700">Outlet controls could not load. Check migration and refresh.</p>:<div className="flex flex-wrap items-end gap-3">
           <div className="text-sm">{mode||"Outlet not configured"} · {myShift?`My shift #${myShift.id}`:"No open cashier shift"} <Link className="ml-2 text-emerald-700 underline" to={operationsLink}>Manage shift / tables</Link></div>
@@ -246,35 +309,45 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
         </div>}
       </Card>}
       {hotelOutletsRequired && !departmentId && <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">Select the outlet first. Its menu and sales will be recorded separately from other hotel outlets.</p>}
+      {error&&cart.length===0&&<p role="alert" className="text-sm text-red-700">{error}</p>}
       {recovery.failed && <p className="text-xs text-amber-700">Browser storage is unavailable. Save Draft before leaving this page.</p>}
       {queueNumber && <Card className="flex items-center justify-between border-emerald-200 bg-emerald-50 p-4"><div><div className="text-xs uppercase tracking-wide text-emerald-700">{transactionType === "POS" ? "Nomor Antrian" : "Nomor Invoice"}</div><div className="mt-1 text-2xl font-bold text-emerald-800">{queueNumber}</div></div>{transactionType === "POS" && <Badge variant="success">Meja {tableNumber}</Badge>}</Card>}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_390px]">
+      <div className={cateringInvoice?"grid gap-4":"grid gap-4 lg:grid-cols-[1fr_390px]"}>
         <Card className="p-4">
           <input className={`${input} mb-3`} placeholder="Cari menu, kode atau kategori" value={search} onChange={(e) => setSearch(e.target.value)} />
           {groups.length > 0 && <div className="mb-3 flex flex-wrap gap-1.5"><button type="button" onClick={() => setGroupFilter("")} className={`rounded-full px-3 py-1 text-xs font-medium ${!groupFilter ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>All</button>{groups.map((g) => <button key={g} type="button" onClick={() => setGroupFilter(g)} className={`rounded-full px-3 py-1 text-xs font-medium ${groupFilter === g ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>{g}</button>)}</div>}
           {productsQuery.isError && <p className="text-sm text-red-600">Could not load SELL items. Refresh and check your sales location.</p>}
           {!productsQuery.isLoading && !productsQuery.isError && locationId && (!hotelOutletsRequired || departmentId) && products.length === 0 && <p className="p-4 text-sm text-slate-500">No SELL items available. Register menus and selling prices in Sell Item Master for this location / outlet.</p>}
-          {productsQuery.isLoading ? <Loading /> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">{visibleProducts.map((product) => <button key={product.product_id} type="button" disabled={!product.sale_available} onClick={() => addToCart(product)} className="flex h-24 flex-col justify-between rounded-lg border border-slate-200 p-2.5 text-left hover:border-[#0F6758] disabled:opacity-40"><div><div className="line-clamp-2 text-xs font-semibold">{product.product_name}</div><div className="text-[10px] text-slate-400">{!product.sale_available ? (Number(product.selling_price) <= 0 ? "Set selling price" : (product.unavailable_reason || "Tax posting pending")) : product.group_name || product.product_code}</div></div><div className="flex items-center justify-between"><span className="text-sm font-bold text-[#0F6758]">{money(product.selling_price)}</span><span className="text-[10px] text-slate-500">{product.uom}</span></div></button>)}</div>}
+          {productsQuery.isLoading ? <Loading /> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">{visibleProducts.map((product) => <button key={product.product_id} type="button" disabled={busy || !product.sale_available} onClick={() => addToCart(product)} className="flex h-24 flex-col justify-between rounded-lg border border-slate-200 p-2.5 text-left hover:border-[#0F6758] disabled:opacity-40"><div><div className="line-clamp-2 text-xs font-semibold">{product.product_name}</div><div className="text-[10px] text-slate-400">{!product.sale_available ? (Number(product.selling_price) <= 0 ? "Set selling price" : (product.unavailable_reason || "Tax posting pending")) : product.group_name || product.product_code}</div></div><div className="flex items-center justify-between"><span className="text-sm font-bold text-[#0F6758]">{money(product.selling_price)}</span><span className="text-[10px] text-slate-500">{product.uom}</span></div></button>)}</div>}
         </Card>
         <Card className="h-fit p-4">
           <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2 text-sm font-semibold"><ShoppingCart className="h-4 w-4 text-[#0F6758]" />Order</div>{cart.length > 0 && <button type="button" onClick={clear} className="text-xs text-slate-500">Clear</button>}</div>
           {cart.length > 0 && <div className="mb-3 space-y-2">
-            {(pendingDraftId || cart.some(line => line.sales_location_id)) ? <div className="text-xs text-slate-600">Sales location: <strong>{locations.find((l: any) => l.id === saleLocationId)?.name || "Item Master location"}</strong></div> : <SearchableSelect label="Order sales location" value={saleLocationId} options={orderLocations} placeholder="Choose order location" onChange={value => { setOrderLocationId(value); setOrderDepartmentId(undefined); setRevenueAccountId(undefined); }} />}
-            {(pendingDraftId || cart.some(line => line.department_id)) ? <div className="text-xs text-slate-600">Department / outlet: <strong>{orderDepartments.find((d: any) => d.id === saleDepartmentId)?.name || "Item Master department"}</strong></div> : <SearchableSelect label="Order department / outlet" value={saleDepartmentId} options={orderDepartments} placeholder="Choose order department" onChange={setOrderDepartmentId} />}
+            {(cateringInvoice || pendingDraftId || cart.some(line => line.sales_location_id)) ? <div className="text-xs text-slate-600">Sales location: <strong>{locations.find((l: any) => l.id === saleLocationId)?.name || "Item Master location"}</strong></div> : <SearchableSelect label="Order sales location" value={saleLocationId} options={orderLocations} placeholder="Choose order location" onChange={value => { setOrderLocationId(value); setOrderDepartmentId(undefined); setRevenueAccountId(undefined); }} />}
+            {(cateringInvoice || pendingDraftId || cart.some(line => line.department_id)) ? <div className="text-xs text-slate-600">Department / outlet: <strong>{orderDepartments.find((d: any) => d.id === saleDepartmentId)?.name || "Item Master department"}</strong></div> : <SearchableSelect label="Order department / outlet" value={saleDepartmentId} options={orderDepartments} placeholder="Choose order department" onChange={setOrderDepartmentId} />}
             <SearchableSelect label="Revenue account" required value={revenueAccountId} options={revenueAccounts} placeholder="Choose revenue account" onChange={setRevenueAccountId} />
           </div>}
-          {cart.length > 0 && transactionType === "INVOICE" && <div className="mb-3 space-y-2">
-            <PosCustomerField value={customerId} onChange={setCustomerId} customers={billingQuery.data?.customers ?? []} canCreate={canSell} />
+          {(cart.length > 0 || cateringInvoice) && transactionType === "INVOICE" && <div className="mb-3 space-y-2">
+            <PosCustomerField value={customerId} onChange={cateringInvoice?chooseCustomer:setCustomerId} customers={billingQuery.data?.customers ?? []} canCreate={canSell} />
             <div><label className="mb-1 block text-xs">Invoice due date</label><input aria-label="Invoice due date" type="date" className={input} value={invoiceDueDate} onChange={event => setInvoiceDueDate(event.target.value)} /></div>
             <SearchableSelect label="Receivable account" value={receivableAccountId ?? billingQuery.data?.default_receivable_account_id} options={billingQuery.data?.receivable_accounts ?? []} placeholder="Piutang Usaha" onChange={setReceivableAccountId} />
           </div>}
-          <div className="space-y-2">{cart.length === 0 && <div className="rounded-md border border-dashed p-6 text-center text-xs text-slate-500">Pilih menu untuk memulai.</div>}{cart.map((line) => <div key={line.line_key} className="rounded-md border p-2"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-semibold">{line.product_name}</div>{cateringInvoice ? <label className="mt-1 flex items-center gap-2 text-[10px] text-slate-500"><span>Unit price / {line.uom}</span><CurrencyInput value={line.unit_price} disabled={!canSell || saveDraft.isPending || createAndPost.isPending} className="!h-8 !w-40 text-xs" onValueChange={value => setCart(rows => rows.map(item => item.line_key === line.line_key ? {...item, unit_price:value} : item))}/></label> : <div className="text-[10px] text-slate-400">{money(line.unit_price)} / {line.uom}</div>}</div><div className="flex items-start gap-2">{cateringInvoice && <button type="button" aria-label={`Add separate price line ${line.product_name}`} title="Add the same item with a different unit price" disabled={!canSell || saveDraft.isPending || createAndPost.isPending} onClick={() => setCart(rows => [...rows, {...line, line_key:crypto.randomUUID(), quantity:1, unit_price:0}])} className="text-slate-400 hover:text-emerald-700"><CopyPlus className="h-4 w-4"/></button>}<button type="button" aria-label={`Remove ${line.product_name}`} onClick={() => changeQty(line.line_key, -line.quantity)} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div></div><div className="mt-2 flex items-center justify-between"><div className="flex items-center gap-1"><button type="button" onClick={() => changeQty(line.line_key, -1)} className="grid h-7 w-7 place-items-center rounded border"><Minus className="h-3.5 w-3.5" /></button><span className="w-8 text-center text-sm">{line.quantity}</span><button type="button" onClick={() => changeQty(line.line_key, 1)} className="grid h-7 w-7 place-items-center rounded border"><Plus className="h-3.5 w-3.5" /></button></div><span className="text-sm font-semibold">{money(line.quantity * line.unit_price)}</span></div></div>)}</div>
+          {cateringInvoice&&<div className="mb-4 space-y-3"><label className="block text-xs">Invoice date<input type="date" className={input} value={saleDate} onChange={e=>setSaleDate(e.target.value)}/></label><CateringBillingFields value={billingDetails} onChange={setBillingDetails} disabled={busy||saveDraft.isPending||createAndPost.isPending}/><label className="block text-xs">Invoice description<textarea className={`${input} !h-16 py-1`} value={notes} onChange={e=>setNotes(e.target.value)} maxLength={1000}/></label></div>}
+          <fieldset disabled={busy||saveDraft.isPending||createAndPost.isPending} className="space-y-2">{cart.length === 0 && <div className="rounded-md border border-dashed p-6 text-center text-xs text-slate-500">Pilih menu untuk memulai.</div>}{cart.map((line) => <div key={line.line_key} className="rounded-md border p-2"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-semibold">{line.product_name}</div>{cateringInvoice ? <label className="mt-1 flex items-center gap-2 text-[10px] text-slate-500"><span>Unit price / {line.uom}</span><CurrencyInput value={line.unit_price} disabled={!canSell || saveDraft.isPending || createAndPost.isPending} className="!h-8 !w-40 text-xs" onValueChange={value => setCart(rows => rows.map(item => item.line_key === line.line_key ? {...item, unit_price:value} : item))}/></label> : <div className="text-[10px] text-slate-400">{money(line.unit_price)} / {line.uom}</div>}</div><div className="flex items-start gap-2">{cateringInvoice && <button type="button" aria-label={`Add separate price line ${line.product_name}`} title="Add the same item with a different unit price" disabled={!canSell || saveDraft.isPending || createAndPost.isPending} onClick={() => setCart(rows => [...rows, {...line, line_key:crypto.randomUUID(), quantity:1, unit_price:0}])} className="text-slate-400 hover:text-emerald-700"><CopyPlus className="h-4 w-4"/></button>}<button type="button" aria-label={`Remove ${line.product_name}`} onClick={() => changeQty(line.line_key, -line.quantity)} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div></div>{cateringInvoice&&<div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <label className="text-xs sm:col-span-3">Service description<textarea className={`${input} !h-14 py-1`} maxLength={1000} value={line.description??line.product_name} onChange={e=>setCart(rows=>rows.map(item=>item.line_key===line.line_key?{...item,description:e.target.value}:item))}/></label>
+            <label className="text-xs">Registration / reference<input className={input} maxLength={150} value={line.registration_number??""} onChange={e=>setCart(rows=>rows.map(item=>item.line_key===line.line_key?{...item,registration_number:e.target.value}:item))}/></label>
+            <label className="text-xs">Service period from<input type="date" className={input} value={line.service_period_from??""} onChange={e=>setCart(rows=>rows.map(item=>item.line_key===line.line_key?{...item,service_period_from:e.target.value||null}:item))}/></label>
+            <label className="text-xs">Service period to<input type="date" className={input} value={line.service_period_to??""} onChange={e=>setCart(rows=>rows.map(item=>item.line_key===line.line_key?{...item,service_period_to:e.target.value||null}:item))}/></label>
+            <label className="text-xs">Quantity<input type="number" className={input} min="0.0001" step="any" value={line.quantity} onChange={e=>setCart(rows=>rows.map(item=>item.line_key===line.line_key?{...item,quantity:Number(e.target.value)}:item))}/></label>
+            <label className="text-xs">Unit<input className={input} maxLength={30} value={line.uom} onChange={e=>setCart(rows=>rows.map(item=>item.line_key===line.line_key?{...item,uom:e.target.value}:item))}/></label>
+          </div>}
+          <div className="mt-2 flex items-center justify-between"><div className="flex items-center gap-1"><button type="button" onClick={() => changeQty(line.line_key, -1)} className="grid h-7 w-7 place-items-center rounded border"><Minus className="h-3.5 w-3.5" /></button><span className="w-8 text-center text-sm">{line.quantity}</span><button type="button" onClick={() => changeQty(line.line_key, 1)} className="grid h-7 w-7 place-items-center rounded border"><Plus className="h-3.5 w-3.5" /></button></div><span className="text-sm font-semibold">{money(line.quantity * line.unit_price)}</span></div></div>)}</fieldset>
           <div className="mt-4 space-y-2 border-t pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div><div className="flex items-center justify-between"><span>Discount</span><input className="h-9 w-32 rounded border px-2 text-right" type="number" min={0} value={discount} onChange={(e) => setDiscount(e.target.value)} /></div><div className="flex justify-between"><span>Service charge</span><span>{money(serviceCharge)}</span></div><div className="flex justify-between"><span>{taxLabel}</span><span>{money(tax)}</span></div><div className="flex justify-between border-t pt-2 text-base font-bold"><span>Total</span><span>{money(total)}</span></div></div>
           {transactionType === "POS" && <div className="mt-4 space-y-2"><select className={input} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PosPaymentMethod)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></select>{paymentMethod === "CASH" && <><input className={input} type="number" min={0} placeholder="Cash received" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} /><div className="flex justify-between text-xs text-slate-500"><span>Change</span><span>{money(change)}</span></div></>}</div>}
           {error && <div className="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
           {lastNumber && <div className="mt-3 rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">Saved: <strong>{lastNumber}</strong></div>}
-          <div className="mt-4 grid grid-cols-2 gap-2"><Button variant="outline" disabled={!cart.length || saveDraft.isPending || createAndPost.isPending} onClick={() => saveDraft.mutate()}>Save Draft</Button><Button variant="primary" disabled={!cart.length || createAndPost.isPending || saveDraft.isPending} onClick={checkout}><Receipt className="h-4 w-4" /> {transactionType === "POS" ? "Ambil Nomor & Bayar" : "Post Invoice"}</Button></div>
+          <div className="mt-4 grid grid-cols-2 gap-2"><Button variant="outline" disabled={busy || !cart.length || saveDraft.isPending || createAndPost.isPending} onClick={() => saveDraft.mutate()}>Save Draft</Button><Button variant="primary" disabled={busy || !cart.length || createAndPost.isPending || saveDraft.isPending} onClick={checkout}><Receipt className="h-4 w-4" /> {transactionType === "POS" ? "Ambil Nomor & Bayar" : "Post Invoice"}</Button></div>
         </Card>
       </div>
     </div>
