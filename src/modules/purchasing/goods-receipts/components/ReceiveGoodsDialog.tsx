@@ -1,18 +1,16 @@
 import "../receiving-lines.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import SearchableSelect from "@/components/form/SearchableSelect";
-import Button from "@/components/ui/Button";
-import Dialog, {
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/Dialog";
+import FormDialog from "@/components/form-system/FormDialog";
+import FormFooter from "@/components/form-system/FormFooter";
+import FormGrid from "@/components/form-system/FormGrid";
+import FormSection from "@/components/form-system/FormSection";
+import useFormRecovery from "@/hooks/useFormRecovery";
+import useUnsavedFormChanges from "@/hooks/useUnsavedFormChanges";
 import useAuthorization from "@/hooks/useAuthorization";
 import {
   filterBusinessUnits,
@@ -30,8 +28,22 @@ import {
 
 import ReceivingDestinationField from "./ReceivingDestinationField";
 import ReceivingBillingFields from "./ReceivingBillingFields";
-import { emptyReceivingBilling, receivingBillingPayload, validateReceivingBilling } from "../billing";
-import { destinationFor, destinationError, type LineRouting } from "../destination";
+import ReceivingTotals from "./ReceivingTotals";
+import {
+  emptyReceivingBilling,
+  receivingBillingPayload,
+  validateReceivingBilling,
+  type ReceivingBilling,
+} from "../billing";
+import {
+  validReceivingLinesDraft,
+  restoredReceivingQuantity,
+} from "../receivingFormDrafts";
+import {
+  destinationFor,
+  destinationError,
+  type LineRouting,
+} from "../destination";
 
 interface Props {
   open: boolean;
@@ -55,12 +67,51 @@ interface ReceiveLine extends LineRouting {
   is_taxable?: boolean;
   tax_rate?: number;
 }
-const money = (value: unknown) => Number(value ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+type PoReceivingDraft = {
+  purchaseOrderId?: number;
+  warehouseId: number | null;
+  receivedAt: string;
+  historical: boolean;
+  deliveryNote: string;
+  notes: string;
+  billing: ReceivingBilling;
+  costCorrectionReason: string;
+  lines: ReceiveLine[];
+};
+const initialPoReceivingDraft = (
+  purchaseOrderId?: number,
+): PoReceivingDraft => ({
+  purchaseOrderId,
+  warehouseId: null,
+  receivedAt: nowLocal(),
+  historical: false,
+  deliveryNote: "",
+  notes: "",
+  billing: emptyReceivingBilling(),
+  costCorrectionReason: "",
+  lines: [],
+});
+const money = (value: unknown) =>
+  Number(value ?? 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
-export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Props) {
+export default function ReceiveGoodsDialog({
+  open,
+  purchaseOrder,
+  onClose,
+}: Props) {
   const { data: warehouses = [] } = useWarehouses();
   const { isSuperuser, canAccess, hasPermission } = useAuthorization();
-  const canCorrectCost = isSuperuser() || canAccess(["GENERAL MANAGER", "FINANCE MANAGER", "PURCHASING MANAGER", "PROCUREMENT MANAGER"]);
+  const canCorrectCost =
+    isSuperuser() ||
+    canAccess([
+      "GENERAL MANAGER",
+      "FINANCE MANAGER",
+      "PURCHASING MANAGER",
+      "PROCUREMENT MANAGER",
+    ]);
   const receivable = useReceivablePurchaseOrders(open && !purchaseOrder);
   const [purchaseOrderId, setPurchaseOrderId] = useState<number>();
   const remaining = useRemainingPurchaseOrderItems(purchaseOrderId);
@@ -73,77 +124,657 @@ export default function ReceiveGoodsDialog({ open, purchaseOrder, onClose }: Pro
   const [billing, setBilling] = useState(emptyReceivingBilling);
   const [costCorrectionReason, setCostCorrectionReason] = useState("");
   const [lines, setLines] = useState<ReceiveLine[]>([]);
-  const hasWarehouse = lines.some(line => line.quantity > 0 && destinationFor(line) === "WAREHOUSE");
-  const hasDirectUse = lines.some(line => destinationFor(line) === "DIRECT_USE" && line.inventory_treatment !== "FIXED_ASSET");
-  const expenses=useQuery({queryKey:["receiving-expense-accounts"],queryFn:()=>getAllAccountLookup({account_type:"EXPENSE",is_active:true,is_posting:true}),enabled:open && hasDirectUse});
-  const selectedPO: any = purchaseOrder ?? (receivable.data ?? []).find((order: any) => order.id === purchaseOrderId);
-  const businessUnits = useQuery({ queryKey: ["business-units", "receiving-dimensions"], queryFn: () => filterBusinessUnits({ is_active: true }), enabled: open && Boolean(selectedPO?.business_unit_id) && !selectedPO?.business_unit_name });
-  const departments = useQuery({ queryKey: ["departments", "receiving-dimensions", selectedPO?.business_unit_id], queryFn: () => listDepartments({ business_unit_id: selectedPO?.business_unit_id, is_active: true }), enabled: open && Boolean(selectedPO?.department_id) && !selectedPO?.department_name });
-  const locations = useQuery({ queryKey: ["locations", "receiving-dimensions", selectedPO?.business_unit_id], queryFn: () => listLocations({ business_unit_id: selectedPO?.business_unit_id, is_active: true }), enabled: open && Boolean(selectedPO?.location_id) && !selectedPO?.location_name });
-  const businessUnitName = selectedPO?.business_unit_name ?? businessUnits.data?.find((item) => item.id === selectedPO?.business_unit_id)?.name ?? "—";
-  const departmentName = selectedPO?.department_name ?? departments.data?.find((item) => item.id === selectedPO?.department_id)?.name ?? "—";
-  const locationName = selectedPO?.location_name ?? locations.data?.find((item) => item.id === selectedPO?.location_id)?.name ?? "—";
+  const [draftReady, setDraftReady] = useState(false);
+  const opened = useRef(false);
+  const sourceLoaded = useRef<number | undefined>(undefined);
+  const headerBaseline = useRef("");
+  const linesBaseline = useRef("[]");
+  const restoredLines = useRef<PoReceivingDraft | null>(null);
+  const draft: PoReceivingDraft = {
+    purchaseOrderId,
+    warehouseId,
+    receivedAt,
+    historical,
+    deliveryNote,
+    notes,
+    billing,
+    costCorrectionReason,
+    lines,
+  };
+  const dirty =
+    open &&
+    draftReady &&
+    (JSON.stringify({ ...draft, lines: [] }) !== headerBaseline.current ||
+      JSON.stringify(lines) !== linesBaseline.current);
+  const recovery = useFormRecovery<PoReceivingDraft>(
+    `receiving:po:${purchaseOrder?.id ?? "selector"}:v1`,
+    draft,
+    dirty,
+    validReceivingLinesDraft,
+  );
+  const requestClose = useUnsavedFormChanges({
+    dirty,
+    busy: receive.isPending,
+    recoverable: !recovery.failed,
+    onClose,
+  });
+  const hasWarehouse = lines.some(
+    (line) => line.quantity > 0 && destinationFor(line) === "WAREHOUSE",
+  );
+  const hasDirectUse = lines.some(
+    (line) =>
+      destinationFor(line) === "DIRECT_USE" &&
+      line.inventory_treatment !== "FIXED_ASSET",
+  );
+  const expenses = useQuery({
+    queryKey: ["receiving-expense-accounts"],
+    queryFn: () =>
+      getAllAccountLookup({
+        account_type: "EXPENSE",
+        is_active: true,
+        is_posting: true,
+      }),
+    enabled: open && hasDirectUse,
+  });
+  const selectedPO: any =
+    purchaseOrder ??
+    (receivable.data ?? []).find((order: any) => order.id === purchaseOrderId);
+  const businessUnits = useQuery({
+    queryKey: ["business-units", "receiving-dimensions"],
+    queryFn: () => filterBusinessUnits({ is_active: true }),
+    enabled:
+      open &&
+      Boolean(selectedPO?.business_unit_id) &&
+      !selectedPO?.business_unit_name,
+  });
+  const departments = useQuery({
+    queryKey: [
+      "departments",
+      "receiving-dimensions",
+      selectedPO?.business_unit_id,
+    ],
+    queryFn: () =>
+      listDepartments({
+        business_unit_id: selectedPO?.business_unit_id,
+        is_active: true,
+      }),
+    enabled:
+      open &&
+      Boolean(selectedPO?.department_id) &&
+      !selectedPO?.department_name,
+  });
+  const locations = useQuery({
+    queryKey: [
+      "locations",
+      "receiving-dimensions",
+      selectedPO?.business_unit_id,
+    ],
+    queryFn: () =>
+      listLocations({
+        business_unit_id: selectedPO?.business_unit_id,
+        is_active: true,
+      }),
+    enabled:
+      open && Boolean(selectedPO?.location_id) && !selectedPO?.location_name,
+  });
+  const businessUnitName =
+    selectedPO?.business_unit_name ??
+    businessUnits.data?.find((item) => item.id === selectedPO?.business_unit_id)
+      ?.name ??
+    "—";
+  const departmentName =
+    selectedPO?.department_name ??
+    departments.data?.find((item) => item.id === selectedPO?.department_id)
+      ?.name ??
+    "—";
+  const locationName =
+    selectedPO?.location_name ??
+    locations.data?.find((item) => item.id === selectedPO?.location_id)?.name ??
+    "—";
 
   useEffect(() => {
-    if (!open) return;
-    setPurchaseOrderId(purchaseOrder?.id);
-    setHistorical(false); setWarehouseId(null); setReceivedAt(nowLocal()); setDeliveryNote(""); setNotes(""); setCostCorrectionReason(""); setLines([]); setBilling(emptyReceivingBilling());
-  }, [open, purchaseOrder]);
+    if (!open) {
+      opened.current = false;
+      setDraftReady(false);
+      return;
+    }
+    if (opened.current) return;
+    opened.current = true;
+    sourceLoaded.current = undefined;
+    const initial = initialPoReceivingDraft(purchaseOrder?.id);
+    const cached = recovery.load();
+    const saved =
+      cached &&
+      (!purchaseOrder?.id || cached.purchaseOrderId === purchaseOrder.id)
+        ? cached
+        : null;
+    const next = saved ?? initial;
+    headerBaseline.current = JSON.stringify({ ...initial, lines: [] });
+    linesBaseline.current = "[]";
+    restoredLines.current = saved;
+    setPurchaseOrderId(next.purchaseOrderId);
+    setHistorical(next.historical);
+    setWarehouseId(next.warehouseId);
+    setReceivedAt(next.receivedAt);
+    setDeliveryNote(next.deliveryNote);
+    setNotes(next.notes);
+    setCostCorrectionReason(next.costCorrectionReason);
+    setLines([]);
+    setBilling(next.billing);
+    setDraftReady(true);
+    if (saved) recovery.notifyRestored();
+  }, [open, purchaseOrder?.id, recovery]);
   useEffect(() => {
-    setLines((remaining.data ?? []).map((item: any) => ({ ...item, ordered_quantity: Number(item.ordered_quantity), received_quantity: Number(item.received_quantity), remaining_quantity: Number(item.remaining_quantity), quantity: 0, unit_cost: Number(item.unit_cost ?? 0), original_unit_cost: Number(item.unit_cost ?? 0), expense_account_id: item.purchase_account_id ?? null, destination_type: null, is_taxable: !!item.is_taxable, tax_rate: item.is_taxable ? Number(item.tax_rate??0) : 0 })));
-  }, [remaining.data]);
-  const hasCostOverride = lines.some((line) => line.unit_cost !== line.original_unit_cost);
-  const isPartial = lines.some((line) => line.quantity > 0 && line.quantity < line.remaining_quantity) || lines.some((line) => line.quantity === 0);
-  const subtotal = useMemo(() => lines.reduce((sum, line) => sum + line.quantity * line.unit_cost, 0), [lines]);
-  const taxAmount = useMemo(() => lines.reduce((sum, line) => sum + (line.is_taxable ? (line.quantity * line.unit_cost * Number(line.tax_rate || 0)) / 100 : 0), 0), [lines]);
-  const updateQuantity = (id: number, value: number) => setLines((current) => current.map((line) => line.purchase_order_item_id === id ? { ...line, quantity: Math.min(Math.max(value, 0), line.remaining_quantity) } : line));
-  const updateCost = (id: number, value: number) => setLines((current) => current.map((line) => line.purchase_order_item_id === id ? { ...line, unit_cost: value } : line));
+    if (
+      !open ||
+      !draftReady ||
+      !purchaseOrderId ||
+      !remaining.data ||
+      sourceLoaded.current === purchaseOrderId
+    )
+      return;
+    sourceLoaded.current = purchaseOrderId;
+    const defaults: ReceiveLine[] = remaining.data.map((item: any) => ({
+      ...item,
+      ordered_quantity: Number(item.ordered_quantity),
+      received_quantity: Number(item.received_quantity),
+      remaining_quantity: Number(item.remaining_quantity),
+      quantity: 0,
+      unit_cost: Number(item.unit_cost ?? 0),
+      original_unit_cost: Number(item.unit_cost ?? 0),
+      expense_account_id: item.purchase_account_id ?? null,
+      destination_type: null,
+      is_taxable: !!item.is_taxable,
+      tax_rate: item.is_taxable ? Number(item.tax_rate ?? 0) : 0,
+    }));
+    linesBaseline.current = JSON.stringify(defaults);
+    const saved =
+      restoredLines.current?.purchaseOrderId === purchaseOrderId
+        ? restoredLines.current
+        : null;
+    setLines(
+      defaults.map((line) => {
+        const restored = saved?.lines.find(
+          (item) => item.purchase_order_item_id === line.purchase_order_item_id,
+        );
+        if (!restored) return line;
+        return {
+          ...line,
+          quantity: restoredReceivingQuantity(
+            line.remaining_quantity,
+            restored.quantity,
+          ),
+          unit_cost: restored.unit_cost,
+          expense_account_id: restored.expense_account_id,
+          destination_type: restored.destination_type,
+          destination_override_reason: restored.destination_override_reason,
+          tax_rate: restored.tax_rate,
+          is_taxable: restored.is_taxable,
+        };
+      }),
+    );
+    restoredLines.current = null;
+  }, [open, draftReady, purchaseOrderId, remaining.data]);
+  const hasCostOverride = lines.some(
+    (line) => line.unit_cost !== line.original_unit_cost,
+  );
+  const isPartial =
+    lines.some(
+      (line) => line.quantity > 0 && line.quantity < line.remaining_quantity,
+    ) || lines.some((line) => line.quantity === 0);
+  const subtotal = useMemo(
+    () => lines.reduce((sum, line) => sum + line.quantity * line.unit_cost, 0),
+    [lines],
+  );
+  const taxAmount = useMemo(
+    () =>
+      lines.reduce(
+        (sum, line) =>
+          sum +
+          (line.is_taxable
+            ? (line.quantity * line.unit_cost * Number(line.tax_rate || 0)) /
+              100
+            : 0),
+        0,
+      ),
+    [lines],
+  );
+  const updateQuantity = (id: number, value: number) =>
+    setLines((current) =>
+      current.map((line) =>
+        line.purchase_order_item_id === id
+          ? {
+              ...line,
+              quantity: Math.min(Math.max(value, 0), line.remaining_quantity),
+            }
+          : line,
+      ),
+    );
+  const updateCost = (id: number, value: number) =>
+    setLines((current) =>
+      current.map((line) =>
+        line.purchase_order_item_id === id
+          ? { ...line, unit_cost: value }
+          : line,
+      ),
+    );
   const submit = async () => {
     if (!purchaseOrderId) return alert("Select an approved purchase order.");
     if (hasWarehouse && !warehouseId) return alert("Warehouse is required.");
-    if (!receivedAt || receivedAt < "2026-01-01T00:00") return alert("Receiving dated before 2026 is excluded from stock.");
-    
+    if (!receivedAt || receivedAt < "2026-01-01T00:00")
+      return alert("Receiving dated before 2026 is excluded from stock.");
+
     const selected = lines.filter((line) => line.quantity > 0);
-    if (!selected.length) return alert("Enter a received quantity greater than zero.");
+    if (!selected.length)
+      return alert("Enter a received quantity greater than zero.");
     const routingIssue = selected.map(destinationError).find(Boolean);
     if (routingIssue) return alert(routingIssue);
-    if(selected.some(line=>destinationFor(line) === "DIRECT_USE" && line.catalog_type === "HOTEL" && line.inventory_treatment !== "FIXED_ASSET" && !line.expense_account_id))return alert("Choose an expense destination for each Hotel item in the PO department.");
-    if (selected.some((line) => line.unit_cost <= 0)) return alert("Unit cost must be greater than zero.");
-    if (hasCostOverride && !canCorrectCost) return alert("Only an authorized manager can override PO unit cost.");
-    if (hasCostOverride && costCorrectionReason.trim().length < 3) return alert("Enter a correction reason.");
+    if (
+      selected.some(
+        (line) =>
+          destinationFor(line) === "DIRECT_USE" &&
+          line.catalog_type === "HOTEL" &&
+          line.inventory_treatment !== "FIXED_ASSET" &&
+          !line.expense_account_id,
+      )
+    )
+      return alert(
+        "Choose an expense destination for each Hotel item in the PO department.",
+      );
+    if (selected.some((line) => line.unit_cost <= 0))
+      return alert("Unit cost must be greater than zero.");
+    if (hasCostOverride && !canCorrectCost)
+      return alert("Only an authorized manager can override PO unit cost.");
+    if (hasCostOverride && costCorrectionReason.trim().length < 3)
+      return alert("Enter a correction reason.");
     const billingIssue = validateReceivingBilling(billing, subtotal);
     if (billingIssue) return alert(billingIssue);
     try {
-      await receive.mutateAsync({ purchaseOrderId, payload: { source_type: historical ? "HISTORICAL_ENTRY" : "LIVE", received_at: new Date(receivedAt).toISOString(), external_reference: deliveryNote || null, warehouse_id: hasWarehouse ? warehouseId : null, notes: notes || null, cost_correction_reason: hasCostOverride ? costCorrectionReason.trim() : null, ...receivingBillingPayload(billing), items: selected.map((line) => ({ purchase_order_item_id: line.purchase_order_item_id, quantity: line.quantity, unit_cost: line.unit_cost, is_taxable:Number(line.tax_rate||0)>0, tax_rate:Number(line.tax_rate||0), destination_type:line.destination_type ?? null, destination_override_reason:line.destination_override_reason || null, expense_account_id:destinationFor(line) === "DIRECT_USE" ? line.expense_account_id ?? null : null })) } });
+      await receive.mutateAsync({
+        purchaseOrderId,
+        payload: {
+          source_type: historical ? "HISTORICAL_ENTRY" : "LIVE",
+          received_at: new Date(receivedAt).toISOString(),
+          external_reference: deliveryNote || null,
+          warehouse_id: hasWarehouse ? warehouseId : null,
+          notes: notes || null,
+          cost_correction_reason: hasCostOverride
+            ? costCorrectionReason.trim()
+            : null,
+          ...receivingBillingPayload(billing),
+          items: selected.map((line) => ({
+            purchase_order_item_id: line.purchase_order_item_id,
+            quantity: line.quantity,
+            unit_cost: line.unit_cost,
+            is_taxable: Number(line.tax_rate || 0) > 0,
+            tax_rate: Number(line.tax_rate || 0),
+            destination_type: line.destination_type ?? null,
+            destination_override_reason:
+              line.destination_override_reason || null,
+            expense_account_id:
+              destinationFor(line) === "DIRECT_USE"
+                ? (line.expense_account_id ?? null)
+                : null,
+          })),
+        },
+      });
+      recovery.clear();
       onClose();
     } catch (error) {
-      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
-      alert(typeof detail === "string" ? detail : "Goods receipt could not be saved");
+      const detail = axios.isAxiosError(error)
+        ? error.response?.data?.detail
+        : null;
+      alert(
+        typeof detail === "string"
+          ? detail
+          : "Goods receipt could not be saved",
+      );
     }
   };
-  const poOptions=(receivable.data??[]).map((order:any)=>({id:order.id,label:`${order.po_number} · ${order.expected_date ?? "Unscheduled"} — ${order.supplier_name ?? ""}`.trim(),keywords:[order.po_number??"",order.supplier_name??"",order.business_unit_name??"",order.department_name??"",order.location_name??""]}));
-  const warehouseOptions=warehouses.filter((warehouse:any)=>warehouse.is_active && Number(warehouse.location_id) === Number(selectedPO?.location_id)).map((warehouse:any)=>({id:warehouse.id,label:`${warehouse.code} — ${warehouse.name}`,keywords:[warehouse.code??"",warehouse.name??""]}));
+  const poOptions = (receivable.data ?? []).map((order: any) => ({
+    id: order.id,
+    label:
+      `${order.po_number} · ${order.expected_date ?? "Unscheduled"} — ${order.supplier_name ?? ""}`.trim(),
+    keywords: [
+      order.po_number ?? "",
+      order.supplier_name ?? "",
+      order.business_unit_name ?? "",
+      order.department_name ?? "",
+      order.location_name ?? "",
+    ],
+  }));
+  const warehouseOptions = warehouses
+    .filter(
+      (warehouse: any) =>
+        warehouse.is_active &&
+        Number(warehouse.location_id) === Number(selectedPO?.location_id),
+    )
+    .map((warehouse: any) => ({
+      id: warehouse.id,
+      label: `${warehouse.code} — ${warehouse.name}`,
+      keywords: [warehouse.code ?? "", warehouse.name ?? ""],
+    }));
 
-  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-    <DialogContent className="max-w-[1440px]">
-      <DialogHeader><DialogTitle>Create Receiving Report</DialogTitle></DialogHeader>
-      <DialogBody>
-        <div className="space-y-4">
-          {hasPermission("receiving.post") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={historical} onChange={event => setHistorical(event.target.checked)}/> Historical entry (Draft → Post)</label>}
-          {!purchaseOrder && <SearchableSelect label="Approved Purchase Order" required value={purchaseOrderId} disabled={receivable.isLoading} placeholder={receivable.isLoading ? "Loading approved POs..." : "Type PO number or supplier..."} options={poOptions} onChange={setPurchaseOrderId}/>} 
-          {selectedPO && <div className="grid gap-3 rounded-lg border bg-slate-50 p-3 md:grid-cols-3"><div><span className="text-xs text-slate-500">Business Unit</span><div className="font-medium">{businessUnitName}</div></div><div><span className="text-xs text-slate-500">Department</span><div className="font-medium">{departmentName}</div></div><div><span className="text-xs text-slate-500">Location</span><div className="font-medium">{locationName}</div></div></div>}
-          <div className="grid gap-3 md:grid-cols-2"><label>Receipt Date<input type="datetime-local" disabled={!historical} data-accounting-date="true" data-min-date="2026-01-01" min="2026-01-01T00:00" className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)}/></label><label>Delivery Note Number<input className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]" value={deliveryNote} onChange={(event) => setDeliveryNote(event.target.value)}/></label></div>
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">Partial receiving is supported. Enter only the quantity physically received. Remaining quantities stay open for the next Receiving Report.{isPartial && <strong className="ml-1">This draft is a partial receipt.</strong>}</div>
+  return (
+    <FormDialog
+      open={open}
+      title="Create Receiving Report"
+      description="Receive only the quantity delivered against an approved Purchase Order"
+      onRequestClose={requestClose}
+      busy={receive.isPending}
+      size="extra"
+      bodyClassName="space-y-5"
+      footer={
+        <FormFooter
+          onCancel={requestClose}
+          onSubmit={submit}
+          saving={receive.isPending}
+          submitDisabled={!lines.length}
+          submitLabel="Save Receiving Draft"
+          aside={
+            selectedPO?.po_number ? `Source ${selectedPO.po_number}` : undefined
+          }
+        />
+      }
+    >
+      {hasPermission("receiving.post") && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={historical}
+            onChange={(event) => setHistorical(event.target.checked)}
+          />{" "}
+          Historical entry (Draft → Post)
+        </label>
+      )}
+      <FormSection
+        title="Source purchase order"
+        description="The organization dimensions follow the approved PO"
+      >
+        {!purchaseOrder && (
+          <SearchableSelect
+            label="Approved Purchase Order"
+            required
+            value={purchaseOrderId}
+            disabled={receivable.isLoading}
+            placeholder={
+              receivable.isLoading
+                ? "Loading approved POs..."
+                : "Type PO number or supplier..."
+            }
+            options={poOptions}
+            onChange={(id) => {
+              sourceLoaded.current = undefined;
+              restoredLines.current = null;
+              linesBaseline.current = "[]";
+              setLines([]);
+              setPurchaseOrderId(id);
+            }}
+          />
+        )}
+        {selectedPO && (
+          <div className="grid gap-3 rounded-lg border bg-slate-50 p-3 md:grid-cols-3">
+            <div>
+              <span className="text-xs text-slate-500">Business Unit</span>
+              <div className="font-medium">{businessUnitName}</div>
+            </div>
+            <div>
+              <span className="text-xs text-slate-500">Department</span>
+              <div className="font-medium">{departmentName}</div>
+            </div>
+            <div>
+              <span className="text-xs text-slate-500">Location</span>
+              <div className="font-medium">{locationName}</div>
+            </div>
+          </div>
+        )}
+        <FormGrid>
+          <label>
+            Receipt Date
+            <input
+              type="datetime-local"
+              disabled={!historical}
+              data-accounting-date="true"
+              data-min-date="2026-01-01"
+              min="2026-01-01T00:00"
+              className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
+              value={receivedAt}
+              onChange={(event) => setReceivedAt(event.target.value)}
+            />
+          </label>
+          <label>
+            Delivery Note Number
+            <input
+              className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
+              value={deliveryNote}
+              onChange={(event) => setDeliveryNote(event.target.value)}
+            />
+          </label>
+        </FormGrid>
+      </FormSection>
+      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
+        Partial receiving is supported. Enter only the quantity physically
+        received. Remaining quantities stay open for the next Receiving Report.
+        {isPartial && (
+          <strong className="ml-1">This draft is a partial receipt.</strong>
+        )}
+      </div>
 
-          {hasWarehouse && <SearchableSelect label="Warehouse" required value={warehouseId ?? undefined} disabled={warehouses.length===0} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={(value)=>setWarehouseId(value ?? null)}/>} 
-          {remaining.isLoading ? <p>Loading remaining PO items…</p> : !!lines.length && <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="receiving-lines receiving-lines-po"><colgroup><col/><col className="rl-po-quantity"/><col className="rl-po-quantity"/><col className="rl-po-quantity"/><col className="rl-quantity"/><col className="rl-destination"/><col className="rl-unit"/><col className="rl-cost"/><col className="rl-tax-rate"/>{hasDirectUse && <col className="rl-expense"/>}</colgroup><thead><tr><th className="p-2 text-left">Item</th><th className="p-2 text-right">Ordered</th><th className="p-2 text-right">Received</th><th className="p-2 text-right">Remaining</th><th className="p-2 text-right">Qty</th><th className="p-2 text-left">Destination</th><th className="p-2 text-left">UOM</th><th className="whitespace-nowrap p-2 text-left">Unit Cost</th><th className="p-2">PPN %</th>{hasDirectUse && <th className="p-2 text-left">Expense destination</th>}</tr></thead><tbody>{lines.map((line) => <tr key={line.purchase_order_item_id} className="border-t"><td className="p-2"><div className="font-medium">{line.product_code} — {line.product_name}</div></td><td className="p-2 text-right">{line.ordered_quantity}</td><td className="p-2 text-right">{line.received_quantity}</td><td className="p-2 text-right font-semibold">{line.remaining_quantity}</td><td className="p-2"><input type="number" min="0" max={line.remaining_quantity} step="0.01" className="h-9 w-24 rounded-md border px-2 text-right text-[13px] tabular-nums" value={line.quantity} onChange={(event) => updateQuantity(line.purchase_order_item_id, Number(event.target.value))}/></td><td className="p-2"><ReceivingDestinationField name={line.product_name} line={line} onChange={value => setLines(current => current.map(item => item.purchase_order_item_id === line.purchase_order_item_id ? {...item,...value} : item))}/></td><td className="p-2">{line.uom ?? "—"}</td><td className="p-2">{canCorrectCost ? <div className="min-w-0"><CurrencyInput value={line.unit_cost} onValueChange={(value) => updateCost(line.purchase_order_item_id, value)}/></div> : money(line.unit_cost)}</td><td className="p-2"><input aria-label={`PPN rate for ${line.product_name}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={line.tax_rate??0} onChange={e=>setLines(current=>current.map(item=>item.purchase_order_item_id===line.purchase_order_item_id?{...item,tax_rate:Number(e.target.value),is_taxable:Number(e.target.value)>0}:item))}/></td>{hasDirectUse && <td className="p-2">{destinationFor(line) === "DIRECT_USE" && line.inventory_treatment !== "FIXED_ASSET" ? <select aria-label={`Expense destination for ${line.product_name}`} className="w-full rounded border p-2" value={line.expense_account_id ?? ""} onChange={e=>setLines(current=>current.map(item=>item.purchase_order_item_id === line.purchase_order_item_id ? {...item,expense_account_id:Number(e.target.value)||null}:item))}><option value="">Item expense mapping</option>{expenses.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select> : "—"}</td>}</tr>)}</tbody></table></div>}
-          <div className="ml-auto w-full max-w-sm rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs tabular-nums">Subtotal <strong className="float-right">{money(subtotal)}</strong><br/>PPN estimate · supplier documents <strong className="float-right">{money(taxAmount)}</strong><hr className="my-2"/>Grand Total <strong className="float-right">{money(subtotal + taxAmount)}</strong></div>
-          <ReceivingBillingFields value={billing} onChange={setBilling} subtotal={subtotal} tax={taxAmount} open={open}/>
-          {hasCostOverride && <textarea className="min-h-20 w-full rounded-md border p-2 text-[13px]" placeholder="Cost correction reason" value={costCorrectionReason} onChange={(event) => setCostCorrectionReason(event.target.value)}/>}<textarea className="min-h-20 w-full rounded-md border p-2 text-[13px]" placeholder="Notes" value={notes} onChange={(event) => setNotes(event.target.value)}/>
-        </div>
-      </DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={receive.isPending || !lines.length} onClick={submit}>Save Receiving Draft</Button></DialogFooter>
-    </DialogContent>
-  </Dialog>;
+      {hasWarehouse && (
+        <SearchableSelect
+          label="Warehouse"
+          required
+          value={warehouseId ?? undefined}
+          disabled={warehouses.length === 0}
+          placeholder="Type warehouse code or name..."
+          options={warehouseOptions}
+          onChange={(value) => setWarehouseId(value ?? null)}
+        />
+      )}
+      <FormSection
+        title="Received items"
+        description="Partial receipts leave the remaining PO quantities available"
+      >
+        {remaining.isLoading ? (
+          <p>Loading remaining PO items…</p>
+        ) : (
+          !!lines.length && (
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="receiving-lines receiving-lines-po">
+                <colgroup>
+                  <col />
+                  <col className="rl-po-quantity" />
+                  <col className="rl-po-quantity" />
+                  <col className="rl-po-quantity" />
+                  <col className="rl-quantity" />
+                  <col className="rl-destination" />
+                  <col className="rl-unit" />
+                  <col className="rl-cost" />
+                  <col className="rl-tax-rate" />
+                  {hasDirectUse && <col className="rl-expense" />}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th className="p-2 text-left">Item</th>
+                    <th className="p-2 text-right">Ordered</th>
+                    <th className="p-2 text-right">Received</th>
+                    <th className="p-2 text-right">Remaining</th>
+                    <th className="p-2 text-right">Qty</th>
+                    <th className="p-2 text-left">Destination</th>
+                    <th className="p-2 text-left">UOM</th>
+                    <th className="whitespace-nowrap p-2 text-left">
+                      Unit Cost
+                    </th>
+                    <th className="p-2">PPN %</th>
+                    {hasDirectUse && (
+                      <th className="p-2 text-left">Expense destination</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => (
+                    <tr key={line.purchase_order_item_id} className="border-t">
+                      <td className="p-2">
+                        <div className="font-medium">
+                          {line.product_code} — {line.product_name}
+                        </div>
+                      </td>
+                      <td className="p-2 text-right">
+                        {line.ordered_quantity}
+                      </td>
+                      <td className="p-2 text-right">
+                        {line.received_quantity}
+                      </td>
+                      <td className="p-2 text-right font-semibold">
+                        {line.remaining_quantity}
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          min="0"
+                          max={line.remaining_quantity}
+                          step="0.01"
+                          className="h-9 w-24 rounded-md border px-2 text-right text-[13px] tabular-nums"
+                          value={line.quantity}
+                          onChange={(event) =>
+                            updateQuantity(
+                              line.purchase_order_item_id,
+                              Number(event.target.value),
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="p-2">
+                        <ReceivingDestinationField
+                          name={line.product_name}
+                          line={line}
+                          onChange={(value) =>
+                            setLines((current) =>
+                              current.map((item) =>
+                                item.purchase_order_item_id ===
+                                line.purchase_order_item_id
+                                  ? { ...item, ...value }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="p-2">{line.uom ?? "—"}</td>
+                      <td className="p-2">
+                        {canCorrectCost ? (
+                          <div className="min-w-0">
+                            <CurrencyInput
+                              value={line.unit_cost}
+                              onValueChange={(value) =>
+                                updateCost(line.purchase_order_item_id, value)
+                              }
+                            />
+                          </div>
+                        ) : (
+                          money(line.unit_cost)
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <input
+                          aria-label={`PPN rate for ${line.product_name}`}
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          className="h-8 w-20 rounded border px-2 text-right"
+                          value={line.tax_rate ?? 0}
+                          onChange={(e) =>
+                            setLines((current) =>
+                              current.map((item) =>
+                                item.purchase_order_item_id ===
+                                line.purchase_order_item_id
+                                  ? {
+                                      ...item,
+                                      tax_rate: Number(e.target.value),
+                                      is_taxable: Number(e.target.value) > 0,
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </td>
+                      {hasDirectUse && (
+                        <td className="p-2">
+                          {destinationFor(line) === "DIRECT_USE" &&
+                          line.inventory_treatment !== "FIXED_ASSET" ? (
+                            <select
+                              aria-label={`Expense destination for ${line.product_name}`}
+                              className="w-full rounded border p-2"
+                              value={line.expense_account_id ?? ""}
+                              onChange={(e) =>
+                                setLines((current) =>
+                                  current.map((item) =>
+                                    item.purchase_order_item_id ===
+                                    line.purchase_order_item_id
+                                      ? {
+                                          ...item,
+                                          expense_account_id:
+                                            Number(e.target.value) || null,
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="">Item expense mapping</option>
+                              {expenses.data?.map((account) => (
+                                <option key={account.id} value={account.id}>
+                                  {account.account_code} —{" "}
+                                  {account.account_name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+        <ReceivingTotals
+          subtotal={subtotal}
+          tax={taxAmount}
+          label="PPN estimate"
+        />
+      </FormSection>
+      <FormSection
+        title="Supplier charges"
+        description="All additional billing fields are optional"
+      >
+        <ReceivingBillingFields
+          value={billing}
+          onChange={setBilling}
+          subtotal={subtotal}
+          tax={taxAmount}
+          open={open}
+        />
+      </FormSection>
+      {hasCostOverride && (
+        <textarea
+          className="min-h-20 w-full rounded-md border p-2 text-[13px]"
+          placeholder="Cost correction reason"
+          value={costCorrectionReason}
+          onChange={(event) => setCostCorrectionReason(event.target.value)}
+        />
+      )}
+      <textarea
+        className="min-h-20 w-full rounded-md border p-2 text-[13px]"
+        placeholder="Notes"
+        value={notes}
+        onChange={(event) => setNotes(event.target.value)}
+      />
+    </FormDialog>
+  );
 }
-

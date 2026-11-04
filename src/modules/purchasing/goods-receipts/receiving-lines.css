@@ -6,6 +6,7 @@
   font-size: 12px;
 }
 .receiving-lines-po { min-width: 1120px; }
+.receiving-lines-direct, .receiving-lines-edit { min-width: 880px; }
 .receiving-lines :is(th, td) { min-width: 0; padding: 6px 4px; }
 .receiving-lines th { white-space: nowrap; }
 .receiving-lines :is(input:not([type="checkbox"]), select, [role="combobox"]) {

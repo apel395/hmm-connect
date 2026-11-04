@@ -5,10 +5,12 @@ const React=req('react'),renderer=req('react-test-renderer');global.IS_REACT_ACT
 const receipt={id:10,receipt_number:'GR-EDIT',status:'DRAFT',source_type:'HISTORICAL_ENTRY',received_at:'2026-01-03T10:00:00Z',supplier_name:'Supplier',business_unit_id:1,department_id:1,location_id:1,destination_type:'DIRECT_USE',items:[1,2].map(id=>({id,product_id:100+id,product_name:`Item ${id}`,product_code:`CODE-${id}`,catalog_type:'CATERING',inventory_treatment:'DIRECT_USE',destination_type:'DIRECT_USE',quantity:2,unit_cost:10,is_taxable:true,tax_rate:5,master_is_taxable:true,master_tax_rate:11}))};
 async function run(){
  const bundled=await req('esbuild').build({absWorkingDir:root,tsconfig:root+'/tsconfig.app.json',entryPoints:['src/modules/purchasing/goods-receipts/components/EditReceivingDialog.tsx'],loader:{'.css':'empty'},bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/jsx-runtime'],plugins:[{name:'mocks',setup(b){
- b.onResolve({filter:/^(?:@\/api\/client|@\/components\/|@\/modules\/|@tanstack\/react-query|sonner|lucide-react|\.\.\/hooks\/useGoodsReceipts|\.\/ReceivingDestinationField)/},a=>({path:a.path,namespace:'mock'}));
+ b.onResolve({filter:/^(?:@\/api\/client|@\/components\/|@\/modules\/|@\/hooks\/useFormRecovery|@\/hooks\/useUnsavedFormChanges|@tanstack\/react-query|sonner|lucide-react|\.\.\/hooks\/useGoodsReceipts|\.\/ReceivingDestinationField)/},a=>({path:a.path,namespace:'mock'}));
  b.onLoad({filter:/.*/,namespace:'mock'},a=>{let contents;
  if(a.path==='@/api/client')contents='export default {get:async()=>({data:{discount_account:null}})};';
  else if(a.path==='sonner')contents='export const toast={error:x=>globalThis.__errors.push(x),success:()=>{}};';
+ else if(a.path==='@/hooks/useFormRecovery')contents='export default ()=>({load:()=>null,clear:()=>{},failed:false,notifyRestored:()=>{}});';
+ else if(a.path==='@/hooks/useUnsavedFormChanges')contents='export default ({onClose})=>onClose;';
  else if(a.path==='lucide-react')contents='export const Trash2=()=>null;';
  else if(a.path.includes('useGoodsReceipts'))contents='export const useUpdateGoodsReceipt=()=>({isPending:false,mutateAsync:async x=>globalThis.__saved.push(x)});';
  else if(a.path.includes('useWarehouses'))contents='export const useWarehouses=()=>({data:[]});';
@@ -16,6 +18,8 @@ async function run(){
  else if(a.path.includes('/organization/'))contents='export const listLocations=async()=>[];';
  else if(a.path==='@tanstack/react-query')contents='export const useQuery=()=>({data:[]});';
  else if(a.path.includes('ProductCombobox'))contents="import React from 'react';export default p=>React.createElement('product-picker',p);";
+ else if(a.path.endsWith('/form-system/FormDialog'))contents="import React from 'react';export default p=>p.open?React.createElement('div',null,p.children,p.footer):null;";
+ else if(a.path.endsWith('/form-system/FormFooter'))contents="import React from 'react';export default p=>React.createElement('button',{onClick:p.onSubmit},p.submitLabel);";
  else if(a.path.endsWith('/Dialog'))contents="import React from 'react';export const DialogBody=p=>React.createElement('div',null,p.children);export const DialogContent=DialogBody,DialogFooter=DialogBody,DialogHeader=DialogBody,DialogTitle=DialogBody;export default p=>p.open?React.createElement('div',null,p.children):null;";
  else if(a.path.includes('/Button'))contents="import React from 'react';export default p=>React.createElement('button',p,p.children);";
  else contents="import React from 'react';export default p=>React.createElement('div',null,p.children);";

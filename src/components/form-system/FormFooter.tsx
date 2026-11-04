@@ -6,6 +6,7 @@ interface FormFooterProps {
   onSubmit: () => void;
   submitLabel: string;
   saving?: boolean;
+  submitDisabled?: boolean;
   aside?: ReactNode;
 }
 
@@ -14,6 +15,7 @@ export default function FormFooter({
   onSubmit,
   submitLabel,
   saving,
+  submitDisabled = false,
   aside,
 }: FormFooterProps) {
   return (
@@ -28,7 +30,12 @@ export default function FormFooter({
         >
           Cancel
         </Button>
-        <Button type="button" loading={saving} onClick={onSubmit}>
+        <Button
+          type="button"
+          loading={saving}
+          disabled={submitDisabled}
+          onClick={onSubmit}
+        >
           {submitLabel}
         </Button>
       </div>
