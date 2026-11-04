@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import console from 'node:console';
+import {build} from 'esbuild';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const React=require('react');
+const {renderToStaticMarkup}=require('react-dom/server');
+const compiled=await build({entryPoints:['src/modules/pos/pages/PosReceiptPrintPage.tsx'],bundle:true,write:false,tsconfig:'tsconfig.app.json',platform:'node',format:'cjs',jsx:'automatic',external:['react','react/jsx-runtime'],plugins:[{name:'print-fixtures',setup(b){
+ b.onResolve({filter:/^(@tanstack\/react-query|react-router-dom|@\/api\/client|@\/components\/)/},a=>({path:a.path,namespace:'fixture'}));
+ b.onLoad({filter:/.*/,namespace:'fixture'},a=>({loader:'js',contents:a.path==='@tanstack/react-query'?`export const useQuery=()=>({isLoading:false,data:globalThis.__phrPosDoc});`:a.path==='react-router-dom'?`export const useParams=()=>({id:'12'});`:a.path==='@/api/client'?`export default {};`:a.path.includes('DocumentPrintTemplate')?`import React from 'react';export default p=>React.createElement('div',{'data-standard-print':true},p.title);`:`import React from 'react';export default p=>React.createElement('button',{disabled:p.disabled},p.children);`}));
+}}]});
+const mod={exports:{}};new Function('module','exports','require',compiled.outputFiles[0].text)(mod,mod.exports,require);
+const invoice={id:1,invoice_number:'INV-20261022-00002',invoice_date:'2026-10-22',customer_name:'PHR',amount:'507797906.00',received_amount:'507797906.00',outstanding_amount:'0.00',print_ready:true,layout:{template:'phr',title:'INVOICE',show_settlement:false},document:{description:'Biweekly Catering Service',lines:[{registration_number:'REG-1',description:'Catering period',amount:'461634460.00'}],tax_label:'PBJT',tax_amount:'46163446.00',amount_in_words:''}};
+globalThis.__phrPosDoc={transaction_type:'INVOICE',client_invoice:invoice};
+const render=()=>renderToStaticMarkup(React.createElement(mod.exports.default));
+let html=render();
+for(const value of ['phr-invoice','Reg No.','REG-1','507,797,906.00','INV-20261022-00002','Signature space'])assert.ok(html.includes(value),value);
+assert.ok(!html.includes('data-standard-print'));
+globalThis.__phrPosDoc={transaction_type:'INVOICE',client_invoice:{...invoice,print_ready:false}};
+assert.ok(render().includes('disabled=""'));
+globalThis.__phrPosDoc={transaction_type:'POS',client_invoice:null,items:[],sale_date:'2026-10-22'};
+html=render();assert.ok(html.includes('data-standard-print')&&html.includes('POS Receipt'));
+console.log('POS print PASS: shared PHR AR invoice, actual identity/tax/amount, incomplete document control, unchanged normal POS receipt.');

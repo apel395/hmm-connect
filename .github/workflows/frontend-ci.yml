@@ -43,3 +43,5 @@ jobs:
       - run: npm ci
       - run: node node_modules/playwright-core/cli.js install --with-deps chromium
       - run: node scripts/test-purchasing-pdf-browser.mjs
+      - name: Verify PHR invoice layout and pagination
+        run: node scripts/test-phr-invoice-browser.mjs
