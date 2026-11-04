@@ -14,7 +14,7 @@
     "test:workspace": "node scripts/test-workspace-back.cjs",
     "test:purchasing-forms": "node scripts/test-purchase-order-form-system.cjs && node scripts/test-purchasing-form-migrations.cjs && node scripts/test-form-recovery-hook.cjs",
     "test:store-request": "node scripts/test-store-request-availability.cjs && node scripts/test-inventory-returns.cjs && node scripts/test-inventory-completion.cjs",
-    "test:pos-operations": "node scripts/test-pos-outlet-operations.cjs && node scripts/test-pos-outlet-context.cjs && node scripts/test-pos-outlet-setup.cjs && node scripts/test-master-dropdowns.cjs && node scripts/test-receiving-edit.cjs && node scripts/test-receiving-edit-action.cjs && node scripts/test-receiving-optional-billing.cjs"
+    "test:pos-operations": "node scripts/test-pos-outlet-operations.cjs && node scripts/test-pos-outlet-context.cjs && node scripts/test-pos-outlet-setup.cjs && node scripts/test-master-dropdowns.cjs && node scripts/test-receiving-edit.cjs && node scripts/test-receiving-edit-action.cjs && node scripts/test-receiving-optional-billing.cjs && node scripts/test-receiving-form-drafts.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

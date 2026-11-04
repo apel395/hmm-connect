@@ -9,7 +9,7 @@ import Dialog, {
   DialogTitle,
 } from "@/components/ui/Dialog";
 
-type FormDialogSize = "standard" | "wide" | "large";
+type FormDialogSize = "standard" | "wide" | "large" | "extra";
 
 interface FormDialogProps {
   open: boolean;
@@ -27,6 +27,7 @@ const sizes: Record<FormDialogSize, string> = {
   standard: "max-w-2xl",
   wide: "max-w-4xl",
   large: "max-w-6xl",
+  extra: "max-w-[1440px]",
 };
 
 export default function FormDialog({
@@ -45,7 +46,10 @@ export default function FormDialog({
       open={open}
       onOpenChange={(next) => !next && !busy && onRequestClose()}
     >
-      <DialogContent closeButtonDisabled={busy} className={clsx("max-h-[min(92dvh,900px)]", sizes[size])}>
+      <DialogContent
+        closeButtonDisabled={busy}
+        className={clsx("max-h-[min(92dvh,900px)]", sizes[size])}
+      >
         <DialogHeader>
           <DialogTitle className="text-base font-semibold text-slate-900">
             {title}
