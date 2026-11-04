@@ -7,6 +7,7 @@ import useAuthStore from "@/store/auth";
 import { hasPermission } from "@/lib/access";
 import { posApi } from "../api";
 import OutletSetup from "../OutletSetup";
+import OutletCheckoutSettings from "../components/OutletCheckoutSettings";
 import HotelOutletSettings from "../components/HotelOutletSettings";
 import CateringLocationSetup from "../components/CateringLocationSetup";
 import type { CateringProfile, Choice } from "../cateringTypes";
@@ -36,7 +37,7 @@ function PosSettings({userId,finance,admin}:{userId?:number;finance:boolean;admi
     {options.isError&&<p role="alert">Sales locations could not load. <button type="button" className="underline" onClick={()=>void options.refetch()}>Retry</button></p>}
     {location?.catalog_type==='HOTEL'&&<>
       {admin&&<OutletSetup key={location.id} userId={userId} locationId={location.id} canManage={admin} onSaved={setOutlet}/>}
-      {hotel.valid&&finance&&<HotelOutletSettings key={`${location.id}:${outletId}`} userId={userId} locationId={location.id} departmentId={hotel.department!.id}/>}
+      {hotel.valid&&finance&&<><HotelOutletSettings key={`${location.id}:${outletId}`} userId={userId} locationId={location.id} departmentId={hotel.department!.id}/><OutletCheckoutSettings key={`checkout:${location.id}:${outletId}`} userId={userId} locationId={location.id} departmentId={hotel.department!.id}/></>}
       {!finance&&<p className="text-sm text-slate-600">Order mode and table settings require Finance management permission.</p>}
       {hotel.valid&&<Link className="inline-block text-sm text-emerald-700 underline" to={hotel.href}>Open outlet operations</Link>}
       {!hotel.valid&&<p className="text-sm text-slate-600">Select a Food &amp; Beverage outlet, or configure one above.</p>}

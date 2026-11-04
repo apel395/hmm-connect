@@ -1,3 +1,4 @@
+import type { CheckoutOptions, CheckoutConfiguration } from "./checkoutTypes";
 import api from "@/api/client";
 export type OutletContext = { location_id: number; department_id: number };
 export type OrderMode = "TABLE" | "COUNTER" | "EVENT";
@@ -8,6 +9,9 @@ export type OperationsContext = { order_mode: OrderMode | null; tables: OutletTa
 export type OutletSetupRow = { id: number; name: string; code: string; parent_department_id: number; order_mode: OrderMode | null; is_active: boolean };
 export type OutletSetupInput = { location_id: number; parent_department_id: number; name: string; code: string; order_mode: OrderMode; is_active: boolean };
 export const operationsApi = {
+  checkoutOptions: (scope:OutletContext)=>api.get<CheckoutOptions>("/pos-operations/checkout-options",{params:scope}),
+  checkoutSettings: (scope:OutletContext)=>api.get<CheckoutOptions>("/pos-operations/checkout-settings",{params:scope}),
+  saveCheckoutSettings: (scope:OutletContext,configuration:CheckoutConfiguration,version:string)=>api.put<CheckoutOptions>("/pos-operations/checkout-settings",{...scope,configuration,version}),
   outlets: (location_id: number) => api.get<{ parents: { id: number; name: string }[]; outlets: OutletSetupRow[] }>("/pos-operations/outlets", { params: { location_id } }),
   saveOutlet: (values: OutletSetupInput, id?: number) => id ? api.put<OutletSetupRow>(`/pos-operations/outlets/${id}`, values) : api.post<OutletSetupRow>("/pos-operations/outlets", values),
   context: (scope: OutletContext) => api.get<OperationsContext>("/pos-operations/context", { params: scope }),
