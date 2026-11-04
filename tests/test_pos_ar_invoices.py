@@ -142,4 +142,8 @@ def test_pos_print_reuses_phr_ar_layout_without_writing_financial_data(db,monkey
     with pytest.raises(HTTPException): print_sale(tx.id,s,limited)
     # An explicit standard template remains available to the client.
     s.add(ARInvoiceLayout(customer_id=customer.id,configuration={'template':'standard'}));s.commit()
+    assert print_sale(tx.id,s,ADMIN)['client_invoice']['layout']['template']=='phr'
+    # A new invoice keeps its saved layout even when later client defaults change.
+    # Legacy invoices without a snapshot still use the explicit client layout.
+    tx.billing_details=None;s.commit()
     assert print_sale(tx.id,s,ADMIN)['client_invoice'] is None

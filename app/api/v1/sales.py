@@ -18,6 +18,7 @@ from app.models.warehouse import Warehouse
 from app.schemas.sales_transaction import (
     InvoiceARCorrection,
     SalesTransactionCreate,
+    SalesTransactionItemIn,
     SalesTransactionPost,
     SalesTransactionUpdate,
     SalesTransactionVoid,
@@ -36,6 +37,7 @@ from app.models.customer import Customer
 from app.services.pos_revenue import revenue_accounts
 from app.services.organization_access import business_unit_scope, department_scope, resolve_organization_access
 from app.services import department_outlets
+from app.schemas.catering_billing import CateringLocationSettings
 
 router = APIRouter(prefix="/pos", tags=["Point of Sales"])
 
@@ -67,6 +69,8 @@ def _sale_items(transaction: SalesTransaction) -> list[dict]:
             "product_id": line.product_id,
             "product_code": line.product.code if line.product else None,
             "product_name": line.product.name if line.product else None,
+            "description": line.description, "registration_number": line.registration_number,
+            "service_period_from": line.service_period_from, "service_period_to": line.service_period_to,
             "uom": line.uom,
             "quantity": line.quantity,
             "unit_price": line.unit_price,
@@ -128,6 +132,7 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
         "service_charge_amount": transaction.service_charge_amount,
         "tax_amount": transaction.tax_amount,
         "total_amount": transaction.total_amount,
+        "billing_details": transaction.billing_details,
         "notes": transaction.notes,
         "created_by_id": transaction.created_by_id,
         "created_by_name": (created_by.full_name or created_by.username) if created_by else None,
@@ -183,7 +188,7 @@ def billing_options(db: Session = Depends(get_db), user: User = Depends(get_curr
         default = receivable_account(db).id
     except HTTPException:
         default = None
-    return {"customers": [{"id":c.id,"code":c.customer_code,"name":c.customer_name} for c in db.query(Customer).filter(Customer.is_active.is_(True)).order_by(Customer.customer_name).all()],
+    return {"customers": [{"id":c.id,"code":c.customer_code,"name":c.customer_name,"address":c.address} for c in db.query(Customer).filter(Customer.is_active.is_(True)).order_by(Customer.customer_name).all()],
         "receivable_accounts": [{"id":a.id,"code":a.account_number,"name":a.account_name} for a in receivable_choices(db).all()], "default_receivable_account_id":default}
 
 
@@ -204,12 +209,92 @@ def create_pos_customer(data: PosCustomerCreate, db: Session = Depends(get_db), 
     return {"id": customer.id, "code": customer.customer_code, "name": customer.customer_name}
 
 
+class CateringOrderContext(BaseModel):
+    department_id: int | None = Field(default=None, gt=0)
+    items: list[SalesTransactionItemIn] = Field(default_factory=list, max_length=200)
+
+
+@router.get("/catering-locations/{location_id}")
+def catering_defaults(location_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SalesTransactionService._require(user, "pos.view")
+    from app.dependencies.authorization import has_permission
+    from app.services.catering_billing import catering_location, settings
+    loc = catering_location(db, user, location_id)
+    config = settings(db, location_id).model_dump(mode="json")
+    # Services can be explicitly shared into this location without duplicating Item Master.
+    services = db.query(Product).filter(Product.is_active.is_(True), Product.item_type == "SELL",
+        Product.catalog_type == "CATERING", Product.inventory_treatment == "NON_STOCK",
+        or_(Product.sales_business_unit_id.is_(None), Product.sales_business_unit_id == loc.business_unit_id),
+        or_(Product.sales_location_id.is_(None), Product.sales_location_id.in_(
+            db.query(Location.id).filter(Location.business_unit_id == loc.business_unit_id)))).order_by(Product.name).all()
+    return {"configuration":config, "can_manage":has_permission(user, "finance.manage"),
+        "service_choices":[{"id":p.id,"code":p.code,"name":p.name} for p in services]}
+
+
+@router.put("/catering-locations/{location_id}")
+def save_catering_defaults(location_id: int, data: CateringLocationSettings,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SalesTransactionService._require(user, "finance.manage")
+    SalesTransactionService._require(user, "pos.view")
+    from app.models.catering_billing import CateringLocationBilling
+    from app.services.catering_billing import catering_location
+    from app.services.audit import record_audit
+    loc = catering_location(db, user, location_id, data.department_id)
+    if data.department_id:
+        from app.services.organization_dimensions import validate_dimensions
+        validate_dimensions(db, loc.business_unit_id, loc.id, data.department_id, False)
+    if data.customer_id:
+        customer = db.get(Customer, data.customer_id)
+        if not customer or not customer.is_active:
+            raise HTTPException(422, "Choose an active customer")
+    if data.revenue_account_id:
+        from app.models.chart_of_account import ChartOfAccount
+        from app.services.pos_revenue import validate_revenue
+        validate_revenue(db, db.get(ChartOfAccount, data.revenue_account_id), loc.business_unit_id)
+    if data.receivable_account_id:
+        receivable_account(db, data.receivable_account_id)
+    for product_id in data.service_product_ids:
+        product = db.get(Product, product_id)
+        source_location = db.get(Location, product.sales_location_id) if product and product.sales_location_id else None
+        if not product or not product.is_active or product.item_type != 'SELL' or product.catalog_type != 'CATERING' or product.inventory_treatment != 'NON_STOCK' or product.sales_business_unit_id not in (None, loc.business_unit_id) or (source_location and source_location.business_unit_id != loc.business_unit_id):
+            raise HTTPException(422, "Choose active NON_STOCK Catering services in the same business unit")
+    # Lock the parent as well, serializing first-time inserts for this location.
+    db.query(Location).filter_by(id=location_id).with_for_update().one()
+    row = db.get(CateringLocationBilling, location_id)
+    before = row.configuration if row else None
+    if row is None:
+        row = CateringLocationBilling(location_id=location_id)
+        db.add(row)
+    row.configuration = data.model_dump(mode="json")
+    record_audit(db, user, "CATERING_BILLING_SETTINGS_UPDATED", "LOCATION", f"Updated Catering billing defaults for {loc.name}",
+        entity_id=location_id, before_data=before, after_data=row.configuration)
+    db.commit()
+    return {"configuration":row.configuration}
+
+
+@router.post("/catering-locations/{location_id}/validate-order")
+def validate_catering_context(location_id: int, data: CateringOrderContext,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SalesTransactionService._require(user, "pos.sell")
+    from app.services.catering_billing import catering_location
+    loc = catering_location(db, user, location_id, data.department_id)
+    context = SalesTransactionCreate(transaction_type="INVOICE", location_id=loc.id,
+        department_id=data.department_id, items=data.items)
+    context = SalesTransactionService._master_dimensions(db, context)
+    unit_id, loc_id, dept_id = SalesTransactionService._dimensions(db, None, context, user)
+    transaction = SalesTransaction(transaction_type="INVOICE", location_id=loc_id, business_unit_id=unit_id, department_id=dept_id)
+    for line in data.items:
+        SalesTransactionService._sell_item(db, db.get(Product, line.product_id), transaction)
+    return {"location_id":loc_id, "business_unit_id":unit_id, "department_id":dept_id}
+
+
 @router.get("/products")
 def list_pos_products(
     location_id: int | None = None,
     department_id: int | None = None,
     search: str | None = Query(default=None, max_length=100),
     group_name: str | None = Query(default=None, max_length=100),
+    transaction_type: str | None = Query(default=None, pattern="^(POS|INVOICE)$"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
@@ -237,14 +322,16 @@ def list_pos_products(
         if not unit or not unit.is_active:
             continue
         catalog = "HOTEL" if "hotel" in unit.name.casefold() else "CATERING"
+        from app.services.catering_billing import shared_service_ids
+        shared_ids = shared_service_ids(db, loc.id) if catalog == "CATERING" and transaction_type == "INVOICE" else []
         contexts.append(and_(Product.catalog_type == catalog,
-            or_(Product.sales_location_id.is_(None), Product.sales_location_id == loc.id),
+            or_(Product.sales_location_id.is_(None), Product.sales_location_id == loc.id, Product.id.in_(shared_ids)),
             or_(Product.sales_business_unit_id.is_(None), Product.sales_business_unit_id == loc.business_unit_id)))
     query = db.query(Product).filter(Product.is_active.is_(True), Product.item_type == "SELL",
         Product.inventory_treatment == "NON_STOCK", or_(*contexts) if contexts else false())
     from app.services import item_departments
     if item_departments.available(db) and department_id is not None:
-        query = query.outerjoin(ItemDepartment, ItemDepartment.product_id == Product.id).filter(or_(ItemDepartment.department_id.is_(None), ItemDepartment.department_id == department_id))
+        query = query.outerjoin(ItemDepartment, ItemDepartment.product_id == Product.id).filter(or_(ItemDepartment.department_id.is_(None), ItemDepartment.department_id == department_id, Product.id.in_(shared_service_ids(db, location_id) if location_id and transaction_type == "INVOICE" and location and "hotel" not in db.get(BusinessUnit, location.business_unit_id).name.casefold() else [])))
     if search and search.strip():
         term = f"%{search.strip()}%"
         query = query.filter(or_(Product.code.ilike(term), Product.name.ilike(term)))
@@ -260,8 +347,10 @@ def list_pos_products(
             pbjt_account(db)
         except HTTPException as exc:
             pbjt_error = exc.detail
+    target_shared = set(shared_service_ids(db, location_id)) if location_id and transaction_type == "INVOICE" and location and "hotel" not in db.get(BusinessUnit, location.business_unit_id).name.casefold() else set()
     for p in rows:
-        reason = "Set selling price" if p.selling_price <= 0 else None
+        flexible_price = transaction_type == "INVOICE" and p.catalog_type == "CATERING"
+        reason = "Set selling price" if p.selling_price <= 0 and not flexible_price else None
         tax_type, rate = "NONE", Decimal(0)
         try:
             tax_type, rate = tax_profile(p)
@@ -269,7 +358,8 @@ def list_pos_products(
                 reason = pbjt_error
         except HTTPException as exc:
             reason = exc.detail
-        items.append({"sales_location_id": p.sales_location_id, "sales_business_unit_id": p.sales_business_unit_id, "catalog_type": p.catalog_type,
+        is_shared = transaction_type == "INVOICE" and p.catalog_type == "CATERING" and location_id and p.id in target_shared
+        items.append({"catering_shared": bool(is_shared), "sales_location_id": p.sales_location_id, "sales_business_unit_id": p.sales_business_unit_id, "catalog_type": p.catalog_type,
             **ownership.get(p.id, {}), "product_id": p.id, "product_code": p.code, "product_name": p.name,
             "group_name": p.group_name, "uom": p.uom, "selling_price": p.selling_price,
             "service_charge_rate": p.service_charge_rate, "tax_type": tax_type,

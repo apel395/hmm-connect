@@ -404,3 +404,43 @@ def test_catering_price_migration_preserves_invoices_and_opening_balances(pg):
         with Operations.context(MigrationContext.configure(connection)):
             migration.downgrade()
         assert any(c['name']=='uq_sales_transaction_product' for c in inspect(connection).get_unique_constraints('sales_transaction_lines'))
+
+
+def test_catering_billing_migration_preserves_existing_sales_and_balances(pg):
+    import importlib.util
+    from pathlib import Path
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import inspect
+    from app.models.sales_transaction import SalesTransaction
+    with pg.factory() as db:
+        sale=SalesTransaction(transaction_number='LEGACY-CATERING-SCHEMA',transaction_type='INVOICE',status='DRAFT',
+            sale_date=date(2026,1,5),created_by_id=pg.user.id,location_id=pg.location_id,business_unit_id=pg.unit_id,
+            subtotal=100,tax_amount=10,total_amount=110)
+        db.add(sale);db.commit();sale_id=sale.id
+    with pg.factory.kw['bind'].begin() as connection:
+        connection.execute(text('DROP TABLE catering_location_billing'))
+        connection.execute(text('ALTER TABLE sales_transactions DROP COLUMN billing_details'))
+        for name in ('description','registration_number','service_period_from','service_period_to'):
+            connection.execute(text(f'ALTER TABLE sales_transaction_lines DROP COLUMN {name}'))
+        before=connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()
+        path=Path(__file__).resolve().parents[1]/'alembic/versions/20261104_catering_billing.py'
+        spec=importlib.util.spec_from_file_location('catering_billing_migration',path)
+        migration=importlib.util.module_from_spec(spec);spec.loader.exec_module(migration)
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        assert inspect(connection).has_table('catering_location_billing')
+        assert connection.execute(text('SELECT total_amount FROM sales_transactions WHERE id=:id'),{'id':sale_id}).scalar()==110
+        assert connection.execute(text('SELECT billing_details FROM sales_transactions WHERE id=:id'),{'id':sale_id}).scalar() is None
+        assert connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()==before
+        assert connection.execute(text('SELECT amount FROM opening_balances')).scalar()==1000
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.downgrade()
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        # Saved invoice snapshots make destructive rollback unavailable.
+        connection.execute(text("UPDATE sales_transactions SET billing_details='{}'::json WHERE id=:id"),{'id':sale_id})
+        with Operations.context(MigrationContext.configure(connection)):
+            with pytest.raises(RuntimeError,match='discard'):
+                migration.downgrade()
+        assert inspect(connection).has_table('catering_location_billing')
