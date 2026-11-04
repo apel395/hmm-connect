@@ -227,7 +227,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
       <PageHeader title={existing?`Continue ${existing.transaction_number}`:"Point of Sales"} actions={hotelSelection.valid?<Link className="text-sm text-emerald-700 underline" to={operationsLink}>Outlet operations</Link>:undefined} description="Create customer invoices or record paid POS sales." />
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" disabled={Boolean(pendingDraftId||existing)} onClick={() => setTransactionType("POS")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${transactionType === "POS" ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>POS · Meja</button>
+          <button type="button" disabled={Boolean(pendingDraftId||existing)} onClick={() => { if (new Set(cart.map(line => line.product_id)).size !== cart.length) { setError("Separate-price lines require a Catering invoice. Remove repeated menu lines before switching to POS."); return; } setTransactionType("POS"); }} className={`rounded-lg px-4 py-2 text-sm font-semibold ${transactionType === "POS" ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>POS · Meja</button>
           <button type="button" disabled={Boolean(pendingDraftId||existing)} onClick={() => setTransactionType("INVOICE")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${transactionType === "INVOICE" ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>Invoice · AR</button>
           <div className="ml-auto text-xs text-slate-500">{transactionType === "POS" ? "Pilih meja → pilih menu → ambil nomor → bayar" : "Pilih pelanggan → buat tagihan → terima pembayaran di AR"}</div>
         </div>

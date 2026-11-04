@@ -82,6 +82,8 @@ async function run() {
  await renderer.act(async()=>priceFields()[1].props.onChange({target:{value:'300'}}));
  assert.deepEqual(priceFields().map(n=>n.props.value),[250,300]);
  assert.ok(text(v.root).includes('Rp 635,25'),'Edited prices recalculate subtotal, service charge and PBJT');
+ await click(v,'POS · Meja');
+ assert.equal(priceFields().length,2,'Different-price lines cannot silently become a normal POS order');
  assert.equal(v.root.findAllByType('select').filter(n=>!n.props['aria-label']).length,0,'invoice does not ask for payment');
  await click(v,'Post Invoice');assert.equal(writes,1,'customer and due date are required');
  await renderer.act(async()=>{v.root.findByProps({'aria-label':'Customer'}).props.onChange({target:{value:'9'}});v.root.findByProps({'aria-label':'Invoice due date'}).props.onChange({target:{value:'2026-11-30'}});});
