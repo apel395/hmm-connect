@@ -1,4 +1,5 @@
 import api from "@/api/client";
+import type { BillingDetails, CateringSettings, ServiceDetails } from "./cateringTypes";
 
 export type PosPaymentMethod = "CASH" | "CARD" | "BANK_TRANSFER";
 export type PosTransactionType = "POS" | "INVOICE";
@@ -15,13 +16,14 @@ export type PosListParams = {
   search?: string;
 };
 
-export type PosItemIn = {
+export type PosItemIn = ServiceDetails & {
   product_id: number;
   quantity: number;
   unit_price?: number | null;
 };
 
 export type PosCreatePayload = {
+  billing_details?: BillingDetails;
   pos_table_id?: number;
   cashier_session_id?: number;
   event_name?: string;
@@ -43,6 +45,9 @@ export type PosCreatePayload = {
 };
 
 export type PosUpdatePayload = {
+  billing_details?: BillingDetails;
+  location_id?: number;
+  department_id?: number | null;
   invoice_due_date?: string;
   receivable_account_id?: number;
   revenue_account_id?: number;
@@ -76,6 +81,9 @@ export type PosVoidPayload = {
 };
 
 export const posApi = {
+  cateringSettings: (id:number) => api.get(`/pos/catering-locations/${id}`),
+  saveCateringSettings: (id:number,payload:CateringSettings) => api.put(`/pos/catering-locations/${id}`,payload),
+  validateCateringLocation: (id:number,payload:{department_id?:number;items:PosItemIn[]}) => api.post(`/pos/catering-locations/${id}/validate-order`,payload),
   billingOptions: () => api.get("/pos/billing-options"),
   createCustomer: (payload: { customer_name: string; phone?: string; email?: string; address?: string }) => api.post("/pos/customers", payload),
   correctToAR: (id: number, payload: { customer_id: number; invoice_due_date: string; receivable_account_id?: number; correction_date: string; confirm_unpaid: true }) => api.post(`/pos/${id}/correct-to-ar`, payload),

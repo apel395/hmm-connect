@@ -1,4 +1,4 @@
-/* global require, __dirname, global, EventTarget, console, process */
+/* global require, __dirname, global, EventTarget, console, process, setImmediate */
 /* eslint @typescript-eslint/no-require-imports: "off" */
 const assert = require('node:assert/strict');
 const root = require('node:path').resolve(__dirname, '..');
@@ -11,9 +11,11 @@ global.__owner = 45;
 const item = {product_id:7,product_code:'7-000001',product_name:'Catering service',group_name:'SERVICE',uom:'PERIOD',selling_price:100,sale_available:true,tax_type:'PBJT',tax_rate:10,is_taxable:true,service_charge_rate:5,sales_location_id:6,department_id:1,catalog_type:'CATERING'};
 global.__queries = [];
 global.__products = async params => {global.__queries.push(params);return {data:{items:params.page===1?[item]:[{...item,product_id:8}],has_next:params.page===1}};};
+const profile={configuration:{customer_id:10,department_id:1,payment_term_days:30,service_product_ids:[7],billing:{template:'phr',title:'INVOICE',billing_name:'Other Customer',billing_address:'Other address',contract_number:'SITE-9',contract_date:null,attention:'',company_address:'',payment_instructions:'',footer:'',signer_name:'',signer_position:''}},can_manage:true,service_choices:[{id:7,name:'Catering service'}]};
+global.__profile=profile;
 let writes = 0, updates = 0;
 const payloads = [];
-global.__api = {products:params=>global.__products(params),options:async()=>({data:{}}),create:async payload=>{payloads.push(payload);writes++;return {data:{id:1,transaction_number:'POS-1'}};},update:async()=>{updates++;return {data:{id:1,transaction_number:'POS-1'}};},revenueAccounts:async()=>({data:[{id:37,name:'Catering revenue'}]}),metadata:async()=>({data:{queue_number:'POS-1'}}),post:async()=>({data:{}})};
+global.__api = {cateringSettings:async()=>({data:profile}),validateCateringLocation:async(id,payload)=>{assert.equal(payload.items.length,2);return {data:{location_id:id,business_unit_id:2,department_id:1}};},products:params=>global.__products(params),options:async()=>({data:{}}),create:async payload=>{payloads.push(payload);writes++;return {data:{id:1,transaction_number:'POS-1'}};},update:async()=>{updates++;return {data:{id:1,transaction_number:'POS-1'}};},revenueAccounts:async()=>({data:[{id:37,name:'Catering revenue'}]}),metadata:async()=>({data:{queue_number:'POS-1'}}),post:async()=>({data:{}})};
 async function run() {
  const bundle=await req('esbuild').build({absWorkingDir:root,tsconfig:root+'/tsconfig.app.json',entryPoints:['src/modules/pos/pages/PosRegisterPage.tsx'],bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/jsx-runtime'],plugins:[{name:'mocks',setup(b){
  b.onResolve({filter:/^(?:@\/components\/|@\/store\/auth|@\/lib\/access|sonner|@tanstack\/react-query|react-router-dom|lucide-react|\.\.\/components\/PosCustomerField|\.\.\/operationsApi|\.\.\/api)/},a=>({path:a.path,namespace:'mock'}));
@@ -27,7 +29,7 @@ async function run() {
  else if(a.path==='sonner') contents='export const toast={success(){}};';
  else if(a.path==='react-router-dom') contents="import React from 'react';export const useNavigate=()=>()=>{};export const useSearchParams=()=>[new URLSearchParams(globalThis.__params||'')];export const Link=p=>React.createElement('a',{href:p.to},p.children);";
  else if(a.path==='lucide-react') contents='export const Minus=()=>null,Plus=()=>null,Receipt=()=>null,ShoppingCart=()=>null,Trash2=()=>null,CopyPlus=()=>null;';
- else if(a.path==='@tanstack/react-query') contents=`export const useQueryClient=()=>({invalidateQueries:async()=>{}}); export const useQuery=o=>{globalThis.__queriesOptions??=[];globalThis.__queriesOptions.push(o);return {data:o.queryKey[0]==='pos-operations'?{tables:[],shifts:[],orders:[]}:o.queryKey[0]==='pos-options'?{locations:[{id:6,name:'Rumin',catalog_type:'CATERING'},{id:8,name:'Hotel',catalog_type:'HOTEL'}],departments:[{id:1,name:'Operations',location_id:6}]}:o.queryKey[0]==='pos-revenue-accounts'?[{id:37,name:'Catering revenue'}]:{items:[${JSON.stringify(item)}]},isLoading:false};};export const useMutation=o=>({isPending:false,mutate:async()=>{try{const result=await o.mutationFn();o.onSuccess?.(result);}catch(e){o.onError?.(e);}}});`;
+ else if(a.path==='@tanstack/react-query') contents=`export const useQueryClient=()=>({invalidateQueries:async()=>{}}); export const useQuery=o=>{globalThis.__queriesOptions??=[];globalThis.__queriesOptions.push(o);return {data:o.queryKey[0]==='pos-operations'?{tables:[],shifts:[],orders:[]}:o.queryKey[0]==='pos-options'?{locations:[{id:6,name:'Rumin',catalog_type:'CATERING'},{id:8,name:'Hotel',catalog_type:'HOTEL'},{id:9,name:'Other Catering',catalog_type:'CATERING'}],departments:[{id:1,name:'Operations',location_id:6},{id:1,name:'Operations',location_id:9}]}:o.queryKey[0]==='catering-billing'?globalThis.__profile:o.queryKey[0]==='pos-billing-options'?{customers:[{id:9,name:'Manual Customer',address:'Manual Address'},{id:10,name:'Other Customer',address:'Other address'}],receivable_accounts:[]}:o.queryKey[0]==='pos-revenue-accounts'?[{id:37,name:'Catering revenue'}]:{items:[${JSON.stringify(item)}]},isLoading:false};};export const useMutation=o=>({isPending:false,mutate:async()=>{try{const result=await o.mutationFn();o.onSuccess?.(result);}catch(e){o.onError?.(e);}}});`;
  else if(a.path.includes('CurrencyInput')) contents="import React from 'react';export default p=>React.createElement('input',{value:p.value,onChange:e=>p.onValueChange(Number(e.target.value)),disabled:p.disabled});";
  else if(a.path.includes('SearchableSelect')) contents=`import React from 'react';export default p=>React.createElement('select',{'aria-label':p.label,value:p.value??'',onChange:e=>p.onChange(e.target.value?Number(e.target.value):undefined)},React.createElement('option',{value:''},'All'),p.options.map(o=>React.createElement('option',{key:o.id,value:o.id},o.name)));`;
  else contents=`import React from 'react';export default ({children,onClick,disabled})=>React.createElement('${a.path.endsWith('/Button')?'button':'div'}',{onClick,disabled},children);`;
@@ -84,19 +86,44 @@ async function run() {
  assert.ok(text(v.root).includes('Rp 635,25'),'Edited prices recalculate subtotal, service charge and PBJT');
  await click(v,'POS · Meja');
  assert.equal(priceFields().length,2,'Different-price lines cannot silently become a normal POS order');
- assert.equal(v.root.findAllByType('select').filter(n=>!n.props['aria-label']).length,0,'invoice does not ask for payment');
+ assert.equal(v.root.findAllByType('select').filter(n=>n.findAllByType('option').some(o=>o.props.value==='CASH')).length,0,'invoice does not ask for payment');
  await click(v,'Post Invoice');assert.equal(writes,1,'customer and due date are required');
  await renderer.act(async()=>{v.root.findByProps({'aria-label':'Customer'}).props.onChange({target:{value:'9'}});v.root.findByProps({'aria-label':'Invoice due date'}).props.onChange({target:{value:'2026-11-30'}});});
+ // A Catering invoice may change location while retaining each agreed line price and party.
+ await renderer.act(async()=>{await v.root.findByProps({'aria-label':'Sales location'}).props.onChange({target:{value:'9'}});});
+ // Handler intentionally detaches event promises; allow its validation chain to complete.
+ await renderer.act(async()=>{await new Promise(resolve=>setImmediate(resolve));});
+ assert.equal(v.root.findByProps({'aria-label':'Sales location'}).props.value,9);
+ assert.deepEqual(priceFields().map(n=>n.props.value),[250,300]);
+ assert.equal(v.root.findByProps({'aria-label':'Customer'}).props.value,9);
+ const originalValidation=global.__api.validateCateringLocation;
+ global.__api.validateCateringLocation=async()=>{throw {response:{data:{detail:'Service is not shared at that location'}}};};
+ await renderer.act(async()=>{v.root.findByProps({'aria-label':'Sales location'}).props.onChange({target:{value:'6'}});await new Promise(resolve=>setImmediate(resolve));});
+ assert.equal(v.root.findByProps({'aria-label':'Sales location'}).props.value,9,'failed context validation retains location and lines');
+ assert.ok(text(v.root).includes('Service is not shared at that location'));
+ global.__api.validateCateringLocation=originalValidation;
  global.__api.post=async()=>{throw new Error('Posting unavailable');};
  await click(v,'Post Invoice');
  assert.equal(writes,2);
- assert.deepEqual(payloads[1].items,[{product_id:7,quantity:1,unit_price:250},{product_id:7,quantity:1,unit_price:300}]);
+ assert.equal(payloads[1].location_id,9,'invoice uses the validated target Catering location');
+ assert.deepEqual(payloads[1].items.map(({product_id,quantity,unit_price})=>({product_id,quantity,unit_price})),[{product_id:7,quantity:1,unit_price:250},{product_id:7,quantity:1,unit_price:300}]);
  await renderer.act(async()=>v.unmount());v=await mount();
  assert.deepEqual(priceFields().map(n=>n.props.value),[250,300],'Refresh restores per-line agreed prices');
  global.__api.post=async(id,payload)=>{assert.equal(payload.customer_id,9);assert.equal(payload.invoice_due_date,'2026-11-30');assert.equal(payload.payment_received,undefined);return {data:{}};};
  await click(v,'Post Invoice');
  assert.equal(writes,2,'retry after refresh reuses the saved draft');assert.equal(updates,1);
  assert.equal(button(v,'Clear'),undefined,'successful posting clears the recovered order');
+ await renderer.act(async()=>v.unmount());
+ // A new invoice can load per-location party/contract defaults without changing existing invoices.
+ global.__api.validateCateringLocation=async(id)=>({data:{location_id:id,business_unit_id:2,department_id:1}});
+ v=await mount();await click(v,'Invoice · AR');
+ await renderer.act(async()=>{v.root.findByProps({'aria-label':'Sales location'}).props.onChange({target:{value:'9'}});await new Promise(resolve=>setImmediate(resolve));});
+ assert.equal(v.root.findByProps({'aria-label':'Customer'}).props.value,10);
+ assert.ok(v.root.findAllByType('input').some(n=>n.props.value==='SITE-9'));
+ await click(v,'Location billing settings');
+ assert.equal(v.root.findAllByProps({'aria-label':'Catering location billing settings'}).length,1);
+ let settingsSaved=false;global.__api.saveCateringSettings=async(id,value)=>{assert.equal(id,9);assert.deepEqual(value.service_product_ids,[7]);assert.equal(value.billing.contract_number,'SITE-9');settingsSaved=true;return {data:{}};};
+ await click(v,'Save location defaults');assert.ok(settingsSaved);
  await renderer.act(async()=>v.unmount());
  console.log('POS PASS: refresh recovery, user isolation, non-destructive filters, unfiltered paginated menus, explicit clear and saved draft cleanup.');
 }

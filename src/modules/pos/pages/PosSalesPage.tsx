@@ -92,7 +92,7 @@ export default function PosSalesPage() {
   });
   const detail: any = detailQuery.data;
   useEffect(() => {
-    setDraftLines((detail?.items ?? []).map((item: any) => ({ product_id: item.product_id, quantity: Number(item.quantity), unit_price: Number(item.unit_price) })));
+    setDraftLines((detail?.items ?? []).map((item: any) => ({ product_id: item.product_id, quantity: Number(item.quantity), unit_price: Number(item.unit_price), description:item.description??undefined,uom:item.description!=null?item.uom:undefined,registration_number:item.registration_number??undefined,service_period_from:item.service_period_from??undefined,service_period_to:item.service_period_to??undefined })));
   }, [detail]);
 
   const [postRevenue, setPostRevenue] = useState<number | undefined>();
@@ -210,7 +210,7 @@ export default function PosSalesPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="xs" onClick={() => { setEditing(false); setDetailId(row.id); }}><Eye className="h-4 w-4" /></Button>
-                          {canSell && row.status === "DRAFT" && row.cashier_session_id && <Link className="text-sm text-emerald-700 underline" to={`/pos?order=${row.id}`}>Continue / settle</Link>}
+                          {canSell && row.status === "DRAFT" && (row.cashier_session_id || row.transaction_type === "INVOICE") && <Link className="text-sm text-emerald-700 underline" to={`/pos?order=${row.id}`}>{row.transaction_type === "INVOICE" ? "Continue invoice" : "Continue / settle"}</Link>}
                           {canSell && row.status === "DRAFT" && <Button variant="outline" size="xs" onClick={() => { setEditing(true); setDetailId(row.id); }}><Pencil className="h-4 w-4" />Edit</Button>}
                           {canManage && row.status === "POSTED" && row.transaction_type === "INVOICE" && !row.account_receivable_id && <Button variant="outline" size="xs" onClick={() => { setEditing(false); setDetailId(row.id); }}>Repair AR</Button>}
                           {row.status === "POSTED" && <Button variant="ghost" size="xs" onClick={() => window.open(`/pos/sales/${row.id}/print`, "_blank")}><Printer className="h-4 w-4" /></Button>}
@@ -291,7 +291,7 @@ export default function PosSalesPage() {
             )}
           </DialogBody>
           <DialogFooter>
-            {canSell && detail?.status === "DRAFT" && (editing ? <><Button variant="outline" onClick={() => { setEditing(false); setDraftLines((detail.items ?? []).map((item: any) => ({ product_id: item.product_id, quantity: Number(item.quantity), unit_price: Number(item.unit_price) }))); }}>Cancel edit</Button><Button loading={saveEdit.isPending} disabled={!draftLines.length || draftLines.some(line => line.quantity <= 0 || line.unit_price <= 0) || (isInvoice && (!chosenCustomer || !chosenDue))} onClick={() => saveEdit.mutate()}>Save Changes</Button></> : <Button variant="outline" onClick={() => setEditing(true)}><Pencil className="h-4 w-4"/>Edit Draft</Button>)}
+            {canSell && detail?.status === "DRAFT" && (editing ? <><Button variant="outline" onClick={() => { setEditing(false); setDraftLines((detail.items ?? []).map((item: any) => ({ product_id: item.product_id, quantity: Number(item.quantity), unit_price: Number(item.unit_price), description:item.description??undefined,uom:item.description!=null?item.uom:undefined,registration_number:item.registration_number??undefined,service_period_from:item.service_period_from??undefined,service_period_to:item.service_period_to??undefined }))); }}>Cancel edit</Button><Button loading={saveEdit.isPending} disabled={!draftLines.length || draftLines.some(line => line.quantity <= 0 || line.unit_price <= 0) || (isInvoice && (!chosenCustomer || !chosenDue))} onClick={() => saveEdit.mutate()}>Save Changes</Button></> : <Button variant="outline" onClick={() => setEditing(true)}><Pencil className="h-4 w-4"/>Edit Draft</Button>)}
             {canSell && detail ? (
               <>
                 {detail.status === "DRAFT" && !editing && <Button variant="success" onClick={() => postMutation.mutate(detail.id)} disabled={postMutation.isPending || !chosenRevenue || (isInvoice ? (!chosenCustomer || !chosenDue) : (postMethod === "CASH" && Number(cashReceived) < Number(detail.total_amount)))}><PlayCircle className="h-4 w-4" />Post</Button>}
