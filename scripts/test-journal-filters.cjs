@@ -73,6 +73,8 @@ async function run(){
  for (const value of ['Hotel','Rumin','Operasional','Finance']) assert.ok(view.root.findAllByType('span').some(n=>n.children.includes(value)),`${value} dimension visible`);
  assert.ok(view.root.findByType('print-preview').props.src.includes('difference_amount=45000'));
  assert.ok(view.root.findAllByType('input').some(n=>n.props['aria-label']==='Journal period'));
+ assert.ok(view.root.findAllByType('header').some(n=>n.findAllByProps({'aria-label':'Journal business unit'}).length>0),'Business-unit switcher shares the register header');
+ assert.ok(view.root.findAllByProps({'aria-label':'Filtered journal totals'}).some(n=>String(n.props.className).includes('grid-cols-2')),'Totals use a compact responsive strip');
  const bulkButtons=()=>view.root.findAllByType('button').filter(n=>n.children.some(c=>typeof c==='string'&&c.includes('selected (')));
  assert.equal(bulkButtons().length,0,'No bulk action appears without a selection');
  assert.equal(global.__journalBulkActions.length,0);

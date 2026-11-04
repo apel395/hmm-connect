@@ -491,6 +491,10 @@ h6 {
   .workspace-body, .workspace-table-stack { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; min-width: 0; gap: 8px; }
   .workspace-page-identity { display: flex; align-items: center; gap: 10px; }
   .data-workspace .workspace-page-header { border: 0; padding: 2px 0 4px; margin: 0; gap: 8px; }
+  .data-workspace.journal-register-workspace { gap: 5px; }
+  .journal-register-workspace .workspace-page-header { padding: 0; }
+  .journal-register-workspace .workspace-eyebrow { display: none; }
+  .journal-register-workspace .workspace-module-icon { height: 30px; flex-basis: 30px; border-radius: 7px; }
   .workspace-module-icon { display: grid; place-items: center; flex: 0 0 38px; height: 38px; border: 1px solid #d5e5de; border-radius: 10px; color: #17614e; background: #edf5f0; }
   .workspace-eyebrow { color: #75818b; font-size: 10px; line-height: 13px; letter-spacing: .07em; text-transform: uppercase; }
   .workspace-tool { display: inline-flex; align-items: center; justify-content: center; height: 30px; width: 30px; flex-shrink: 0; border: 1px solid #dde3e8; border-radius: 6px; color: #566572; background: white; }
@@ -554,6 +558,7 @@ h6 {
   .workspace-accounting-nav { display: flex; flex-shrink: 0; gap: 4px; border-bottom: 1px solid #dce3e8; }
   .workspace-accounting-nav a { padding: 5px 12px; font-size: 12px; color: #73818d; border-bottom: 2px solid transparent; }
   .workspace-accounting-nav a.is-active { color: #17614e; border-color: #17614e; font-weight: 600; }
+  .workspace-accounting-shell:has(.journal-register-workspace) .workspace-accounting-nav a { padding-top: 3px; padding-bottom: 3px; }
   @media (max-width: 1100px) { .workspace-report-grid { display: flex; flex-direction: column; min-height: 400px; overflow: auto; }.workspace-report-table { flex: 1 0 240px; } }
   @media (max-width: 640px) {
     .data-workspace, .workspace-accounting-shell { height: calc(100dvh - 104px); }
