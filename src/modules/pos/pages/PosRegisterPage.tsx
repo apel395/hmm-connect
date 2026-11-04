@@ -1,7 +1,8 @@
+import CurrencyInput from "@/components/form/CurrencyInput";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Minus, Plus, Receipt, ShoppingCart, Trash2 } from "lucide-react";
+import { Minus, Plus, Receipt, ShoppingCart, Trash2, CopyPlus } from "lucide-react";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
@@ -21,7 +22,7 @@ const POS_ROLES = ["SYSTEM_ADMINISTRATOR", "WAREHOUSE", "FINANCE", "GENERAL_MANA
 const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
 
-interface CartLine { sales_location_id?: number; sales_business_unit_id?: number; department_id?: number; catalog_type?: string; product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
+interface CartLine { line_key?: string; sales_location_id?: number; sales_business_unit_id?: number; department_id?: number; catalog_type?: string; product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
 
 type PosDraft = { posTableId?: number; cashierSessionId?: number; eventName?: string; orderRequestKey?: string; customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
 const validDraft = (value: unknown): value is PosDraft => {
@@ -33,6 +34,7 @@ const validDraft = (value: unknown): value is PosDraft => {
     && [d.eventName,d.orderRequestKey].every(v=>v===undefined||typeof v==="string")
     && Array.isArray(d.cart) && d.cart.every(l => l && Number.isInteger(l.product_id) && l.product_id > 0
       && [l.quantity, l.unit_price, l.service_charge_rate, l.tax_rate].every(v => Number.isFinite(v) && v >= 0)
+      && (l.line_key === undefined || typeof l.line_key === "string")
       && l.quantity > 0 && [l.product_code, l.product_name, l.group_name, l.uom].every(v => typeof v === "string")
       && typeof l.is_taxable === "boolean" && typeof l.sale_available === "boolean");
 };
@@ -70,7 +72,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const [tableNumber, setTableNumber] = useState(initial?.tableNumber ?? "");
   const [search, setSearch] = useState(initial?.search ?? "");
   const [groupFilter, setGroupFilter] = useState(initial?.groupFilter ?? "");
-  const [cart, setCart] = useState<CartLine[]>(initial?.cart ?? []);
+  const [cart, setCart] = useState<CartLine[]>(() => (initial?.cart ?? []).map(line => ({...line, line_key: crypto.randomUUID()})));
   const [discount, setDiscount] = useState(initial?.discount ?? "");
   const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>(initial?.paymentMethod ?? "CASH");
   const [amountReceived, setAmountReceived] = useState(initial?.amountReceived ?? "");
@@ -96,6 +98,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const recovery = useFormRecovery(recoveryName, { posTableId, cashierSessionId, eventName, orderRequestKey, transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
+  const cateringInvoice = transactionType === "INVOICE" && locations.find((l: any) => l.id === (saleLocationId ?? locationId))?.catalog_type === "CATERING";
   const selectedLocation = locations.find((l: any) => l.id === locationId);
   const hotelOutletsRequired = Boolean(selectedLocation?.catalog_type === "HOTEL");
   const hotelSelection=hotelOutletContext(optionsQuery.data,locationId,departmentId);
@@ -160,13 +163,13 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     if (!cart.length) { setOrderLocationId(locationId); setOrderDepartmentId(departmentId ?? product.department_id); setRevenueAccountId(undefined); }
     const existing = inCart(product.product_id);
     if (existing) {
-      setCart((rows) => rows.map((line) => line.product_id === product.product_id ? { ...line, quantity: line.quantity + 1 } : line));
+      setCart((rows) => rows.map((line) => line.line_key === existing.line_key ? { ...line, quantity: line.quantity + 1 } : line));
       return;
     }
-    setCart((rows) => [...rows, { sales_location_id: product.sales_location_id ?? undefined, sales_business_unit_id: product.sales_business_unit_id ?? undefined, department_id: product.department_id ?? undefined, catalog_type: product.catalog_type, product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), service_charge_rate:Number(product.service_charge_rate??0), tax_rate: Number(product.tax_rate ?? 0), tax_type: product.tax_type, is_taxable: Boolean(product.is_taxable), sale_available: Boolean(product.sale_available) }]);
+    setCart((rows) => [...rows, { line_key: crypto.randomUUID(), sales_location_id: product.sales_location_id ?? undefined, sales_business_unit_id: product.sales_business_unit_id ?? undefined, department_id: product.department_id ?? undefined, catalog_type: product.catalog_type, product_id: product.product_id, product_code: product.product_code, product_name: product.product_name, group_name: product.group_name, uom: product.uom, quantity: 1, unit_price: Number(product.selling_price ?? 0), service_charge_rate:Number(product.service_charge_rate??0), tax_rate: Number(product.tax_rate ?? 0), tax_type: product.tax_type, is_taxable: Boolean(product.is_taxable), sale_available: Boolean(product.sale_available) }]);
   };
-  const changeQty = (id: number, delta: number) => {
-    const next = cart.map(line => line.product_id === id ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line).filter(line => line.quantity > 0);
+  const changeQty = (key: string | undefined, delta: number) => {
+    const next = cart.map(line => line.line_key === key ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line).filter(line => line.quantity > 0);
     if (!next.length) { clear(); return; }
     setCart(next);
   };
@@ -179,6 +182,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     if(managed && (!mode || !myShift))throw new Error("Configure the outlet and open your cashier shift in Outlet Operations first.");
     if(managed && mode==="TABLE" && !posTableId)throw new Error("Choose an available table.");
     if(managed && mode==="EVENT" && !eventName.trim())throw new Error("Enter the banquet event name.");
+    if (cart.some(line => !Number.isFinite(line.unit_price) || line.unit_price <= 0)) throw new Error("Enter a unit price greater than zero for every item.");
     const items = cart.map((line): PosItemIn => ({ product_id: line.product_id, quantity: line.quantity, unit_price:line.unit_price }));
     let created;
     if (pendingDraftId) {
@@ -265,7 +269,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
             <div><label className="mb-1 block text-xs">Invoice due date</label><input aria-label="Invoice due date" type="date" className={input} value={invoiceDueDate} onChange={event => setInvoiceDueDate(event.target.value)} /></div>
             <SearchableSelect label="Receivable account" value={receivableAccountId ?? billingQuery.data?.default_receivable_account_id} options={billingQuery.data?.receivable_accounts ?? []} placeholder="Piutang Usaha" onChange={setReceivableAccountId} />
           </div>}
-          <div className="space-y-2">{cart.length === 0 && <div className="rounded-md border border-dashed p-6 text-center text-xs text-slate-500">Pilih menu untuk memulai.</div>}{cart.map((line) => <div key={line.product_id} className="rounded-md border p-2"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-semibold">{line.product_name}</div><div className="text-[10px] text-slate-400">{money(line.unit_price)} / {line.uom}</div></div><button type="button" onClick={() => changeQty(line.product_id, -line.quantity)} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div><div className="mt-2 flex items-center justify-between"><div className="flex items-center gap-1"><button type="button" onClick={() => changeQty(line.product_id, -1)} className="grid h-7 w-7 place-items-center rounded border"><Minus className="h-3.5 w-3.5" /></button><span className="w-8 text-center text-sm">{line.quantity}</span><button type="button" onClick={() => changeQty(line.product_id, 1)} className="grid h-7 w-7 place-items-center rounded border"><Plus className="h-3.5 w-3.5" /></button></div><span className="text-sm font-semibold">{money(line.quantity * line.unit_price)}</span></div></div>)}</div>
+          <div className="space-y-2">{cart.length === 0 && <div className="rounded-md border border-dashed p-6 text-center text-xs text-slate-500">Pilih menu untuk memulai.</div>}{cart.map((line) => <div key={line.line_key} className="rounded-md border p-2"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-semibold">{line.product_name}</div>{cateringInvoice ? <label className="mt-1 flex items-center gap-2 text-[10px] text-slate-500"><span>Unit price / {line.uom}</span><CurrencyInput value={line.unit_price} disabled={!canSell || saveDraft.isPending || createAndPost.isPending} className="!h-8 !w-40 text-xs" onValueChange={value => setCart(rows => rows.map(item => item.line_key === line.line_key ? {...item, unit_price:value} : item))}/></label> : <div className="text-[10px] text-slate-400">{money(line.unit_price)} / {line.uom}</div>}</div><div className="flex items-start gap-2">{cateringInvoice && <button type="button" aria-label={`Add separate price line ${line.product_name}`} title="Add the same item with a different unit price" disabled={!canSell || saveDraft.isPending || createAndPost.isPending} onClick={() => setCart(rows => [...rows, {...line, line_key:crypto.randomUUID(), quantity:1, unit_price:0}])} className="text-slate-400 hover:text-emerald-700"><CopyPlus className="h-4 w-4"/></button>}<button type="button" aria-label={`Remove ${line.product_name}`} onClick={() => changeQty(line.line_key, -line.quantity)} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div></div><div className="mt-2 flex items-center justify-between"><div className="flex items-center gap-1"><button type="button" onClick={() => changeQty(line.line_key, -1)} className="grid h-7 w-7 place-items-center rounded border"><Minus className="h-3.5 w-3.5" /></button><span className="w-8 text-center text-sm">{line.quantity}</span><button type="button" onClick={() => changeQty(line.line_key, 1)} className="grid h-7 w-7 place-items-center rounded border"><Plus className="h-3.5 w-3.5" /></button></div><span className="text-sm font-semibold">{money(line.quantity * line.unit_price)}</span></div></div>)}</div>
           <div className="mt-4 space-y-2 border-t pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div><div className="flex items-center justify-between"><span>Discount</span><input className="h-9 w-32 rounded border px-2 text-right" type="number" min={0} value={discount} onChange={(e) => setDiscount(e.target.value)} /></div><div className="flex justify-between"><span>Service charge</span><span>{money(serviceCharge)}</span></div><div className="flex justify-between"><span>{taxLabel}</span><span>{money(tax)}</span></div><div className="flex justify-between border-t pt-2 text-base font-bold"><span>Total</span><span>{money(total)}</span></div></div>
           {transactionType === "POS" && <div className="mt-4 space-y-2"><select className={input} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PosPaymentMethod)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></select>{paymentMethod === "CASH" && <><input className={input} type="number" min={0} placeholder="Cash received" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} /><div className="flex justify-between text-xs text-slate-500"><span>Change</span><span>{money(change)}</span></div></>}</div>}
           {error && <div className="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
