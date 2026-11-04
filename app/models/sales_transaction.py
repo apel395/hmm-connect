@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Index, text
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -81,12 +81,6 @@ class SalesTransaction(Base, TimestampMixin):
 
 class SalesTransactionLine(Base):
     __tablename__ = "sales_transaction_lines"
-    __table_args__ = (
-        UniqueConstraint(
-            "sales_transaction_id", "product_id", name="uq_sales_transaction_product"
-        ),
-    )
-
     id: Mapped[int] = mapped_column(primary_key=True)
     sales_transaction_id: Mapped[int] = mapped_column(
         ForeignKey("sales_transactions.id", ondelete="CASCADE"), nullable=False, index=True
