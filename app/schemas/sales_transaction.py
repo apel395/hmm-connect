@@ -25,6 +25,7 @@ class SalesTransactionItemIn(BaseModel):
 
 
 class SalesTransactionCreate(BaseModel):
+    guest_count: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
     discount_preset_id: str | None = Field(default=None, max_length=64)
     checkout_version: str | None = Field(default=None, max_length=64)
     billing_details: CateringBilling | None = None
@@ -49,6 +50,7 @@ class SalesTransactionCreate(BaseModel):
 
 
 class SalesTransactionUpdate(BaseModel):
+    guest_count: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
     discount_preset_id: str | None = Field(default=None, max_length=64)
     checkout_version: str | None = Field(default=None, max_length=64)
     billing_details: CateringBilling | None = None

@@ -48,6 +48,7 @@ def prepare(hotel,mode='TABLE'):
 
 def create(hotel,shift,table=None,key='test-order-0001',**kw):
     s,scope,p,*_=hotel
+    if table and "guest_count" not in kw: kw["guest_count"]=2
     return Sales.create(s,data=SalesTransactionCreate(**scope,cashier_session_id=shift.id,pos_table_id=table.id if table else None,order_request_key=key,sale_date=date(2026,1,5),items=[dict(product_id=p.id,quantity=1)],**kw),user=ADMIN)
 
 

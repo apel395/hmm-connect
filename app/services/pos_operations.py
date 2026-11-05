@@ -99,7 +99,7 @@ def is_hotel_outlet(db,transaction):
 
 def bind_order(db,transaction,data,user):
     if transaction.transaction_type!='POS' or not is_hotel_outlet(db,transaction):
-        if data.pos_table_id or data.cashier_session_id or data.event_name:raise HTTPException(422,'Outlet order controls apply only to Hotel POS, not customer AR invoices or Catering')
+        if data.pos_table_id or data.cashier_session_id or data.event_name or data.guest_count is not None:raise HTTPException(422,'Outlet order controls apply only to Hotel POS, not customer AR invoices or Catering')
         return
     outlet(db,user,transaction.location_id,transaction.department_id)
     settings=policy(db,transaction.location_id,transaction.department_id)
@@ -116,8 +116,22 @@ def bind_order(db,transaction,data,user):
         transaction.pos_table_id=table.id;transaction.table_number=table.name
     else:transaction.table_number=None
     transaction.cashier_session_id=shift.id;transaction.order_mode=settings.order_mode;transaction.event_name=(data.event_name or '').strip() or None
+    update_guest_count(db, transaction, data)
     if not data.order_request_key:raise HTTPException(422,'An order retry key is required')
     transaction.order_request_key=data.order_request_key
+
+
+def update_guest_count(db, transaction, data=None):
+    supplied = data is not None and 'guest_count' in data.model_fields_set
+    if transaction.transaction_type != 'POS' or not is_hotel_outlet(db, transaction):
+        if supplied and data.guest_count is not None:
+            raise HTTPException(422, 'Guest count applies only to Hotel outlet POS orders')
+        return
+    count = data.guest_count if supplied else transaction.guest_count
+    if transaction.order_mode == 'TABLE' and count is None:
+        raise HTTPException(422, 'Enter the number of guests for this table order')
+    if supplied:
+        transaction.guest_count = count
 
 
 def assert_open_order(db,transaction,user):
