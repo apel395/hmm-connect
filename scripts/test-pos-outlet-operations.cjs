@@ -31,9 +31,20 @@ async function run(){
  const text=n=>n.children.map(c=>typeof c==='string'?c:text(c)).join('');
  const mount=async()=>{let v;await renderer.act(async()=>{v=renderer.create(React.createElement(Page));});return v;};
  const click=async(v,label)=>renderer.act(async()=>{const b=v.root.findAllByType('button').find(n=>text(n).includes(label));assert.ok(b,label);assert.ok(!b.props.disabled,label+' is enabled');await b.props.onClick();});
- let v=await mount();await click(v,'Hotel meal');await renderer.act(async()=>v.root.findByProps({'aria-label':'Revenue account'}).props.onChange({target:{value:'37'}}));
+ let v=await mount();
+ const mealButton=()=>v.root.findAllByType('button').find(n=>text(n).includes('Hotel meal'));
+ assert.equal(mealButton().props.disabled,true,'choose table before menu');
+ assert.equal(v.root.findByProps({'aria-label':'Number of guests'}).props.disabled,true,'table comes before people');
+ await renderer.act(async()=>v.root.findByProps({'aria-label':'Table'}).props.onChange({target:{value:'3'}}));
+ for(const count of ['', '0','-1','1.5']){
+   await renderer.act(async()=>v.root.findByProps({'aria-label':'Number of guests'}).props.onChange({target:{value:count}}));
+   assert.equal(mealButton().props.disabled,true,'invalid or missing count cannot add menus');
+ }
+ await renderer.act(async()=>v.root.findByProps({'aria-label':'Number of guests'}).props.onChange({target:{value:'2'}}));
+ await click(v,'Hotel meal');await renderer.act(async()=>v.root.findByProps({'aria-label':'Revenue account'}).props.onChange({target:{value:'37'}}));
  await click(v,'Save Draft');assert.equal(writes.length,0,'shift required');
  global.__op.shifts=[{id:5,cashier_id:45,status:'OPEN'}];await renderer.act(async()=>v.update(React.createElement(Page)));
+ await renderer.act(async()=>v.root.findByProps({'aria-label':'Table'}).props.onChange({target:{value:''}}));
  await click(v,'Save Draft');assert.equal(writes.length,0,'table required');
  await renderer.act(async()=>v.root.findByProps({'aria-label':'Table'}).props.onChange({target:{value:'3'}}));
  await renderer.act(async()=>v.root.findByProps({'aria-label':'Hotel outlet'}).props.onChange({target:{value:'22'}}));
@@ -46,15 +57,16 @@ async function run(){
  await renderer.act(async()=>v.root.findByProps({'aria-label':'Payment method'}).props.onChange({target:{value:'CARD'}}));
  await click(v,'Ambil Nomor & Bayar');assert.equal(writes.length,0,'forged disabled payment cannot create or settle');
  await renderer.act(async()=>v.root.findByProps({'aria-label':'Payment method'}).props.onChange({target:{value:'CASH'}}));
- await click(v,'Ambil Nomor & Bayar');assert.equal(writes.length,1);assert.equal(writes[0].pos_table_id,3);assert.equal(writes[0].cashier_session_id,5);assert.ok(writes[0].order_request_key);assert.equal(writes[0].discount_preset_id,'member');assert.equal(writes[0].checkout_version,'checkout-v1');assert.equal(posts[0].p.discount_amount,undefined,'Hotel does not submit an arbitrary discount amount');
- await renderer.act(async()=>v.unmount());v=await mount();failPost=false;
+ await click(v,'Ambil Nomor & Bayar');assert.equal(writes.length,1);assert.equal(writes[0].pos_table_id,3);assert.equal(writes[0].guest_count,2);assert.equal(writes[0].cashier_session_id,5);assert.ok(writes[0].order_request_key);assert.equal(writes[0].discount_preset_id,'member');assert.equal(writes[0].checkout_version,'checkout-v1');assert.equal(posts[0].p.discount_amount,undefined,'Hotel does not submit an arbitrary discount amount');
+ await renderer.act(async()=>v.unmount());v=await mount();failPost=false;assert.equal(v.root.findByProps({'aria-label':'Number of guests'}).props.value,'2','refresh restores guest count');
  await click(v,'Ambil Nomor & Bayar');assert.equal(writes.length,1,'retry reuses order ID after refresh');assert.equal(updates.at(-1).id,88);assert.equal(posts.length,2);
  await renderer.act(async()=>v.unmount());
- global.__params='order=91';global.__sale={id:91,transaction_number:'POS-91',status:'DRAFT',transaction_type:'POS',location_id:8,department_id:21,cashier_session_id:5,pos_table_id:3,table_number:'T-03',revenue_account_id:37,items:[{...item,quantity:2,unit_price:100,product_name:'Saved meal'}]};
- v=await mount();assert.ok(text(v.root).includes('Saved meal'),'continue loads saved order');await click(v,'Hotel meal');await renderer.act(async()=>v.root.findAllByType('input').find(i=>i.props.placeholder==='Cash received').props.onChange({target:{value:'330'}}));
- await click(v,'Ambil Nomor & Bayar');assert.equal(writes.length,1);assert.equal(updates.at(-1).id,91);assert.equal(updates.at(-1).p.items[0].quantity,3,'continue can add items to existing order');
+ global.__params='order=91';global.__sale={id:91,transaction_number:'POS-91',status:'DRAFT',transaction_type:'POS',location_id:8,department_id:21,cashier_session_id:5,pos_table_id:3,guest_count:3,table_number:'T-03',revenue_account_id:37,items:[{...item,quantity:2,unit_price:100,product_name:'Saved meal'}]};
+ v=await mount();assert.ok(text(v.root).includes('Saved meal'),'continue loads saved order');assert.equal(v.root.findByProps({'aria-label':'Number of guests'}).props.value,'3','continue loads server guest count');await renderer.act(async()=>v.root.findByProps({'aria-label':'Number of guests'}).props.onChange({target:{value:'4'}}));await click(v,'Hotel meal');await renderer.act(async()=>v.root.findAllByType('input').find(i=>i.props.placeholder==='Cash received').props.onChange({target:{value:'330'}}));
+ await click(v,'Ambil Nomor & Bayar');assert.equal(writes.length,1);assert.equal(updates.at(-1).id,91);assert.equal(updates.at(-1).p.guest_count,4);assert.equal(updates.at(-1).p.items[0].quantity,3,'continue can add items to existing order');
  await renderer.act(async()=>v.unmount());global.__sale.status='POSTED';v=await mount();assert.ok(text(v.root).includes('cannot be continued'),'posted order not editable');await renderer.act(async()=>v.unmount());
- values.clear();global.__params='location=8&outlet=21';global.__op.order_mode='EVENT';v=await mount();assert.equal(v.root.findAllByProps({'aria-label':'Table'}).length,0);await click(v,'Hotel meal');await renderer.act(async()=>v.root.findByProps({'aria-label':'Revenue account'}).props.onChange({target:{value:'37'}}));await click(v,'Save Draft');assert.equal(writes.length,1,'event name required');await renderer.act(async()=>v.root.findByProps({'aria-label':'Event name'}).props.onChange({target:{value:'Annual Dinner'}}));await click(v,'Save Draft');assert.equal(writes.at(-1).event_name,'Annual Dinner');assert.equal(writes.at(-1).pos_table_id,undefined);await renderer.act(async()=>v.unmount());
- console.log('Outlet POS PASS: required shift/table/event, pinned outlet, stable draft retry, continued order adds items and settles without creating duplicates.');
+ values.clear();global.__params='location=8&outlet=21';global.__op.order_mode='EVENT';v=await mount();assert.equal(v.root.findAllByProps({'aria-label':'Table'}).length,0);await click(v,'Hotel meal');await renderer.act(async()=>v.root.findByProps({'aria-label':'Revenue account'}).props.onChange({target:{value:'37'}}));await click(v,'Save Draft');assert.equal(writes.length,1,'event name required');await renderer.act(async()=>v.root.findByProps({'aria-label':'Event name'}).props.onChange({target:{value:'Annual Dinner'}}));await click(v,'Save Draft');assert.equal(writes.at(-1).event_name,'Annual Dinner');assert.equal(writes.at(-1).pos_table_id,undefined);assert.equal(writes.at(-1).guest_count,null,'banquet guest count optional');await renderer.act(async()=>v.unmount());
+ values.clear();global.__op.order_mode='COUNTER';v=await mount();assert.equal(v.root.findByProps({'aria-label':'Number of guests'}).props.value,'');await click(v,'Hotel meal');await renderer.act(async()=>v.root.findByProps({'aria-label':'Revenue account'}).props.onChange({target:{value:'37'}}));await click(v,'Save Draft');assert.equal(writes.at(-1).guest_count,null,'counter guests are optional');assert.equal(writes.at(-1).pos_table_id,undefined,'counter table is optional');await renderer.act(async()=>v.unmount());
+ console.log('Outlet POS PASS: table → people → menu, optional counter/event guests, required shift/table/event, pinned outlet, stable draft retry, continued order adds items and settles without creating duplicates.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
