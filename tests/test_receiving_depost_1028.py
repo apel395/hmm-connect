@@ -137,3 +137,60 @@ def test_late_failure_rolls_back_invoice_inventory_and_journal(stock_db,monkeypa
     assert receipt.status=='POSTED' and invoice.status=='DRAFT'
     assert invoice.lines[0].goods_receipt_item_id==line_id
     assert inventory[0].quantity==qty and db.query(StockMovement).count()==count
+
+
+def test_later_receipt_allows_location_correction_without_changing_later_receipt(stock_db):
+    from app.models.inventory import Inventory
+    from app.models.location import Location
+    from app.models.location_department import LocationDepartment
+    from app.models.warehouse import Warehouse
+    data,receipt,before=posted(stock_db)
+    db,wh,user,products,inventory,*_=data
+    journal=db.query(JournalEntry).filter_by(reference_type='GOODS_RECEIPT',reference_id=receipt.id).one()
+    journal_id=journal.id
+    later=create(data,items=[dict(product_id=products[0].id,quantity=3,unit_cost=30)])
+    Service.post(db,receipt_id=later.id,user=user)
+    later_stock=[(m.id,m.warehouse_id,m.quantity,m.unit_cost) for m in active_receipt_stock(db,later.id)]
+    later_invoice=db.query(SupplierInvoice).filter_by(goods_receipt_id=later.id,status='DRAFT').one()
+    old_value=Decimal(inventory[0].quantity)*Decimal(inventory[0].average_cost)
+    depost_receiving(db,receipt.id,user,'Correct location to Duri')
+    assert Decimal(inventory[0].quantity)==before[0][0]+3
+    assert abs(Decimal(inventory[0].quantity)*Decimal(inventory[0].average_cost)-(old_value-20)) < Decimal('0.01')
+
+    duri=Location(code='DURI',name='Duri',location_type='HOTEL',is_active=True,business_unit_id=receipt.business_unit_id)
+    db.add(duri);db.flush()
+    target=Warehouse(code='DURI-WH',name='Duri',is_active=True,location_id=duri.id)
+    db.add_all([target,LocationDepartment(location_id=duri.id,department_id=receipt.department_id)])
+    db.commit()
+    Service.update(db,receipt=receipt,user=user,data=GoodsReceiptUpdate(
+        received_at=receipt.received_at,location_id=duri.id,warehouse_id=target.id,
+        items=[dict(product_id=products[0].id,quantity=2,unit_cost=10,is_taxable=False)]))
+    Service.post(db,receipt_id=receipt.id,user=user)
+    assert receipt.status=='POSTED' and receipt.location_id==duri.id and receipt.warehouse_id==target.id
+    db.refresh(journal)
+    assert journal.id==journal_id and journal.location_id==duri.id
+    invoice=db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id,status='DRAFT').one()
+    assert invoice.location_id==duri.id and invoice.total_amount==20
+    target_stock=db.query(Inventory).filter_by(product_id=products[0].id,warehouse_id=target.id).one()
+    assert target_stock.quantity==2 and target_stock.average_cost==10
+    assert [(m.id,m.warehouse_id,m.quantity,m.unit_cost) for m in active_receipt_stock(db,later.id)]==later_stock
+    assert later.status=='POSTED' and later.warehouse_id==wh.id and later_invoice.status=='DRAFT'
+    assert db.query(GeneralLedger).count()==0
+
+
+@pytest.mark.parametrize('movement_type,quantity,cost',[
+    ('OUT',1,10),('ADJUSTMENT',1,10),('IN',0,10),('IN',1,-1),
+])
+def test_later_unsafe_movement_still_blocks_even_after_replenishment(stock_db,movement_type,quantity,cost):
+    data,receipt,_=posted(stock_db)
+    db,wh,user,products,inventory,*_=data
+    db.add(StockMovement(product_id=products[0].id,warehouse_id=wh.id,
+        movement_type=movement_type,quantity=quantity,unit_cost=cost,reference_type='TEST',reference_id=901))
+    db.flush()
+    later=create(data,items=[dict(product_id=products[0].id,quantity=4,unit_cost=25)])
+    Service.post(db,receipt_id=later.id,user=user)
+    qty=Decimal(inventory[0].quantity);count=db.query(StockMovement).count()
+    with pytest.raises(HTTPException,match='subsequent stock out or adjustment'):
+        depost_receiving(db,receipt.id,user,'Correct location')
+    assert receipt.status=='POSTED' and inventory[0].quantity==qty
+    assert db.query(StockMovement).count()==count
