@@ -27,13 +27,14 @@ const input = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text
 
 interface CartLine extends ServiceDetails { catering_shared?: boolean; line_key?: string; sales_location_id?: number; sales_business_unit_id?: number; department_id?: number; catalog_type?: string; product_id: number; product_code: string; product_name: string; group_name: string; uom: string; quantity: number; unit_price: number; service_charge_rate: number; tax_rate: number; tax_type?: string; is_taxable: boolean; sale_available: boolean; }
 
-type PosDraft = { discountPresetId?:string; billingDetails?:BillingDetails; saleDate?:string; notes?:string; posTableId?: number; cashierSessionId?: number; eventName?: string; orderRequestKey?: string; customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
+type PosDraft = { guestCount?:string; discountPresetId?:string; billingDetails?:BillingDetails; saleDate?:string; notes?:string; posTableId?: number; cashierSessionId?: number; eventName?: string; orderRequestKey?: string; customerId?: number; invoiceDueDate?: string; receivableAccountId?: number; orderLocationId?: number; orderDepartmentId?: number; revenueAccountId?: number; pendingDraftId?: number; transactionType: PosTransactionType; locationId?: number; departmentId?: number; tableNumber: string; search: string; groupFilter: string; cart: CartLine[]; discount: string; paymentMethod: PosPaymentMethod; amountReceived: string };
 const validDraft = (value: unknown): value is PosDraft => {
   if (!value || typeof value !== "object") return false;
   const d = value as PosDraft;
   return ["POS", "INVOICE"].includes(d.transactionType) && ["CASH", "CARD", "BANK_TRANSFER"].includes(d.paymentMethod)
     && [d.tableNumber, d.search, d.groupFilter, d.discount, d.amountReceived].every(v => typeof v === "string")
     && [d.locationId, d.departmentId, d.orderLocationId, d.orderDepartmentId, d.revenueAccountId, d.pendingDraftId, d.customerId, d.receivableAccountId, d.posTableId, d.cashierSessionId].every(v => v === undefined || (Number.isInteger(v) && v > 0))
+    && (d.guestCount===undefined||typeof d.guestCount==="string")
     && [d.eventName,d.orderRequestKey].every(v=>v===undefined||typeof v==="string")
     && (d.discountPresetId===undefined||typeof d.discountPresetId==="string")
     && [d.saleDate,d.notes].every(v=>v===undefined||typeof v==='string')
@@ -64,7 +65,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     const saved=owner != null && storage ? readDraft(storage, draftKey(String(owner), recoveryName), validDraft) : null;
     if(saved)return saved;
     if(!existing)return null;
-    return {discountPresetId:existing.checkout_snapshot?.discount_preset?.id,billingDetails:existing.billing_details??undefined,saleDate:existing.sale_date,notes:existing.notes??"",transactionType:existing.transaction_type,pendingDraftId:existing.id,locationId:existing.location_id,departmentId:existing.department_id,
+    return {guestCount:existing.guest_count==null?"":String(existing.guest_count),discountPresetId:existing.checkout_snapshot?.discount_preset?.id,billingDetails:existing.billing_details??undefined,saleDate:existing.sale_date,notes:existing.notes??"",transactionType:existing.transaction_type,pendingDraftId:existing.id,locationId:existing.location_id,departmentId:existing.department_id,
       orderLocationId:existing.location_id,orderDepartmentId:existing.department_id,revenueAccountId:existing.revenue_account_id??undefined,
       customerId:existing.customer_id??undefined,invoiceDueDate:existing.invoice_due_date||"",receivableAccountId:existing.receivable_account_id??undefined,
       posTableId:existing.pos_table_id??undefined,cashierSessionId:existing.cashier_session_id??undefined,eventName:existing.event_name||"",orderRequestKey:existing.order_request_key,
@@ -102,6 +103,8 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const [invoiceDueDate, setInvoiceDueDate] = useState(initial?.invoiceDueDate ?? "");
   const [receivableAccountId, setReceivableAccountId] = useState<number | undefined>(initial?.receivableAccountId);
   const billingQuery = useQuery({ queryKey: ["pos-billing-options", user?.id], queryFn: async () => (await posApi.billingOptions()).data, enabled: transactionType === "INVOICE" });
+  const [guestCount,setGuestCount]=useState(initial?.guestCount??(existing?.guest_count==null?"":String(existing.guest_count)));
+  const validGuestCount=guestCount!==""&&Number.isInteger(Number(guestCount))&&Number(guestCount)>0&&Number(guestCount)<=2147483647;
   const [posTableId,setPosTableId]=useState<number|undefined>(initial?.posTableId);
   const [cashierSessionId,setCashierSessionId]=useState<number|undefined>(initial?.cashierSessionId);
   const [eventName,setEventName]=useState(initial?.eventName??"");
@@ -109,7 +112,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const [pendingDraftId, setPendingDraftId] = useState<number | undefined>(initial?.pendingDraftId);
   const saleLocationId = orderLocationId ?? cart.find(line => line.sales_location_id)?.sales_location_id;
   const saleDepartmentId = orderDepartmentId ?? cart.find(line => line.department_id)?.department_id;
-  const recovery = useFormRecovery(recoveryName, { discountPresetId,billingDetails,saleDate,notes,posTableId, cashierSessionId, eventName, orderRequestKey, transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
+  const recovery = useFormRecovery(recoveryName, { guestCount,discountPresetId,billingDetails,saleDate,notes,posTableId, cashierSessionId, eventName, orderRequestKey, transactionType, locationId, departmentId, orderLocationId, orderDepartmentId, revenueAccountId, pendingDraftId, customerId, invoiceDueDate, receivableAccountId, tableNumber, search, groupFilter, cart, discount, paymentMethod, amountReceived }, true, validDraft);
   const optionsQuery = useQuery({ queryKey: ["pos-options", user?.id], queryFn: async () => (await posApi.options()).data });
   const locations = useMemo(() => optionsQuery.data?.locations ?? [], [optionsQuery.data]);
   const cateringInvoice = transactionType === "INVOICE" && locations.find((l: any) => l.id === (saleLocationId ?? locationId))?.catalog_type === "CATERING";
@@ -124,6 +127,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const paymentMethods=checkoutQuery.data?.configuration?.payment_methods.filter(p=>p.enabled)??[];
   const myShift=operations.data?.shifts.find(r=>r.status==="OPEN"&&r.cashier_id===user?.id);
   const mode=operations.data?.order_mode;
+  const menuReady=!managed||Boolean(mode&&(mode!=="TABLE"||(posTableId&&validGuestCount)));
   const selectedTable=operations.data?.tables.find(t=>t.id===posTableId);
   const operationsLink=hotelSelection.href;
   const departments = useMemo(() => (optionsQuery.data?.departments ?? []).filter((d: any) => !locationId || d.location_id === locationId).filter((d: any) => !hotelOutletsRequired || (d.is_outlet && d.is_fnb_outlet)).filter((d: any, i: number, all: any[]) => all.findIndex(x => x.id === d.id) === i), [optionsQuery.data, locationId, hotelOutletsRequired]);
@@ -169,6 +173,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
   const addToCart = (product: any) => {
     setError("");
     if (!product.sale_available) return;
+    if (!menuReady) return setError("Choose a table and enter the number of guests before adding menu items.");
     if (!selectedLocation || (hotelOutletsRequired && !hotelSelection.valid)) return setError("Select the location and hotel outlet before adding a menu item.");
     if (!product.catering_shared && product.sales_location_id && product.sales_location_id !== locationId) return setError("Menu belongs to another sales location.");
     if (!product.catering_shared && product.department_id && product.department_id !== departmentId) return setError("Menu belongs to another outlet.");
@@ -191,7 +196,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     if (!next.length) { clear(); return; }
     setCart(next);
   };
-  const clear = () => { recovery.clear(); if(existing){navigate(hotelSelection.valid?operationsLink:"/pos/sales");return;} setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount("");setDiscountPresetId(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); setNotes(""); if(cateringInvoice&&profileQuery.data)applyDefaults(profileQuery.data,false); };
+  const clear = () => { recovery.clear(); if(existing){navigate(hotelSelection.valid?operationsLink:"/pos/sales");return;} setPosTableId(undefined);setGuestCount("");setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID()); setCart([]); setPendingDraftId(undefined); setOrderLocationId(locationId); setOrderDepartmentId(departmentId); setRevenueAccountId(undefined); setDiscount("");setDiscountPresetId(""); setAmountReceived(""); setQueueNumber(""); setLastNumber(""); setNotes(""); if(cateringInvoice&&profileQuery.data)applyDefaults(profileQuery.data,false); };
 
   const invoiceItems = ():PosItemIn[] => cart.map(line=>({product_id:line.product_id,quantity:line.quantity,unit_price:line.unit_price,...(cateringInvoice?{description:line.description,registration_number:line.registration_number,service_period_from:line.service_period_from||null,service_period_to:line.service_period_to||null,uom:line.uom}:{})}));
   const profileQuery=useQuery<CateringProfile>({queryKey:["catering-billing",user?.id,locationId],queryFn:async()=>(await posApi.cateringSettings(locationId!)).data,enabled:cateringInvoice&&Boolean(locationId)});
@@ -221,7 +226,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     const canMove=transactionType==="INVOICE"&&target?.catalog_type==="CATERING"&&(!cart.length||cateringInvoice)&&!cashierSessionId;
     if(!canMove){
       if(cart.length||pendingDraftId||existing){setError("Clear or complete the current order before changing location.");return;}
-      setLocationId(value);setOrderLocationId(value);setDepartmentId(undefined);setOrderDepartmentId(undefined);setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID());setGroupFilter("");setError("");return;
+      setLocationId(value);setOrderLocationId(value);setDepartmentId(undefined);setOrderDepartmentId(undefined);setPosTableId(undefined);setGuestCount("");setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID());setGroupFilter("");setError("");return;
     }
     const request=++contextRequest.current;setChangingContext(true);setError("");
     try{
@@ -242,12 +247,13 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
     if (!revenueAccountId) throw new Error("Choose a revenue account.");
     if(managed && (!mode || !myShift))throw new Error("Configure the outlet and open your cashier shift in Outlet Operations first.");
     if(managed && mode==="TABLE" && !posTableId)throw new Error("Choose an available table.");
+    if(managed && ((mode==="TABLE"&&!validGuestCount)||(guestCount!==""&&!validGuestCount)))throw new Error("Enter a positive whole number of guests.");
     if(managed && mode==="EVENT" && !eventName.trim())throw new Error("Enter the banquet event name.");
     if (cart.some(line => !Number.isFinite(line.unit_price) || line.unit_price <= 0)) throw new Error("Enter a unit price greater than zero for every item.");
     if(cateringInvoice&&cart.some(line=>line.quantity<=0||!line.uom.trim()||(line.service_period_from&&line.service_period_to&&line.service_period_to<line.service_period_from)))throw new Error("Enter positive quantities, a unit, and a valid service period for every line.");
     if(managed&&(!checkoutQuery.data?.version||checkoutQuery.isError))throw new Error("Load the outlet checkout settings before saving or settling.");
     if(managed&&discountPresetId&&!selectedPreset)throw new Error("The discount preset is unavailable. Select an active preset or No discount.");
-    const checkoutFields=managed?{discount_preset_id:discountPresetId||null,checkout_version:checkoutQuery.data!.version}:{};
+    const checkoutFields=managed?{guest_count:guestCount===""?null:Number(guestCount),discount_preset_id:discountPresetId||null,checkout_version:checkoutQuery.data!.version}:{};
     const items = invoiceItems();
     const invoiceFields=cateringInvoice?{billing_details:billingDetails,sale_date:saleDate,notes,location_id:saleLocationId,department_id:saleDepartmentId??null}:{};
     let created;
@@ -301,7 +307,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <SearchableSelect label="Sales location" required value={locationId} options={locations} placeholder="Choose hotel / property location" disabled={busy} onChange={value=>{void changeLocation(value);}} />
-          <SearchableSelect label={hotelOutletsRequired ? "Hotel outlet" : "Sales department / outlet"} required={hotelOutletsRequired} value={departmentId} options={departments.map((d: any) => ({...d, label: d.display_name ?? d.name}))} placeholder={hotelOutletsRequired ? "Select Restaurant, Café, Banquet..." : "Choose department"} disabled={busy} onChange={(value) => { if(cateringInvoice&&locationId){void changeLocation(locationId,value,true);return;} if(cart.length || pendingDraftId || existing) {setError("Clear or complete the current order before changing outlet.");return;} setDepartmentId(value);setOrderDepartmentId(value);setPosTableId(undefined);setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID());setGroupFilter("");setError("");}} />
+          <SearchableSelect label={hotelOutletsRequired ? "Hotel outlet" : "Sales department / outlet"} required={hotelOutletsRequired} value={departmentId} options={departments.map((d: any) => ({...d, label: d.display_name ?? d.name}))} placeholder={hotelOutletsRequired ? "Select Restaurant, Café, Banquet..." : "Choose department"} disabled={busy} onChange={(value) => { if(cateringInvoice&&locationId){void changeLocation(locationId,value,true);return;} if(cart.length || pendingDraftId || existing) {setError("Clear or complete the current order before changing outlet.");return;} setDepartmentId(value);setOrderDepartmentId(value);setPosTableId(undefined);setGuestCount("");setCashierSessionId(undefined);setEventName("");setOrderRequestKey(crypto.randomUUID());setGroupFilter("");setError("");}} />
           {transactionType === "POS" && !managed ? <div><label className="mb-1 block text-xs font-medium text-slate-500">Meja <span className="text-red-500">*</span></label><input className={input} value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} placeholder="Contoh: M-01 / 12" /></div> : transactionType === "INVOICE" ? <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500">Invoice dicatat sebagai piutang pelanggan.</div> : null}
         </div>
       </Card>
@@ -316,12 +322,14 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
           <div className="text-sm">{mode||"Outlet not configured"} · {myShift?`My shift #${myShift.id}`:"No open cashier shift"} <Link className="ml-2 text-emerald-700 underline" to={operationsLink}>Manage shift / tables</Link></div>
           {mode!=="EVENT"&&<SearchableSelect label={mode==="TABLE"?"Table":"Table (optional)"} required={mode==="TABLE"} value={posTableId} disabled={Boolean(pendingDraftId)} options={(operations.data?.tables??[]).filter(t=>t.is_active&&(t.status==="AVAILABLE"||t.order_id===pendingDraftId)).map(t=>({id:t.id,name:t.name}))} onChange={setPosTableId}/>}
           {mode==="EVENT"&&<input aria-label="Event name" className={input} maxLength={200} placeholder="Banquet / event name" value={eventName} disabled={Boolean(pendingDraftId)} onChange={e=>setEventName(e.target.value)}/>}
+          <label className="text-xs font-medium text-slate-600">{mode==="TABLE"?"Guests":"Guests (optional)"}<input aria-label="Number of guests" type="number" inputMode="numeric" min={1} max={2147483647} step={1} required={mode==="TABLE"} className={`${input} mt-1 w-32`} placeholder="Guests" value={guestCount} disabled={busy||saveDraft.isPending||createAndPost.isPending||(mode==="TABLE"&&!posTableId)} onChange={e=>{setGuestCount(e.target.value);setError("");}}/></label>
           {selectedTable&&<span className="text-xs text-slate-500">{selectedTable.seats} seats</span>}
         </div>}
       </Card>}
       {optionsQuery.isError&&<p role="alert" className="text-sm text-red-700">Sales locations could not load. <button type="button" className="underline" onClick={()=>void optionsQuery.refetch()}>Retry</button></p>}
       {!optionsQuery.isLoading&&!optionsQuery.isError&&locations.length===0&&<p role="status" className="text-sm text-slate-600">No accessible sales locations. Check this account's business unit and location assignments.</p>}
       {hotelOutletsRequired && !departmentId && <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">Select the outlet first. Its menu and sales will be recorded separately from other hotel outlets.</p>}
+      {managed&&mode==="TABLE"&&<p role="status" className="text-sm text-slate-600">{!posTableId?"1. Choose a table":!validGuestCount?"2. Enter the number of guests":"3. Choose food and drinks"}</p>}
       {error&&cart.length===0&&<p role="alert" className="text-sm text-red-700">{error}</p>}
       {recovery.failed && <p className="text-xs text-amber-700">Browser storage is unavailable. Save Draft before leaving this page.</p>}
       {queueNumber && <Card className="flex items-center justify-between border-emerald-200 bg-emerald-50 p-4"><div><div className="text-xs uppercase tracking-wide text-emerald-700">{transactionType === "POS" ? "Nomor Antrian" : "Nomor Invoice"}</div><div className="mt-1 text-2xl font-bold text-emerald-800">{queueNumber}</div></div>{transactionType === "POS" && <Badge variant="success">Meja {tableNumber}</Badge>}</Card>}
@@ -332,7 +340,7 @@ function PosRegister({existing,defaultLocation,defaultOutlet}:{existing?:any;def
           {groups.length > 0 && <div className="mb-3 flex flex-wrap gap-1.5"><button type="button" onClick={() => setGroupFilter("")} className={`rounded-full px-3 py-1 text-xs font-medium ${!groupFilter ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>All</button>{groups.map((g) => <button key={g} type="button" onClick={() => setGroupFilter(g)} className={`rounded-full px-3 py-1 text-xs font-medium ${groupFilter === g ? "bg-[#0F6758] text-white" : "bg-slate-100 text-slate-600"}`}>{g}</button>)}</div>}
           {productsQuery.isError && <p className="text-sm text-red-600">Could not load SELL items. Refresh and check your sales location.</p>}
           {!productsQuery.isLoading && !productsQuery.isError && locationId && (!hotelOutletsRequired || departmentId) && products.length === 0 && <p className="p-4 text-sm text-slate-500">No SELL items available. Register menus and selling prices in Sell Item Master for this location / outlet.</p>}
-          {productsQuery.isLoading ? <Loading /> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">{visibleProducts.map((product) => <button key={product.product_id} type="button" disabled={busy || !product.sale_available} onClick={() => addToCart(product)} className="flex h-24 flex-col justify-between rounded-lg border border-slate-200 p-2.5 text-left hover:border-[#0F6758] disabled:opacity-40"><div><div className="line-clamp-2 text-xs font-semibold">{product.product_name}</div><div className="text-[10px] text-slate-400">{!product.sale_available ? (Number(product.selling_price) <= 0 ? "Set selling price" : (product.unavailable_reason || "Tax posting pending")) : product.group_name || product.product_code}</div></div><div className="flex items-center justify-between"><span className="text-sm font-bold text-[#0F6758]">{money(product.selling_price)}</span><span className="text-[10px] text-slate-500">{product.uom}</span></div></button>)}</div>}
+          {productsQuery.isLoading ? <Loading /> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">{visibleProducts.map((product) => <button key={product.product_id} type="button" disabled={busy || !menuReady || !product.sale_available} onClick={() => addToCart(product)} className="flex h-24 flex-col justify-between rounded-lg border border-slate-200 p-2.5 text-left hover:border-[#0F6758] disabled:opacity-40"><div><div className="line-clamp-2 text-xs font-semibold">{product.product_name}</div><div className="text-[10px] text-slate-400">{!product.sale_available ? (Number(product.selling_price) <= 0 ? "Set selling price" : (product.unavailable_reason || "Tax posting pending")) : product.group_name || product.product_code}</div></div><div className="flex items-center justify-between"><span className="text-sm font-bold text-[#0F6758]">{money(product.selling_price)}</span><span className="text-[10px] text-slate-500">{product.uom}</span></div></button>)}</div>}
         </Card>
         <Card className="h-fit p-4">
           <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2 text-sm font-semibold"><ShoppingCart className="h-4 w-4 text-[#0F6758]" />Order</div>{cart.length > 0 && <button type="button" onClick={clear} className="text-xs text-slate-500">Clear</button>}</div>

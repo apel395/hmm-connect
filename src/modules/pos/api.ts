@@ -23,6 +23,7 @@ export type PosItemIn = ServiceDetails & {
 };
 
 export type PosCreatePayload = {
+  guest_count?: number | null;
   discount_preset_id?: string | null;
   checkout_version?: string;
   billing_details?: BillingDetails;
@@ -47,6 +48,7 @@ export type PosCreatePayload = {
 };
 
 export type PosUpdatePayload = {
+  guest_count?: number | null;
   discount_preset_id?: string | null;
   checkout_version?: string;
   billing_details?: BillingDetails;
