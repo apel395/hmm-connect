@@ -51,11 +51,13 @@ export function DialogOverlay({ className }: DialogOverlayProps) {
 export interface DialogContentProps {
   children: ReactNode;
   className?: string;
+  closeButtonDisabled?: boolean;
 }
 
 export function DialogContent({
   children,
   className,
+  closeButtonDisabled = false,
 }: DialogContentProps) {
   return (
     <DialogPortal>
@@ -75,6 +77,7 @@ export function DialogContent({
         <DialogPrimitive.Close asChild>
           <button
             type="button"
+            disabled={closeButtonDisabled}
             className="absolute right-3 top-3 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             aria-label="Close"
           >
