@@ -98,6 +98,7 @@ def serialize_sale(transaction: SalesTransaction) -> dict[str, Any]:
     ar = object_session(transaction).query(AccountReceivable).filter_by(source_sale_id=transaction.id).first()
     return {
         "id": transaction.id,
+        "guest_count": transaction.guest_count,
         "pos_table_id": transaction.pos_table_id, "cashier_session_id": transaction.cashier_session_id,
         "order_mode": transaction.order_mode, "event_name": transaction.event_name, "order_request_key": transaction.order_request_key,
         "transaction_number": transaction.transaction_number,

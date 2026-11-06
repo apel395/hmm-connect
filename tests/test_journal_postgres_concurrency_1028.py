@@ -472,3 +472,35 @@ def test_outlet_checkout_migration_preserves_financial_rows_and_guards_rollback(
         connection.execute(text("UPDATE sales_transactions SET checkout_snapshot='{}'::json WHERE id=:id"),{'id':sale_id})
         with Operations.context(MigrationContext.configure(connection)):
             with pytest.raises(RuntimeError,match='discard'):module.downgrade()
+
+
+def test_pos_guest_migration_preserves_history_and_guards_downgrade(pg):
+    from sqlalchemy.exc import IntegrityError
+    import importlib.util
+    from pathlib import Path
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from app.models.sales_transaction import SalesTransaction
+    with pg.factory() as db:
+        sale=SalesTransaction(transaction_number='LEGACY-GUESTS',transaction_type='POS',status='POSTED',sale_date=date(2026,1,5),created_by_id=pg.user.id,location_id=pg.location_id,business_unit_id=pg.unit_id,total_amount=110)
+        db.add(sale);db.commit();sale_id=sale.id
+    with pg.factory.kw['bind'].begin() as connection:
+        connection.execute(text('ALTER TABLE sales_transactions DROP CONSTRAINT ck_sales_guest_count_positive'))
+        connection.execute(text('ALTER TABLE sales_transactions DROP COLUMN guest_count'))
+        journals=connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()
+        ledger=connection.execute(text('SELECT COUNT(*) FROM general_ledger')).scalar()
+        spec=importlib.util.spec_from_file_location('guests_migration',Path(__file__).resolve().parents[1]/'alembic/versions/20261105_pos_guests.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        with Operations.context(MigrationContext.configure(connection)):module.upgrade()
+        assert connection.execute(text('SELECT guest_count,status,total_amount FROM sales_transactions WHERE id=:id'),{'id':sale_id}).one()==(None,'POSTED',110)
+        assert connection.execute(text('SELECT COUNT(*) FROM journal_entries')).scalar()==journals
+        assert connection.execute(text('SELECT COUNT(*) FROM general_ledger')).scalar()==ledger
+        assert connection.execute(text('SELECT amount FROM opening_balances')).scalar()==1000
+        with Operations.context(MigrationContext.configure(connection)):module.downgrade()
+        with Operations.context(MigrationContext.configure(connection)):module.upgrade()
+        with pytest.raises(IntegrityError):
+            with connection.begin_nested():
+                connection.execute(text('UPDATE sales_transactions SET guest_count=0 WHERE id=:id'),{'id':sale_id})
+        connection.execute(text('UPDATE sales_transactions SET guest_count=2 WHERE id=:id'),{'id':sale_id})
+        with Operations.context(MigrationContext.configure(connection)):
+            with pytest.raises(RuntimeError,match='discard'):module.downgrade()

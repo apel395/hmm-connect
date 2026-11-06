@@ -29,7 +29,7 @@ def context(location_id:int,department_id:int,db:Session=Depends(get_db),user=De
     if not has_permission(user,'finance.manage'):shifts=shifts.filter_by(cashier_id=user.id)
     return {'order_mode':p.order_mode if p else None,'tables':[{'id':t.id,'name':t.name,'seats':t.seats,'is_active':t.is_active,'status':'OCCUPIED' if t.id in occupied else 'AVAILABLE','order_id':occupied[t.id].id if t.id in occupied else None} for t in tables],
         'shifts':[ops.shift_report(db,r) for r in shifts.order_by(PosCashierSession.status.desc(),PosCashierSession.id.desc()).limit(50)],
-        'orders':[{'id':r.id,'number':r.transaction_number,'table':r.table_number,'event':r.event_name,'cashier_id':r.created_by_id,'session_id':r.cashier_session_id,'total':r.total_amount,'date':r.sale_date} for r in orders]}
+        'orders':[{'id':r.id,'number':r.transaction_number,'table':r.table_number,'event':r.event_name,'guest_count':r.guest_count,'cashier_id':r.created_by_id,'session_id':r.cashier_session_id,'total':r.total_amount,'date':r.sale_date} for r in orders]}
 
 
 @router.put('/policy')
