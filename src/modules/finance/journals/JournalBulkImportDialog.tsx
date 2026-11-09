@@ -298,8 +298,12 @@ function UploadStep({
   return (
     <>
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        <div className="font-semibold">Simple journal blocks</div>
-        <div className="mt-1">Use the same fields as Create Journal Entry. Document Number identifies each journal; blank header cells continue the preceding document. Department is selected independently on each line. ERP generates one official journal number for the entire document.</div>
+        <div className="font-semibold">Balance each journal by Document Number</div>
+        <div className="mt-1">
+          Use the same Document Number for all lines of a journal. Total debit and credit must match for that document.
+          Debit and credit can appear in any order and the number of lines on each side can differ.
+          Blank header cells continue the preceding document. Select the department independently on each line.
+        </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="text-sm font-medium">
