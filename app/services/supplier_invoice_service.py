@@ -552,6 +552,7 @@ class SupplierInvoiceService:
         items = {item.id: item for item in receipt.items}
         for line in invoice.lines:
             item = items[line.goods_receipt_item_id]
+            line.quantity = item.quantity
             line.unit_price = item.unit_cost
             line.line_amount = (Decimal(item.quantity) * Decimal(item.unit_cost)).quantize(Decimal("0.01"))
             line.tax_amount = item.tax_amount
