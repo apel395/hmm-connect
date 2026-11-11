@@ -5,6 +5,7 @@ on:
     branches: [main, feature/hotel-pos-outlets-1024-ui]
     paths:
       - "src/**"
+      - "scripts/test-receiving-edit-action.cjs"
       - "scripts/test-store-request-availability.cjs"
       - "package.json"
       - "package-lock.json"

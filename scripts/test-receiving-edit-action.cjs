@@ -97,6 +97,18 @@ async function run() {
   assert.ok(text(view.root).includes("No items match your search."), "item search filters the current document");
   await renderer.act(async () => view.unmount());
 
+  global.__receipt.source_type = "HISTORICAL_ENTRY";
+  global.__receipt.allowed_actions.can_historical_correct = true;
+  await mount();
+  assert.equal(button("Depost for Edit"), undefined, "historical receipts do not offer depost");
+  assert.ok(button("Edit Receiving"), "historical administrator edit is available under More");
+  await renderer.act(async () => button("Edit Receiving").props.onClick());
+  assert.ok(button("Add Item"), "historical edit provides a new item action");
+  assert.ok(view.root.findAllByProps({ "aria-label": "Remove item ALPUKAT" }).length, "source item can be removed");
+  await renderer.act(async () => view.unmount());
+
+  global.__receipt.source_type = "LIVE";
+  global.__receipt.allowed_actions.can_historical_correct = false;
   global.__receipt.status = "DRAFT";
   global.__receipt.allowed_actions.can_depost = false;
   global.__receipt.allowed_actions.can_edit = true;
@@ -117,17 +129,6 @@ async function run() {
   assert.ok(text(view.root).includes("Return Received Goods?"), "destructive return requires confirmation");
   await renderer.act(async () => buttons().filter(node => text(node).trim() === "Return Goods").at(-1).props.onClick());
   assert.equal(global.__returned, 10, "return reaches the existing backend action only after confirmation");
-  await renderer.act(async () => view.unmount());
-
-  global.__receipt.source_type = "HISTORICAL_ENTRY";
-  global.__receipt.allowed_actions.can_historical_correct = true;
-  global.__receipt.allowed_actions.can_return = false;
-  await mount();
-  assert.ok(button("Edit Receiving"), "historical administrator edit is available under More");
-  assert.equal(button("Depost for Edit"), undefined, "historical corrections do not depost the original document");
-  await renderer.act(async () => button("Edit Receiving").props.onClick());
-  assert.ok(button("Add Item"), "historical edit provides a new item action");
-  assert.ok(view.root.findAllByProps({ "aria-label": "Remove item ALPUKAT" }).length, "source item can be removed");
   await renderer.act(async () => view.unmount());
 
   console.log("Receiving UI PASS: contextual actions, depost reason, billing tabs, item search, return confirmation, and historical Add/Remove editor.");
