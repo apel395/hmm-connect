@@ -27,7 +27,7 @@ const TAX_CATEGORIES: { value: TaxCategory; label: string; help: string }[] = [
 const TREATMENTS: { value: InventoryTreatment; label: string; help: string }[] = [
   { value: "REVIEW_REQUIRED", label: "Review Required", help: "Belum ditentukan apakah item disimpan, dipakai langsung, aset tetap, atau non-stock." },
   { value: "STOCK", label: "Stock / Warehouse", help: "Masuk persediaan gudang. Receiving mendebit Inventory Asset." },
-  { value: "DIRECT_USE", label: "Direct Use", help: "Tidak masuk stok. Receiving langsung mendebit expense/consumption." },
+  { value: "DIRECT_USE", label: "Direct Use", help: "Tidak masuk stok. Receiving mendebit akun expense atau peralatan operasional yang dipilih." },
   { value: "FIXED_ASSET", label: "Fixed Asset", help: "Dikapitalisasi ke akun aset tetap, bukan persediaan gudang." },
   { value: "NON_STOCK", label: "Non-stock / Service", help: "Jasa atau pembelian non-persediaan yang langsung dibebankan ke akun expense." },
 ];
@@ -150,6 +150,15 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
     account.account_type === "EXPENSE" && account.normal_balance === "DEBIT"
   );
 
+  const purchaseAccounts = form.inventory_treatment === "DIRECT_USE"
+    ? allAccounts.filter((account) =>
+        account.normal_balance === "DEBIT" && (
+          account.account_type === "EXPENSE" ||
+          (account.account_type === "ASSET" && account.account_code.startsWith("100-900-"))
+        )
+      )
+    : expenseAccounts;
+
   const coaOptions = (rows: typeof allAccounts) => rows.map((account) => ({
     id: account.id,
     label: `${account.account_code} — ${account.account_name}`,
@@ -227,7 +236,9 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
       ...current,
       inventory_treatment: value,
       inventory_account_id: value === "STOCK" ? current.inventory_account_id : null,
-      purchase_account_id: ["DIRECT_USE", "NON_STOCK"].includes(value) ? current.purchase_account_id : null,
+      purchase_account_id: value === "DIRECT_USE" || (
+        value === "NON_STOCK" && expenseAccounts.some((account) => account.id === current.purchase_account_id)
+      ) ? current.purchase_account_id : null,
       asset_account_id: value === "FIXED_ASSET" ? current.asset_account_id : null,
       cogs_account_id: value === "STOCK" ? current.cogs_account_id : null,
     }));
@@ -441,11 +452,11 @@ export default function ProductForm({ catalogType = "CATERING", itemType, open, 
                 onChange={(value) => update("inventory_account_id", value ? Number(value) : null)}
               />}
               {["DIRECT_USE", "NON_STOCK"].includes(form.inventory_treatment) && <SearchableSelect
-                label="Posting COA — Expense"
+                label={form.inventory_treatment === "DIRECT_USE" ? "Posting COA — Expense / Operating Equipment" : "Posting COA — Expense"}
                 value={form.purchase_account_id ?? undefined}
                 required={form.item_type === "BUY"}
                 placeholder="Type expense COA..."
-                options={coaOptions(expenseAccounts)}
+                options={coaOptions(purchaseAccounts)}
                 onChange={(value) => update("purchase_account_id", value ? Number(value) : null)}
               />}
               {form.inventory_treatment === "FIXED_ASSET" && <SearchableSelect
