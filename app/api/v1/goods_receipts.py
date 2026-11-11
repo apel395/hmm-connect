@@ -647,7 +647,7 @@ def correct_receipt_costs(receipt_id: int, data: GoodsReceiptCostCorrection, db:
 @router.patch("/{receipt_id}/historical-correction")
 def correct_historical_receipt(receipt_id: int, data: HistoricalReceiptCorrection,
                                db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
-    """Administrator-only numeric correction; no new stock IN/OUT movements."""
+    """Administrator-only correction of historical items and their source stock IN."""
     _scoped_receipt(db, receipt_id, user)
     from app.services.receiving_historical_correction import correct_historical_receiving
     return serialize_receipt(correct_historical_receiving(db, receipt_id, user, data), db)
