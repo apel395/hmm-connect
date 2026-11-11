@@ -8,7 +8,7 @@ const renderer = req("react-test-renderer");
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
 global.__receipt = {
-  id: 10, receipt_number: "GR-POSTED", status: "POSTED", source_type: "PURCHASE_ORDER",
+  id: 10, receipt_number: "GR-POSTED", status: "POSTED", source_type: "LIVE",
   source_mode: "DIRECT", received_at: "2026-11-03T03:00:00Z", destination_type: "DIRECT_USE",
   supplier_name: "Supplier test", total_amount: 93000,
   items: [{ id: 1, product_name: "ALPUKAT", product_code: "1-600085", quantity: 3, uom: "Kg", unit_cost: 31000, line_total: 93000 }],
@@ -102,7 +102,7 @@ async function run() {
   assert.ok(button("Correct Historical Numbers"), "authorized historical correction is available");
   await renderer.act(async () => view.unmount());
 
-  global.__receipt.source_type = "PURCHASE_ORDER";
+  global.__receipt.source_type = "LIVE";
   global.__receipt.allowed_actions.can_historical_correct = false;
   global.__receipt.status = "DRAFT";
   global.__receipt.allowed_actions.can_depost = false;
