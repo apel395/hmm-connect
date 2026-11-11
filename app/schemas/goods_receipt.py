@@ -112,14 +112,33 @@ class HistoricalReceiptCorrectionLine(BaseModel):
         return self
 
 
+class HistoricalReceiptAddedLine(BaseModel):
+    product_id: int = Field(gt=0)
+    quantity: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    unit_cost: Decimal = Field(gt=0, max_digits=18, decimal_places=4)
+    destination_type: Literal['WAREHOUSE', 'DIRECT_USE'] | None = None
+    destination_override_reason: str | None = Field(default=None, max_length=500)
+    expense_account_id: int | None = None
+    is_taxable: bool = False
+    tax_rate: Decimal = Field(default=Decimal('0'), ge=0, le=100)
+
+
 class HistoricalReceiptCorrection(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
-    items: list[HistoricalReceiptCorrectionLine] = Field(min_length=1)
+    items: list[HistoricalReceiptCorrectionLine] = Field(default_factory=list)
+    add_items: list[HistoricalReceiptAddedLine] = Field(default_factory=list)
+    remove_item_ids: list[int] = Field(default_factory=list)
 
     @model_validator(mode='after')
     def unique_items(self):
+        if not (self.items or self.add_items or self.remove_item_ids):
+            raise ValueError('Add, remove or correct at least one receiving item')
         if len({item.item_id for item in self.items}) != len(self.items):
             raise ValueError('Each receiving item may be corrected only once')
+        if len(set(self.remove_item_ids)) != len(self.remove_item_ids):
+            raise ValueError('Each receiving item may be removed only once')
+        if set(self.remove_item_ids) & {item.item_id for item in self.items}:
+            raise ValueError('A removed item cannot also be corrected')
         return self
 
 

@@ -86,6 +86,122 @@ def test_repeated_historical_correction_keeps_one_receipt_movement(stock_db):
     assert invoice.lines[0].quantity == 4 and invoice.lines[0].unit_price == 15
 
 
+def test_admin_adds_historical_stock_line_with_only_its_new_source_in(stock_db):
+    data, receipt = sample(stock_db)
+    db, _, user, products, inventory, *_ = data
+    old_movement = active_receipt_stock(db, receipt.id)[0]
+    starting_qty = Decimal(inventory[0].quantity)
+    result = correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason='Missing historical goods', add_items=[dict(
+            product_id=products[0].id, quantity=3, unit_cost=14)]))
+
+    assert len(result.items) == 2
+    movements = active_receipt_stock(db, receipt.id)
+    assert len(movements) == 2 and movements[0].id == old_movement.id
+    assert movements[1].goods_receipt_item_id == result.items[1].id
+    assert movements[1].quantity == 3 and movements[1].unit_cost == 14
+    assert inventory[0].quantity == starting_qty + 3
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert {line.goods_receipt_item_id for line in invoice.lines} == {item.id for item in receipt.items}
+    assert invoice.total_amount == receipt.total_amount == 62
+
+
+def test_admin_removes_mistaken_historical_item_without_stock_out(stock_db):
+    data, receipt = sample(stock_db)
+    db, _, user, _, inventory, *_ = data
+    added_receipt_item = receipt.items[0]
+    added_movement = active_receipt_stock(db, receipt.id)[0]
+    initial_movement_count = db.query(StockMovement).count()
+    initial_qty = Decimal(inventory[0].quantity)
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason='Item was never delivered',
+            remove_item_ids=[added_receipt_item.id], add_items=[dict(
+                product_id=added_receipt_item.product_id, quantity=1, unit_cost=20)]))
+
+    assert added_movement not in active_receipt_stock(db, receipt.id)
+    assert db.query(StockMovement).count() == initial_movement_count
+    assert inventory[0].quantity == initial_qty - 1
+    assert receipt.items[0].id != added_receipt_item.id
+    assert receipt.total_amount == 20
+    assert db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one().lines[0].goods_receipt_item_id == receipt.items[0].id
+
+
+def test_admin_removes_one_historical_line_without_reversal(stock_db):
+    data, receipt = sample(stock_db)
+    db, _, user, products, inventory, *_ = data
+    second = correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason='Add missing stock line', add_items=[dict(
+            product_id=products[0].id, quantity=3, unit_cost=14)])).items[1]
+    initial_qty = Decimal(inventory[0].quantity)
+    movement_count = db.query(StockMovement).count()
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason='Second line never existed', remove_item_ids=[second.id]))
+    assert len(receipt.items) == 1
+    assert db.query(StockMovement).count() == movement_count - 1
+    assert inventory[0].quantity == initial_qty - 3
+    assert receipt.total_amount == 20
+
+
+def test_admin_adds_direct_use_item_without_stock_movement(stock_db):
+    data, receipt = sample(stock_db)
+    db, _, user, products, inventory, expense, *_ = data
+    old_count = db.query(StockMovement).count()
+    old_qty = Decimal(inventory[0].quantity)
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason='Direct use purchase missing', add_items=[dict(
+            product_id=products[1].id, quantity=2, unit_cost=18,
+            expense_account_id=expense.id)]))
+    assert len(receipt.items) == 2 and receipt.destination_type == 'MIXED'
+    assert db.query(StockMovement).count() == old_count
+    assert inventory[0].quantity == old_qty
+    assert receipt.total_amount == 56
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert len(invoice.lines) == 2 and invoice.total_amount == 56
+
+
+def test_historical_added_line_can_be_corrected_again(stock_db):
+    data, receipt = sample(stock_db)
+    db, _, user, products, inventory, *_ = data
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason='Add missing goods', add_items=[dict(
+            product_id=products[0].id, quantity=3, unit_cost=14)]))
+    added_line = receipt.items[1]
+    count = db.query(StockMovement).count()
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason='Fix source count', items=[dict(
+            item_id=added_line.id, quantity=4)]))
+    assert db.query(StockMovement).count() == count
+    assert active_receipt_stock(db, receipt.id)[1].quantity == 4
+    assert receipt.total_amount == 76
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert {line.goods_receipt_item_id: line.quantity for line in invoice.lines}[added_line.id] == 4
+
+
+def test_admin_cannot_remove_last_historical_item_without_replacement(stock_db):
+    data, receipt = sample(stock_db)
+    db, _, user, _, inventory, *_ = data
+    old_qty = Decimal(inventory[0].quantity)
+    with pytest.raises(HTTPException, match='keep at least one'):
+        correct_historical_receiving(db, receipt.id, user,
+            HistoricalReceiptCorrection(reason='Bad entry', remove_item_ids=[receipt.items[0].id]))
+    assert len(receipt.items) == 1 and inventory[0].quantity == old_qty
+
+
+def test_historical_addition_cannot_overwrite_later_stock_usage(stock_db):
+    data, receipt = sample(stock_db)
+    db, warehouse, user, products, inventory, *_ = data
+    db.add(StockMovement(product_id=products[0].id, warehouse_id=warehouse.id,
+        movement_type='OUT', quantity=1, unit_cost=10,
+        reference_type='STORE_REQUEST', reference_id=9))
+    db.commit()
+    old_count = db.query(StockMovement).count()
+    with pytest.raises(HTTPException, match='actual stock usage'):
+        correct_historical_receiving(db, receipt.id, user,
+            HistoricalReceiptCorrection(reason='Missing old receipt line', add_items=[dict(
+                product_id=products[0].id, quantity=1, unit_cost=10)]))
+    assert len(receipt.items) == 1 and db.query(StockMovement).count() == old_count
+
+
 def test_forged_depost_reversal_cannot_bypass_consumption_guard(stock_db):
     data, receipt = sample(stock_db)
     db, warehouse, user, products, inventory, *_ = data
