@@ -135,6 +135,36 @@ def prepare(rows, clearing):
     return drafts, control
 
 
+def location_matches(memo, location_names):
+    words = re.findall(r"[^\W_]+", memo.casefold())
+    matches = []
+    for name in location_names:
+        label = re.findall(r"[^\W_]+", name.casefold())
+        if not label:
+            continue
+        for start in range(len(words) - len(label) + 1):
+            if words[start:start + len(label)] == label:
+                matches.append((start, start + len(label), name))
+    return sorted({
+        name for start, end, name in matches
+        if not any(left <= start and end <= right and right - left > end - start
+                   for left, right, _ in matches)
+    })
+
+
+def assign_locations(drafts, locations, fallback):
+    assignments, exceptions = {}, {}
+    for row, _, memo, *_ in drafts:
+        matches = location_matches(memo, locations)
+        if len(matches) == 1:
+            assignments[row] = locations[matches[0]]
+        else:
+            exceptions[row] = {"description": memo, "matches": matches}
+            if fallback is not None:
+                assignments[row] = fallback
+    return assignments, exceptions
+
+
 def run_db(args, drafts, control):
     from sqlalchemy import text
     from app import models  # noqa: F401
@@ -163,19 +193,14 @@ def run_db(args, drafts, control):
             "SELECT current_database(), current_schema(), CAST(inet_server_addr() AS text), inet_server_port()"
         )).one())
         unit = db.query(BusinessUnit).filter_by(name="Project Catering", is_active=True).one()
-        locations = db.query(Location).filter_by(business_unit_id=unit.id, is_active=True)
-        if args.location_id:
-            location = locations.filter_by(id=args.location_id).one_or_none()
-            if location is None:
-                raise ValueError("--location-id must be an active Project Catering location")
-        else:
-            choices = locations.order_by(Location.id).all()
-            if len(choices) != 1:
-                raise ValueError(f"Supply --location-id. Active Project Catering locations: "
-                                 f"{[(item.id, item.name) for item in choices]}")
-            location = choices[0]
-        scope = {"business_unit_id": unit.id, "location_id": location.id}
-        validate_dimensions(db, **scope, required=True)
+        active = db.query(Location).filter_by(business_unit_id=unit.id, is_active=True).all()
+        locations = {item.name: item.id for item in active}
+        fallback = args.location_id
+        if fallback is not None and fallback not in locations.values():
+            raise ValueError("--fallback-location-id must be an active Project Catering location")
+        assignments, location_exceptions = assign_locations(drafts, locations, fallback)
+        for location_id in set(assignments.values()):
+            validate_dimensions(db, business_unit_id=unit.id, location_id=location_id, required=True)
         period, opened = period_state(db, start)
         if not opened or period.end_date < end:
             raise ValueError("An open fiscal period covering January 2026 is required")
@@ -214,18 +239,29 @@ def run_db(args, drafts, control):
                 matches.update(by_movement[(stamp, contra, credit, debit)])
             if matches:
                 candidates[str(row)] = sorted(matches)
-        token = fingerprint((target, scope, args.clearing_code, drafts, control, candidates))
-        report = {"database": target[0], "schema": target[1], **scope, "drafts": len(drafts),
+        token = fingerprint((target, unit.id, assignments, args.clearing_code, drafts, control, candidates))
+        location_counts = Counter(assignments.values())
+        report = {"database": target[0], "schema": target[1], "business_unit_id": unit.id,
+                  "drafts": len(drafts), "fallback_location_id": fallback,
+                  "drafts_by_location": {name: location_counts[id_] for name, id_ in sorted(locations.items())
+                                         if location_counts[id_]},
+                  "unmatched_location_rows": sum(not item["matches"] for item in location_exceptions.values()),
+                  "ambiguous_location_rows": sum(bool(item["matches"]) for item in location_exceptions.values()),
+                  "location_exceptions_by_source_row": location_exceptions,
                   "transfer_journals": len(TRANSFERS), "clearing_code": args.clearing_code,
                   "bank_control": control, "possible_existing_journals_by_source_row": candidates,
                   "plan": token}
         print(json.dumps(report, indent=2, default=str))
         if not args.apply:
             return
+        if len(assignments) != len(drafts):
+            raise ValueError("Some rows have no unique location. See location_exceptions_by_source_row "
+                             "or supply --fallback-location-id for those rows.")
         if args.expected_plan is not None and args.expected_plan != token:
             raise ValueError("Plan changed or token is wrong. Run dry-run again.")
         for row, stamp, memo, bank, debit, credit, contra, sender in drafts:
             ref = f"{PREFIX}{row:04d}"
+            scope = {"business_unit_id": unit.id, "location_id": assignments[row]}
             journal = JournalEntry(
                 journal_number=next_document_number(db, "MAN", digits=6), posting_date=stamp,
                 fiscal_year=2026, fiscal_period=1, status="DRAFT", document_type="BULK_JOURNAL_IMPORT",
@@ -247,7 +283,8 @@ def run_db(args, drafts, control):
                 entity_id=journal.id, summary=f"Seeded {ref} from Catering Kas Harian",
                 document_number=ref, document_status="DRAFT",
                 details={"actor": "SYSTEM", "sheet": TAB, "source_row": row, "sender_row": sender,
-                                             "proposed_bank_override": row in OVERRIDES, "plan": token},
+                                             "proposed_bank_override": row in OVERRIDES,
+                                             "location_fallback": row in location_exceptions, "plan": token},
             )
     print(f"COMMITTED {len(drafts)} Project Catering journals as DRAFT.")
 
@@ -256,7 +293,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--xlsx", type=Path, help="Use an authorized local XLSX export instead of Google Sheets")
     parser.add_argument("--source-only", action="store_true")
-    parser.add_argument("--location-id", type=int)
+    parser.add_argument("--fallback-location-id", "--location-id", dest="location_id", type=int,
+                        help="Use this Catering location only for missing or ambiguous descriptions")
     parser.add_argument("--clearing-code")
     parser.add_argument("--expected-plan")
     parser.add_argument("--apply", action="store_true")
