@@ -38,7 +38,7 @@ async function run() {
         } else if (args.path === "@radix-ui/react-dropdown-menu") {
           contents = "import React from 'react';const Wrap=p=>React.createElement('div',null,p.children);export const Root=Wrap,Trigger=Wrap,Portal=Wrap,Content=Wrap;export const Item=p=>React.createElement('button',{onClick:p.onSelect},p.children);";
         } else if (args.path.includes("useGoodsReceipts")) {
-          contents = "export const useGoodsReceipt=()=>({data:globalThis.__receipt,isLoading:false});const action=()=>({isPending:false,mutate(){}});export const useDepostGoodsReceipt=()=>({isPending:false,mutate:p=>{globalThis.__depost=p;}});export const useReturnGoodsReceipt=()=>({isPending:false,mutate:id=>{globalThis.__returned=id;}});export const useApproveGoodsReceipt=action,useCorrectGoodsReceiptCosts=action,usePostGoodsReceipt=action,useRejectGoodsReceipt=action,useSubmitGoodsReceipt=action;";
+          contents = "export const useGoodsReceipt=()=>({data:globalThis.__receipt,isLoading:false});const action=()=>({isPending:false,mutate(){}});export const useDepostGoodsReceipt=()=>({isPending:false,mutate:p=>{globalThis.__depost=p;}});export const useReturnGoodsReceipt=()=>({isPending:false,mutate:id=>{globalThis.__returned=id;}});export const useApproveGoodsReceipt=action,useCorrectGoodsReceiptCosts=action,useCorrectHistoricalReceipt=action,usePostGoodsReceipt=action,useRejectGoodsReceipt=action,useSubmitGoodsReceipt=action;";
         } else if (args.path.includes("useAuthorization")) {
           contents = "export default ()=>({hasPermission:()=>true,isSuperuser:()=>true,canPerform:()=>globalThis.__allowBusinessAction});";
         } else if (args.path === "@tanstack/react-query") {
