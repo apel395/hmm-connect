@@ -93,8 +93,11 @@ def _validate_coa_mappings(db: Session, payload: dict, product: Product | None =
             continue
         if values[field]:
             account = resolver.account(values[field], f"Item {label}")
-            if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
-                raise HTTPException(422, f"Item {label} COA must be a debit-balance expense")
+            treatment = payload.get("inventory_treatment", getattr(product, "inventory_treatment", None))
+            allow_operating_equipment = field == "purchase_account_id" and treatment == "DIRECT_USE"
+            if not resolver.is_purchase_debit_account(account, allow_operating_equipment=allow_operating_equipment):
+                allowed = "expense or operating equipment COA" if allow_operating_equipment else "expense COA"
+                raise HTTPException(422, f"Item {label} requires a debit-balance {allowed}")
     if values["asset_account_id"]:
         account = resolver.account(values["asset_account_id"], "Item fixed asset")
         if account.account_type != "ASSET" or account.normal_balance != "DEBIT" or account.account_subtype in resolver.BANK_SUBTYPES:

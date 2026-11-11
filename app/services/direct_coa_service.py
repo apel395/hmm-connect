@@ -94,13 +94,30 @@ class DirectCoaService:
             raise HTTPException(409, f"Item {product.code} fixed asset COA must be a debit-balance non-cash asset")
         return account
 
+    @classmethod
+    def is_purchase_debit_account(
+        cls, account: ChartOfAccount, *, allow_operating_equipment: bool = False,
+    ) -> bool:
+        if account.normal_balance != "DEBIT":
+            return False
+        if account.account_type == "EXPENSE":
+            return True
+        return (
+            allow_operating_equipment
+            and account.account_type == "ASSET"
+            and account.account_subtype not in cls.BANK_SUBTYPES
+            and str(account.account_number or "").startswith("100-900-")
+        )
+
     def expense_account(self, product) -> ChartOfAccount:
         account = self.account(
             getattr(product, "purchase_account_id", None),
             f"Item {product.code} consumption/expense",
         )
-        if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
-            raise HTTPException(409, f"Item {product.code} consumption/expense COA must be a debit-balance expense")
+        direct_use = getattr(product, "inventory_treatment", None) == "DIRECT_USE"
+        if not self.is_purchase_debit_account(account, allow_operating_equipment=direct_use):
+            label = "expense or operating equipment COA" if direct_use else "expense COA"
+            raise HTTPException(409, f"Item {product.code} requires a debit-balance {label}")
         return account
 
     def cogs_account(self, product) -> ChartOfAccount:
