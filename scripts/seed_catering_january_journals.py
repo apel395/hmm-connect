@@ -140,12 +140,11 @@ def run_db(args, drafts, control):
     from app import models  # noqa: F401
     from app.api.v1.journals import validate
     from app.core.database import SessionLocal
-    from app.dependencies.authorization import has_permission
     from app.models.business_unit import BusinessUnit
     from app.models.chart_of_account import ChartOfAccount
     from app.models.journal_entry import JournalEntry
     from app.models.journal_line import JournalLine
-    from app.models.user import User
+    from app.models.location import Location
     from app.services.activity_service import ActivityService
     from app.services.document_number import next_document_number
     from app.services.fiscal_period_service import FiscalPeriodService
@@ -163,11 +162,19 @@ def run_db(args, drafts, control):
         target = tuple(db.execute(text(
             "SELECT current_database(), current_schema(), CAST(inet_server_addr() AS text), inet_server_port()"
         )).one())
-        actor = db.get(User, args.user_id)
-        if not actor or not actor.is_active or not has_permission(actor, "journal.manage"):
-            raise ValueError("Select an active user with journal.manage")
         unit = db.query(BusinessUnit).filter_by(name="Project Catering", is_active=True).one()
-        scope = {"business_unit_id": unit.id, "location_id": args.location_id}
+        locations = db.query(Location).filter_by(business_unit_id=unit.id, is_active=True)
+        if args.location_id:
+            location = locations.filter_by(id=args.location_id).one_or_none()
+            if location is None:
+                raise ValueError("--location-id must be an active Project Catering location")
+        else:
+            choices = locations.order_by(Location.id).all()
+            if len(choices) != 1:
+                raise ValueError(f"Supply --location-id. Active Project Catering locations: "
+                                 f"{[(item.id, item.name) for item in choices]}")
+            location = choices[0]
+        scope = {"business_unit_id": unit.id, "location_id": location.id}
         validate_dimensions(db, **scope, required=True)
         period, opened = period_state(db, start)
         if not opened or period.end_date < end:
@@ -207,7 +214,7 @@ def run_db(args, drafts, control):
                 matches.update(by_movement[(stamp, contra, credit, debit)])
             if matches:
                 candidates[str(row)] = sorted(matches)
-        token = fingerprint((target, scope, args.user_id, args.clearing_code, drafts, control, candidates))
+        token = fingerprint((target, scope, args.clearing_code, drafts, control, candidates))
         report = {"database": target[0], "schema": target[1], **scope, "drafts": len(drafts),
                   "transfer_journals": len(TRANSFERS), "clearing_code": args.clearing_code,
                   "bank_control": control, "possible_existing_journals_by_source_row": candidates,
@@ -215,7 +222,7 @@ def run_db(args, drafts, control):
         print(json.dumps(report, indent=2, default=str))
         if not args.apply:
             return
-        if args.expected_plan != token:
+        if args.expected_plan is not None and args.expected_plan != token:
             raise ValueError("Plan changed or token is wrong. Run dry-run again.")
         for row, stamp, memo, bank, debit, credit, contra, sender in drafts:
             ref = f"{PREFIX}{row:04d}"
@@ -224,7 +231,7 @@ def run_db(args, drafts, control):
                 fiscal_year=2026, fiscal_period=1, status="DRAFT", document_type="BULK_JOURNAL_IMPORT",
                 document_number=ref, external_reference=ref, reference_type="MANUAL",
                 reference_id=0, source_type="JOURNAL_IMPORT", description=memo,
-                created_by_id=actor.id, imported_by_id=actor.id, **scope,
+                **scope,
             )
             journal.lines = [
                 JournalLine(line_number=1, account_id=accounts[bank].id, debit=debit, credit=credit,
@@ -236,9 +243,10 @@ def run_db(args, drafts, control):
             db.add(journal)
             db.flush()
             ActivityService.log(
-                db=db, user=actor, action="JOURNAL_IMPORT_CREATED", entity_type="JOURNAL_ENTRY",
+                db=db, user=None, action="JOURNAL_IMPORT_CREATED", entity_type="JOURNAL_ENTRY",
                 entity_id=journal.id, summary=f"Seeded {ref} from Catering Kas Harian",
-                document_number=ref, details={"sheet": TAB, "source_row": row, "sender_row": sender,
+                document_number=ref, document_status="DRAFT",
+                details={"actor": "SYSTEM", "sheet": TAB, "source_row": row, "sender_row": sender,
                                              "proposed_bank_override": row in OVERRIDES, "plan": token},
             )
     print(f"COMMITTED {len(drafts)} Project Catering journals as DRAFT.")
@@ -248,16 +256,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--xlsx", type=Path, help="Use an authorized local XLSX export instead of Google Sheets")
     parser.add_argument("--source-only", action="store_true")
-    parser.add_argument("--user-id", type=int)
     parser.add_argument("--location-id", type=int)
     parser.add_argument("--clearing-code")
     parser.add_argument("--expected-plan")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
-    if args.apply and (args.source_only or not args.expected_plan):
-        parser.error("--apply requires --expected-plan from the database dry-run")
-    if not args.source_only and not all((args.user_id, args.location_id, args.clearing_code)):
-        parser.error("Database mode requires --user-id, --location-id and --clearing-code")
+    if args.apply and args.source_only:
+        parser.error("--apply and --source-only cannot be used together")
+    if not args.source_only and not args.clearing_code:
+        parser.error("Database mode requires --clearing-code for uncategorized journal counterparts")
     drafts, control = prepare(load_source(args.xlsx), args.clearing_code)
     if args.source_only:
         print(json.dumps({"drafts": len(drafts), "bank_control": control}, indent=2, default=str))
