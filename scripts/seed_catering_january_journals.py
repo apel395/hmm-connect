@@ -152,7 +152,7 @@ def location_matches(memo, location_names):
     })
 
 
-def assign_locations(drafts, locations, fallback):
+def assign_locations(drafts, locations, fallback, ambiguous_fallback=None):
     assignments, exceptions = {}, {}
     for row, _, memo, *_ in drafts:
         matches = location_matches(memo, locations)
@@ -160,8 +160,9 @@ def assign_locations(drafts, locations, fallback):
             assignments[row] = locations[matches[0]]
         else:
             exceptions[row] = {"description": memo, "matches": matches}
-            if fallback is not None:
-                assignments[row] = fallback
+            default = ambiguous_fallback if matches else fallback
+            if default is not None:
+                assignments[row] = default
     return assignments, exceptions
 
 
@@ -195,10 +196,12 @@ def run_db(args, drafts, control):
         unit = db.query(BusinessUnit).filter_by(name="Project Catering", is_active=True).one()
         active = db.query(Location).filter_by(business_unit_id=unit.id, is_active=True).all()
         locations = {item.name: item.id for item in active}
-        fallback = args.location_id
-        if fallback is not None and fallback not in locations.values():
+        if args.location_id is not None and args.location_id not in locations.values():
             raise ValueError("--fallback-location-id must be an active Project Catering location")
-        assignments, location_exceptions = assign_locations(drafts, locations, fallback)
+        fallback = args.location_id or locations.get("Pekanbaru")
+        if fallback is None:
+            raise ValueError("Active Pekanbaru location missing from Project Catering")
+        assignments, location_exceptions = assign_locations(drafts, locations, fallback, args.location_id)
         for location_id in set(assignments.values()):
             validate_dimensions(db, business_unit_id=unit.id, location_id=location_id, required=True)
         period, opened = period_state(db, start)
@@ -255,7 +258,7 @@ def run_db(args, drafts, control):
         if not args.apply:
             return
         if len(assignments) != len(drafts):
-            raise ValueError("Some rows have no unique location. See location_exceptions_by_source_row "
+            raise ValueError("Some rows match multiple locations. See location_exceptions_by_source_row "
                              "or supply --fallback-location-id for those rows.")
         if args.expected_plan is not None and args.expected_plan != token:
             raise ValueError("Plan changed or token is wrong. Run dry-run again.")
@@ -294,7 +297,7 @@ def main():
     parser.add_argument("--xlsx", type=Path, help="Use an authorized local XLSX export instead of Google Sheets")
     parser.add_argument("--source-only", action="store_true")
     parser.add_argument("--fallback-location-id", "--location-id", dest="location_id", type=int,
-                        help="Use this Catering location only for missing or ambiguous descriptions")
+                        help="Override the Pekanbaru default and use this location for ambiguous descriptions too")
     parser.add_argument("--clearing-code")
     parser.add_argument("--expected-plan")
     parser.add_argument("--apply", action="store_true")
