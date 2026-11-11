@@ -8,7 +8,7 @@ const renderer = req("react-test-renderer");
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
 global.__receipt = {
-  id: 10, receipt_number: "GR-POSTED", status: "POSTED", source_type: "HISTORICAL_ENTRY",
+  id: 10, receipt_number: "GR-POSTED", status: "POSTED", source_type: "LIVE",
   source_mode: "DIRECT", received_at: "2026-11-03T03:00:00Z", destination_type: "DIRECT_USE",
   supplier_name: "Supplier test", total_amount: 93000,
   items: [{ id: 1, product_name: "ALPUKAT", product_code: "1-600085", quantity: 3, uom: "Kg", unit_cost: 31000, line_total: 93000 }],
@@ -38,7 +38,7 @@ async function run() {
         } else if (args.path === "@radix-ui/react-dropdown-menu") {
           contents = "import React from 'react';const Wrap=p=>React.createElement('div',null,p.children);export const Root=Wrap,Trigger=Wrap,Portal=Wrap,Content=Wrap;export const Item=p=>React.createElement('button',{onClick:p.onSelect},p.children);";
         } else if (args.path.includes("useGoodsReceipts")) {
-          contents = "export const useGoodsReceipt=()=>({data:globalThis.__receipt,isLoading:false});const action=()=>({isPending:false,mutate(){}});export const useDepostGoodsReceipt=()=>({isPending:false,mutate:p=>{globalThis.__depost=p;}});export const useReturnGoodsReceipt=()=>({isPending:false,mutate:id=>{globalThis.__returned=id;}});export const useApproveGoodsReceipt=action,useCorrectGoodsReceiptCosts=action,usePostGoodsReceipt=action,useRejectGoodsReceipt=action,useSubmitGoodsReceipt=action;";
+          contents = "export const useGoodsReceipt=()=>({data:globalThis.__receipt,isLoading:false});const action=()=>({isPending:false,mutate(){}});export const useDepostGoodsReceipt=()=>({isPending:false,mutate:p=>{globalThis.__depost=p;}});export const useReturnGoodsReceipt=()=>({isPending:false,mutate:id=>{globalThis.__returned=id;}});export const useApproveGoodsReceipt=action,useCorrectGoodsReceiptCosts=action,useCorrectHistoricalReceipt=action,usePostGoodsReceipt=action,useRejectGoodsReceipt=action,useSubmitGoodsReceipt=action;";
         } else if (args.path.includes("useAuthorization")) {
           contents = "export default ()=>({hasPermission:()=>true,isSuperuser:()=>true,canPerform:()=>globalThis.__allowBusinessAction});";
         } else if (args.path === "@tanstack/react-query") {
@@ -95,6 +95,15 @@ async function run() {
   assert.ok(text(view.root).includes("No items match your search."), "item search filters the current document");
   await renderer.act(async () => view.unmount());
 
+  global.__receipt.source_type = "HISTORICAL_ENTRY";
+  global.__receipt.allowed_actions.can_historical_correct = true;
+  await mount();
+  assert.equal(button("Depost for Edit"), undefined, "historical receipts do not offer depost");
+  assert.ok(button("Correct Historical Numbers"), "authorized historical correction is available");
+  await renderer.act(async () => view.unmount());
+
+  global.__receipt.source_type = "LIVE";
+  global.__receipt.allowed_actions.can_historical_correct = false;
   global.__receipt.status = "DRAFT";
   global.__receipt.allowed_actions.can_depost = false;
   global.__receipt.allowed_actions.can_edit = true;
