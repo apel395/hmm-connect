@@ -20,6 +20,7 @@ import {
   useDepostGoodsReceipt,
   useApproveGoodsReceipt,
   useCorrectGoodsReceiptCosts,
+  useCorrectHistoricalReceipt,
   useGoodsReceipt,
   usePostGoodsReceipt,
   useRejectGoodsReceipt,
@@ -63,6 +64,7 @@ export default function ReceivingDetailPage() {
   const post = usePostGoodsReceipt();
   const returned = useReturnGoodsReceipt();
   const correctCosts = useCorrectGoodsReceiptCosts();
+  const correctHistorical = useCorrectHistoricalReceipt();
 
   const [depostOpen, setDepostOpen] = useState(false);
   const [depostReason, setDepostReason] = useState("");
@@ -70,6 +72,9 @@ export default function ReceivingDetailPage() {
   const [costDialogOpen, setCostDialogOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [costs, setCosts] = useState<Record<number, number>>({});
+  const [historicalOpen, setHistoricalOpen] = useState(false);
+  const [historicalReason, setHistoricalReason] = useState("");
+  const [historicalNumbers, setHistoricalNumbers] = useState<Record<number, { quantity: string; unit_cost: string }>>({});
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
   const [returnOpen, setReturnOpen] = useState(false);
@@ -101,6 +106,13 @@ export default function ReceivingDetailPage() {
     setCosts(Object.fromEntries(data.items.map(item => [item.id, Number(item.unit_cost)])));
     setReason("");
     setCostDialogOpen(true);
+  };
+  const openHistoricalCorrection = () => {
+    setHistoricalNumbers(Object.fromEntries(data.items.map(item => [item.id, {
+      quantity: String(item.quantity), unit_cost: String(item.unit_cost),
+    }])));
+    setHistoricalReason("");
+    setHistoricalOpen(true);
   };
 
   let primary: ReceivingPrimaryAction | undefined;
@@ -137,13 +149,15 @@ export default function ReceivingDetailPage() {
   if (actions?.can_edit) {
     menuActions.push({ label: "Edit Receiving", kind: "edit", onSelect: () => setEditOpen(true) });
   }
-  if (actions?.can_depost) {
+  if (actions?.can_depost && !historical) {
     menuActions.push({
       label: "Depost for Edit", kind: "depost",
       onSelect: () => { setDepostReason(""); setDepostOpen(true); },
     });
   }
-  if (actions?.can_correct_cost) {
+  if (historical && data.status === "POSTED" && isSuperuser() && actions?.can_historical_correct) {
+    menuActions.push({ label: "Correct Historical Numbers", kind: "historical", onSelect: openHistoricalCorrection });
+  } else if (actions?.can_correct_cost) {
     menuActions.push({ label: "Correct Cost", kind: "cost", onSelect: openCostCorrection });
   }
   if (canReject) {
@@ -174,6 +188,35 @@ export default function ReceivingDetailPage() {
     } catch (error) {
       const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
       toast.error(typeof detail === "string" ? detail : "Cost correction failed");
+    }
+  };
+  const historicalChanges = data.items.flatMap(item => {
+    const inputs = historicalNumbers[item.id];
+    if (!inputs) return [];
+    const quantity = Number(inputs.quantity);
+    const unit_cost = Number(inputs.unit_cost);
+    if (!inputs.quantity.trim() || !inputs.unit_cost.trim() || !Number.isFinite(quantity) ||
+        !Number.isFinite(unit_cost) || quantity <= 0 || unit_cost <= 0) return [];
+    if (quantity === Number(item.quantity) && unit_cost === Number(item.unit_cost)) return [];
+    return [{ item_id: item.id, quantity, unit_cost }];
+  });
+  const invalidHistoricalNumbers = data.items.some(item => {
+    const inputs = historicalNumbers[item.id];
+    return !inputs || !inputs.quantity.trim() || !inputs.unit_cost.trim() ||
+      !Number.isFinite(Number(inputs.quantity)) || !Number.isFinite(Number(inputs.unit_cost)) ||
+      Number(inputs.quantity) <= 0 || Number(inputs.unit_cost) <= 0;
+  });
+  const submitHistoricalCorrection = async () => {
+    if (invalidHistoricalNumbers) return toast.error("Quantity and unit cost must be positive numbers.");
+    if (!historicalChanges.length) return toast.error("Change at least one quantity or cost.");
+    if (historicalReason.trim().length < 3) return toast.error("Correction reason is required.");
+    try {
+      await correctHistorical.mutateAsync({ id: data.id, payload: { reason: historicalReason.trim(), items: historicalChanges } });
+      setHistoricalOpen(false);
+      toast.success("Historical Receiving numbers corrected. No physical stock movement was created.");
+    } catch (error) {
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
+      toast.error(typeof detail === "string" ? detail : "Historical correction could not be saved");
     }
   };
 
@@ -340,6 +383,61 @@ export default function ReceivingDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCostDialogOpen(false)}>Cancel</Button>
             <Button loading={correctCosts.isPending} onClick={submitCostCorrection}>Save Correction</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={historicalOpen} onOpenChange={value => !correctHistorical.isPending && setHistoricalOpen(value)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader><DialogTitle>Correct Historical Receiving Numbers</DialogTitle></DialogHeader>
+          <DialogBody className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Administrator correction for historical entry only. This updates recorded quantities, inventory values,
+              the open journal, and the untouched invoice draft. It does not create physical stock IN/OUT movements.
+              Posted financial dependencies or actual stock usage will block the correction.
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="bg-slate-50">
+                  <tr><th className="p-3 text-left">Item</th><th className="p-3 text-right">Previous Qty</th>
+                    <th className="p-3">Correct Qty</th><th className="p-3 text-right">Previous Cost</th>
+                    <th className="p-3">Correct Cost</th><th className="p-3 text-right">New Subtotal</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {data.items.map(item => <tr key={item.id}>
+                    <td className="p-3">{item.product_name}</td>
+                    <td className="p-3 text-right">{item.quantity}</td>
+                    <td className="p-3"><input type="number" min="0.0001" step="any"
+                      aria-label={`Correct quantity for ${item.product_name}`}
+                      className="w-28 rounded-lg border border-slate-300 px-2 py-2 text-right"
+                      value={historicalNumbers[item.id]?.quantity ?? ""} disabled={correctHistorical.isPending}
+                      onChange={event => setHistoricalNumbers(current => ({ ...current, [item.id]: {
+                        quantity: event.target.value, unit_cost: current[item.id]?.unit_cost ?? String(item.unit_cost),
+                      } }))} /></td>
+                    <td className="p-3 text-right">{money(item.unit_cost)}</td>
+                    <td className="p-3"><input type="number" min="0.0001" step="any"
+                      aria-label={`Correct unit cost for ${item.product_name}`}
+                      className="w-36 rounded-lg border border-slate-300 px-2 py-2 text-right"
+                      value={historicalNumbers[item.id]?.unit_cost ?? ""} disabled={correctHistorical.isPending}
+                      onChange={event => setHistoricalNumbers(current => ({ ...current, [item.id]: {
+                        quantity: current[item.id]?.quantity ?? String(item.quantity), unit_cost: event.target.value,
+                      } }))} /></td>
+                    <td className="p-3 text-right">{money(Number(historicalNumbers[item.id]?.quantity ?? item.quantity) * Number(historicalNumbers[item.id]?.unit_cost ?? item.unit_cost))}</td>
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>
+            <label className="block text-sm font-medium">Correction Reason *
+              <textarea className="mt-1 min-h-20 w-full rounded-lg border border-slate-300 p-3"
+                maxLength={500} value={historicalReason} disabled={correctHistorical.isPending}
+                onChange={event => setHistoricalReason(event.target.value)} />
+            </label>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" disabled={correctHistorical.isPending} onClick={() => setHistoricalOpen(false)}>Cancel</Button>
+            <Button loading={correctHistorical.isPending}
+              disabled={invalidHistoricalNumbers || !historicalChanges.length || historicalReason.trim().length < 3}
+              onClick={submitHistoricalCorrection}>Save Historical Correction</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

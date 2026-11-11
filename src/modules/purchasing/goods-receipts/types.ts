@@ -42,6 +42,7 @@ export interface GoodsReceiptUpdatePayload extends Partial<ReceivingBilling> {
 }
 
 export interface GoodsReceiptCostCorrectionPayload { reason: string; items: Array<{ item_id: number; unit_cost: number }> }
+export interface HistoricalReceiptCorrectionPayload { reason: string; items: Array<{ item_id: number; quantity?: number; unit_cost?: number }> }
 export interface ApprovalHistoryItem { id?:number;level?:number;step_order?:number;name?:string;approver_role?:string;approver_role_name?:string;status:string;approver_name?:string|null;decided_at?:string|null;comment?:string|null }
 
 export interface GoodsReceiptItem {
@@ -67,6 +68,6 @@ export interface GoodsReceipt extends Partial<ReceivingBilling> {
   business_unit_id?: number | null; business_unit_name?: string | null; department_id?: number | null; department_name?: string | null; location_id?: number | null; location_name?: string | null;
   warehouse_id?: number | null; warehouse_name?: string | null; notes?: string | null; external_reference?: string | null; delivery_note_number?: string | null;
   subtotal?: number; tax_amount?: number; total_amount?: number; total_value?: number; items: GoodsReceiptItem[];
-  allowed_actions?: { can_depost?: boolean; edit_block_reason?: string | null;can_edit:boolean;can_submit?:boolean;can_approve?:boolean;can_reject?:boolean;can_post:boolean;can_return?:boolean;can_correct_cost?:boolean;can_print:boolean;can_view_history:boolean;can_manage_attachments:boolean };
+  allowed_actions?: { can_depost?: boolean; can_historical_correct?: boolean; edit_block_reason?: string | null;can_edit:boolean;can_submit?:boolean;can_approve?:boolean;can_reject?:boolean;can_post:boolean;can_return?:boolean;can_correct_cost?:boolean;can_print:boolean;can_view_history:boolean;can_manage_attachments:boolean };
   activity_history?: import("../components/DocumentActivity").DocumentActivityItem[];
 }

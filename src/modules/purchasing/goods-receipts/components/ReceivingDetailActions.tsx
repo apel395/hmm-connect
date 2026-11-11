@@ -13,13 +13,14 @@ export type ReceivingPrimaryAction = {
 export type ReceivingMenuAction = {
   label: string;
   onSelect: () => void;
-  kind: "edit" | "depost" | "cost" | "reject" | "return";
+  kind: "edit" | "depost" | "cost" | "historical" | "reject" | "return";
 };
 
 const menuIcons = {
   edit: Pencil,
   depost: PencilLine,
   cost: PencilLine,
+  historical: PencilLine,
   reject: XCircle,
   return: RotateCcw,
 };
