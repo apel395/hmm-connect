@@ -123,8 +123,13 @@ class GoodsReceiptService:
             if destination != "DIRECT_USE" or treatment not in {"STOCK", "DIRECT_USE", "NON_STOCK"}:
                 raise HTTPException(422, "Expense destination is only available for Direct Use receiving")
             account = resolver.account(expense_account_id, "Direct Use expense destination")
-            if account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
-                raise HTTPException(422, "Direct Use destination must be an expense account")
+            allow_operating_equipment = (
+                treatment == "DIRECT_USE" and expense_account_id == getattr(product, "purchase_account_id", None)
+            )
+            if not DirectCoaService.is_purchase_debit_account(
+                account, allow_operating_equipment=allow_operating_equipment,
+            ):
+                raise HTTPException(422, "Direct Use destination must be an expense or the item's operating equipment account")
             return account
         if treatment in {"STOCK", "DIRECT_USE"} and destination == "WAREHOUSE":
             return resolver.inventory_account(product, receipt.location_id)
