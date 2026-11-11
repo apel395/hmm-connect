@@ -1,5 +1,5 @@
 import api from "@/api/client";
-import type { GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload, GoodsReceiptUpdatePayload } from "../types";
+import type { GoodsReceiptCostCorrectionPayload, GoodsReceiptCreatePayload, GoodsReceiptUpdatePayload, HistoricalReceiptCorrectionPayload } from "../types";
 
 export type GoodsReceiptListParams = {
   page?: number;
@@ -54,6 +54,7 @@ export const goodsReceiptApi = {
   post: (id: number) => api.post(`/goods-receipts/${id}/post`),
   depost: (id:number,reason:string) => api.post(`/goods-receipts/${id}/unpost`,{reason}),
   correctCosts: (id: number, payload: GoodsReceiptCostCorrectionPayload) => api.patch(`/goods-receipts/${id}/costs`, payload),
+  correctHistorical: (id: number, payload: HistoricalReceiptCorrectionPayload) => api.patch(`/goods-receipts/${id}/historical-correction`, payload),
   returnReceipt: (id: number) => api.post(`/goods-receipts/${id}/return`),
   allowedActions: (id: number) => api.get(`/goods-receipts/${id}/allowed-actions`),
 };
