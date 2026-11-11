@@ -17,7 +17,7 @@ from app.models.payment import PaymentAllocation
 from app.services.activity_service import ActivityService
 from app.services.location_access import enforce_location_access
 from app.services.fiscal_period_service import FiscalPeriodService
-from app.services.receiving_stock_cycle import active_receipt_stock, DEPOST
+from app.services.receiving_stock_cycle import active_receipt_stock, DEPOST, unsafe_later_receipt_movement
 
 PERMISSIONS = ('receiving.manage','receiving.edit','receiving.post','journal.manage')
 
@@ -77,19 +77,14 @@ def _depost(db, receipt_id, user, reason):
         buckets[(movement.product_id,movement.warehouse_id)].append(movement)
     reversals=[]
     for (product_id,warehouse_id),rows in sorted(buckets.items()):
+        stock=db.query(Inventory).filter_by(product_id=product_id,warehouse_id=warehouse_id).with_for_update().first()
         # Later positive receipts do not consume the stock being corrected.
         # Remove this receipt's original value below, preserving later INs.
-        # An OUT (even if later replenished), adjustment, or invalid IN still
-        # requires downstream review because its valuation may depend on us.
-        if db.query(StockMovement.id).filter(
-            StockMovement.product_id==product_id,
-            StockMovement.warehouse_id==warehouse_id,
-            StockMovement.id>max(r.id for r in rows),
-            or_(StockMovement.movement_type!='IN',
-                StockMovement.quantity<=0, StockMovement.unit_cost<0),
-        ).first():
+        # A paired depost reversal from another GR is not stock consumption.
+        # Real usage and unpaired/invalid reversals still block rollback.
+        if unsafe_later_receipt_movement(db, product_id=product_id,
+                warehouse_id=warehouse_id, after_id=max(r.id for r in rows)):
             raise HTTPException(409,f'Product {product_id} has subsequent stock out or adjustment movements; reverse downstream activity first')
-        stock=db.query(Inventory).filter_by(product_id=product_id,warehouse_id=warehouse_id).with_for_update().first()
         quantity=sum((Decimal(r.quantity) for r in rows),Decimal(0));value=sum((Decimal(r.quantity)*Decimal(r.unit_cost) for r in rows),Decimal(0))
         if not stock or Decimal(stock.quantity)<quantity:
             raise HTTPException(409,f'Product {product_id} has insufficient stock to depost this receiving')

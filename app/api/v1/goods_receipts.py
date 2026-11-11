@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.dependencies.authorization import has_permission, require_permission
+from app.dependencies.authorization import has_permission, is_superuser, require_permission
 from app.models.approval_request import ApprovalRequest
 from app.services.receiving_destination import line_destination
 from app.models.department import Department
@@ -27,7 +27,7 @@ from app.models.supplier_invoice import SupplierInvoice
 from app.models.user import User
 from app.models.warehouse import Warehouse
 from app.schemas.approval import ApprovalDecisionRequest
-from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptDepost
+from app.schemas.goods_receipt import GoodsReceiptCostCorrection, GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptDepost, HistoricalReceiptCorrection
 from app.services.approval import (
     approve_current_step,
     can_user_decide_step,
@@ -106,6 +106,9 @@ def receipt_actions(receipt: GoodsReceipt, user, db: Session):
     return {
         "can_edit": can_edit,
         "can_depost": can_depost(receipt,user),
+        "can_historical_correct": (is_superuser(user) and receipt.status == "POSTED"
+                                   and receipt.source_type == "HISTORICAL_ENTRY"
+                                   and not receipt.purchase_order_id and not receipt.market_list_id),
         "edit_block_reason": edit_block_reason(receipt, approval, user),
         "can_submit": receipt.status == "DRAFT" and receipt.source_type != "HISTORICAL_ENTRY" and approval is None and has_permission(user, "receiving.submit"),
         "can_approve": can_decide and not has_receiving_approval(approval, user) and has_permission(user, "receiving.approve"),
@@ -639,6 +642,15 @@ def post_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(re
 def correct_receipt_costs(receipt_id: int, data: GoodsReceiptCostCorrection, db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
     _scoped_receipt(db, receipt_id, user)
     return serialize_receipt(GoodsReceiptService.correct_costs(db=db, receipt_id=receipt_id, data=data, user=user), db)
+
+
+@router.patch("/{receipt_id}/historical-correction")
+def correct_historical_receipt(receipt_id: int, data: HistoricalReceiptCorrection,
+                               db: Session = Depends(get_db), user=Depends(receiving_manage_user)):
+    """Administrator-only numeric correction; no new stock IN/OUT movements."""
+    _scoped_receipt(db, receipt_id, user)
+    from app.services.receiving_historical_correction import correct_historical_receiving
+    return serialize_receipt(correct_historical_receiving(db, receipt_id, user, data), db)
 
 
 @router.post("/{receipt_id}/return")

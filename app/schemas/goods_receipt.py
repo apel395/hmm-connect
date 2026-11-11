@@ -100,6 +100,29 @@ class GoodsReceiptCostCorrection(BaseModel):
         return self
 
 
+class HistoricalReceiptCorrectionLine(BaseModel):
+    item_id: int
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    unit_cost: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=4)
+
+    @model_validator(mode='after')
+    def require_changed_field(self):
+        if self.quantity is None and self.unit_cost is None:
+            raise ValueError('Provide quantity or unit cost')
+        return self
+
+
+class HistoricalReceiptCorrection(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+    items: list[HistoricalReceiptCorrectionLine] = Field(min_length=1)
+
+    @model_validator(mode='after')
+    def unique_items(self):
+        if len({item.item_id for item in self.items}) != len(self.items):
+            raise ValueError('Each receiving item may be corrected only once')
+        return self
+
+
 class GoodsReceiptItemUpdate(BaseModel):
     item_id: int | None = None
     product_id: int | None = None
