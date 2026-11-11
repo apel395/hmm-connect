@@ -8,7 +8,7 @@ const renderer = req("react-test-renderer");
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
 global.__receipt = {
-  id: 10, receipt_number: "GR-POSTED", status: "POSTED", source_type: "HISTORICAL_ENTRY",
+  id: 10, receipt_number: "GR-POSTED", status: "POSTED", source_type: "LIVE",
   source_mode: "DIRECT", received_at: "2026-11-03T03:00:00Z", destination_type: "DIRECT_USE",
   supplier_name: "Supplier test", total_amount: 93000,
   items: [{ id: 1, product_name: "ALPUKAT", product_code: "1-600085", quantity: 3, uom: "Kg", unit_cost: 31000, line_total: 93000 }],
@@ -34,15 +34,17 @@ async function run() {
         if (args.path === "sonner") {
           contents = "export const toast={error:()=>{},success:()=>{}};";
         } else if (args.path === "lucide-react") {
-          contents = "export const AlertTriangle=()=>null, RotateCcw=()=>null, Ellipsis=()=>null, FileCheck2=()=>null, FilePlus2=()=>null, Pencil=()=>null, PencilLine=()=>null, XCircle=()=>null, Search=()=>null;";
+          contents = "export const AlertTriangle=()=>null, RotateCcw=()=>null, Ellipsis=()=>null, FileCheck2=()=>null, FilePlus2=()=>null, Pencil=()=>null, PencilLine=()=>null, XCircle=()=>null, Search=()=>null, SlidersHorizontal=()=>null, Trash2=()=>null, Undo2=()=>null;";
         } else if (args.path === "@radix-ui/react-dropdown-menu") {
           contents = "import React from 'react';const Wrap=p=>React.createElement('div',null,p.children);export const Root=Wrap,Trigger=Wrap,Portal=Wrap,Content=Wrap;export const Item=p=>React.createElement('button',{onClick:p.onSelect},p.children);";
         } else if (args.path.includes("useGoodsReceipts")) {
-          contents = "export const useGoodsReceipt=()=>({data:globalThis.__receipt,isLoading:false});const action=()=>({isPending:false,mutate(){}});export const useDepostGoodsReceipt=()=>({isPending:false,mutate:p=>{globalThis.__depost=p;}});export const useReturnGoodsReceipt=()=>({isPending:false,mutate:id=>{globalThis.__returned=id;}});export const useApproveGoodsReceipt=action,useCorrectGoodsReceiptCosts=action,usePostGoodsReceipt=action,useRejectGoodsReceipt=action,useSubmitGoodsReceipt=action;";
+          contents = "export const useGoodsReceipt=()=>({data:globalThis.__receipt,isLoading:false});const action=()=>({isPending:false,mutate(){}});export const useDepostGoodsReceipt=()=>({isPending:false,mutate:p=>{globalThis.__depost=p;}});export const useReturnGoodsReceipt=()=>({isPending:false,mutate:id=>{globalThis.__returned=id;}});export const useApproveGoodsReceipt=action,useCorrectGoodsReceiptCosts=action,useCorrectHistoricalReceipt=action,usePostGoodsReceipt=action,useRejectGoodsReceipt=action,useSubmitGoodsReceipt=action;";
         } else if (args.path.includes("useAuthorization")) {
           contents = "export default ()=>({hasPermission:()=>true,isSuperuser:()=>true,canPerform:()=>globalThis.__allowBusinessAction});";
         } else if (args.path === "@tanstack/react-query") {
-          contents = "export const useQueryClient=()=>({invalidateQueries:()=>{}});export const useMutation=()=>({isPending:false});";
+          contents = "export const useQueryClient=()=>({invalidateQueries:()=>{}});export const useMutation=()=>({isPending:false});export const useQuery=()=>({data:[]});";
+        } else if (args.path.includes("chart-of-accounts/api")) {
+          contents = "export const getAllAccountLookup=async()=>[];";
         } else if (args.path.includes("supplier-invoices/api")) {
           contents = "export const prepareInvoiceFromReceipt=async()=>({});";
         } else if (args.path === "react-router-dom") {
@@ -117,6 +119,17 @@ async function run() {
   assert.equal(global.__returned, 10, "return reaches the existing backend action only after confirmation");
   await renderer.act(async () => view.unmount());
 
-  console.log("Receiving UI PASS: contextual actions, hidden blocked Edit, depost reason, billing tabs, item search and return confirmation.");
+  global.__receipt.source_type = "HISTORICAL_ENTRY";
+  global.__receipt.allowed_actions.can_historical_correct = true;
+  global.__receipt.allowed_actions.can_return = false;
+  await mount();
+  assert.ok(button("Edit Receiving"), "historical administrator edit is available under More");
+  assert.equal(button("Depost for Edit"), undefined, "historical corrections do not depost the original document");
+  await renderer.act(async () => button("Edit Receiving").props.onClick());
+  assert.ok(button("Add Item"), "historical edit provides a new item action");
+  assert.ok(view.root.findAllByProps({ "aria-label": "Remove item ALPUKAT" }).length, "source item can be removed");
+  await renderer.act(async () => view.unmount());
+
+  console.log("Receiving UI PASS: contextual actions, depost reason, billing tabs, item search, return confirmation, and historical Add/Remove editor.");
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
