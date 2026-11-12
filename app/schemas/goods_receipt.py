@@ -104,11 +104,16 @@ class HistoricalReceiptCorrectionLine(BaseModel):
     item_id: int
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     unit_cost: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=4)
+    destination_type: Literal['WAREHOUSE', 'DIRECT_USE'] | None = None
+    destination_override_reason: str | None = Field(default=None, max_length=500)
+    expense_account_id: int | None = None
+    is_taxable: bool | None = None
+    tax_rate: Decimal | None = Field(default=None, ge=0, le=100)
 
     @model_validator(mode='after')
     def require_changed_field(self):
-        if self.quantity is None and self.unit_cost is None:
-            raise ValueError('Provide quantity or unit cost')
+        if not (self.model_fields_set - {'item_id'}):
+            raise ValueError('Provide at least one receiving line field')
         return self
 
 
@@ -128,11 +133,40 @@ class HistoricalReceiptCorrection(BaseModel):
     items: list[HistoricalReceiptCorrectionLine] = Field(default_factory=list)
     add_items: list[HistoricalReceiptAddedLine] = Field(default_factory=list)
     remove_item_ids: list[int] = Field(default_factory=list)
+    # Omitted fields remain unchanged. Explicit null clears an optional value.
+    supplier_id: int | None = None
+    business_unit_id: int | None = None
+    department_id: int | None = None
+    location_id: int | None = None
+    warehouse_id: int | None = None
+    received_at: datetime | None = None
+    external_reference: str | None = Field(default=None, max_length=100)
+    notes: str | None = None
+    supplier_invoice_number: str | None = Field(default=None, max_length=100)
+    supplier_document_total: Decimal | None = Field(default=None, gt=0)
+    supplier_invoice_date: date | None = None
+    supplier_invoice_due_date: date | None = None
+    tax_invoice_number: str | None = Field(default=None, max_length=100)
+    tax_invoice_date: date | None = None
+    supplier_document_url: str | None = Field(default=None, max_length=2000)
+    discount_amount: Decimal | None = Field(default=None, ge=0)
+    shipping_fee_amount: Decimal | None = Field(default=None, ge=0)
+    admin_fee_amount: Decimal | None = Field(default=None, ge=0)
+    other_fee_amount: Decimal | None = Field(default=None, ge=0)
+    other_fee_description: str | None = Field(default=None, max_length=250)
+    shipping_fee_account_id: int | None = None
+    admin_fee_account_id: int | None = None
+    other_fee_account_id: int | None = None
+
+    @field_validator('supplier_invoice_date', 'supplier_invoice_due_date', 'tax_invoice_date', mode='before')
+    @classmethod
+    def empty_optional_dates(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
 
     @model_validator(mode='after')
     def unique_items(self):
-        if not (self.items or self.add_items or self.remove_item_ids):
-            raise ValueError('Add, remove or correct at least one receiving item')
+        if not (self.items or self.add_items or self.remove_item_ids or (self.model_fields_set - {'reason', 'items', 'add_items', 'remove_item_ids'})):
+            raise ValueError('Specify at least one field to correct')
         if len({item.item_id for item in self.items}) != len(self.items):
             raise ValueError('Each receiving item may be corrected only once')
         if len(set(self.remove_item_ids)) != len(self.remove_item_ids):
