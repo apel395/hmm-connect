@@ -112,10 +112,11 @@ def _correct(db, receipt_id, user, data):
     if not receipt.department_id or not receipt.location_id:
         raise HTTPException(422, 'Department and location are required')
     enforce_location_access(user, receipt.location_id)
-    new_date = GoodsReceiptService.business_date(receipt.received_at)
-    if new_date < STOCK_CUTOFF or new_date >= FiscalPeriodService.business_today():
-        raise HTTPException(422, 'Historical Receiving must be dated from 2026 and before today')
-    FiscalPeriodService.validate_posting_date(db, new_date, system_closing=True)
+    if 'received_at' in data.model_fields_set:
+        new_date = GoodsReceiptService.business_date(receipt.received_at)
+        if new_date < STOCK_CUTOFF or new_date >= FiscalPeriodService.business_today():
+            raise HTTPException(422, 'Historical Receiving must be dated from 2026 and before today')
+        FiscalPeriodService.validate_posting_date(db, new_date, system_closing=True)
     if receipt.warehouse_id is not None:
         target_warehouse = db.get(Warehouse, receipt.warehouse_id)
         if not target_warehouse or target_warehouse.location_id != receipt.location_id:
