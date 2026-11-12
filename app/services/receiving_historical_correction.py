@@ -7,6 +7,7 @@ OUT/return movements are manufactured. All old values remain in the audit log.
 
 from collections import defaultdict
 from decimal import Decimal
+from datetime import timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import or_
@@ -19,14 +20,17 @@ from app.models.inventory import Inventory
 from app.models.journal_entry import JournalEntry
 from app.models.payment import PaymentAllocation
 from app.models.product import Product
+from app.models.supplier import Supplier
+from app.models.warehouse import Warehouse
 from app.models.stock_movement import StockMovement
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
 from app.services.activity_service import ActivityService
 from app.services.fiscal_period_service import FiscalPeriodService
-from app.services.goods_receipt_service import GoodsReceiptService
+from app.services.goods_receipt_service import GoodsReceiptService, RECEIVING_BILLING_FIELDS, STOCK_CUTOFF
 from app.services.direct_coa_service import DirectCoaService
 from app.services.location_access import enforce_location_access
-from app.services.receiving_destination import line_destination, receipt_destination, resolve_destination
+from app.services.organization_dimensions import validate_dimensions
+from app.services.receiving_destination import line_destination, receipt_destination, resolve_destination, warehouse_items
 from app.services.receiving_stock_cycle import active_receipt_stock, unsafe_later_receipt_movement
 from app.services.supplier_invoice_service import SupplierInvoiceService
 
@@ -49,7 +53,7 @@ def _correct(db, receipt_id, user, data):
         raise HTTPException(404, 'Receiving not found')
     enforce_location_access(user, receipt.location_id)
     if receipt.status != 'POSTED' or receipt.source_type != 'HISTORICAL_ENTRY':
-        raise HTTPException(409, 'Only posted manually entered historical Receiving can use numeric correction')
+        raise HTTPException(409, 'Only posted manually entered historical Receiving can use administrative correction')
     if receipt.purchase_order_id or receipt.market_list_id:
         raise HTTPException(409, 'Historical Receiving linked to PO/Market List requires source document review')
 
@@ -91,6 +95,36 @@ def _correct(db, receipt_id, user, data):
                 or Decimal(invoice.adjustment_amount or 0) != ZERO):
             raise HTTPException(409, 'Invoice already has financial activity; Finance must review it first')
 
+    # Only this source and its eligible derived records may change.
+    editable_header = (
+        'supplier_id', 'business_unit_id', 'department_id', 'location_id',
+        'warehouse_id', 'received_at', 'external_reference', 'notes',
+        *RECEIVING_BILLING_FIELDS,
+    )
+    before_header = {field: str(getattr(receipt, field)) if getattr(receipt, field) is not None else None
+                     for field in editable_header}
+    for field in editable_header:
+        if field in data.model_fields_set:
+            setattr(receipt, field, getattr(data, field))
+    if not receipt.supplier_id or not db.get(Supplier, receipt.supplier_id):
+        raise HTTPException(422, 'Choose a valid supplier')
+    validate_dimensions(db, receipt.business_unit_id, receipt.location_id, receipt.department_id, required=True)
+    if not receipt.department_id or not receipt.location_id:
+        raise HTTPException(422, 'Department and location are required')
+    enforce_location_access(user, receipt.location_id)
+    new_date = GoodsReceiptService.business_date(receipt.received_at)
+    if new_date < STOCK_CUTOFF or new_date >= FiscalPeriodService.business_today():
+        raise HTTPException(422, 'Historical Receiving must be dated from 2026 and before today')
+    FiscalPeriodService.validate_posting_date(db, new_date, system_closing=True)
+    if receipt.warehouse_id is not None:
+        target_warehouse = db.get(Warehouse, receipt.warehouse_id)
+        if not target_warehouse or target_warehouse.location_id != receipt.location_id:
+            raise HTTPException(422, 'Warehouse must belong to the selected receiving location')
+    header_changed = any(
+        before_header[field] != (str(getattr(receipt, field)) if getattr(receipt, field) is not None else None)
+        for field in editable_header
+    )
+
     by_id = {item.id: item for item in receipt.items}
     removed = []
     for item_id in data.remove_item_ids:
@@ -102,6 +136,7 @@ def _correct(db, receipt_id, user, data):
         raise HTTPException(422, 'Receiving must keep at least one item')
 
     changes = []
+    field_updates = {}
     for entry in data.items:
         item = by_id.get(entry.item_id)
         if item is None:
@@ -109,11 +144,30 @@ def _correct(db, receipt_id, user, data):
         old_qty, old_cost = Decimal(item.quantity), Decimal(item.unit_cost)
         new_qty = Decimal(entry.quantity) if entry.quantity is not None else old_qty
         new_cost = Decimal(entry.unit_cost) if entry.unit_cost is not None else old_cost
-        if old_qty == new_qty and old_cost == new_cost:
+        old_destination = line_destination(receipt, item)
+        new_destination, new_override = old_destination, item.destination_override_reason
+        if 'destination_type' in entry.model_fields_set or 'destination_override_reason' in entry.model_fields_set:
+            requested = entry.destination_type if 'destination_type' in entry.model_fields_set else old_destination
+            reason = entry.destination_override_reason if 'destination_override_reason' in entry.model_fields_set else item.destination_override_reason
+            if requested != old_destination or reason != item.destination_override_reason:
+                new_destination, new_override = resolve_destination(item.product, requested, reason)
+        expense = entry.expense_account_id if 'expense_account_id' in entry.model_fields_set else item.expense_account_id
+        expense = expense if new_destination == 'DIRECT_USE' else None
+        if new_destination == 'DIRECT_USE' and item.product.inventory_treatment != 'FIXED_ASSET':
+            expense = expense or getattr(item.product, 'purchase_account_id', None)
+        taxable = bool(entry.is_taxable) if 'is_taxable' in entry.model_fields_set else bool(item.is_taxable)
+        rate = Decimal(entry.tax_rate or 0) if 'tax_rate' in entry.model_fields_set else Decimal(item.tax_rate or 0)
+        if not taxable:
+            rate = ZERO
+        old_fields = (old_destination, item.destination_override_reason, item.expense_account_id,
+                      bool(item.is_taxable), Decimal(item.tax_rate or 0))
+        new_fields = (new_destination, new_override, expense, taxable, rate)
+        if (old_qty, old_cost, old_fields) == (new_qty, new_cost, new_fields):
             continue
         changes.append((item, old_qty, old_cost, new_qty, new_cost))
-    if not (changes or removed or data.add_items):
-        raise HTTPException(422, 'No historical Receiving items changed')
+        field_updates[item.id] = new_fields
+    if not (changes or removed or data.add_items or header_changed):
+        raise HTTPException(422, 'No historical Receiving fields changed')
 
     product_ids = sorted({item.product_id for item, *_ in changes} |
                          {item.product_id for item in removed} |
