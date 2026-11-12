@@ -10,10 +10,11 @@ async function run(){
  if(a.path==='@/api/client')contents='export default {get:async()=>({data:{discount_account:null}})};';
  else if(a.path==='sonner')contents='export const toast={error:x=>globalThis.__errors.push(x),success:()=>{}};';
  else if(a.path==='lucide-react')contents='export const Trash2=()=>null;';
- else if(a.path.includes('useGoodsReceipts'))contents='export const useUpdateGoodsReceipt=()=>({isPending:false,mutateAsync:async x=>globalThis.__saved.push(x)});';
+ else if(a.path.includes('useGoodsReceipts'))contents='export const useUpdateGoodsReceipt=()=>({isPending:false,mutateAsync:async x=>globalThis.__saved.push(x)});export const useCorrectHistoricalReceipt=()=>({isPending:false,mutateAsync:async x=>globalThis.__saved.push(x)});';
  else if(a.path.includes('useWarehouses'))contents='export const useWarehouses=()=>({data:[]});';
  else if(a.path.includes('chart-of-accounts'))contents='export const getAllAccountLookup=async()=>[];';
- else if(a.path.includes('/organization/'))contents='export const listLocations=async()=>[];';
+ else if(a.path.includes('/organization/'))contents='export const listLocations=async()=>[];export const listDepartments=async()=>[];export const filterBusinessUnits=async()=>[];';
+ else if(a.path.includes('useSuppliers'))contents='export const useSuppliers=()=>({data:[]});';
  else if(a.path==='@tanstack/react-query')contents='export const useQuery=()=>({data:[]});';
  else if(a.path.includes('ProductCombobox'))contents="import React from 'react';export default p=>React.createElement('product-picker',p);";
  else if(a.path.endsWith('/Dialog'))contents="import React from 'react';export const DialogBody=p=>React.createElement('div',null,p.children);export const DialogContent=DialogBody,DialogFooter=DialogBody,DialogHeader=DialogBody,DialogTitle=DialogBody;export default p=>p.open?React.createElement('div',null,p.children):null;";
