@@ -42,9 +42,23 @@ export interface GoodsReceiptUpdatePayload extends Partial<ReceivingBilling> {
 }
 
 export interface GoodsReceiptCostCorrectionPayload { reason: string; items: Array<{ item_id: number; unit_cost: number }> }
-export interface HistoricalReceiptCorrectionPayload {
+export interface HistoricalReceiptCorrectionPayload extends Partial<ReceivingBilling> {
   reason: string;
-  items: Array<{ item_id: number; quantity?: number; unit_cost?: number }>;
+  supplier_id?: number | null;
+  business_unit_id?: number | null;
+  department_id?: number | null;
+  location_id?: number | null;
+  warehouse_id?: number | null;
+  received_at?: string;
+  external_reference?: string | null;
+  notes?: string | null;
+  items: Array<{
+    item_id: number; quantity?: number; unit_cost?: number;
+    destination_type?: ReceivingDestination | null;
+    destination_override_reason?: string | null;
+    expense_account_id?: number | null;
+    is_taxable?: boolean; tax_rate?: number;
+  }>;
   remove_item_ids: number[];
   add_items: Array<{
     product_id: number; quantity: number; unit_cost: number;

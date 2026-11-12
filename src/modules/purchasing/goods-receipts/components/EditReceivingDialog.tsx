@@ -12,8 +12,9 @@ import { Trash2 } from "lucide-react";
 import ProductCombobox, { type ProductComboboxOption } from "@/components/form/ProductCombobox";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
-import { listLocations } from "@/modules/admin/organization/api";
-import { useUpdateGoodsReceipt } from "../hooks/useGoodsReceipts";
+import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
+import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
+import { useUpdateGoodsReceipt, useCorrectHistoricalReceipt } from "../hooks/useGoodsReceipts";
 import type { GoodsReceipt } from "../types";
 import ReceivingDestinationField from "./ReceivingDestinationField";
 import ReceivingBillingFields from "./ReceivingBillingFields";
@@ -30,6 +31,12 @@ const money = (value: number) => value.toLocaleString("id-ID", { minimumFraction
 export default function EditReceivingDialog({ open, receipt, onClose }:{ open:boolean; receipt:GoodsReceipt; onClose:()=>void }) {
   const { data: warehouses = [] } = useWarehouses();
   const update = useUpdateGoodsReceipt();
+  const historicalCorrection = useCorrectHistoricalReceipt();
+  const historical = receipt.status === "POSTED" && receipt.source_type === "HISTORICAL_ENTRY";
+  const [correctionReason,setCorrectionReason]=useState("");
+  const [supplierId,setSupplierId]=useState<number|null>(null);
+  const [businessUnitId,setBusinessUnitId]=useState<number|null>(null);
+  const [departmentId,setDepartmentId]=useState<number|null>(null);
   const [receivedAt,setReceivedAt]=useState("");
   const [reference,setReference]=useState("");
   const [warehouseId,setWarehouseId]=useState<number|null>(null);
@@ -40,7 +47,10 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
   const [productRows,setProductRows]=useState<ProductComboboxOption[]>([]);
   const nextNewId=useRef(0);
   const directReceipt=!receipt.purchase_order_id && !receipt.market_list_id;
-  const locations=useQuery({queryKey:["receiving-edit-locations",receipt.business_unit_id],queryFn:()=>listLocations({business_unit_id:receipt.business_unit_id??undefined,is_active:true,assigned_only:true}),enabled:open && directReceipt && !!receipt.business_unit_id});
+  const supplierQuery = useSuppliers("",100,open && historical);
+  const businessUnits = useQuery({queryKey:["receiving-historical-business-units"],queryFn:()=>filterBusinessUnits({is_active:true}),enabled:open && historical});
+  const departments = useQuery({queryKey:["receiving-historical-departments",businessUnitId,locationId],queryFn:()=>listDepartments({business_unit_id:businessUnitId??undefined,location_id:locationId??undefined,is_active:true}),enabled:open && historical && !!businessUnitId && !!locationId});
+  const locations=useQuery({queryKey:["receiving-edit-locations",businessUnitId],queryFn:()=>listLocations({business_unit_id:businessUnitId??undefined,is_active:true,assigned_only:true}),enabled:open && directReceipt && !!businessUnitId});
   const [catalogType,setCatalogType]=useState<"CATERING" | "HOTEL" | "ALL">("ALL");
   const hasWarehouse = items.some(item => destinationFor(item) === "WAREHOUSE");
   const hasDirectUse = items.some(item => destinationFor(item) === "DIRECT_USE" && item.inventory_treatment !== "FIXED_ASSET");
@@ -49,6 +59,10 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
   useEffect(()=>{
     if(!open)return;
     setReceivedAt(localDateTime(receipt.received_at));
+    setCorrectionReason("");
+    setSupplierId(receipt.supplier_id??null);
+    setBusinessUnitId(receipt.business_unit_id??null);
+    setDepartmentId(receipt.department_id??null);
     setReference(receipt.external_reference ?? receipt.delivery_note_number ?? "");
     setWarehouseId(receipt.warehouse_id ?? null);
     setLocationId(receipt.location_id ?? null);
@@ -71,7 +85,9 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
   const subtotal=items.reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.unit_cost||0),0);
   const tax=items.reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.unit_cost||0)*(item.is_taxable?Number(item.tax_rate||0):0)/100,0);
   const save=async()=>{
-    if(receipt.status!=="DRAFT")return toast.error("Posted receiving requires the correction or return workflow");
+    if(receipt.status!=="DRAFT" && !historical)return toast.error("Posted receiving requires the correction or return workflow");
+    if(historical && correctionReason.trim().length<3)return toast.error("Correction reason is required.");
+    if(historical && (!supplierId || !businessUnitId || !departmentId || !locationId))return toast.error("Supplier, business unit, department and location are required.");
     if(!items.length)return toast.error("Keep at least one receiving item");
     if(!receivedAt)return toast.error("Receipt date is required");
     if(receivedAt < "2026-01-01T00:00")return toast.error("Receiving dated before 2026 is excluded from stock.");
@@ -85,18 +101,51 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     const billingIssue=validateReceivingBilling(billing,subtotal);
     if(billingIssue)return toast.error(billingIssue);
     try{
-      await update.mutateAsync({
-        id:receipt.id,
-        payload:{
-          received_at:new Date(receivedAt).toISOString(),
-          ...(directReceipt?{location_id:locationId}:{}),
-          external_reference:reference.trim()||null,
-          warehouse_id:hasWarehouse?warehouseId:null,
-          notes:notes.trim()||null,...receivingBillingPayload(billing),
-          items:items.map(item=>({...(item.item_id?{item_id:item.item_id}:{product_id:item.product_id}),destination_type:item.destination_type ?? null,destination_override_reason:item.destination_override_reason || null,expense_account_id:destinationFor(item) === "DIRECT_USE" ? item.expense_account_id : null,quantity:item.quantity,unit_cost:item.unit_cost,is_taxable:item.is_taxable,tax_rate:item.is_taxable?item.tax_rate:0})),
-        },
-      });
-      toast.success(receipt.approval_status==="APPROVED"?"Receiving updated; approval restarted":"Receiving updated");
+      if(historical){
+        const keptIds = new Set(items.filter(item=>item.item_id).map(item=>Number(item.item_id)));
+        const removedIds = receipt.items.filter(item=>!keptIds.has(item.id)).map(item=>item.id);
+        await historicalCorrection.mutateAsync({
+          id:receipt.id,
+          payload:{
+            reason:correctionReason.trim(),
+            supplier_id:supplierId, business_unit_id:businessUnitId, department_id:departmentId,
+            location_id:locationId, warehouse_id:hasWarehouse?warehouseId:null,
+            ...(receivedAt!==localDateTime(receipt.received_at)?{received_at:new Date(receivedAt).toISOString()}:{}),external_reference:reference.trim()||null,
+            notes:notes.trim()||null,...receivingBillingPayload(billing),
+            supplier_invoice_date:billing.supplier_invoice_date,
+            supplier_invoice_due_date:billing.supplier_invoice_due_date,
+            tax_invoice_date:billing.tax_invoice_date,
+            remove_item_ids:removedIds,
+            items:items.filter(item=>item.item_id).map(item=>({
+              item_id:Number(item.item_id),quantity:item.quantity,unit_cost:item.unit_cost,
+              destination_type:item.destination_type??null,
+              destination_override_reason:item.destination_override_reason||null,
+              expense_account_id:destinationFor(item)==="DIRECT_USE"?item.expense_account_id:null,
+              is_taxable:Boolean(item.is_taxable),tax_rate:item.is_taxable?item.tax_rate:0,
+            })),
+            add_items:items.filter(item=>!item.item_id).map(item=>({
+              product_id:item.product_id,quantity:item.quantity,unit_cost:item.unit_cost,
+              destination_type:item.destination_type??null,
+              destination_override_reason:item.destination_override_reason||null,
+              expense_account_id:destinationFor(item)==="DIRECT_USE"?item.expense_account_id:null,
+              is_taxable:Boolean(item.is_taxable),tax_rate:item.is_taxable?item.tax_rate:0,
+            })),
+          },
+        });
+      }else{
+        await update.mutateAsync({
+          id:receipt.id,
+          payload:{
+            received_at:new Date(receivedAt).toISOString(),
+            ...(directReceipt?{location_id:locationId}:{}),
+            external_reference:reference.trim()||null,
+            warehouse_id:hasWarehouse?warehouseId:null,
+            notes:notes.trim()||null,...receivingBillingPayload(billing),
+            items:items.map(item=>({...(item.item_id?{item_id:item.item_id}:{product_id:item.product_id}),destination_type:item.destination_type ?? null,destination_override_reason:item.destination_override_reason || null,expense_account_id:destinationFor(item) === "DIRECT_USE" ? item.expense_account_id : null,quantity:item.quantity,unit_cost:item.unit_cost,is_taxable:item.is_taxable,tax_rate:item.is_taxable?item.tax_rate:0})),
+          },
+        });
+      }
+      toast.success(historical?"Historical Receiving corrected without Depost/Repost":receipt.approval_status==="APPROVED"?"Receiving updated; approval restarted":"Receiving updated");
       onClose();
     }catch(error){
       const detail=axios.isAxiosError(error)?error.response?.data?.detail:null;
@@ -104,22 +153,28 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     }
   };
 
-  const warehouseOptions=warehouses.filter((row:any)=>row.is_active && Number(row.location_id) === locationId).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const warehouseOptions=warehouses.filter((row:any)=>(row.is_active || row.id===warehouseId) && Number(row.location_id) === locationId).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
 
   return <Dialog open={open} onOpenChange={value=>!value&&onClose()}>
       <DialogContent className="max-h-[92vh] max-w-[1440px] overflow-hidden">
-      <DialogHeader><DialogTitle>Edit Receiving Report</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>{historical?"Edit Historical Receiving Report":"Edit Receiving Report"}</DialogTitle></DialogHeader>
       <DialogBody className="space-y-4 overflow-y-auto">
         <div className="rounded border bg-slate-50 p-3 text-sm">
           <div className="font-medium">{receipt.receipt_number}</div>
           <div className="text-slate-600">Source {receipt.purchase_order_number ?? "Direct Receiving"} · Supplier {receipt.supplier_name ?? "—"} · BU {receipt.business_unit_name ?? "—"} · Location {receipt.location_name ?? "—"} · Department {receipt.department_name ?? "—"}</div>
-          <div className="mt-1 text-xs text-slate-500">{directReceipt?"Direct Receiving location can be corrected before posting; warehouse must belong to the selected location. Business Unit and Department stay locked. Remove or reselect items below.":"Source organization dimensions and item identity follow the PO / Market List. Lines may be removed before posting."}</div>
+          <div className="mt-1 text-xs text-slate-500">{historical
+            ?"Administrator historical correction: only this receipt's source stock IN, inventory balance, open journal and untouched invoice draft are updated. Other stock movement history remains unchanged."
+            :directReceipt?"Direct Receiving location can be corrected before posting; warehouse must belong to the selected location. Business Unit and Department stay locked. Remove or reselect items below.":"Source organization dimensions and item identity follow the PO / Market List. Lines may be removed before posting."}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm">Receipt Date *<input type="datetime-local" disabled={receipt.source_type === "LIVE"} data-accounting-date="true" data-min-date="2026-01-01" min="2026-01-01T00:00" className="mt-1 h-10 w-full rounded border px-3" value={receivedAt} onChange={e=>setReceivedAt(e.target.value)}/></label>
           <label className="text-sm">Delivery Note / Reference<input className="mt-1 h-10 w-full rounded border px-3" value={reference} onChange={e=>setReference(e.target.value)}/></label>
 
-          {directReceipt&&<SearchableSelect label="Location" required value={locationId??undefined} placeholder="Type location code or name..." options={(locations.data??[]).map(row=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code,row.name]}))} onChange={value=>{setLocationId(value??null);setWarehouseId(null);}}/>}
+          {historical&&<SearchableSelect label="Supplier" required value={supplierId??undefined} placeholder="Choose supplier..." options={(supplierQuery.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code??"",row.name]}))} onChange={value=>setSupplierId(value??null)}/>}
+          {historical&&<SearchableSelect label="Business Unit" required value={businessUnitId??undefined} options={(businessUnits.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code,row.name]}))} onChange={value=>{setBusinessUnitId(value??null);setLocationId(null);setDepartmentId(null);setWarehouseId(null);}}/>}
+          {directReceipt&&<SearchableSelect label="Location" required value={locationId??undefined} placeholder="Type location code or name..." options={(locations.data??[]).map(row=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code,row.name]}))} onChange={value=>{setLocationId(value??null);setWarehouseId(null);if(historical)setDepartmentId(null);}}/>}
+          {historical&&<SearchableSelect label="Department" required value={departmentId??undefined} placeholder="Select department..." options={(departments.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code,row.name]}))} onChange={value=>setDepartmentId(value??null)}/>}
+
 
           {hasWarehouse&&<SearchableSelect label="Warehouse" required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>} 
         </div>
@@ -150,9 +205,12 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           </div>
         </div>
         <ReceivingBillingFields value={billing} onChange={setBilling} subtotal={subtotal} tax={tax} open={open}/>
+         {historical&&<label className="block text-xs font-medium text-slate-700">Correction reason *
+           <textarea className="mt-1 min-h-16 w-full rounded-md border p-2 text-[13px]" maxLength={500} value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)}/>
+         </label>}
          <label className="block text-xs font-medium text-slate-700">Notes<textarea className="mt-1 min-h-20 w-full rounded-md border p-2 text-[13px]" value={notes} onChange={e=>setNotes(e.target.value)}/></label>
       </DialogBody>
-      <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={update.isPending} onClick={save}>{receipt.approval_status==="APPROVED"?"Save & Restart Approval":"Save Changes"}</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" disabled={update.isPending||historicalCorrection.isPending} onClick={onClose}>Cancel</Button><Button loading={update.isPending||historicalCorrection.isPending} onClick={save}>{historical?"Save Historical Correction":receipt.approval_status==="APPROVED"?"Save & Restart Approval":"Save Changes"}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }
