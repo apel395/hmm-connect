@@ -25,7 +25,26 @@ async function run(){
  let v;const mount=async()=>{await renderer.act(async()=>{v=renderer.create(React.createElement(Page,{open:true,receipt,onClose(){}}));});};const text=n=>n.children.map(c=>typeof c==='string'?c:text(c)).join('');const save=()=>v.root.findAllByType('button').find(n=>text(n)==='Save Changes');
  await mount();const removes=v.root.findAllByType('button').filter(n=>String(n.props['aria-label']).startsWith('Remove item '));assert.equal(removes.length,2,'saved lines have remove action');await renderer.act(async()=>removes[0].props.onClick());assert.ok(v.root.findAllByType('button').find(n=>String(n.props['aria-label']).startsWith('Remove item ')).props.disabled,'keep at least one line');const taxInput=v.root.findAllByType('input').find(n=>String(n.props['aria-label']).startsWith('PPN rate'));assert.equal(taxInput.props.value,5,'edit loads recorded tax, not master rate');await renderer.act(async()=>taxInput.props.onChange({target:{value:'7.5'}}));await renderer.act(async()=>save().props.onClick());assert.equal(global.__saved[0].payload.items.length,1);assert.equal(global.__saved[0].payload.items[0].item_id,2);assert.equal(global.__saved[0].payload.items[0].tax_rate,7.5);assert.equal(global.__saved[0].payload.items[0].is_taxable,true);assert.equal(v.root.findAllByType('input').filter(n=>String(n.props['aria-label']).includes('PPN')).length,1,'PPN percentage is editable');await renderer.act(async()=>v.unmount());
  await mount();const picker=v.root.findAllByType('product-picker')[0];assert.equal(picker.props.value,101);await renderer.act(async()=>picker.props.onSelect({id:303,name:'Replacement',code:'NEW-303',catalog_type:'CATERING',uom:'Box',inventory_treatment:'DIRECT_USE',reference_cost:15,is_taxable:false}));await renderer.act(async()=>save().props.onClick());const lines=global.__saved[1].payload.items;assert.equal(lines[0].product_id,303);assert.ok(!('item_id' in lines[0]),'replacement gets a new line identity');assert.equal(lines[1].item_id,2);assert.equal(lines[0].unit_cost,15);assert.equal(global.__errors.length,0);await renderer.act(async()=>v.unmount());
- console.log('Receiving edit PASS: saved-line removal, last-line protection, item reselection with new identity and retained untouched rows.');
+ receipt.status='POSTED';receipt.supplier_id=1;receipt.source_type='HISTORICAL_ENTRY';
+ await mount();
+ const correctionReason=v.root.findAllByType('textarea').find(n=>n.props.maxLength===500);
+ assert.ok(correctionReason,'historical editor requires correction reason');
+ await renderer.act(async()=>correctionReason.props.onChange({target:{value:'Fix the historical supplier reference'}}));
+ const referenceLabel=v.root.findAllByType('label').find(n=>text(n).includes('Delivery Note / Reference'));
+ assert.ok(referenceLabel,'full historical editor exposes delivery reference');
+ await renderer.act(async()=>referenceLabel.findByType('input').props.onChange({target:{value:'HIST-REF-2026'}}));
+ const historicalSave=v.root.findAllByType('button').find(n=>text(n)==='Save Historical Correction');
+ assert.ok(historicalSave,'historical editor has a dedicated save action');
+ await renderer.act(async()=>historicalSave.props.onClick());
+ const historicalPayload=global.__saved.at(-1).payload;
+ assert.equal(historicalPayload.external_reference,'HIST-REF-2026');
+ assert.equal(historicalPayload.reason,'Fix the historical supplier reference');
+ assert.equal(historicalPayload.supplier_id,1);
+ assert.ok(!('received_at' in historicalPayload),'unchanged historical timestamp is not rewritten');
+ assert.equal(historicalPayload.remove_item_ids.length,0);
+ assert.equal(historicalPayload.items.length,2);
+ await renderer.act(async()=>v.unmount());
+ console.log('Receiving edit PASS: saved-line removal, last-line protection, item reselection with new identity and retained untouched rows, and full historical save payload.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
 
