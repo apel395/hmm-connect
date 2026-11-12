@@ -166,6 +166,30 @@ def prepare(rows):
     return journals, control
 
 
+VERIFIED_TRANSFER_PAIRS = (
+    (35, 39), (37, 38), (224, 252), (405, 407), (473, 796), (844, 941),
+    (847, 849), (1018, 996), (1105, 1081), (1112, 1127), (1150, 1136),
+    (1158, 1470), (1159, 1544), (1162, 1472), (1563, 1593), (1566, 1582),
+    (1828, 2120),
+)
+
+
+def consolidate_transfers(drafts):
+    by_row = {row[0]: row for row in drafts}
+    replacements = {}
+    consumed = set()
+    for outgoing, incoming in VERIFIED_TRANSFER_PAIRS:
+        sender, receiver = by_row[outgoing], by_row[incoming]
+        _, stamp, memo, bank, debit, credit, contra, sender_row = receiver
+        if (stamp != sender[1] or bank == sender[3] or not debit or credit
+                or sender[4] or debit != sender[5] or contra or sender[6]
+                or sender_row is not None or sender[7] is not None):
+            raise ValueError(f"Source transfer pair changed: {outgoing}/{incoming}")
+        replacements[incoming] = (incoming, stamp, memo, bank, debit, credit, sender[3], outgoing)
+        consumed.add(outgoing)
+    return [replacements.get(row[0], row) for row in drafts if row[0] not in consumed]
+
+
 def location_matches(memo, location_names):
     words = re.findall(r"[^\W_]+", memo.casefold())
     matches = []
@@ -288,7 +312,7 @@ def run_db(args, drafts, control):
                   "unmatched_location_rows": sum(not item["matches"] for item in location_exceptions.values()),
                   "ambiguous_location_rows": sum(bool(item["matches"]) for item in location_exceptions.values()),
                   "location_exceptions_by_source_row": location_exceptions,
-                  "transfer_journals": len(TRANSFERS),
+                  "transfer_journals": sum(row[7] is not None for row in drafts),
                   "mapped_counterparts": dict(Counter(row[6] for row in drafts if row[6] is not None)),
                   "missing_counterpart_references": [journal_reference(row[0]) for row in drafts if row[6] is None],
                   "bank_control": control, "possible_existing_journals_by_source_row": candidates,
@@ -345,6 +369,7 @@ def main():
     if args.apply and args.source_only:
         parser.error("--apply and --source-only cannot be used together")
     drafts, control = prepare(load_source(args.xlsx))
+    drafts = consolidate_transfers(drafts)
     if args.source_only:
         print(json.dumps({"drafts": len(drafts),
                           "mapped_counterparts": dict(Counter(row[6] for row in drafts if row[6] is not None)),
