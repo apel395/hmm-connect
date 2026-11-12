@@ -1,4 +1,4 @@
-"""Delete the January 2026 Project Catering Kas Harian seed drafts."""
+"""Delete the January 2026 Project Catering Kas Harian seed journals and their GL rows."""
 import argparse
 from datetime import date
 
@@ -19,13 +19,16 @@ def remove(apply):
     from app.core.database import SessionLocal
     from app.models.audit_log import AuditLog
     from app.models.business_unit import BusinessUnit
+    from app.models.general_ledger import GeneralLedger
     from app.models.journal_entry import JournalEntry
     from app.services.activity_service import ActivityService
+    from app.services.fiscal_period_service import FiscalPeriodService
 
     with SessionLocal() as db, db.begin():
         if apply:
             db.execute(text("SET LOCAL lock_timeout = '15s'"))
-            db.execute(text("LOCK TABLE journal_entries, journal_lines IN SHARE ROW EXCLUSIVE MODE"))
+            FiscalPeriodService.validate_posting_date(db, FIRST_DAY)
+            db.execute(text("LOCK TABLE journal_entries, journal_lines, general_ledger IN SHARE ROW EXCLUSIVE MODE"))
         else:
             db.execute(text("SET TRANSACTION READ ONLY"))
 
@@ -40,13 +43,12 @@ def remove(apply):
             raise ValueError(f"Expected {EXPECTED_COUNT} unique seed references, found {len(journals)} journals.")
         for journal in journals:
             ref = journal.external_reference
-            if (journal.document_number != ref
-                    or journal.business_unit_id != unit.id or not FIRST_DAY <= journal.posting_date <= LAST_DAY
-                    or journal.status not in {"DRAFT", "VOID"} or journal.posted_at is not None
-                    or journal.posted_by_id is not None or journal.reference_type != "MANUAL"
-                    or journal.reference_id != 0 or journal.source_type != "JOURNAL_IMPORT"
-                    or journal.document_type != "BULK_JOURNAL_IMPORT"):
-                raise ValueError(f"Journal is outside the unposted seed scope: {ref}")
+            if (journal.business_unit_id != unit.id or not FIRST_DAY <= journal.posting_date <= LAST_DAY
+                    or journal.status not in {"DRAFT", "VOID", "POSTED"}
+                    or journal.reference_type != "MANUAL" or journal.reference_id != 0):
+                raise ValueError(f"Journal is outside the manual January Catering seed scope: {ref} "
+                                 f"(status={journal.status}, date={journal.posting_date}, "
+                                 f"unit={journal.business_unit_id}, reference={journal.reference_type}/{journal.reference_id})")
 
         provenance = {
             (entity_id, document_number)
@@ -59,10 +61,26 @@ def remove(apply):
         if any((journal.id, journal.external_reference) not in provenance for journal in journals):
             raise ValueError("At least one journal has no matching seed creation audit record.")
 
+        journals_by_number = {journal.journal_number: journal for journal in journals}
+        ledger_rows = db.query(GeneralLedger).filter(
+            GeneralLedger.reference_number.in_(journals_by_number),
+        ).all()
+        for ledger_row in ledger_rows:
+            journal = journals_by_number[ledger_row.reference_number]
+            if ledger_row.reference_type != journal.reference_type or ledger_row.reference_id != journal.reference_id:
+                raise ValueError(f"Unexpected GL reference for {journal.journal_number}")
+
         line_count = sum(len(journal.lines) for journal in journals)
-        print(f"Verified {len(journals)} January Catering seed journals and {line_count} journal lines.")
+        posted_count = sum(journal.status == "POSTED" for journal in journals)
+        print(f"Verified {len(journals)} January Catering seed journals ({posted_count} posted), "
+              f"{line_count} journal lines, and {len(ledger_rows)} GL rows.")
         if not apply:
             return
+
+        for posting_date in sorted({journal.posting_date for journal in journals}):
+            FiscalPeriodService.validate_posting_date(db, posting_date)
+        for ledger_row in ledger_rows:
+            db.delete(ledger_row)
 
         for journal in journals:
             ActivityService.log(
@@ -75,7 +93,8 @@ def remove(apply):
         db.flush()
         if db.query(JournalEntry).filter(JournalEntry.external_reference.like(PREFIX + "%")).count():
             raise RuntimeError("Seed journals remain after deletion")
-    print(f"COMMITTED removal of {len(journals)} January Catering seed journals and {line_count} lines.")
+    print(f"COMMITTED removal of {len(journals)} January Catering seed journals, "
+          f"{line_count} journal lines and {len(ledger_rows)} GL rows.")
 
 
 if __name__ == "__main__":
