@@ -170,7 +170,7 @@ VERIFIED_TRANSFER_PAIRS = (
     (35, 39), (37, 38), (224, 252), (405, 407), (473, 796), (844, 941),
     (847, 849), (1018, 996), (1105, 1081), (1112, 1127), (1150, 1136),
     (1158, 1470), (1159, 1544), (1162, 1472), (1563, 1593), (1566, 1582),
-    (1828, 2120),
+    (1828, 2120), (394, 253), (816, 795),
 )
 
 
@@ -188,6 +188,41 @@ def consolidate_transfers(drafts):
         replacements[incoming] = (incoming, stamp, memo, bank, debit, credit, sender[3], outgoing)
         consumed.add(outgoing)
     return [replacements.get(row[0], row) for row in drafts if row[0] not in consumed]
+
+
+PETTY_CASH_DETAIL_BLOCKS = (
+    (255, 374), (480, 794), (850, 940), (1163, 1455),
+    (1473, 1528), (1698, 1758), (1831, 2110),
+)
+
+
+def prepare_seed(rows):
+    drafts, control = prepare(rows)
+    detail_rows = {row for start, end in PETTY_CASH_DETAIL_BLOCKS for row in range(start + 1, end + 1)}
+    details = [row for row in drafts if row[0] in detail_rows]
+    if len(details) != 1209 or sum(row[5] - row[4] for row in details) != Decimal("409505000.00"):
+        raise ValueError("Petty cash supporting-detail controls changed")
+    corrected = []
+    for row in drafts:
+        if row[0] in detail_rows:
+            continue
+        if row[0] == 397:
+            if (row[3], row[4], row[5], row[7]) != ("100-110-118", 0, Decimal("4000.00"), None):
+                raise ValueError("Row 397 no longer matches the approved bank correction")
+            row = (*row[:3], "100-110-117", *row[4:])
+        corrected.append(row)
+    journals = consolidate_transfers(corrected)
+    movement = Counter()
+    for _, _, _, bank, debit, credit, contra, sender in journals:
+        movement[bank] += debit - credit
+        if sender is not None:
+            movement[contra] += credit - debit
+    for code, item in control.items():
+        item["net_seed"] = movement[code]
+        item["workbook_minus_seed_closing"] = item["workbook_closing"] - item["opening"] - movement[code]
+    if any(item["workbook_minus_seed_closing"] for item in control.values()):
+        raise ValueError("January seed does not reconcile to all workbook bank closing balances")
+    return journals, control
 
 
 def location_matches(memo, location_names):
@@ -352,6 +387,7 @@ def run_db(args, drafts, control):
                 document_number=ref, document_status="DRAFT",
                 details={"actor": "SYSTEM", "sheet": TAB, "source_row": int(str(row).split("-", 1)[0]), "sender_row": sender,
                                              "proposed_bank_override": row in OVERRIDES,
+                                             "approved_bank_override": row == 397,
                                              "location_fallback": row in location_exceptions,
                                              "location_override": LOCATION_OVERRIDES.get(row),
                                              "counterpart_coa": contra, "plan": token},
@@ -368,8 +404,7 @@ def main():
     args = parser.parse_args()
     if args.apply and args.source_only:
         parser.error("--apply and --source-only cannot be used together")
-    drafts, control = prepare(load_source(args.xlsx))
-    drafts = consolidate_transfers(drafts)
+    drafts, control = prepare_seed(load_source(args.xlsx))
     if args.source_only:
         print(json.dumps({"drafts": len(drafts),
                           "mapped_counterparts": dict(Counter(row[6] for row in drafts if row[6] is not None)),
