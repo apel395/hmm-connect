@@ -16,6 +16,11 @@ URL = "https://docs.google.com/spreadsheets/d/1Ey0aHSLZaFQ4smFt8v2ae_y7wEzVuC7L/
 TAB = "DONE KAS HARIAN JAN"
 PREFIX = "KH-CATERING-2026-01-"
 TRANSPORT_COA = "700-500-100"
+EXPENSE_RULES = {
+    "700-500-122": r"\b(?:ADMIN(?:ISTRASI)?\s+BANK|BIAYA\s+ADMIN\s+TRANSFER|BIAYA\s+ADM)\b",
+    TRANSPORT_COA: r"\b(?:PARKIR|TOP\s*UP\s+TOL|BAYAR\s+TOL|BAYAR\s+TRANSPORT)\b",
+    "700-500-125": r"\b(?:KIRIM\s+DOKUMEN|BIAYA\s+KURIR)\b",
+}
 LOCATION_OVERRIDES = {
     148: "Gemsmart Duri", 339: "Pekanbaru", "0376-PHM": "PHM", "0376-DOBS": "DOBS",
     852: "DOBS", 859: "PRCC", 860: "PRCC", 903: "PHM", 905: "PRCC",
@@ -87,7 +92,12 @@ def journal_reference(row):
     return PREFIX + (f"{row:04d}" if isinstance(row, int) else row)
 
 
-def prepare(rows, clearing):
+def expense_counterpart(memo):
+    matches = [code for code, pattern in EXPENSE_RULES.items() if re.search(pattern, memo, re.I)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def prepare(rows):
     if rows[4][3:7] != ("KETERANGAN", "DEBET", "KREDIT", "SALDO"):
         raise ValueError("Unexpected January header")
     if not str(rows[21][3]).startswith("TOTAL SALDO") or str(rows[2292][3]).strip() != "MUTASI":
@@ -118,7 +128,7 @@ def prepare(rows, clearing):
             raise ValueError(f"Unresolved or conflicting bank on row {number}")
         key = choices.pop()
         bank = f"100-110-{key}"
-        contra = clearing
+        contra = expense_counterpart(str(memo or "")) if credit else None
         sender_row = None
         if number in TRANSFERS:
             sender_row, sender, recipient, expected = TRANSFERS[number]
@@ -173,7 +183,7 @@ def location_matches(memo, location_names):
     })
 
 
-def assign_locations(drafts, locations, fallback, ambiguous_fallback=None):
+def assign_locations(drafts, locations, fallback):
     assignments, exceptions = {}, {}
     for row, _, memo, *_ in drafts:
         override = LOCATION_OVERRIDES.get(row)
@@ -187,9 +197,8 @@ def assign_locations(drafts, locations, fallback, ambiguous_fallback=None):
             assignments[row] = locations[matches[0]]
         else:
             exceptions[row] = {"description": memo, "matches": matches}
-            default = ambiguous_fallback if matches else fallback
-            if default is not None:
-                assignments[row] = default
+            if not matches:
+                assignments[row] = fallback
     return assignments, exceptions
 
 
@@ -223,29 +232,25 @@ def run_db(args, drafts, control):
         unit = db.query(BusinessUnit).filter_by(name="Project Catering", is_active=True).one()
         active = db.query(Location).filter_by(business_unit_id=unit.id, is_active=True).all()
         locations = {item.name: item.id for item in active}
-        if args.location_id is not None and args.location_id not in locations.values():
-            raise ValueError("--fallback-location-id must be an active Project Catering location")
-        fallback = args.location_id or locations.get("Pekanbaru")
+        fallback = locations.get("Pekanbaru")
         if fallback is None:
             raise ValueError("Active Pekanbaru location missing from Project Catering")
-        assignments, location_exceptions = assign_locations(drafts, locations, fallback, args.location_id)
+        assignments, location_exceptions = assign_locations(drafts, locations, fallback)
         for location_id in set(assignments.values()):
             validate_dimensions(db, business_unit_id=unit.id, location_id=location_id, required=True)
         period, opened = period_state(db, start)
         if not opened or period.end_date < end:
             raise ValueError("An open fiscal period covering January 2026 is required")
-        codes = set(control) | {args.clearing_code, TRANSPORT_COA}
+        codes = set(control) | {row[6] for row in drafts if row[6] is not None}
         accounts = {a.account_number: a for a in db.query(ChartOfAccount).filter(
             ChartOfAccount.account_number.in_(codes), ChartOfAccount.is_active.is_(True),
             ChartOfAccount.is_posting.is_(True), ChartOfAccount.account_type.in_(FINANCIAL_TYPES),
         )}
         if set(accounts) != codes or any(accounts[c].account_type != "ASSET" or
                                         accounts[c].account_subtype != "BANK" for c in control):
-            raise ValueError(f"Invalid bank/clearing configuration. Missing posting COA: {sorted(codes - set(accounts))}")
-        if accounts[args.clearing_code].account_subtype == "BANK":
-            raise ValueError("Choose a non-bank clearing COA")
-        if accounts[TRANSPORT_COA].account_type != "EXPENSE":
-            raise ValueError("Transport COA must be an active expense posting account")
+            raise ValueError(f"Invalid bank or counterpart configuration. Missing posting COA: {sorted(codes - set(accounts))}")
+        if any(accounts[code].account_type != "EXPENSE" for code in codes & EXPENSE_RULES.keys()):
+            raise ValueError("Expense mapping must use active expense posting accounts")
         refs = {journal_reference(row[0]) for row in drafts}
         existing = db.query(JournalEntry.external_reference, JournalEntry.status).filter(
             JournalEntry.external_reference.like(PREFIX + "%")
@@ -274,7 +279,7 @@ def run_db(args, drafts, control):
             if matches:
                 candidates[str(row)] = sorted(matches)
         token = fingerprint((target, unit.id, {str(k): v for k, v in assignments.items()},
-                             args.clearing_code, drafts, control, candidates))
+                             drafts, control, candidates))
         location_counts = Counter(assignments.values())
         report = {"database": target[0], "schema": target[1], "business_unit_id": unit.id,
                   "drafts": len(drafts), "fallback_location_id": fallback,
@@ -283,15 +288,16 @@ def run_db(args, drafts, control):
                   "unmatched_location_rows": sum(not item["matches"] for item in location_exceptions.values()),
                   "ambiguous_location_rows": sum(bool(item["matches"]) for item in location_exceptions.values()),
                   "location_exceptions_by_source_row": location_exceptions,
-                  "transfer_journals": len(TRANSFERS), "clearing_code": args.clearing_code,
+                  "transfer_journals": len(TRANSFERS),
+                  "mapped_counterparts": dict(Counter(row[6] for row in drafts if row[6] is not None)),
+                  "missing_counterpart_references": [journal_reference(row[0]) for row in drafts if row[6] is None],
                   "bank_control": control, "possible_existing_journals_by_source_row": candidates,
                   "plan": token}
         print(json.dumps(report, indent=2, default=str))
         if not args.apply:
             return
         if len(assignments) != len(drafts):
-            raise ValueError("Some rows match multiple locations. See location_exceptions_by_source_row "
-                             "or supply --fallback-location-id for those rows.")
+            raise ValueError("Some rows match multiple locations. See location_exceptions_by_source_row.")
         if args.expected_plan is not None and args.expected_plan != token:
             raise ValueError("Plan changed or token is wrong. Run dry-run again.")
         for row, stamp, memo, bank, debit, credit, contra, sender in drafts:
@@ -307,9 +313,12 @@ def run_db(args, drafts, control):
             journal.lines = [
                 JournalLine(line_number=1, account_id=accounts[bank].id, debit=debit, credit=credit,
                             description=memo, **scope),
-                JournalLine(line_number=2, account_id=accounts[contra].id, debit=credit, credit=debit,
-                            description=memo, **scope),
             ]
+            if contra is not None:
+                journal.lines.append(JournalLine(
+                    line_number=2, account_id=accounts[contra].id, debit=credit, credit=debit,
+                    description=memo, **scope,
+                ))
             validate(db, journal.lines)
             db.add(journal)
             db.flush()
@@ -320,7 +329,8 @@ def run_db(args, drafts, control):
                 details={"actor": "SYSTEM", "sheet": TAB, "source_row": int(str(row).split("-", 1)[0]), "sender_row": sender,
                                              "proposed_bank_override": row in OVERRIDES,
                                              "location_fallback": row in location_exceptions,
-                                             "location_override": LOCATION_OVERRIDES.get(row), "plan": token},
+                                             "location_override": LOCATION_OVERRIDES.get(row),
+                                             "counterpart_coa": contra, "plan": token},
             )
     print(f"COMMITTED {len(drafts)} Project Catering journals as DRAFT.")
 
@@ -329,19 +339,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--xlsx", type=Path, help="Use an authorized local XLSX export instead of Google Sheets")
     parser.add_argument("--source-only", action="store_true")
-    parser.add_argument("--fallback-location-id", "--location-id", dest="location_id", type=int,
-                        help="Override the Pekanbaru default and use this location for ambiguous descriptions too")
-    parser.add_argument("--clearing-code")
     parser.add_argument("--expected-plan")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     if args.apply and args.source_only:
         parser.error("--apply and --source-only cannot be used together")
-    if not args.source_only and not args.clearing_code:
-        parser.error("Database mode requires --clearing-code for uncategorized journal counterparts")
-    drafts, control = prepare(load_source(args.xlsx), args.clearing_code)
+    drafts, control = prepare(load_source(args.xlsx))
     if args.source_only:
-        print(json.dumps({"drafts": len(drafts), "bank_control": control}, indent=2, default=str))
+        print(json.dumps({"drafts": len(drafts),
+                          "mapped_counterparts": dict(Counter(row[6] for row in drafts if row[6] is not None)),
+                          "missing_counterparts": sum(row[6] is None for row in drafts),
+                          "bank_control": control}, indent=2, default=str))
     else:
         run_db(args, drafts, control)
 
