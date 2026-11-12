@@ -2,6 +2,9 @@
 from decimal import Decimal
 
 from app.models.inventory import Inventory
+from app.models.location import Location
+from app.models.location_department import LocationDepartment
+from app.models.supplier import Supplier
 from app.models.stock_movement import StockMovement
 from app.models.supplier_invoice import SupplierInvoice
 from app.models.warehouse import Warehouse
@@ -75,3 +78,46 @@ def test_correct_direct_use_destination_removes_only_source_in(stock_db):
     assert db.query(StockMovement).count() == count - 1
     assert Decimal(inventory[0].quantity) == starting_qty - Decimal("2")
     assert db.get(StockMovement, original.id) is None
+
+
+def test_supplier_correction_updates_only_the_linked_draft(stock_db):
+    context, receipt = sample(stock_db)
+    db, _, user, _, _, *_ = context
+    new_supplier = Supplier(code="SUP-HIST-ALT", name="Correct historical supplier", is_active=True)
+    db.add(new_supplier)
+    db.flush()
+    movement = active_receipt_stock(db, receipt.id)[0]
+    count = db.query(StockMovement).count()
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason="Historical supplier was incorrect",
+                                     supplier_id=new_supplier.id))
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert receipt.supplier_id == invoice.supplier_id == new_supplier.id
+    assert db.query(StockMovement).count() == count
+    assert active_receipt_stock(db, receipt.id)[0].id == movement.id
+
+
+def test_location_and_warehouse_correction_updates_only_original_source(stock_db):
+    context, receipt = sample(stock_db)
+    db, warehouse, user, products, inventory, *_ = context
+    new_location = Location(code="LOC-HIST-EDIT", name="Correct receiving site",
+                            location_type="HOTEL", is_active=True,
+                            business_unit_id=user.default_business_unit_id)
+    db.add(new_location)
+    db.flush()
+    db.add(LocationDepartment(location_id=new_location.id, department_id=user.default_department_id))
+    new_warehouse = Warehouse(code="WH-HIST-NEWLOC", name="Corrected location warehouse",
+                              location_id=new_location.id, is_active=True)
+    db.add(new_warehouse)
+    db.flush()
+    movement = active_receipt_stock(db, receipt.id)[0]
+    count = db.query(StockMovement).count()
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason="Wrong receiving site on old entry",
+            location_id=new_location.id, warehouse_id=new_warehouse.id))
+    assert receipt.location_id == new_location.id
+    assert movement.location_id == new_location.id
+    assert movement.warehouse_id == new_warehouse.id
+    assert db.query(StockMovement).count() == count
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert invoice.location_id == new_location.id
