@@ -196,6 +196,7 @@ def _correct(db, receipt_id, user, data):
     movements = {row.goods_receipt_item_id: row for row in active_receipt_stock(db, receipt.id)}
     deltas = defaultdict(lambda: [ZERO, ZERO, [], [], []])
     newly_attributed_keys = set()
+    moved_old_source_ids = defaultdict(list)
     removed_stock_ids = set()
 
     # Retarget source IN records, never create reversal OUT/transfer movements.
@@ -222,6 +223,8 @@ def _correct(db, receipt_id, user, data):
                 bucket = deltas[old_key]
                 bucket[0] -= Decimal(item.quantity)
                 bucket[1] -= Decimal(item.quantity) * Decimal(item.unit_cost)
+                if new_key:
+                    moved_old_source_ids[old_key].append(old_row.id)
                 if not new_key:
                     bucket[3].append(old_row)
                     removed_stock_ids.add(item.id)
@@ -279,8 +282,9 @@ def _correct(db, receipt_id, user, data):
         # another stock operation cannot change the balance mid-correction.
         # For an added source line, check *all* prior stock history; its place
         # in the original movement sequence does not yet exist.
-        earliest = (0 if new_lines or (product_id, warehouse_id) in newly_attributed_keys else
-                    min(row.id for row, _, _ in rows) if rows else min(row.id for row in removed_rows))
+        source_ids = ([row.id for row, _, _ in rows] + [row.id for row in removed_rows] +
+                      moved_old_source_ids[(product_id, warehouse_id)])
+        earliest = 0 if new_lines or (product_id, warehouse_id) in newly_attributed_keys else min(source_ids)
         if unsafe_later_receipt_movement(
                 db, product_id=product_id, warehouse_id=warehouse_id,
                 after_id=earliest):
