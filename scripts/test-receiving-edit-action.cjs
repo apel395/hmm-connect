@@ -49,6 +49,8 @@ async function run() {
           contents = "export const prepareInvoiceFromReceipt=async()=>({});";
         } else if (args.path === "react-router-dom") {
           contents = "import React from 'react';export const useParams=()=>({id:'10'});export const useNavigate=()=>()=>{};export const Link=p=>React.createElement('a',{href:p.to},p.children);";
+        } else if (args.path.endsWith("EditReceivingDialog")) {
+          contents = "import React from 'react';export default p=>p.open?React.createElement('div',{'data-test':'receiving-edit-dialog'},'Full Receiving Editor'):null;";
         } else if (args.path.endsWith("/Dialog")) {
           contents = "import React from 'react';export const DialogBody=p=>React.createElement('div',null,p.children);export const DialogContent=DialogBody,DialogFooter=DialogBody,DialogHeader=DialogBody,DialogTitle=DialogBody;export default p=>p.open?React.createElement('div',null,p.children):null;";
         } else if (args.path.endsWith("/Button")) {
@@ -103,8 +105,7 @@ async function run() {
   assert.equal(button("Depost for Edit"), undefined, "historical receipts do not offer depost");
   assert.ok(button("Edit Receiving"), "historical administrator edit is available under More");
   await renderer.act(async () => button("Edit Receiving").props.onClick());
-  assert.ok(button("Add Item"), "historical edit provides a new item action");
-  assert.ok(view.root.findAllByProps({ "aria-label": "Remove item ALPUKAT" }).length, "source item can be removed");
+  assert.ok(view.root.findAllByProps({ "data-test": "receiving-edit-dialog" }).length, "historical edit opens the full Receiving form");
   await renderer.act(async () => view.unmount());
 
   global.__receipt.source_type = "LIVE";
@@ -131,6 +132,6 @@ async function run() {
   assert.equal(global.__returned, 10, "return reaches the existing backend action only after confirmation");
   await renderer.act(async () => view.unmount());
 
-  console.log("Receiving UI PASS: contextual actions, depost reason, billing tabs, item search, return confirmation, and historical Add/Remove editor.");
+  console.log("Receiving UI PASS: contextual actions, depost reason, billing tabs, item search, return confirmation, and shared full historical editor.");
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
