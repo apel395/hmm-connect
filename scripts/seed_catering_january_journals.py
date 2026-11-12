@@ -207,7 +207,7 @@ def prepare_seed(rows):
         if row[0] in detail_rows:
             continue
         if row[0] == 397:
-            if (row[3], row[4], row[5], row[7]) != ("100-110-118", 0, Decimal("4000.00"), None):
+            if row[3] not in {"100-110-117", "100-110-118"} or (row[4], row[5], row[7]) != (0, Decimal("4000.00"), None):
                 raise ValueError("Row 397 no longer matches the approved bank correction")
             row = (*row[:3], "100-110-117", *row[4:])
         corrected.append(row)
