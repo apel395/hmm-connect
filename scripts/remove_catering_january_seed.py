@@ -4,11 +4,19 @@ from datetime import date
 
 from seed_catering_january_journals import PREFIX, journal_reference
 
-EXPECTED_COUNT = 2263
+EXPECTED_COUNT = 2246
 FIRST_DAY = date(2026, 1, 1)
 LAST_DAY = date(2026, 1, 31)
 NON_JOURNAL_ROWS = {255, 376, 480, 850, 1163, 1473, 1698, 1831}
-EXPECTED_REFS = {journal_reference(row) for row in range(24, 2293) if row not in NON_JOURNAL_ROWS}
+# Outgoing rows folded into their receiving journals by seed commit 13da5ce.
+CONSOLIDATED_OUTGOING_ROWS = {
+    35, 37, 224, 405, 473, 844, 847, 1018, 1105, 1112, 1150, 1158,
+    1159, 1162, 1563, 1566, 1828,
+}
+EXPECTED_REFS = {
+    journal_reference(row) for row in range(24, 2293)
+    if row not in NON_JOURNAL_ROWS | CONSOLIDATED_OUTGOING_ROWS
+}
 EXPECTED_REFS.update({journal_reference("0376-PHM"), journal_reference("0376-DOBS")})
 
 
