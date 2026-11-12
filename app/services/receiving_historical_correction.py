@@ -299,6 +299,8 @@ def _correct(db, receipt_id, user, data):
     for item, old_qty, old_cost, new_qty, new_cost in changes:
         item.quantity = new_qty
         item.unit_cost = new_cost
+        (item.destination_type, item.destination_override_reason, item.expense_account_id,
+         item.is_taxable, item.tax_rate) = field_updates[item.id]
     for item in added:
         receipt.items.append(item)
     for stock, qty, value, rows, removed_rows, new_lines in snapshots:
@@ -309,6 +311,7 @@ def _correct(db, receipt_id, user, data):
             # manufacture a stock OUT/IN or GOODS_RECEIPT_UNPOST event.
             row.quantity = new_qty
             row.unit_cost = new_cost
+            row.warehouse_id = stock.warehouse_id
             if row.recorded_value is not None:
                 row.recorded_value = new_qty * new_cost
 
@@ -328,6 +331,14 @@ def _correct(db, receipt_id, user, data):
     GoodsReceiptService._validate_item_treatments(receipt)
     GoodsReceiptService._validate_hotel_expenses(receipt)
     receipt.destination_type = receipt_destination(receipt)
+    receipt.warehouse_id = receipt.warehouse_id if warehouse_items(receipt) else None
+    GoodsReceiptService._validate_destination(db, receipt, receipt.location_id)
+    for row in movements.values():
+        if row.goods_receipt_item_id in removed_stock_ids:
+            continue
+        row.business_unit_id = receipt.business_unit_id
+        row.location_id = receipt.location_id
+        row.department_id = receipt.department_id
 
     GoodsReceiptService._recalculate_totals(receipt, db)
     # New source items need IDs before the invoice lines can reference them.
@@ -343,11 +354,29 @@ def _correct(db, receipt_id, user, data):
             new_movements.append((item, movement))
     journal = GoodsReceiptService._sync_accounting_journal(db, receipt=receipt, user=user)
     resolver = DirectCoaService(db)
+    for row in movements.values():
+        if row.goods_receipt_item_id in removed_stock_ids:
+            continue
+        row.inventory_account_id = resolver.inventory_account(row.product, receipt.location_id).id
+        row.offset_account_id = resolver.ap_suspense_account().id
+        row.journal_entry_id = journal.id
     for item, movement in new_movements:
         movement.inventory_account_id = resolver.inventory_account(item.product, receipt.location_id).id
         movement.offset_account_id = resolver.ap_suspense_account().id
         movement.journal_entry_id = journal.id
     if invoice:
+        invoice.supplier_id = receipt.supplier_id
+        invoice.business_unit_id = receipt.business_unit_id
+        invoice.location_id = receipt.location_id
+        invoice.department_id = receipt.department_id
+        invoice.received_date = GoodsReceiptService.business_date(receipt.received_at)
+        invoice.invoice_date = receipt.supplier_invoice_date or invoice.received_date
+        invoice.due_date = receipt.supplier_invoice_due_date or (invoice.invoice_date + timedelta(days=30))
+        for field in ('supplier_document_total', 'tax_invoice_number', 'tax_invoice_date',
+                      'supplier_document_url', 'shipping_fee_amount', 'admin_fee_amount',
+                      'other_fee_amount', 'other_fee_description', 'shipping_fee_account_id',
+                      'admin_fee_account_id', 'other_fee_account_id'):
+            setattr(invoice, field, getattr(receipt, field))
         for item in added:
             line = SupplierInvoiceLine(
                 product_id=item.product_id, product=item.product, goods_receipt_item_id=item.id,
@@ -357,16 +386,28 @@ def _correct(db, receipt_id, user, data):
                 tax_amount=Decimal(item.tax_amount or 0), department_id=receipt.department_id)
             invoice.lines.append(line)
             resolver.snapshot_invoice_line(invoice, line)
+        db.flush()
+        by_invoice_item = {item.id: item for item in receipt.items}
+        for line in invoice.lines:
+            item = by_invoice_item[line.goods_receipt_item_id]
+            line.is_taxable = bool(item.is_taxable)
+            line.tax_rate = item.tax_rate
+            line.tax_amount = item.tax_amount
+            line.department_id = receipt.department_id
+            line.account_id = None
+            resolver.snapshot_invoice_line(invoice, line)
         SupplierInvoiceService(db).sync_unconfirmed_receipt_draft(invoice, receipt, user)
 
     ActivityService.log(
         db=db, user=user, action='HISTORICAL_RECEIVING_CORRECTION',
         entity_type='GOODS_RECEIPT', entity_id=receipt.id,
-        summary=f'Edited historical receiving items for {receipt.receipt_number}',
-        before_data={'total_amount': before_total, 'removed': before_removed,
+        summary=f'Edited historical receiving fields for {receipt.receipt_number}',
+        before_data={'total_amount': before_total, 'header': before_header, 'removed': before_removed,
                      'lines': [{'id': i.id, 'quantity': str(q), 'unit_cost': str(c)}
                                for i, q, c, _, _ in changes]},
         after_data={'total_amount': str(receipt.total_amount),
+                    'header': {field: str(getattr(receipt, field)) if getattr(receipt, field) is not None else None
+                               for field in editable_header},
                     'lines': [{'id': i.id, 'quantity': str(q), 'unit_cost': str(c)}
                               for i, _, _, q, c in changes],
                     'added': [{'id': i.id, 'product_id': i.product_id,
