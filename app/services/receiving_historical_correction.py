@@ -194,18 +194,51 @@ def _correct(db, receipt_id, user, data):
 
     movements = {row.goods_receipt_item_id: row for row in active_receipt_stock(db, receipt.id)}
     deltas = defaultdict(lambda: [ZERO, ZERO, [], [], []])
-    for item, old_qty, old_cost, new_qty, new_cost in changes:
-        if line_destination(receipt, item) != 'WAREHOUSE':
+    newly_attributed_keys = set()
+    removed_stock_ids = set()
+
+    # Retarget source IN records, never create reversal OUT/transfer movements.
+    for item in list(receipt.items):
+        if item in removed:
             continue
-        row = movements.get(item.id)
-        if (not row or Decimal(row.quantity) != old_qty
-                or Decimal(row.unit_cost) != old_cost):
-            raise HTTPException(409, f'Receiving line {item.id} stock evidence differs from recorded values')
-        key = (row.product_id, row.warehouse_id)
-        bucket = deltas[key]
-        bucket[0] += new_qty - old_qty
-        bucket[1] += new_qty * new_cost - old_qty * old_cost
-        bucket[2].append((row, new_qty, new_cost))
+        old_destination = line_destination(receipt, item)
+        old_row = movements.get(item.id)
+        if old_destination == 'WAREHOUSE':
+            if not old_row or Decimal(old_row.quantity) != Decimal(item.quantity) or Decimal(old_row.unit_cost) != Decimal(item.unit_cost):
+                raise HTTPException(409, f'Receiving line {item.id} stock evidence differs from recorded values')
+        elif old_row:
+            raise HTTPException(409, f'Unexpected stock IN on Direct Use line {item.id}')
+        updated = next((x for x in changes if x[0].id == item.id), None)
+        new_qty = updated[3] if updated else Decimal(item.quantity)
+        new_cost = updated[4] if updated else Decimal(item.unit_cost)
+        new_destination = field_updates[item.id][0] if updated else old_destination
+        old_key = (item.product_id, old_row.warehouse_id) if old_row else None
+        new_key = (item.product_id, receipt.warehouse_id) if new_destination == 'WAREHOUSE' else None
+        if new_destination == 'WAREHOUSE' and receipt.warehouse_id is None:
+            raise HTTPException(422, f'Warehouse is required for item {item.product_id}')
+        if old_key != new_key:
+            if old_key:
+                bucket = deltas[old_key]
+                bucket[0] -= Decimal(item.quantity)
+                bucket[1] -= Decimal(item.quantity) * Decimal(item.unit_cost)
+                if not new_key:
+                    bucket[3].append(old_row)
+                    removed_stock_ids.add(item.id)
+            if new_key:
+                bucket = deltas[new_key]
+                bucket[0] += new_qty
+                bucket[1] += new_qty * new_cost
+                newly_attributed_keys.add(new_key)
+                if old_row:
+                    bucket[2].append((old_row, new_qty, new_cost))
+                else:
+                    bucket[4].append(item)
+            continue
+        if old_key and (Decimal(item.quantity) != new_qty or Decimal(item.unit_cost) != new_cost):
+            bucket = deltas[old_key]
+            bucket[0] += new_qty - Decimal(item.quantity)
+            bucket[1] += new_qty * new_cost - Decimal(item.quantity) * Decimal(item.unit_cost)
+            bucket[2].append((old_row, new_qty, new_cost))
 
     for item in removed:
         row = movements.get(item.id)
@@ -216,28 +249,27 @@ def _correct(db, receipt_id, user, data):
             bucket[0] -= Decimal(item.quantity)
             bucket[1] -= Decimal(item.quantity) * Decimal(item.unit_cost)
             bucket[3].append(row)
+            removed_stock_ids.add(item.id)
         elif row:
             raise HTTPException(409, f'Unexpected stock movement on direct-use line {item.id}')
-        # A removed source line may not have other linked inventory events.
         if (db.query(StockMovement.id)
                 .filter(StockMovement.goods_receipt_item_id == item.id,
                         StockMovement.id != (row.id if row else -1)).first()):
             raise HTTPException(409, f'Receiving line {item.id} has linked stock history; cannot delete it')
 
-    affected_warehouse_lines = {item.id for item, *_ in changes if line_destination(receipt, item) == 'WAREHOUSE'}
-    affected_warehouse_lines.update(item.id for item in removed if line_destination(receipt, item) == 'WAREHOUSE')
-    if affected_warehouse_lines:
-        observed_ids = [row.goods_receipt_item_id for row in active_receipt_stock(db, receipt.id)
-                        if row.goods_receipt_item_id in affected_warehouse_lines]
-        if len(observed_ids) != len(set(observed_ids)):
-            raise HTTPException(409, 'Receiving has duplicate original stock IN evidence')
+    observed_ids = [row.goods_receipt_item_id for row in active_receipt_stock(db, receipt.id)]
+    if len(observed_ids) != len(set(observed_ids)):
+        raise HTTPException(409, 'Receiving has duplicate original stock IN evidence')
 
     for item in added:
         if item.destination_type == 'WAREHOUSE':
+            if receipt.warehouse_id is None:
+                raise HTTPException(422, 'Warehouse is required for added stock items')
             bucket = deltas[(item.product_id, receipt.warehouse_id)]
             bucket[0] += Decimal(item.quantity)
             bucket[1] += Decimal(item.quantity) * Decimal(item.unit_cost)
             bucket[4].append(item)
+            newly_attributed_keys.add((item.product_id, receipt.warehouse_id))
 
     snapshots = []
     for (product_id, warehouse_id), (qty_delta, value_delta, rows, removed_rows, new_lines) in sorted(deltas.items()):
@@ -246,7 +278,8 @@ def _correct(db, receipt_id, user, data):
         # another stock operation cannot change the balance mid-correction.
         # For an added source line, check *all* prior stock history; its place
         # in the original movement sequence does not yet exist.
-        earliest = 0 if new_lines else min(row.id for row, _, _ in rows) if rows else min(row.id for row in removed_rows)
+        earliest = (0 if new_lines or (product_id, warehouse_id) in newly_attributed_keys else
+                    min(row.id for row, _, _ in rows) if rows else min(row.id for row in removed_rows))
         if unsafe_later_receipt_movement(
                 db, product_id=product_id, warehouse_id=warehouse_id,
                 after_id=earliest):
