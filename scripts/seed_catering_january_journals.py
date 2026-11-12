@@ -15,6 +15,13 @@ from openpyxl import load_workbook
 URL = "https://docs.google.com/spreadsheets/d/1Ey0aHSLZaFQ4smFt8v2ae_y7wEzVuC7L/export?format=xlsx"
 TAB = "DONE KAS HARIAN JAN"
 PREFIX = "KH-CATERING-2026-01-"
+TRANSPORT_COA = "700-500-100"
+LOCATION_OVERRIDES = {
+    148: "Gemsmart Duri", 339: "Pekanbaru", "0376-PHM": "PHM", "0376-DOBS": "DOBS",
+    852: "DOBS", 859: "PRCC", 860: "PRCC", 903: "PHM", 905: "PRCC",
+    924: "PRCC", 936: "PRCC", 1479: "PRCC", 1511: "PRCC",
+}
+SPLIT_376 = {"0376-PHM": Decimal("8935000"), "0376-DOBS": Decimal("6216000")}
 ACCOUNTS = {
     100: "1080012525250", 101: "1080053252525 10800053252525",
     102: "1080025915225", 103: "193684771 0193684771",
@@ -76,6 +83,10 @@ def load_source(path):
             workbook.close()
 
 
+def journal_reference(row):
+    return PREFIX + (f"{row:04d}" if isinstance(row, int) else row)
+
+
 def prepare(rows, clearing):
     if rows[4][3:7] != ("KETERANGAN", "DEBET", "KREDIT", "SALDO"):
         raise ValueError("Unexpected January header")
@@ -132,7 +143,17 @@ def prepare(rows, clearing):
         "workbook_closing": closing[key],
         "workbook_minus_seed_closing": closing[key] - opening[key] - movements[key],
     } for key in sorted(opening)}
-    return drafts, control
+    journals = []
+    for row, stamp, memo, bank, debit, credit, contra, sender in drafts:
+        if row == 376:
+            if debit or credit != sum(SPLIT_376.values()) or sender is not None:
+                raise ValueError("Row 376 no longer matches the approved PHM/DOBS split")
+            journals.extend((ref, stamp, memo, bank, debit, amount, contra, sender)
+                            for ref, amount in SPLIT_376.items())
+        else:
+            journals.append((row, stamp, memo, bank, debit, credit,
+                             TRANSPORT_COA if row == 339 else contra, sender))
+    return journals, control
 
 
 def location_matches(memo, location_names):
@@ -155,6 +176,12 @@ def location_matches(memo, location_names):
 def assign_locations(drafts, locations, fallback, ambiguous_fallback=None):
     assignments, exceptions = {}, {}
     for row, _, memo, *_ in drafts:
+        override = LOCATION_OVERRIDES.get(row)
+        if override:
+            if override not in locations:
+                raise ValueError(f"Approved location {override} for {row} is inactive or missing")
+            assignments[row] = locations[override]
+            continue
         matches = location_matches(memo, locations)
         if len(matches) == 1:
             assignments[row] = locations[matches[0]]
@@ -207,7 +234,7 @@ def run_db(args, drafts, control):
         period, opened = period_state(db, start)
         if not opened or period.end_date < end:
             raise ValueError("An open fiscal period covering January 2026 is required")
-        codes = set(control) | {args.clearing_code}
+        codes = set(control) | {args.clearing_code, TRANSPORT_COA}
         accounts = {a.account_number: a for a in db.query(ChartOfAccount).filter(
             ChartOfAccount.account_number.in_(codes), ChartOfAccount.is_active.is_(True),
             ChartOfAccount.is_posting.is_(True), ChartOfAccount.account_type.in_(FINANCIAL_TYPES),
@@ -217,7 +244,9 @@ def run_db(args, drafts, control):
             raise ValueError(f"Invalid bank/clearing configuration. Missing posting COA: {sorted(codes - set(accounts))}")
         if accounts[args.clearing_code].account_subtype == "BANK":
             raise ValueError("Choose a non-bank clearing COA")
-        refs = {f"{PREFIX}{row[0]:04d}" for row in drafts}
+        if accounts[TRANSPORT_COA].account_type != "EXPENSE":
+            raise ValueError("Transport COA must be an active expense posting account")
+        refs = {journal_reference(row[0]) for row in drafts}
         existing = db.query(JournalEntry.external_reference, JournalEntry.status).filter(
             JournalEntry.external_reference.like(PREFIX + "%")
         ).all()
@@ -240,9 +269,12 @@ def run_db(args, drafts, control):
             matches = by_movement[(stamp, bank, debit, credit)].copy()
             if sender:
                 matches.update(by_movement[(stamp, contra, credit, debit)])
+            if row in SPLIT_376:
+                matches.update(by_movement[(stamp, bank, debit, sum(SPLIT_376.values()))])
             if matches:
                 candidates[str(row)] = sorted(matches)
-        token = fingerprint((target, unit.id, assignments, args.clearing_code, drafts, control, candidates))
+        token = fingerprint((target, unit.id, {str(k): v for k, v in assignments.items()},
+                             args.clearing_code, drafts, control, candidates))
         location_counts = Counter(assignments.values())
         report = {"database": target[0], "schema": target[1], "business_unit_id": unit.id,
                   "drafts": len(drafts), "fallback_location_id": fallback,
@@ -263,7 +295,7 @@ def run_db(args, drafts, control):
         if args.expected_plan is not None and args.expected_plan != token:
             raise ValueError("Plan changed or token is wrong. Run dry-run again.")
         for row, stamp, memo, bank, debit, credit, contra, sender in drafts:
-            ref = f"{PREFIX}{row:04d}"
+            ref = journal_reference(row)
             scope = {"business_unit_id": unit.id, "location_id": assignments[row]}
             journal = JournalEntry(
                 journal_number=next_document_number(db, "MAN", digits=6), posting_date=stamp,
@@ -285,9 +317,10 @@ def run_db(args, drafts, control):
                 db=db, user=None, action="JOURNAL_IMPORT_CREATED", entity_type="JOURNAL_ENTRY",
                 entity_id=journal.id, summary=f"Seeded {ref} from Catering Kas Harian",
                 document_number=ref, document_status="DRAFT",
-                details={"actor": "SYSTEM", "sheet": TAB, "source_row": row, "sender_row": sender,
+                details={"actor": "SYSTEM", "sheet": TAB, "source_row": int(str(row).split("-", 1)[0]), "sender_row": sender,
                                              "proposed_bank_override": row in OVERRIDES,
-                                             "location_fallback": row in location_exceptions, "plan": token},
+                                             "location_fallback": row in location_exceptions,
+                                             "location_override": LOCATION_OVERRIDES.get(row), "plan": token},
             )
     print(f"COMMITTED {len(drafts)} Project Catering journals as DRAFT.")
 
