@@ -110,8 +110,11 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
             reason:correctionReason.trim(),
             supplier_id:supplierId, business_unit_id:businessUnitId, department_id:departmentId,
             location_id:locationId, warehouse_id:hasWarehouse?warehouseId:null,
-            received_at:new Date(receivedAt).toISOString(),external_reference:reference.trim()||null,
+            ...(receivedAt!==localDateTime(receipt.received_at)?{received_at:new Date(receivedAt).toISOString()}:{}),external_reference:reference.trim()||null,
             notes:notes.trim()||null,...receivingBillingPayload(billing),
+            supplier_invoice_date:billing.supplier_invoice_date,
+            supplier_invoice_due_date:billing.supplier_invoice_due_date,
+            tax_invoice_date:billing.tax_invoice_date,
             remove_item_ids:removedIds,
             items:items.filter(item=>item.item_id).map(item=>({
               item_id:Number(item.item_id),quantity:item.quantity,unit_cost:item.unit_cost,
