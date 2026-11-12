@@ -367,6 +367,11 @@ def _correct(db, receipt_id, user, data):
         movement.journal_entry_id = journal.id
     if invoice:
         invoice.supplier_id = receipt.supplier_id
+        # A real supplier invoice number is a financial confirmation: keep
+        # the placeholder until the administrator explicitly supplies one.
+        if receipt.supplier_invoice_number and receipt.supplier_invoice_number.strip():
+            invoice.supplier_invoice_number = receipt.supplier_invoice_number.strip()
+        invoice.discount_amount = receipt.discount_amount
         invoice.business_unit_id = receipt.business_unit_id
         invoice.location_id = receipt.location_id
         invoice.department_id = receipt.department_id
