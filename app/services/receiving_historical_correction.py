@@ -95,6 +95,10 @@ def _correct(db, receipt_id, user, data):
                 or Decimal(invoice.adjustment_amount or 0) != ZERO):
             raise HTTPException(409, 'Invoice already has financial activity; Finance must review it first')
 
+    # Keep the physical warehouse identity separately from editable reporting dimensions.
+    # A corrected historical location must not silently transfer already-used stock.
+    original_warehouse_id = receipt.warehouse_id
+
     # Only this source and its eligible derived records may change.
     editable_header = (
         'supplier_id', 'business_unit_id', 'department_id', 'location_id',
@@ -117,10 +121,23 @@ def _correct(db, receipt_id, user, data):
         if new_date < STOCK_CUTOFF or new_date >= FiscalPeriodService.business_today():
             raise HTTPException(422, 'Historical Receiving must be dated from 2026 and before today')
         FiscalPeriodService.validate_posting_date(db, new_date, system_closing=True)
-    if receipt.warehouse_id is not None:
-        target_warehouse = db.get(Warehouse, receipt.warehouse_id)
-        if not target_warehouse or target_warehouse.location_id != receipt.location_id:
-            raise HTTPException(422, 'Warehouse must belong to the selected receiving location')
+    target_warehouse = db.get(Warehouse, receipt.warehouse_id) if receipt.warehouse_id is not None else None
+    if receipt.warehouse_id is not None and not target_warehouse:
+        raise HTTPException(422, 'Choose an existing receiving warehouse')
+    # Historical data correction has two independent meanings:
+    # - reporting Location: correct the Receiving, its open journal and draft invoice.
+    # - physical Warehouse: correct the original source IN and stock balance.
+    # If the warehouse is UNCHANGED, keep the original physical stock location
+    # even when the corrected reporting location differs. Do not modify later
+    # store requests, stock OUT, adjustments, or inventory balances.
+    retained_physical_warehouse = bool(
+        target_warehouse
+        and target_warehouse.location_id != receipt.location_id
+        and receipt.warehouse_id == original_warehouse_id
+    )
+    if target_warehouse and target_warehouse.location_id != receipt.location_id and not retained_physical_warehouse:
+        raise HTTPException(
+            422, 'A newly selected warehouse must belong to the corrected Receiving location')
     header_changed = any(
         before_header[field] != (str(getattr(receipt, field)) if getattr(receipt, field) is not None else None)
         for field in editable_header
@@ -275,6 +292,10 @@ def _correct(db, receipt_id, user, data):
             bucket[4].append(item)
             newly_attributed_keys.add((item.product_id, receipt.warehouse_id))
 
+    if retained_physical_warehouse and any(new_lines for _, _, _, _, new_lines in deltas.values()):
+        raise HTTPException(
+            409, 'Cannot add warehouse stock when the reporting location differs from the original physical warehouse. '
+                 'Choose a warehouse in the corrected location, or keep existing stock lines unchanged.')
     snapshots = []
     for (product_id, warehouse_id), (qty_delta, value_delta, rows, removed_rows, new_lines) in sorted(deltas.items()):
         stock = GoodsReceiptService._inventory_for_update(db, product_id, warehouse_id)
@@ -337,13 +358,18 @@ def _correct(db, receipt_id, user, data):
     GoodsReceiptService._validate_hotel_expenses(receipt)
     receipt.destination_type = receipt_destination(receipt)
     receipt.warehouse_id = receipt.warehouse_id if warehouse_items(receipt) else None
-    GoodsReceiptService._validate_destination(db, receipt, receipt.location_id)
+    # The source IN remains in its actual physical warehouse when only the
+    # reporting location was corrected. This is intentionally different from
+    # the standard new-Receiving warehouse/location rule.
+    stock_location_id = target_warehouse.location_id if retained_physical_warehouse else receipt.location_id
+    GoodsReceiptService._validate_destination(db, receipt, stock_location_id)
     for row in movements.values():
         if row.goods_receipt_item_id in removed_stock_ids:
             continue
-        row.business_unit_id = receipt.business_unit_id
-        row.location_id = receipt.location_id
-        row.department_id = receipt.department_id
+        if not retained_physical_warehouse:
+            row.business_unit_id = receipt.business_unit_id
+            row.location_id = receipt.location_id
+            row.department_id = receipt.department_id
 
     GoodsReceiptService._recalculate_totals(receipt, db)
     # New source items need IDs before the invoice lines can reference them.
@@ -362,8 +388,9 @@ def _correct(db, receipt_id, user, data):
     for row in movements.values():
         if row.goods_receipt_item_id in removed_stock_ids:
             continue
-        row.inventory_account_id = resolver.inventory_account(row.product, receipt.location_id).id
-        row.offset_account_id = resolver.ap_suspense_account().id
+        if not retained_physical_warehouse:
+            row.inventory_account_id = resolver.inventory_account(row.product, receipt.location_id).id
+            row.offset_account_id = resolver.ap_suspense_account().id
         row.journal_entry_id = journal.id
     for item, movement in new_movements:
         movement.inventory_account_id = resolver.inventory_account(item.product, receipt.location_id).id
@@ -424,7 +451,10 @@ def _correct(db, receipt_id, user, data):
                                'quantity': str(i.quantity), 'unit_cost': str(i.unit_cost)} for i in added],
                     'removed_item_ids': [i.id for i in removed]},
         details={'reason': data.reason.strip(), 'journal_id': journal.id,
-                 'invoice_id': invoice.id if invoice else None},
+                 'invoice_id': invoice.id if invoice else None,
+                 'physical_stock_warehouse_retained': retained_physical_warehouse,
+                 'physical_stock_warehouse_id': receipt.warehouse_id,
+                 'physical_stock_location_id': stock_location_id},
     )
     db.commit()
     db.refresh(receipt)
