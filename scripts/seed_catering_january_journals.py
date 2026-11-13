@@ -174,15 +174,84 @@ VERIFIED_TRANSFER_PAIRS = (
 )
 
 
+# Reviewed January transfer pairs, including the sender's bank charge where applicable.
+ADDITIONAL_PAIRS = (
+    (1557, 1461), (2140, 2116), (1794, 2150), (1793, 1806), (1796, 1807),
+    (2153, 2177), (2155, 2176), (2156, 2175),
+    (1674, 1691), (1676, 1692), (1677, 1693), (1678, 1694), (1679, 1695), (1681, 1696),
+)
+TRANSFER_FEES = {2177: Decimal("2900"), 2176: Decimal("2500"), 2175: Decimal("2500")}
+COUNTERPART_OVERRIDES = {
+    "100-210-999": {49, 395, 1079, 1080, 1128, 1778, 1817, 1820},
+    "200-300-999": {401, 429, 1130, 2151, 990, 991, 993, 994, 995, 1013},
+    "700-500-127": {1687, 1760},
+    "200-200-100": {1675},
+    "200-100-1": {1609, 2154},
+    "100-200-101": {174, 179, 181, 195, 417, 418, 832, 1602, 1774, 2180},
+    "200-300-106": {62},
+    "200-700-105": {402},
+    "200-400-104": {1009},
+    "760-100-102": {1667, 2219, 2256, 2259, 2262, 2268, 2274, 2280, 2283, 2286, 2289, 2291},
+}
+SUPPORTING_DETAILS = {389: 256, 390: 257, 391: 258, 392: 260, 393: 261}
+SALES_RECEIPT = (
+    r"SETOR(?:AN)?\s+(?:HASIL\s+)?PENJUALAN|SALES\s+PENJUALAN|TERIMA\s+PENJUALAN"
+    r"|MESIN\s+EDC|SETTLEMENT\s+EDC|(?:TERIMA|PENERIMAAN|PELUNASAN|BAYAR)\s+"
+    r"(?:TAG(?:IHAN)?\s*\.?\s*INV|INVOICE|TAGIHAN)"
+)
+
+
+def resolve_counterpart(row, source):
+    number, _, memo, _, debit, credit, counterpart, _ = row
+    if counterpart:
+        return counterpart, "Existing seed mapping"
+    for code, references in COUNTERPART_OVERRIDES.items():
+        if number in references:
+            return code, "January source-row mapping for review"
+    if number in SUPPORTING_DETAILS:
+        memo = source[SUPPORTING_DETAILS[number] - 1][3]
+    memo = memo.upper()
+    if debit:
+        if re.search(SALES_RECEIPT, memo):
+            return "100-200-101", "Sales and invoice receipts"
+        if re.search(r"TERIMA\s+KMK", memo):
+            return "200-300-104", "KMK M-71 drawdown"
+        if re.search(r"BUNGA|JASA GIRO", memo):
+            return "760-100-100", "Bank interest received"
+        raise ValueError(f"Unmapped January receipt on row {number}")
+    rules = (
+        (r"FASILITAS\s+BUNGA.*KMK", "760-100-103"),
+        (r"PELUNASAN\s+KMK|ANGSURAN\s+BAKI\s+DEBIT\s+KMK", "200-300-104"),
+        (r"CASH ADVANCE", "100-210-999"), (r"BPJS KES", "200-200-112"),
+        (r"BPJS TK", "200-200-113"), (r"PAYROLL", "200-200-100"),
+        (r"CASUAL", "200-200-120"), (r"POTONGAN PPH21", "200-400-102"),
+        (r"\bPB1\b", "200-400-100"), (r"\bPPH FINAL\b", "200-400-105"),
+        (r"\bPPH23\b", "200-400-103"),
+    )
+    for pattern, code in rules:
+        if re.search(pattern, memo):
+            return code, "Transaction description"
+    if re.search(r"\b(?:INV(?:OICE)?|TAGIHAN)\b", memo) or credit >= 1_000_000:
+        return "200-100-1", "Invoice payment or amount at least IDR 1 million"
+    for pattern, code in (
+        (r"ADMIN\s+TRAN[SF]FER", "700-500-122"),
+        (r"WI.?FI|INTERNET|PULSA|TELEPON", "700-500-107"),
+        (r"LISTRIK|\bPLN\b", "700-500-139"), (r"REFILL GALON", "700-500-115"),
+    ):
+        if re.search(pattern, memo):
+            return code, "Direct expense from source description"
+    return "700-500-999", "Temporary expense below IDR 1 million"
+
+
 def consolidate_transfers(drafts):
     by_row = {row[0]: row for row in drafts}
     replacements = {}
     consumed = set()
-    for outgoing, incoming in VERIFIED_TRANSFER_PAIRS:
+    for outgoing, incoming in VERIFIED_TRANSFER_PAIRS + ADDITIONAL_PAIRS:
         sender, receiver = by_row[outgoing], by_row[incoming]
         _, stamp, memo, bank, debit, credit, contra, sender_row = receiver
-        if (stamp != sender[1] or bank == sender[3] or not debit or credit
-                or sender[4] or debit != sender[5] or contra or sender[6]
+        if ((stamp - sender[1]).days != (1 if incoming == 2150 else 0) or bank == sender[3] or not debit or credit
+                or sender[4] or debit + TRANSFER_FEES.get(incoming, 0) != sender[5] or contra or sender[6]
                 or sender_row is not None or sender[7] is not None):
             raise ValueError(f"Source transfer pair changed: {outgoing}/{incoming}")
         replacements[incoming] = (incoming, stamp, memo, bank, debit, credit, sender[3], outgoing)
@@ -211,12 +280,15 @@ def prepare_seed(rows):
                 raise ValueError("Row 397 no longer matches the approved bank correction")
             row = (*row[:3], "100-110-117", *row[4:])
         corrected.append(row)
-    journals = consolidate_transfers(corrected)
+    journals = []
+    for row in consolidate_transfers(corrected):
+        counterpart, _ = resolve_counterpart(row, rows)
+        journals.append((*row[:6], counterpart, row[7]))
     movement = Counter()
-    for _, _, _, bank, debit, credit, contra, sender in journals:
+    for number, _, _, bank, debit, credit, contra, sender in journals:
         movement[bank] += debit - credit
         if sender is not None:
-            movement[contra] += credit - debit
+            movement[contra] += credit - debit - TRANSFER_FEES.get(number, 0)
     for code, item in control.items():
         item["net_seed"] = movement[code]
         item["workbook_minus_seed_closing"] = item["workbook_closing"] - item["opening"] - movement[code]
@@ -261,7 +333,7 @@ def assign_locations(drafts, locations, fallback):
     return assignments, exceptions
 
 
-def run_db(args, drafts, control):
+def run_db(args, drafts, control, source):
     from sqlalchemy import text
     from app import models  # noqa: F401
     from app.api.v1.journals import validate
@@ -300,7 +372,7 @@ def run_db(args, drafts, control):
         period, opened = period_state(db, start)
         if not opened or period.end_date < end:
             raise ValueError("An open fiscal period covering January 2026 is required")
-        codes = set(control) | {row[6] for row in drafts if row[6] is not None}
+        codes = set(control) | {"700-500-122"} | {row[6] for row in drafts if row[6] is not None}
         accounts = {a.account_number: a for a in db.query(ChartOfAccount).filter(
             ChartOfAccount.account_number.in_(codes), ChartOfAccount.is_active.is_(True),
             ChartOfAccount.is_posting.is_(True), ChartOfAccount.account_type.in_(FINANCIAL_TYPES),
@@ -332,7 +404,7 @@ def run_db(args, drafts, control):
         for row, stamp, _, bank, debit, credit, contra, sender in drafts:
             matches = by_movement[(stamp, bank, debit, credit)].copy()
             if sender:
-                matches.update(by_movement[(stamp, contra, credit, debit)])
+                matches.update(by_movement[(source[sender - 1][0].date(), contra, credit, debit + TRANSFER_FEES.get(row, 0))])
             if row in SPLIT_376:
                 matches.update(by_movement[(stamp, bank, debit, sum(SPLIT_376.values()))])
             if matches:
@@ -373,11 +445,18 @@ def run_db(args, drafts, control):
                 JournalLine(line_number=1, account_id=accounts[bank].id, debit=debit, credit=credit,
                             description=memo, **scope),
             ]
-            if contra is not None:
+            fee = TRANSFER_FEES.get(row, Decimal(0))
+            journal.lines.append(JournalLine(
+                line_number=2, account_id=accounts[contra].id, debit=credit, credit=debit + fee,
+                description=memo, **scope,
+            ))
+            if fee:
                 journal.lines.append(JournalLine(
-                    line_number=2, account_id=accounts[contra].id, debit=credit, credit=debit,
-                    description=memo, **scope,
+                    line_number=3, account_id=accounts["700-500-122"].id, debit=fee, credit=0,
+                    description="Biaya admin transfer sesuai selisih mutasi bank", **scope,
                 ))
+            if sum(line.debit for line in journal.lines) != sum(line.credit for line in journal.lines):
+                raise ValueError(f"Unbalanced journal {ref}")
             validate(db, journal.lines)
             db.add(journal)
             db.flush()
@@ -390,7 +469,8 @@ def run_db(args, drafts, control):
                                              "approved_bank_override": row == 397,
                                              "location_fallback": row in location_exceptions,
                                              "location_override": LOCATION_OVERRIDES.get(row),
-                                             "counterpart_coa": contra, "plan": token},
+                                             "counterpart_coa": contra, "supporting_row": SUPPORTING_DETAILS.get(row),
+                                             "mapping_review": sender is None, "plan": token},
             )
     print(f"COMMITTED {len(drafts)} Project Catering journals as DRAFT.")
 
@@ -404,14 +484,15 @@ def main():
     args = parser.parse_args()
     if args.apply and args.source_only:
         parser.error("--apply and --source-only cannot be used together")
-    drafts, control = prepare_seed(load_source(args.xlsx))
+    source = load_source(args.xlsx)
+    drafts, control = prepare_seed(source)
     if args.source_only:
         print(json.dumps({"drafts": len(drafts),
                           "mapped_counterparts": dict(Counter(row[6] for row in drafts if row[6] is not None)),
                           "missing_counterparts": sum(row[6] is None for row in drafts),
                           "bank_control": control}, indent=2, default=str))
     else:
-        run_db(args, drafts, control)
+        run_db(args, drafts, control, source)
 
 
 if __name__ == "__main__":
