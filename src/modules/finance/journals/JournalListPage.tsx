@@ -31,11 +31,12 @@ import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 type Line = { account_id: number; debit: number; credit: number; description: string; department_id?: number | null; supplier_id?: number | null };
 const registerReturnKey = "journal-register-return";
 
-function restoreRegisterFilters() {
+function restoreRegisterFilters(query: string) {
   try {
     const saved = window.sessionStorage.getItem(registerReturnKey);
     window.sessionStorage.removeItem(registerReturnKey);
-    return new URLSearchParams(saved ?? "");
+    const filters = new URLSearchParams(saved ?? "");
+    return filters.get("register_query") === query ? filters : new URLSearchParams();
   } catch {
     return new URLSearchParams();
   }
@@ -107,7 +108,7 @@ export default function JournalListPage() {
     const query = urlFilters.toString();
     if (!scope.data || appliedQuery.current===query) return;
     appliedQuery.current=query;
-    const saved = restoreRegisterFilters();
+    const saved = restoreRegisterFilters(query);
     const filters = query && !saved.size ? urlFilters : saved;
     const unit=Number(filters.get("business_unit_id"))||undefined;
     const location=Number(filters.get("location_id"))||undefined;
@@ -140,6 +141,7 @@ export default function JournalListPage() {
     for (const [key, value] of Object.entries(filterParams)) filters.set(key, String(value));
     filters.set("business_unit_id", filterUnitId ? String(filterUnitId) : "all");
     filters.set("location_id", filterLocationId ? String(filterLocationId) : "all");
+    filters.set("register_query", urlFilters.toString());
     filters.set("page", String(page));
     filters.set("more_filters", showFilters ? "1" : "0");
     try {
