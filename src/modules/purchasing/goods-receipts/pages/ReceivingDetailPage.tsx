@@ -226,6 +226,15 @@ export default function ReceivingDetailPage() {
         </div>
       </div>
 
+      {data.physical_stock_location_retained && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Historical reporting location corrected.</strong> Physical stock remains in{" "}
+          <strong>{data.warehouse_name ?? "the original warehouse"}</strong>
+          {data.warehouse_location_name ? ` (${data.warehouse_location_name})` : ""}.
+          Original stock IN, actual stock OUT, and other warehouse activity were not transferred.
+        </div>
+      )}
+
       {!historical && data.status === "DRAFT" && data.approval_status !== "APPROVED" &&
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           Receiving is not posted yet. It must complete Store → Chef → PM/Camp Boss approval before posting.
