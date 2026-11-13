@@ -270,13 +270,22 @@ class GoodsReceiptService:
         *,
         receipt: GoodsReceipt,
         user,
+        inventory_location_id: int | None = None,
     ) -> JournalEntry | None:
         resolver = DirectCoaService(db)
         ap_suspense = resolver.ap_suspense_account()
         grouped: dict[int, Decimal] = {}
 
         for item in receipt.items:
-            debit_account = cls._receiving_debit_account(resolver, receipt, item.product, getattr(item, "expense_account_id", None), line_destination(receipt, item))
+            destination = line_destination(receipt, item)
+            if inventory_location_id is not None and destination == "WAREHOUSE":
+                # Historical reporting-location corrections may retain the
+                # physical warehouse. Preserve its inventory asset mapping.
+                debit_account = resolver.inventory_account(item.product, inventory_location_id)
+            else:
+                debit_account = cls._receiving_debit_account(
+                    resolver, receipt, item.product, getattr(item, "expense_account_id", None), destination
+                )
 
             amount = (
                 Decimal(item.quantity or 0) * Decimal(item.unit_cost or 0)
