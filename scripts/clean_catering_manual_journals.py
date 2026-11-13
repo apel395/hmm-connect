@@ -1,6 +1,7 @@
-"""Remove independently entered or imported Project Catering journals."""
+"""Remove independently entered or imported January 2026 Project Catering journals."""
 import argparse
 from collections import Counter
+from datetime import date
 import re
 
 MODULE_ORIGIN = re.compile(
@@ -50,10 +51,13 @@ def cleanup(apply):
         unit = db.query(BusinessUnit).filter_by(name="Project Catering").one()
         journals = db.query(JournalEntry).options(selectinload(JournalEntry.lines)).filter_by(
             business_unit_id=unit.id,
+        ).filter(
+            JournalEntry.posting_date >= date(2026, 1, 1),
+            JournalEntry.posting_date < date(2026, 2, 1),
         ).order_by(JournalEntry.posting_date, JournalEntry.id).all()
         ids = {j.id for j in journals}
         if not ids:
-            print("No Project Catering journals found.")
+            print("No January 2026 Project Catering journals found.")
             return
 
         provenance = {}
@@ -98,7 +102,7 @@ def cleanup(apply):
             if (row.reference_type, row.reference_id) != (journal.reference_type, journal.reference_id):
                 raise ValueError(f"Unexpected GL source for {journal.journal_number}")
 
-        print(f"Project Catering, all posting dates. Eligible: {len(targets)}. "
+        print(f"Project Catering, January 2026 only. Eligible: {len(targets)}. "
               f"Protected or unverified: {len(journals) - len(targets)}. Linked: {len(linked)}.")
         print("Eligible by status:", dict(Counter(j.status for j in targets)))
         print("Eligible by month:", dict(sorted(Counter(j.posting_date.strftime("%Y-%m") for j in targets).items())))
