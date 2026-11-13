@@ -383,7 +383,10 @@ def _correct(db, receipt_id, user, data):
             movement.recorded_value = Decimal(item.quantity) * Decimal(item.unit_cost)
             db.add(movement)
             new_movements.append((item, movement))
-    journal = GoodsReceiptService._sync_accounting_journal(db, receipt=receipt, user=user)
+    journal = GoodsReceiptService._sync_accounting_journal(
+        db, receipt=receipt, user=user,
+        inventory_location_id=stock_location_id if retained_physical_warehouse else None,
+    )
     resolver = DirectCoaService(db)
     for row in movements.values():
         if row.goods_receipt_item_id in removed_stock_ids:
