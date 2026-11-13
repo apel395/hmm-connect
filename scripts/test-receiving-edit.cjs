@@ -11,12 +11,13 @@ async function run(){
  else if(a.path==='sonner')contents='export const toast={error:x=>globalThis.__errors.push(x),success:()=>{}};';
  else if(a.path==='lucide-react')contents='export const Trash2=()=>null;';
  else if(a.path.includes('useGoodsReceipts'))contents='export const useUpdateGoodsReceipt=()=>({isPending:false,mutateAsync:async x=>globalThis.__saved.push(x)});export const useCorrectHistoricalReceipt=()=>({isPending:false,mutateAsync:async x=>globalThis.__saved.push(x)});';
- else if(a.path.includes('useWarehouses'))contents='export const useWarehouses=()=>({data:[]});';
+ else if(a.path.includes('useWarehouses'))contents='export const useWarehouses=()=>({data:globalThis.__warehouseList??[]});';
  else if(a.path.includes('chart-of-accounts'))contents='export const getAllAccountLookup=async()=>[];';
  else if(a.path.includes('/organization/'))contents='export const listLocations=async()=>[];export const listDepartments=async()=>[];export const filterBusinessUnits=async()=>[];';
  else if(a.path.includes('useSuppliers'))contents='export const useSuppliers=()=>({data:[]});';
  else if(a.path==='@tanstack/react-query')contents='export const useQuery=()=>({data:[]});';
  else if(a.path.includes('ProductCombobox'))contents="import React from 'react';export default p=>React.createElement('product-picker',p);";
+ else if(a.path.endsWith('SearchableSelect'))contents="import React from 'react';export default p=>React.createElement('select',{'aria-label':p.label,value:p.value??'',options:p.options,onChange:e=>p.onChange(Number(e.target.value)||undefined)},(p.options??[]).map(row=>React.createElement('option',{key:row.id,value:row.id},row.label)));";
  else if(a.path.endsWith('/Dialog'))contents="import React from 'react';export const DialogBody=p=>React.createElement('div',null,p.children);export const DialogContent=DialogBody,DialogFooter=DialogBody,DialogHeader=DialogBody,DialogTitle=DialogBody;export default p=>p.open?React.createElement('div',null,p.children):null;";
  else if(a.path.includes('/Button'))contents="import React from 'react';export default p=>React.createElement('button',p,p.children);";
  else contents="import React from 'react';export default p=>React.createElement('div',null,p.children);";
@@ -44,7 +45,31 @@ async function run(){
  assert.equal(historicalPayload.remove_item_ids.length,0);
  assert.equal(historicalPayload.items.length,2);
  await renderer.act(async()=>v.unmount());
- console.log('Receiving edit PASS: saved-line removal, last-line protection, item reselection with new identity and retained untouched rows, and full historical save payload.');
+ // Historical location correction must not silently replace the original physical warehouse.
+ global.__warehouseList=[
+   {id:91,code:'WH-OLD',name:'Original stock',location_id:1,is_active:true},
+   {id:92,code:'WH-NEW',name:'Corrected location',location_id:2,is_active:true},
+ ];
+ receipt.warehouse_id=91;
+ receipt.items[0].destination_type='WAREHOUSE';
+ receipt.items[0].inventory_treatment='INVENTORY';
+ receipt.destination_type='MIXED';
+ await mount();
+ const locationSelect=v.root.findByProps({'aria-label':'Location'});
+ await renderer.act(async()=>locationSelect.props.onChange({target:{value:'2'}}));
+ const physicalWarehouse=v.root.findByProps({'aria-label':'Physical Stock Warehouse'});
+ assert.equal(physicalWarehouse.props.value,91,'changing historical reporting Location retains original physical warehouse');
+ assert.ok(physicalWarehouse.props.options.some(row=>row.id===91),'original warehouse remains visible even when its location differs');
+ assert.match(text(v.root),/original stock stays in WH-OLD/i,'warn that physical stock stays where it was');
+ await renderer.act(async()=>v.root.findByProps({'aria-label':'Department'}).props.onChange({target:{value:'1'}}));
+ await renderer.act(async()=>v.root.findAllByType('textarea').find(n=>n.props.maxLength===500).props.onChange({target:{value:'Correct old reporting location without stock move'}}));
+ await renderer.act(async()=>v.root.findAllByType('button').find(n=>text(n)==='Save Historical Correction').props.onClick());
+ const correctedLocationPayload=global.__saved.at(-1).payload;
+ assert.equal(correctedLocationPayload.location_id,2);
+ assert.equal(correctedLocationPayload.warehouse_id,91,'history correction must preserve physical warehouse ID in payload');
+ assert.equal(correctedLocationPayload.items.length,2);
+ await renderer.act(async()=>v.unmount());
+ console.log('Receiving edit PASS: draft editing, complete historical fields, and location change preserves stock warehouse.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
 
