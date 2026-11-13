@@ -972,6 +972,7 @@ class GoodsReceiptService:
                 ):
                     # The corrected historical Location is for reporting. A real
                     # stock return must retain the source IN physical dimensions.
+                    from app.services.receiving_stock_cycle import active_receipt_stock
                     source_in = next(
                         (row for row in active_receipt_stock(db, receipt.id)
                          if row.goods_receipt_item_id == receipt_item.id),
