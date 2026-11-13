@@ -65,7 +65,11 @@ export default function JournalRegisterTable({
             <TR key={row.id} className="whitespace-nowrap" aria-selected={isSelected}>
               <TD><input type="checkbox" aria-label={`Select ${row.journal_number}`} checked={isSelected} onChange={() => onToggleRow(row.id)} /></TD>
               <TD className="max-w-0">
-                <Link to={`/journal-entries/${row.id}`} title={`Open journal ${row.journal_number}`} className="block truncate font-semibold text-emerald-800 hover:underline">{row.journal_number}</Link>
+                <Link to={`/journal-entries/${row.id}`} onClick={(event) => {
+                  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  onView(row.id);
+                }} title={`Open journal ${row.journal_number}`} className="block truncate font-semibold text-emerald-800 hover:underline">{row.journal_number}</Link>
               </TD>
               <TD className="text-slate-600">{row.journal_date}</TD>
               <TD className="max-w-0 font-semibold">
