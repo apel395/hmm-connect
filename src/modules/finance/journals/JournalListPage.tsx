@@ -29,6 +29,19 @@ import useFormRecovery from "@/hooks/useFormRecovery";
 import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 
 type Line = { account_id: number; debit: number; credit: number; description: string; department_id?: number | null; supplier_id?: number | null };
+const registerReturnKey = "journal-register-return";
+
+function restoreRegisterFilters(query: string) {
+  try {
+    const saved = window.sessionStorage.getItem(registerReturnKey);
+    window.sessionStorage.removeItem(registerReturnKey);
+    const filters = new URLSearchParams(saved ?? "");
+    return filters.get("register_query") === query ? filters : new URLSearchParams();
+  } catch {
+    return new URLSearchParams();
+  }
+}
+
 const blankLine = (): Line => ({ account_id: 0, debit: 0, credit: 0, description: "" });
 
 type JournalInput = { copiedFromId?: number; postingDate: string; documentNumber: string; description: string; businessUnitId?: number; departmentId?: number; locationId?: number; lines: Line[] };
@@ -95,21 +108,23 @@ export default function JournalListPage() {
     const query = urlFilters.toString();
     if (!scope.data || appliedQuery.current===query) return;
     appliedQuery.current=query;
-    const unit=Number(urlFilters.get("business_unit_id"))||undefined;
-    const location=Number(urlFilters.get("location_id"))||undefined;
-    setFilterUnitId(!scope.data.location_locked&&urlFilters.get("business_unit_id")==="all"?undefined:unit&&scope.data.units.some(row=>row.id===unit)?unit:scope.data.default_business_unit_id??undefined);
-    setFilterLocationId(scope.data.location_locked?scope.data.default_location_id??undefined:urlFilters.get("location_id")==="all"?undefined:location&&scope.data.locations.some(row=>row.id===location)?location:scope.data.default_location_id??undefined);
+    const saved = restoreRegisterFilters(query);
+    const filters = query && !saved.size ? urlFilters : saved;
+    const unit=Number(filters.get("business_unit_id"))||undefined;
+    const location=Number(filters.get("location_id"))||undefined;
+    setFilterUnitId(!scope.data.location_locked&&filters.get("business_unit_id")==="all"?undefined:unit&&scope.data.units.some(row=>row.id===unit)?unit:scope.data.default_business_unit_id??undefined);
+    setFilterLocationId(scope.data.location_locked?scope.data.default_location_id??undefined:filters.get("location_id")==="all"?undefined:location&&scope.data.locations.some(row=>row.id===location)?location:scope.data.default_location_id??undefined);
     setBusinessUnitId(scope.data.default_business_unit_id??undefined);
     setLocationId(scope.data.default_location_id??undefined);
-    setSearch(urlFilters.get("search")||"");setStatus(urlFilters.get("status")||"");
-    setDateFrom(urlFilters.get("date_from")||"");setDateTo(urlFilters.get("date_to")||"");
-    setFilterAccountId(Number(urlFilters.get("account_id"))||undefined);
-    setFilterDepartmentId(Number(urlFilters.get("department_id"))||undefined);
-    setFilterSupplierId(Number(urlFilters.get("supplier_id"))||undefined);
-    setReferenceType(urlFilters.get("reference_type")||"");
-    setBalanceState(urlFilters.get("balance_state")||"ALL");setDifferenceAmount(urlFilters.get("difference_amount")||"");
-    if(query)setShowFilters(true);
-    setPage(1);setScopeReady(true);
+    setSearch(filters.get("search")||"");setStatus(filters.get("status")||"");
+    setDateFrom(filters.get("date_from")||"");setDateTo(filters.get("date_to")||"");
+    setFilterAccountId(Number(filters.get("account_id"))||undefined);
+    setFilterDepartmentId(Number(filters.get("department_id"))||undefined);
+    setFilterSupplierId(Number(filters.get("supplier_id"))||undefined);
+    setReferenceType(filters.get("reference_type")||"");
+    setBalanceState(filters.get("balance_state")||"ALL");setDifferenceAmount(filters.get("difference_amount")||"");
+    setShowFilters(saved.size ? filters.get("more_filters") === "1" : Boolean(query));
+    setPage(saved.size ? Math.max(1, Number(filters.get("page")) || 1) : 1);setScopeReady(true);
   }, [scope.data,urlFilters]);
   useEffect(() => { setSelected([]); }, [page,pageSize,search,status,filterUnitId,filterLocationId,filterSupplierId,dateFrom,dateTo,filterAccountId,filterDepartmentId,referenceType,balanceState,differenceAmount]);
   useEffect(() => window.localStorage.setItem("journal-page-size", String(pageSize)), [pageSize]);
@@ -121,7 +136,22 @@ export default function JournalListPage() {
   const voidSourcePayment = useMutation({ mutationFn: (paymentId: number) => paymentAction(paymentId, "void"), onSuccess: () => { toast.success("Payment and its draft journal were voided."); refreshFinance(); }, onError: (error: any) => toast.error(error?.response?.data?.detail || "Payment could not be voided.") });
   const lifecycle = useMutation({ mutationFn: ({ id, action }: { id: number; action: "post" | "unpost" }) => journalAction(id, action), onSuccess: (_, vars) => { toast.success(vars.action === "post" ? "Journal posted." : "Journal returned to draft."); refreshFinance(); }, onError: (error: any) => toast.error(error?.response?.data?.detail || "Journal action failed.") });
   const bulkLifecycle = useMutation({ mutationFn: ({ ids, action }: { ids: number[]; action: "post" | "unpost" }) => bulkJournalAction(ids, action), onSuccess: (result) => { toast.success(`${result.processed} journal(s) changed to ${result.status}.`); setSelected([]); refreshFinance(); }, onError: (error: any) => toast.error(error?.response?.data?.detail || "Bulk journal action failed. No journals were changed.") });
-  const save = useMutation({ mutationFn: () => createJournal({ copied_from_journal_id: copiedFromId, posting_date: postingDate, document_type: "MANUAL_JOURNAL", document_number: documentNumber.trim(), reference_type: "MANUAL", reference_id: 0, description: description.trim() || undefined, business_unit_id: businessUnitId!, department_id: departmentId ?? null, location_id: locationId ?? null, lines: validLines.map((line) => ({ ...line, description: line.description || undefined, business_unit_id: businessUnitId, department_id: line.department_id === undefined ? departmentId ?? null : line.department_id, location_id: locationId ?? null })) }), onSuccess: (journal) => { toast.success("Journal entry created."); setCopiedFromId(undefined); recovery.clear(); setOpen(false); setPostingDate(todayLocal()); setDocumentNumber(""); setDescription("Salary journal"); setDepartmentId(undefined); setLocationId(undefined); setBusinessUnitId(businessUnits.data?.length === 1 ? businessUnits.data[0].id : undefined); setLines([blankLine(), blankLine()]); refreshFinance(); nav(`/journal-entries/${journal.id}`); }, onError: (error: any) => toast.error(typeof error?.response?.data?.detail === "string" ? error.response.data.detail : "Journal entry could not be created.") });
+  const openJournal = (id: number) => {
+    const filters = new URLSearchParams();
+    for (const [key, value] of Object.entries(filterParams)) filters.set(key, String(value));
+    filters.set("business_unit_id", filterUnitId ? String(filterUnitId) : "all");
+    filters.set("location_id", filterLocationId ? String(filterLocationId) : "all");
+    filters.set("register_query", urlFilters.toString());
+    filters.set("page", String(page));
+    filters.set("more_filters", showFilters ? "1" : "0");
+    try {
+      window.sessionStorage.setItem(registerReturnKey, filters.toString());
+    } catch {
+      // Keep navigation available when storage is disabled.
+    }
+    nav(`/journal-entries/${id}`);
+  };
+  const save = useMutation({ mutationFn: () => createJournal({ copied_from_journal_id: copiedFromId, posting_date: postingDate, document_type: "MANUAL_JOURNAL", document_number: documentNumber.trim(), reference_type: "MANUAL", reference_id: 0, description: description.trim() || undefined, business_unit_id: businessUnitId!, department_id: departmentId ?? null, location_id: locationId ?? null, lines: validLines.map((line) => ({ ...line, description: line.description || undefined, business_unit_id: businessUnitId, department_id: line.department_id === undefined ? departmentId ?? null : line.department_id, location_id: locationId ?? null })) }), onSuccess: (journal) => { toast.success("Journal entry created."); setCopiedFromId(undefined); recovery.clear(); setOpen(false); setPostingDate(todayLocal()); setDocumentNumber(""); setDescription("Salary journal"); setDepartmentId(undefined); setLocationId(undefined); setBusinessUnitId(businessUnits.data?.length === 1 ? businessUnits.data[0].id : undefined); setLines([blankLine(), blankLine()]); refreshFinance(); openJournal(journal.id); }, onError: (error: any) => toast.error(typeof error?.response?.data?.detail === "string" ? error.response.data.detail : "Journal entry could not be created.") });
   const copy = useMutation({ mutationFn: getJournalCopyTemplate, onSuccess: template => {
     const saved = recovery.load();
     if (saved && !window.confirm("Replace the saved journal form with this copy?")) return;
@@ -235,7 +265,7 @@ export default function JournalListPage() {
         rows={visibleRows} loading={q.isLoading} error={q.isError} selectedIds={selected}
         allPageSelected={allVisibleSelected} onTogglePage={toggleAllVisible}
         onToggleRow={(id) => setSelected(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}
-        onView={(id) => nav(`/journal-entries/${id}`)} onCopy={(id) => copy.mutate(id)}
+        onView={openJournal} onCopy={(id) => copy.mutate(id)}
         onPost={(id) => lifecycle.mutate({ id, action: "post" })}
         onUnpost={(id) => lifecycle.mutate({ id, action: "unpost" })}
         onVoidPayment={(row) => { if (window.confirm(`Void payment ${row.reference_number} and its draft journal ${row.journal_number}? This releases the invoice reservation and keeps both records as VOID.`)) voidSourcePayment.mutate(row.reference_id); }}
