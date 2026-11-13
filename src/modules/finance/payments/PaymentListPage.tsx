@@ -19,6 +19,7 @@ import useAuthorization from "@/hooks/useAuthorization";
 import useFormRecovery from "@/hooks/useFormRecovery";
 import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 import { createPayment, eligibleInvoices, eligibleSuppliers, eligibleVouchers, getPayment, listPayments, listReadyToPay, paymentAction, updatePayment, type Payment, type ReadyToPayInvoice } from "./api";
+import { normalizePaymentForSave, paymentSaveError, sumPaymentAmounts } from "./paymentSave";
 
 const methods = ["BANK_TRANSFER", "CASH", "CHEQUE", "CREDIT_CARD", "PETTY_CASH", "OTHER"];
 const currencies = ["IDR", "USD", "SGD", "MYR", "EUR", "JPY", "CNY", "AUD"];
@@ -140,9 +141,9 @@ export default function PaymentListPage() {
   const paymentFilteredTotal=Number(payments.data?.summary?.total_amount??paymentPageTotal);
   const chargeAccounts=useQuery({queryKey:["payment-charge-accounts"],queryFn:()=>getAllAccountLookup({is_active:true,is_posting:true}),enabled:open});
   const chargeOptions=(chargeAccounts.data??[]).filter(a=>a.account_type==="EXPENSE"&&a.normal_balance==="DEBIT").map(a=>({id:a.id,label:a.account_name,keywords:[a.account_code,a.account_name]}));
-  const allocated=useMemo(()=>form.allocations.reduce((sum:number,row:any)=>sum+Number(row.allocated_amount||0),0),[form.allocations]);
-  const funded=useMemo(()=>form.funding_lines.reduce((sum:number,row:any)=>sum+Number(row.amount||0),0),[form.funding_lines]);
-  const expectedFunding=allocated+Number(form.bank_charge_amount||0)+Number(form.short_over_amount||0);
+  const allocated=useMemo(()=>sumPaymentAmounts(form.allocations.map((row:any)=>row.allocated_amount)),[form.allocations]);
+  const funded=useMemo(()=>sumPaymentAmounts(form.funding_lines.map((row:any)=>row.amount)),[form.funding_lines]);
+  const expectedFunding=sumPaymentAmounts([allocated,form.bank_charge_amount,form.short_over_amount]);
   const selectedBalance=form.allocations.reduce((sum:number,a:any)=>sum+availableBalance(invoiceRows.find((i:any)=>i.id===a.supplier_invoice_id)),0);
   const selectedIds=new Set(form.allocations.filter((row:any)=>Number(row.allocated_amount)>0).map((row:any)=>row.supplier_invoice_id));
   const eligibleBankAccounts=(bankAccounts.data??[]).filter(bank=>bank.currency===form.currency);
@@ -160,7 +161,7 @@ export default function PaymentListPage() {
   });
   const useAllocatedAsFunding=()=>setForm((current:any)=>({...current,funding_lines:current.funding_lines.length===1?[{...current.funding_lines[0],amount:expectedFunding}]:current.funding_lines}));
 
-  const save=useMutation({mutationFn:async()=>{const latest=await invoices.refetch();if (latest.isError || !latest.data) throw new Error("Could not verify current invoice availability. Try again.");for(const allocation of form.allocations){const current=latest.data.find((row:any)=>row.id===allocation.supplier_invoice_id);if(!current || Number(allocation.allocated_amount)>availableBalance(current))throw new Error(`Invoice ${current?.invoice_number||allocation.supplier_invoice_id} is no longer available for this amount. Refresh the invoice selection or clear this allocation.`);}if(editId && editingId!==editId) throw new Error("Payment edit is still loading. Try again.");return editId?updatePayment(editId,{...form,voucher_id:undefined,total_amount:allocated}):editingId?updatePayment(editingId,{...form,voucher_id:undefined,total_amount:allocated}):createPayment({...form,total_amount:allocated});},onSuccess:(payment)=>{toast.success(editId||editingId?"Draft payment updated":"Payment saved as draft");recovery.clear();setOpen(false);setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["payments-ready-to-pay"]});qc.invalidateQueries({queryKey:["payment",String(payment.id)]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["eligible-payment-suppliers"]});navigate(`/payments/${payment.id}`,{state:{returnTo}})},onError:(error:any)=>toast.error(error.response?.data?.detail||error.message||"Payment could not be saved")});
+  const save=useMutation({mutationFn:async()=>{const latest=await invoices.refetch();if (latest.isError || !latest.data) throw new Error("Could not verify current invoice availability. Try again.");for(const allocation of form.allocations){const current=latest.data.find((row:any)=>row.id===allocation.supplier_invoice_id);if(!current || Number(allocation.allocated_amount)>availableBalance(current))throw new Error(`Invoice ${current?.invoice_number||allocation.supplier_invoice_id} is no longer available for this amount. Refresh the invoice selection or clear this allocation.`);}if(editId && editingId!==editId) throw new Error("Payment edit is still loading. Try again.");const payload=normalizePaymentForSave(form);return editId?updatePayment(editId,{...payload,voucher_id:undefined}):editingId?updatePayment(editingId,{...payload,voucher_id:undefined}):createPayment(payload);},onSuccess:(payment)=>{toast.success(editId||editingId?"Draft payment updated":"Payment saved as draft");recovery.clear();setOpen(false);setEditingId(undefined);setEditingInvoices([]);setForm(emptyForm());qc.invalidateQueries({queryKey:["payments"]});qc.invalidateQueries({queryKey:["payments-ready-to-pay"]});qc.invalidateQueries({queryKey:["payment",String(payment.id)]});qc.invalidateQueries({queryKey:["eligible-payment-invoices"]});qc.invalidateQueries({queryKey:["eligible-payment-suppliers"]});navigate(`/payments/${payment.id}`,{state:{returnTo}})},onError:(error:unknown)=>toast.error(paymentSaveError(error))});
   const refreshAfterAction = (id: number) => {
     [
       ["payments"], ["payments-ready-to-pay"], ["payment", String(id)], ["payment-edit", id],

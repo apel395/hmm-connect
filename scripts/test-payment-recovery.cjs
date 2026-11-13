@@ -10,21 +10,21 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 const values = new Map();
 global.window = Object.assign(new EventTarget(), {localStorage:{getItem:k=>values.get(k)??null,setItem:(k,v)=>{values.set(k,v);},removeItem:k=>{values.delete(k);}}});
 const route = {pathname:'/accounts-payable/payments',search:'',state:null};
-let resolveInvoices, rejectInvoices, invoiceResponse, savedCalls, errors;
+let resolveInvoices, rejectInvoices, invoiceResponse, savedCalls, errors, lastPayload, createFailure, navigations;
 const saved = {supplier_id:22,payment_date:'2026-10-28',payment_method:'BANK_TRANSFER',currency:'IDR',reference_number:'KEEP-REFERENCE',notes:'Keep my notes',allocations:[{supplier_invoice_id:802,allocated_amount:100}],funding_lines:[{bank_account_id:9,amount:100}]};
 const deferred = () => new Promise((resolve,reject)=>{resolveInvoices=resolve;rejectInvoices=reject;});
 let pending;
 global.__paymentMocks = {
  route, owner:45,
  toast:{success(){},error(message){errors.push(message);}},
- navigate(){},
+ navigate(path){navigations.push(path);},
  listPayments:async()=>({items:[]}),listReadyToPay:async()=>({items:[],totals_by_currency:{}}),
- eligibleSuppliers:async()=>[{id:22,code:'S22',name:'Supplier'}],
+ eligibleSuppliers:async()=>[{id:22,code:'S22',name:'Supplier'},{id:259,code:'S259',name:'Historic Supplier'}],
  eligibleInvoices:()=>pending,
  eligibleVouchers:async()=>[],
- listBankAccounts:async()=>[{id:9,currency:'IDR',bank_name:'Bank',account_name:'Cash',account_number:'99'}],
+ listBankAccounts:async()=>[{id:9,currency:'IDR',bank_name:'Bank',account_name:'Cash',account_number:'99'},{id:61,currency:'IDR',bank_name:'Bank',account_name:'Checking',account_number:'61'}],
  listLocations:async()=>[],getAllAccountLookup:async()=>[],
- createPayment:async()=>{savedCalls++;return {id:1};},updatePayment:async()=>{savedCalls++;return {id:7};},paymentAction:async()=>{},
+ createPayment:async(payload)=>{savedCalls++;lastPayload=payload;if(createFailure)throw createFailure;return {id:1};},updatePayment:async()=>{savedCalls++;return {id:7};},paymentAction:async()=>{},
  getPayment:async()=>({...saved,id:7,total_amount:100,allocations:[{supplier_invoice_id:802,allocated_amount:100,current_available_balance:100,invoice_number:'INV-802'}]})
 };
 async function main(){
@@ -58,10 +58,10 @@ async function main(){
  const flush=()=>new Promise(resolve=>setTimeout(resolve,15));
  const buttons=(view,label)=>view.root.findAllByType('button').filter(b=>b.children.join('')===label);
  const text=view=>JSON.stringify(view.toJSON());
- async function mount({restore=true,edit=false}={}){
- values.clear();global.__paymentMocks.owner++;errors=[];savedCalls=0;pending=deferred();invoiceResponse=[{id:802,invoice_number:'INV-802',available_balance:100,total_amount:100}];
+ async function mount({restore=true,edit=false,draft=saved}={}){
+ values.clear();global.__paymentMocks.owner++;errors=[];savedCalls=0;lastPayload=null;createFailure=null;navigations=[];pending=deferred();invoiceResponse=[{id:802,invoice_number:'INV-802',available_balance:100,total_amount:100}];
  route.search=edit?'?edit=7':'';
- if(restore)values.set(`hmm-form-input:v1:${global.__paymentMocks.owner}:payment%3A${edit?'edit%3A7':'create'}`,JSON.stringify({version:1,value:saved}));
+ if(restore)values.set(`hmm-form-input:v1:${global.__paymentMocks.owner}:payment%3A${edit?'edit%3A7':'create'}`,JSON.stringify({version:1,value:draft}));
  const qc=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false}}});let view;
  await renderer.act(async()=>{view=renderer.create(React.createElement(QueryClientProvider,{client:qc},React.createElement(Page)));await flush();});
  await renderer.act(async()=>{await flush();});
@@ -110,6 +110,40 @@ async function main(){
  assert.match(text(context.view),/Unavailable invoice selections/);
  await renderer.act(async()=>buttons(context.view,'Save Changes')[0].props.onClick());
  assert.equal(savedCalls,0);await dispose(context);
- console.log('Payment recovery PASS: fresh, restored, delayed, unavailable, removal, API failure/retry and edit draft; no invalid payment submitted.');
+ // Production incident: JavaScript floats must be serialized as exact monetary cents.
+ const floatingDraft = {
+   ...saved,supplier_id:259,payment_date:'2026-02-06',
+   total_amount:950999.8400000001,bank_charge_amount:0,short_over_amount:0.16,
+   short_over_account_id:82,difference_reason:'pembulatan',
+   allocations:[{supplier_invoice_id:733,allocated_amount:497999.84},{supplier_invoice_id:732,allocated_amount:453000}],
+   funding_lines:[{bank_account_id:61,amount:951000.0000000001}],
+ };
+ const liveInvoiceRows = [
+   {id:733,invoice_number:'INV-733',available_balance:497999.84,total_amount:497999.84},
+   {id:732,invoice_number:'INV-732',available_balance:453000,total_amount:453000},
+ ];
+ context = await mount({draft:floatingDraft});
+ await renderer.act(async()=>{resolveInvoices(liveInvoiceRows);await flush();});
+ assert.equal(buttons(context.view,'Save Draft')[0].props.disabled,false);
+ // Mock FastAPI validation detail as an object array: never send React object children into Sonner.
+ createFailure = {response:{status:422,data:{detail:[{type:'value_error',loc:['body'],msg:'Value error, Invoice allocations must equal payment total'}]}}};
+ pending = Promise.resolve(liveInvoiceRows);
+ await renderer.act(async()=>{buttons(context.view,'Save Draft')[0].props.onClick();await flush();});
+ assert.equal(savedCalls,1);
+ assert.equal(typeof errors.at(-1),'string','422 detail objects must be converted to text');
+ assert.match(errors.at(-1),/Invoice allocations must equal payment total/);
+ assert.ok(buttons(context.view,'Save Draft').length,'validation error must not close the form');
+ assert.equal(lastPayload.total_amount,950999.84);
+ assert.equal(lastPayload.short_over_amount,0.16);
+ assert.equal(lastPayload.funding_lines[0].amount,951000);
+ assert.deepEqual(lastPayload.allocations.map(row=>row.allocated_amount),[497999.84,453000]);
+ assert.deepEqual(navigations,[],'a failed save must not navigate');
+ createFailure = null;
+ await renderer.act(async()=>{buttons(context.view,'Save Draft')[0].props.onClick();await flush();});
+ assert.equal(savedCalls,2);
+ assert.ok(navigations.includes('/payments/1'),'successful retry must navigate to saved payment');
+ await dispose(context);
+
+ console.log('Payment recovery PASS: invalid invoice recovery, edit draft, 422 toast safety, integer-cent payment totals and successful retry.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});
