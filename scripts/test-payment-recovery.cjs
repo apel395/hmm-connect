@@ -24,7 +24,7 @@ global.__paymentMocks = {
  eligibleVouchers:async()=>[],
  listBankAccounts:async()=>[{id:9,currency:'IDR',bank_name:'Bank',account_name:'Cash',account_number:'99'},{id:61,currency:'IDR',bank_name:'Bank',account_name:'Checking',account_number:'61'}],
  listLocations:async()=>[],getAllAccountLookup:async()=>[],
- createPayment:async(payload)=>{savedCalls++;lastPayload=payload;if(createFailure)throw createFailure;return {id:1};},updatePayment:async(payload)=>{savedCalls++;return {id:7};},paymentAction:async()=>{},
+ createPayment:async(payload)=>{savedCalls++;lastPayload=payload;if(createFailure)throw createFailure;return {id:1};},updatePayment:async()=>{savedCalls++;return {id:7};},paymentAction:async()=>{},
  getPayment:async()=>({...saved,id:7,total_amount:100,allocations:[{supplier_invoice_id:802,allocated_amount:100,current_available_balance:100,invoice_number:'INV-802'}]})
 };
 async function main(){
