@@ -153,7 +153,20 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
     }
   };
 
-  const warehouseOptions=warehouses.filter((row:any)=>(row.is_active || row.id===warehouseId) && Number(row.location_id) === locationId).map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const originalWarehouse = warehouses.find((row:any)=>row.id===receipt.warehouse_id);
+  const selectedWarehouse = warehouses.find((row:any)=>row.id===warehouseId);
+  const retainingHistoricalStockLocation = historical && Boolean(selectedWarehouse)
+    && warehouseId===receipt.warehouse_id && Number(selectedWarehouse?.location_id)!==locationId;
+  const warehouseOptions=warehouses.filter((row:any)=>
+    ((row.is_active || row.id===warehouseId) && Number(row.location_id)===locationId)
+    || (historical && row.id===receipt.warehouse_id)
+  ).map((row:any)=>({
+    id:row.id,
+    label:historical && row.id===receipt.warehouse_id && Number(row.location_id)!==locationId
+      ? `${row.code} — ${row.name} (original physical stock)`
+      : `${row.code} — ${row.name}`,
+    keywords:[row.code??"",row.name??""],
+  }));
 
   return <Dialog open={open} onOpenChange={value=>!value&&onClose()}>
       <DialogContent className="max-h-[92vh] max-w-[1440px] overflow-hidden">
@@ -171,12 +184,17 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           <label className="text-sm">Delivery Note / Reference<input className="mt-1 h-10 w-full rounded border px-3" value={reference} onChange={e=>setReference(e.target.value)}/></label>
 
           {historical&&<SearchableSelect label="Supplier" required value={supplierId??undefined} placeholder="Choose supplier..." options={(supplierQuery.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code??"",row.name]}))} onChange={value=>setSupplierId(value??null)}/>}
-          {historical&&<SearchableSelect label="Business Unit" required value={businessUnitId??undefined} options={(businessUnits.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code,row.name]}))} onChange={value=>{setBusinessUnitId(value??null);setLocationId(null);setDepartmentId(null);setWarehouseId(null);}}/>}
-          {directReceipt&&<SearchableSelect label="Location" required value={locationId??undefined} placeholder="Type location code or name..." options={(locations.data??[]).map(row=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code,row.name]}))} onChange={value=>{setLocationId(value??null);setWarehouseId(null);if(historical)setDepartmentId(null);}}/>}
+          {historical&&<SearchableSelect label="Business Unit" required value={businessUnitId??undefined} options={(businessUnits.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code,row.name]}))} onChange={value=>{setBusinessUnitId(value??null);setLocationId(null);setDepartmentId(null);if(!historical)setWarehouseId(null);}}/>}
+          {directReceipt&&<SearchableSelect label="Location" required value={locationId??undefined} placeholder="Type location code or name..." options={(locations.data??[]).map(row=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code,row.name]}))} onChange={value=>{setLocationId(value??null);if(!historical)setWarehouseId(null);if(historical)setDepartmentId(null);}}/>}
           {historical&&<SearchableSelect label="Department" required value={departmentId??undefined} placeholder="Select department..." options={(departments.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code,row.name]}))} onChange={value=>setDepartmentId(value??null)}/>}
 
 
-          {hasWarehouse&&<SearchableSelect label="Warehouse" required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>} 
+          {hasWarehouse&&<SearchableSelect label={historical?"Physical Stock Warehouse":"Warehouse"} required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>}
+          {retainingHistoricalStockLocation&&<div role="status" className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Reporting location will be corrected; original stock stays in {originalWarehouse?.code??"the original warehouse"}.
+            Existing source stock IN, Store Requests, stock OUT and inventory balances are not moved.
+            To correct the physical warehouse instead, select a warehouse in the new location; changes that would rewrite consumed stock remain blocked.
+          </div>} 
         </div>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           {directReceipt && <label className="mb-2 block text-xs">Item catalog <select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL"|"ALL")}><option value="ALL">All Buy Items</option><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>}
