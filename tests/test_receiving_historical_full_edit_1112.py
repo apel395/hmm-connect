@@ -1,6 +1,9 @@
 """Full historical edits must never rewrite unrelated stock activity."""
 from decimal import Decimal
 
+import pytest
+from fastapi import HTTPException
+
 from app.models.inventory import Inventory
 from app.models.location import Location
 from app.models.location_department import LocationDepartment
@@ -121,3 +124,83 @@ def test_location_and_warehouse_correction_updates_only_original_source(stock_db
     assert db.query(StockMovement).count() == count
     invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
     assert invoice.location_id == new_location.id
+
+
+def _real_consumption_and_corrected_location(db, warehouse, user, product, inventory):
+    location = Location(code="LOC-HIST-REPORT", name="Corrected historical reporting location",
+                        location_type="HOTEL", is_active=True,
+                        business_unit_id=user.default_business_unit_id)
+    db.add(location)
+    db.flush()
+    db.add(LocationDepartment(location_id=location.id, department_id=user.default_department_id))
+    out = StockMovement(
+        product_id=product.id, warehouse_id=warehouse.id,
+        business_unit_id=user.default_business_unit_id, location_id=warehouse.location_id,
+        department_id=user.default_department_id, movement_type="OUT",
+        quantity=Decimal("1"), unit_cost=Decimal("10"),
+        reference_type="STORE_REQUEST", reference_id=9959)
+    db.add(out)
+    inventory.quantity -= Decimal("1")
+    db.flush()
+    return location, out
+
+
+def test_reporting_location_change_preserves_consumed_stock_and_source_location(stock_db):
+    context, receipt = sample(stock_db)
+    db, warehouse, user, products, inventory, *_ = context
+    original = active_receipt_stock(db, receipt.id)[0]
+    location, actual_out = _real_consumption_and_corrected_location(
+        db, warehouse, user, products[0], inventory[0])
+    stock_qty = Decimal(inventory[0].quantity)
+    stock_cost = Decimal(inventory[0].average_cost)
+    initial_movement_count = db.query(StockMovement.id).count()
+    original_location_id = original.location_id
+    original_warehouse_id = original.warehouse_id
+
+    # Warehouse ID is deliberately supplied unchanged, as in the full UI form.
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason="Correct historical reporting location only",
+                                    location_id=location.id, warehouse_id=warehouse.id))
+    db.refresh(original)
+    db.refresh(actual_out)
+    assert receipt.location_id == location.id
+    assert receipt.warehouse_id == original_warehouse_id
+    assert original.location_id == original_location_id
+    assert original.warehouse_id == original_warehouse_id
+    assert actual_out.location_id == original_location_id
+    assert actual_out.warehouse_id == original_warehouse_id
+    assert db.query(StockMovement.id).count() == initial_movement_count
+    assert Decimal(inventory[0].quantity) == stock_qty
+    assert Decimal(inventory[0].average_cost) == stock_cost
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert invoice.location_id == location.id
+    # Subsequent reporting edits must not try to reconcile/transfer old physical stock.
+    correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason="Fix historical narrative later",
+                                    notes="Rechecked against supplier paperwork"))
+    assert receipt.notes == "Rechecked against supplier paperwork"
+    assert db.query(StockMovement.id).count() == initial_movement_count
+
+
+def test_physical_warehouse_change_still_blocked_after_real_stock_usage(stock_db):
+    context, receipt = sample(stock_db)
+    db, warehouse, user, products, inventory, *_ = context
+    original = active_receipt_stock(db, receipt.id)[0]
+    location, actual_out = _real_consumption_and_corrected_location(
+        db, warehouse, user, products[0], inventory[0])
+    second = Warehouse(code="WH-HIST-CONSUMED", name="Corrected physical warehouse",
+                       location_id=location.id, is_active=True)
+    db.add(second)
+    db.flush()
+    source_id = original.id
+    before_qty = Decimal(inventory[0].quantity)
+    with pytest.raises(HTTPException, match="subsequent actual stock usage"):
+        correct_historical_receiving(db, receipt.id, user,
+            HistoricalReceiptCorrection(reason="Try to physically retarget used stock",
+                                        location_id=location.id, warehouse_id=second.id))
+    db.refresh(receipt)
+    assert receipt.location_id == warehouse.location_id
+    assert receipt.warehouse_id == warehouse.id
+    assert db.get(StockMovement, source_id).warehouse_id == warehouse.id
+    assert Decimal(inventory[0].quantity) == before_qty
+    assert db.query(StockMovement.id).filter(StockMovement.reference_type == "STORE_REQUEST").count() == 1
