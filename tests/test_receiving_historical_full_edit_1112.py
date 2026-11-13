@@ -141,7 +141,9 @@ def _real_consumption_and_corrected_location(db, warehouse, user, product, inven
         reference_type="STORE_REQUEST", reference_id=9959)
     db.add(out)
     inventory.quantity -= Decimal("1")
-    db.flush()
+    # Persist the genuine stock OUT first. The correction's rollback must not
+    # roll back the unrelated operational movement used by this regression.
+    db.commit()
     return location, out
 
 
