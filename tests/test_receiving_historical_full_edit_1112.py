@@ -347,3 +347,52 @@ def test_location_with_real_quantity_edit_still_blocks_consumed_legacy_source(st
     assert receipt.warehouse_id == mismatch.id
     assert Decimal(inventory[0].quantity) == before_qty
     assert db.get(StockMovement, real_out.id).reference_type == "STORE_REQUEST"
+
+
+def test_recorded_warehouse_change_reports_physical_source_and_later_return_uses_it(stock_db):
+    from app.api.v1.goods_receipts import serialize_receipt
+    from app.services.goods_receipt_service import GoodsReceiptService
+    context, receipt = sample(stock_db)
+    db, original_warehouse, user, products, inventory, *_ = context
+    physical_source = active_receipt_stock(db, receipt.id)[0]
+    new_location = _new_location_without_stock_activity(db, user)
+    recorded_warehouse = Warehouse(
+        code="WH-HIST-RECORDED-NEW", name="Corrected recorded warehouse",
+        location_id=new_location.id, is_active=True,
+    )
+    db.add(recorded_warehouse)
+    db.flush()
+    count_before = db.query(StockMovement.id).count()
+    original_qty = Decimal(inventory[0].quantity)
+    original_cost = Decimal(inventory[0].average_cost)
+    corrected = correct_historical_receiving(
+        db, receipt.id, user,
+        HistoricalReceiptCorrection(
+            reason="Fix recorded Receiving warehouse, not a physical transfer",
+            location_id=new_location.id, warehouse_id=recorded_warehouse.id,
+        ),
+    )
+    assert corrected.warehouse_id == recorded_warehouse.id
+    assert corrected.location_id == new_location.id
+    assert physical_source.warehouse_id == original_warehouse.id
+    assert physical_source.location_id == new_location.id
+    assert db.query(StockMovement.id).count() == count_before
+    assert Decimal(inventory[0].quantity) == original_qty
+    assert Decimal(inventory[0].average_cost) == original_cost
+
+    serialized = serialize_receipt(corrected, db)
+    assert serialized["warehouse_id"] == recorded_warehouse.id
+    assert serialized["physical_stock_warehouse_id"] == original_warehouse.id
+    assert serialized["physical_stock_location_retained"] is True
+
+    # A later, separately initiated real Return must NOT debit the corrected
+    # recorded warehouse, which received no physical stock.
+    GoodsReceiptService.return_receipt(db, receipt_id=corrected.id, user=user)
+    returned = db.query(StockMovement).filter_by(
+        goods_receipt_id=corrected.id, reference_type="GOODS_RECEIPT_RETURN",
+    ).one()
+    assert returned.warehouse_id == original_warehouse.id
+    assert returned.location_id == original_warehouse.location_id
+    assert db.query(Inventory).filter_by(
+        product_id=products[0].id, warehouse_id=recorded_warehouse.id,
+    ).first() is None
