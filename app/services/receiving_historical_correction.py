@@ -375,15 +375,22 @@ def _correct(db, receipt_id, user, data):
     # the standard new-Receiving warehouse/location rule.
     stock_location_id = target_warehouse.location_id if retained_physical_warehouse else receipt.location_id
     GoodsReceiptService._validate_destination(db, receipt, stock_location_id)
+    # A correction replaces the recorded dimensions on this GR's ORIGINAL
+    # source IN only. It never emits a new stock movement, transfers warehouse
+    # balances for a reporting-only edit, or modifies a later Store Request/OUT.
+    corrected_dimensions = {
+        field for field in ('business_unit_id', 'location_id', 'department_id')
+        if field in data.model_fields_set
+        and before_header[field] != (str(getattr(receipt, field)) if getattr(receipt, field) is not None else None)
+    }
     for row in movements.values():
         if row.goods_receipt_item_id in removed_stock_ids:
             continue
-        # A location/department correction changes reporting and its open
-        # draft accounting, not the audit identity of the physical source IN.
-        # Relabel movement dimensions only when its warehouse ACTUALLY moved.
-        if row.goods_receipt_item_id in relocated_source_ids:
+        if row.goods_receipt_item_id in relocated_source_ids or 'business_unit_id' in corrected_dimensions:
             row.business_unit_id = receipt.business_unit_id
+        if row.goods_receipt_item_id in relocated_source_ids or 'location_id' in corrected_dimensions:
             row.location_id = receipt.location_id
+        if row.goods_receipt_item_id in relocated_source_ids or 'department_id' in corrected_dimensions:
             row.department_id = receipt.department_id
 
     GoodsReceiptService._recalculate_totals(receipt, db)
