@@ -91,6 +91,8 @@ async function run(){
  await mount();
  await renderer.act(async()=>{
    v.root.findByProps({'aria-label':'Location'}).props.onChange({target:{value:'6'}});
+   // Location change clears Department: explicitly select it before saving.
+   v.root.findByProps({'aria-label':'Department'}).props.onChange({target:{value:'1'}});
    v.root.findByProps({'aria-label':'Recorded Receiving Warehouse'}).props.onChange({target:{value:'92'}});
    v.root.findAllByType('textarea').find(n=>n.props.maxLength===500).props.onChange({target:{value:'Correct recorded warehouse and location'}});
  });
