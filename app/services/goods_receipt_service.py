@@ -981,7 +981,9 @@ class GoodsReceiptService:
                     if source_in is None:
                         raise HTTPException(409, "Original warehouse source IN is required to return historical stock")
                     returned_stock.business_unit_id = source_in.business_unit_id
-                    returned_stock.location_id = source_in.location_id
+                    returned_stock.location_id = (
+                        source_in.warehouse.location_id if source_in.warehouse else source_in.location_id
+                    )
                     returned_stock.department_id = source_in.department_id
                 db.add(returned_stock)
             if purchase_order and receipt_item.purchase_order_item_id:
