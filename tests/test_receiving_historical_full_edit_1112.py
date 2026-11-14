@@ -147,7 +147,7 @@ def _real_consumption_and_corrected_location(db, warehouse, user, product, inven
     return location, out
 
 
-def test_reporting_location_change_preserves_consumed_stock_and_source_location(stock_db):
+def test_reporting_location_changes_original_source_metadata_without_stock_activity(stock_db):
     context, receipt = sample(stock_db)
     db, warehouse, user, products, inventory, *_ = context
     original = active_receipt_stock(db, receipt.id)[0]
@@ -167,7 +167,7 @@ def test_reporting_location_change_preserves_consumed_stock_and_source_location(
     db.refresh(actual_out)
     assert receipt.location_id == location.id
     assert receipt.warehouse_id == original_warehouse_id
-    assert original.location_id == original_location_id
+    assert original.location_id == location.id  # Original IN corrected in place.
     assert original.warehouse_id == original_warehouse_id
     assert actual_out.location_id == original_location_id
     assert actual_out.warehouse_id == original_warehouse_id
@@ -259,3 +259,79 @@ def test_depost_after_reporting_correction_uses_original_physical_stock_dimensio
     assert reversed_row.business_unit_id == original.business_unit_id
     assert reversed_row.department_id == original.department_id
     assert receipt.status == "DRAFT"
+
+
+def test_location_only_corrects_legacy_header_warehouse_mismatch_without_stock_mutation(stock_db):
+    """Production GRs may have a header warehouse unlike their source IN.
+
+    Resubmitting all unchanged line values alongside a location correction
+    must not turn that discrepancy into a physical warehouse transfer.
+    """
+    context, receipt = sample(stock_db)
+    db, warehouse, user, products, inventory, *_ = context
+    source = active_receipt_stock(db, receipt.id)[0]
+    mismatch = Warehouse(code="WH-HIST-HEADER-ONLY", name="Legacy header selection",
+                         location_id=warehouse.location_id, is_active=True)
+    db.add(mismatch)
+    db.flush()
+    receipt.warehouse_id = mismatch.id
+    db.commit()
+    location, subsequent_out = _real_consumption_and_corrected_location(
+        db, warehouse, user, products[0], inventory[0])
+    before_qty = Decimal(inventory[0].quantity)
+    before_avg = Decimal(inventory[0].average_cost)
+    before_count = db.query(StockMovement).count()
+    before_source = (source.id, source.warehouse_id,
+                     Decimal(source.quantity), Decimal(source.unit_cost),
+                     source.department_id, source.inventory_account_id)
+    before_out_id = subsequent_out.id
+
+    result = correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(
+            reason="Correct old reporting location without changing physical stock",
+            location_id=location.id, warehouse_id=mismatch.id,
+            items=[dict(
+                item_id=receipt.items[0].id, quantity=Decimal("2"), unit_cost=Decimal("10"),
+                destination_type="WAREHOUSE", destination_override_reason=None,
+                expense_account_id=None, is_taxable=False, tax_rate=0,
+            )],
+        ))
+    assert result.location_id == location.id
+    assert result.warehouse_id == mismatch.id
+    db.refresh(source)
+    assert source.location_id == location.id  # Metadata replacement, not movement.
+    assert (source.id, source.warehouse_id,
+            Decimal(source.quantity), Decimal(source.unit_cost),
+            source.department_id, source.inventory_account_id) == before_source
+    assert db.query(StockMovement).count() == before_count
+    assert db.get(StockMovement, before_out_id).warehouse_id == warehouse.id
+    assert Decimal(inventory[0].quantity) == before_qty
+    assert Decimal(inventory[0].average_cost) == before_avg
+    invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert invoice.location_id == location.id
+
+
+def test_location_with_real_quantity_edit_still_blocks_consumed_legacy_source(stock_db):
+    context, receipt = sample(stock_db)
+    db, warehouse, user, products, inventory, *_ = context
+    mismatch = Warehouse(code="WH-HIST-QTY-MISMATCH", name="Legacy header mismatch",
+                         location_id=warehouse.location_id, is_active=True)
+    db.add(mismatch)
+    db.flush()
+    receipt.warehouse_id = mismatch.id
+    db.commit()
+    location, real_out = _real_consumption_and_corrected_location(
+        db, warehouse, user, products[0], inventory[0])
+    before_qty = Decimal(inventory[0].quantity)
+    with pytest.raises(HTTPException, match="subsequent actual stock usage"):
+        correct_historical_receiving(db, receipt.id, user,
+            HistoricalReceiptCorrection(
+                reason="Quantity correction after physical stock consumption",
+                location_id=location.id, warehouse_id=mismatch.id,
+                items=[dict(item_id=receipt.items[0].id, quantity=3)],
+            ))
+    db.refresh(receipt)
+    assert receipt.location_id == warehouse.location_id
+    assert receipt.warehouse_id == mismatch.id
+    assert Decimal(inventory[0].quantity) == before_qty
+    assert db.get(StockMovement, real_out.id).reference_type == "STORE_REQUEST"

@@ -130,6 +130,7 @@ def _correct(db, receipt_id, user, data):
     # If the warehouse is UNCHANGED, keep the original physical stock location
     # even when the corrected reporting location differs. Do not modify later
     # store requests, stock OUT, adjustments, or inventory balances.
+    physical_warehouse_changed = receipt.warehouse_id != original_warehouse_id
     retained_physical_warehouse = bool(
         target_warehouse
         and target_warehouse.location_id != receipt.location_id
@@ -214,6 +215,7 @@ def _correct(db, receipt_id, user, data):
     deltas = defaultdict(lambda: [ZERO, ZERO, [], [], []])
     newly_attributed_keys = set()
     moved_old_source_ids = defaultdict(list)
+    relocated_source_ids = set()
     removed_stock_ids = set()
 
     # Retarget source IN records, never create reversal OUT/transfer movements.
@@ -232,7 +234,16 @@ def _correct(db, receipt_id, user, data):
         new_cost = updated[4] if updated else Decimal(item.unit_cost)
         new_destination = field_updates[item.id][0] if updated else old_destination
         old_key = (item.product_id, old_row.warehouse_id) if old_row else None
-        new_key = (item.product_id, receipt.warehouse_id) if new_destination == 'WAREHOUSE' else None
+        # Existing source stock IN is authoritative for its physical
+        # warehouse. Legacy Receiving headers can disagree with that
+        # warehouse. Resaving an unchanged header must never interpret the
+        # mismatch as a stock transfer, especially after Store Request OUT.
+        effective_warehouse_id = (
+            receipt.warehouse_id
+            if physical_warehouse_changed or old_row is None
+            else old_row.warehouse_id
+        )
+        new_key = (item.product_id, effective_warehouse_id) if new_destination == 'WAREHOUSE' else None
         if new_destination == 'WAREHOUSE' and receipt.warehouse_id is None:
             raise HTTPException(422, f'Warehouse is required for item {item.product_id}')
         if old_key != new_key:
@@ -252,6 +263,7 @@ def _correct(db, receipt_id, user, data):
                 newly_attributed_keys.add(new_key)
                 if old_row:
                     bucket[2].append((old_row, new_qty, new_cost))
+                    relocated_source_ids.add(item.id)
                 else:
                     bucket[4].append(item)
             continue
@@ -363,12 +375,22 @@ def _correct(db, receipt_id, user, data):
     # the standard new-Receiving warehouse/location rule.
     stock_location_id = target_warehouse.location_id if retained_physical_warehouse else receipt.location_id
     GoodsReceiptService._validate_destination(db, receipt, stock_location_id)
+    # A correction replaces the recorded dimensions on this GR's ORIGINAL
+    # source IN only. It never emits a new stock movement, transfers warehouse
+    # balances for a reporting-only edit, or modifies a later Store Request/OUT.
+    corrected_dimensions = {
+        field for field in ('business_unit_id', 'location_id', 'department_id')
+        if field in data.model_fields_set
+        and before_header[field] != (str(getattr(receipt, field)) if getattr(receipt, field) is not None else None)
+    }
     for row in movements.values():
         if row.goods_receipt_item_id in removed_stock_ids:
             continue
-        if not retained_physical_warehouse:
+        if row.goods_receipt_item_id in relocated_source_ids or 'business_unit_id' in corrected_dimensions:
             row.business_unit_id = receipt.business_unit_id
+        if row.goods_receipt_item_id in relocated_source_ids or 'location_id' in corrected_dimensions:
             row.location_id = receipt.location_id
+        if row.goods_receipt_item_id in relocated_source_ids or 'department_id' in corrected_dimensions:
             row.department_id = receipt.department_id
 
     GoodsReceiptService._recalculate_totals(receipt, db)
@@ -391,7 +413,7 @@ def _correct(db, receipt_id, user, data):
     for row in movements.values():
         if row.goods_receipt_item_id in removed_stock_ids:
             continue
-        if not retained_physical_warehouse:
+        if row.goods_receipt_item_id in relocated_source_ids:
             row.inventory_account_id = resolver.inventory_account(row.product, receipt.location_id).id
             row.offset_account_id = resolver.ap_suspense_account().id
         row.journal_entry_id = journal.id

@@ -123,7 +123,12 @@ def _depost(db, receipt_id, user, reason):
                 # A historical reporting correction may differ from the source's
                 # physical stock location. Reversal dimensions must match the
                 # original source IN, never another location's later reports.
-                business_unit_id=row.business_unit_id,location_id=row.location_id,department_id=row.department_id,
+                business_unit_id=row.business_unit_id,
+                # Source IN's reporting location may have been corrected in
+                # place; a later *explicit* depost still refers to the
+                # physical warehouse's actual location.
+                location_id=row.warehouse.location_id if row.warehouse else row.location_id,
+                department_id=row.department_id,
                 notes=f'Depost reversal of stock movement {row.id}: {reason.strip()}',inventory_account_id=row.inventory_account_id,
                 offset_account_id=row.offset_account_id,journal_entry_id=journal.id if journal else None))
     for row,quantity in po_rows.values():row.received_quantity=Decimal(row.received_quantity)-quantity
