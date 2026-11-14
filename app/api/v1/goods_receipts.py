@@ -126,6 +126,15 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
     purchase_order = receipt.purchase_order
     supplier = purchase_order.supplier if purchase_order else receipt.supplier
     approval = get_request(db, "GOODS_RECEIPT", receipt.id) if db else None
+    physical_source_warehouse = None
+    if (db is not None and receipt.status == "POSTED"
+            and receipt.source_type == "HISTORICAL_ENTRY"):
+        from app.services.receiving_stock_cycle import active_receipt_stock
+        physical_warehouse_ids = {
+            row.warehouse_id for row in active_receipt_stock(db, receipt.id)
+        }
+        if len(physical_warehouse_ids) == 1:
+            physical_source_warehouse = db.get(Warehouse, next(iter(physical_warehouse_ids)))
     return {
         "id": receipt.id,
         "receipt_number": receipt.receipt_number,
@@ -154,11 +163,24 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
             receipt.warehouse.location.name
             if receipt.warehouse and receipt.warehouse.location else None
         ),
+        "physical_stock_warehouse_id": (
+            physical_source_warehouse.id if physical_source_warehouse else None
+        ),
+        "physical_stock_warehouse_name": (
+            physical_source_warehouse.name if physical_source_warehouse else None
+        ),
+        "physical_stock_warehouse_code": (
+            physical_source_warehouse.code if physical_source_warehouse else None
+        ),
+        "physical_stock_warehouse_location_name": (
+            physical_source_warehouse.location.name
+            if physical_source_warehouse and physical_source_warehouse.location else None
+        ),
         "physical_stock_location_retained": bool(
-            receipt.status == "POSTED"
-            and receipt.source_type == "HISTORICAL_ENTRY"
-            and receipt.warehouse
-            and receipt.warehouse.location_id != receipt.location_id
+            physical_source_warehouse and (
+                physical_source_warehouse.id != receipt.warehouse_id
+                or physical_source_warehouse.location_id != receipt.location_id
+            )
         ),
         "business_unit_id": receipt.business_unit_id,
         "business_unit_name": receipt.business_unit.name if receipt.business_unit else None,

@@ -124,21 +124,33 @@ def _correct(db, receipt_id, user, data):
     target_warehouse = db.get(Warehouse, receipt.warehouse_id) if receipt.warehouse_id is not None else None
     if receipt.warehouse_id is not None and not target_warehouse:
         raise HTTPException(422, 'Choose an existing receiving warehouse')
-    # Historical data correction has two independent meanings:
-    # - reporting Location: correct the Receiving, its open journal and draft invoice.
-    # - physical Warehouse: correct the original source IN and stock balance.
-    # If the warehouse is UNCHANGED, keep the original physical stock location
-    # even when the corrected reporting location differs. Do not modify later
-    # store requests, stock OUT, adjustments, or inventory balances.
-    physical_warehouse_changed = receipt.warehouse_id != original_warehouse_id
-    retained_physical_warehouse = bool(
-        target_warehouse
-        and target_warehouse.location_id != receipt.location_id
-        and receipt.warehouse_id == original_warehouse_id
+    # Historical Warehouse is the corrected document attribution, not an
+    # inventory transfer. The actual original StockMovement IN warehouse and
+    # current warehouse balances are physical stock history: do not rewrite
+    # them simply because an administrator selected a different warehouse.
+    # In particular, an existing Store Request OUT from that warehouse can
+    # be unrelated to the mistaken Receiving header.
+    source_movements = active_receipt_stock(db, receipt.id)
+    physical_warehouse_ids = {row.warehouse_id for row in source_movements}
+    physical_warehouse = (
+        db.get(Warehouse, next(iter(physical_warehouse_ids)))
+        if len(physical_warehouse_ids) == 1 else None
     )
-    if target_warehouse and target_warehouse.location_id != receipt.location_id and not retained_physical_warehouse:
+    retained_physical_warehouse = bool(
+        physical_warehouse and (
+            physical_warehouse.id != receipt.warehouse_id
+            or physical_warehouse.location_id != receipt.location_id
+        )
+    )
+    if (receipt.warehouse_id != original_warehouse_id and target_warehouse
+            and target_warehouse.location_id != receipt.location_id):
         raise HTTPException(
-            422, 'A newly selected warehouse must belong to the corrected Receiving location')
+            422, 'The corrected Receiving warehouse must belong to its selected Location')
+    if (receipt.warehouse_id != original_warehouse_id
+            and len(physical_warehouse_ids) > 1):
+        raise HTTPException(
+            409, 'Receiving has original stock IN records across multiple physical warehouses; '
+                 'warehouse attribution requires individual source review')
     header_changed = any(
         before_header[field] != (str(getattr(receipt, field)) if getattr(receipt, field) is not None else None)
         for field in editable_header
@@ -211,14 +223,16 @@ def _correct(db, receipt_id, user, data):
             is_taxable=entry.is_taxable, tax_rate=entry.tax_rate if entry.is_taxable else ZERO,
         ))
 
-    movements = {row.goods_receipt_item_id: row for row in active_receipt_stock(db, receipt.id)}
+    movements = {row.goods_receipt_item_id: row for row in source_movements}
     deltas = defaultdict(lambda: [ZERO, ZERO, [], [], []])
     newly_attributed_keys = set()
     moved_old_source_ids = defaultdict(list)
     relocated_source_ids = set()
     removed_stock_ids = set()
 
-    # Retarget source IN records, never create reversal OUT/transfer movements.
+    # Correct item stock numbers at their ORIGINAL physical warehouse.
+    # Editing only the warehouse shown on the Receiving never transfers IN
+    # records or current balances, and never creates any stock movement.
     for item in list(receipt.items):
         if item in removed:
             continue
@@ -234,15 +248,9 @@ def _correct(db, receipt_id, user, data):
         new_cost = updated[4] if updated else Decimal(item.unit_cost)
         new_destination = field_updates[item.id][0] if updated else old_destination
         old_key = (item.product_id, old_row.warehouse_id) if old_row else None
-        # Existing source stock IN is authoritative for its physical
-        # warehouse. Legacy Receiving headers can disagree with that
-        # warehouse. Resaving an unchanged header must never interpret the
-        # mismatch as a stock transfer, especially after Store Request OUT.
-        effective_warehouse_id = (
-            receipt.warehouse_id
-            if physical_warehouse_changed or old_row is None
-            else old_row.warehouse_id
-        )
+        # Existing source stock IN is authoritative for the physical warehouse,
+        # even if the administrator corrects the historical document warehouse.
+        effective_warehouse_id = old_row.warehouse_id if old_row else receipt.warehouse_id
         new_key = (item.product_id, effective_warehouse_id) if new_destination == 'WAREHOUSE' else None
         if new_destination == 'WAREHOUSE' and receipt.warehouse_id is None:
             raise HTTPException(422, f'Warehouse is required for item {item.product_id}')
@@ -370,11 +378,17 @@ def _correct(db, receipt_id, user, data):
     GoodsReceiptService._validate_hotel_expenses(receipt)
     receipt.destination_type = receipt_destination(receipt)
     receipt.warehouse_id = receipt.warehouse_id if warehouse_items(receipt) else None
-    # The source IN remains in its actual physical warehouse when only the
-    # reporting location was corrected. This is intentionally different from
-    # the standard new-Receiving warehouse/location rule.
-    stock_location_id = target_warehouse.location_id if retained_physical_warehouse else receipt.location_id
-    GoodsReceiptService._validate_destination(db, receipt, stock_location_id)
+    # A corrected header is validated against its own recorded Location, while
+    # inventory accounting follows the actual source IN warehouse. A legacy
+    # unchanged header may already mismatch the reporting Location.
+    stock_location_id = (
+        physical_warehouse.location_id
+        if physical_warehouse is not None else receipt.location_id
+    )
+    GoodsReceiptService._validate_destination(
+        db, receipt,
+        target_warehouse.location_id if target_warehouse is not None else receipt.location_id
+    )
     # A correction replaces the recorded dimensions on this GR's ORIGINAL
     # source IN only. It never emits a new stock movement, transfers warehouse
     # balances for a reporting-only edit, or modifies a later Store Request/OUT.
@@ -458,6 +472,10 @@ def _correct(db, receipt_id, user, data):
             line.department_id = receipt.department_id
             line.account_id = None
             resolver.snapshot_invoice_line(invoice, line)
+            if retained_physical_warehouse and line_destination(receipt, item) == 'WAREHOUSE':
+                # Keep the provisional invoice inventory asset aligned with
+                # the physical source IN, not its edited document location.
+                line.account_id = resolver.inventory_account(item.product, stock_location_id).id
         SupplierInvoiceService(db).sync_unconfirmed_receipt_draft(invoice, receipt, user)
 
     ActivityService.log(
@@ -478,7 +496,8 @@ def _correct(db, receipt_id, user, data):
         details={'reason': data.reason.strip(), 'journal_id': journal.id,
                  'invoice_id': invoice.id if invoice else None,
                  'physical_stock_warehouse_retained': retained_physical_warehouse,
-                 'physical_stock_warehouse_id': receipt.warehouse_id,
+                 'recorded_receiving_warehouse_id': receipt.warehouse_id,
+                 'physical_stock_warehouse_id': physical_warehouse.id if physical_warehouse else None,
                  'physical_stock_location_id': stock_location_id},
     )
     db.commit()
