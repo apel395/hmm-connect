@@ -472,6 +472,10 @@ def _correct(db, receipt_id, user, data):
             line.department_id = receipt.department_id
             line.account_id = None
             resolver.snapshot_invoice_line(invoice, line)
+            if retained_physical_warehouse and line_destination(receipt, item) == 'WAREHOUSE':
+                # Keep the provisional invoice inventory asset aligned with
+                # the physical source IN, not its edited document location.
+                line.account_id = resolver.inventory_account(item.product, stock_location_id).id
         SupplierInvoiceService(db).sync_unconfirmed_receipt_draft(invoice, receipt, user)
 
     ActivityService.log(
