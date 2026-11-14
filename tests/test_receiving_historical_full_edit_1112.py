@@ -384,6 +384,8 @@ def test_recorded_warehouse_change_reports_physical_source_and_later_return_uses
     assert serialized["warehouse_id"] == recorded_warehouse.id
     assert serialized["physical_stock_warehouse_id"] == original_warehouse.id
     assert serialized["physical_stock_location_retained"] is True
+    linked_invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert linked_invoice.lines[0].account_id == physical_source.inventory_account_id
 
     # A later, separately initiated real Return must NOT debit the corrected
     # recorded warehouse, which received no physical stock.
