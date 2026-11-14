@@ -130,7 +130,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           }={item_id:original.id};
           if(Number(item.quantity)!==Number(original.quantity))changed.quantity=Number(item.quantity);
           if(Number(item.unit_cost)!==Number(original.unit_cost))changed.unit_cost=Number(item.unit_cost);
-          if(currentDestination!==originalDestination)changed.destination_type=currentDestination;
+          if(currentDestination && currentDestination!==originalDestination)changed.destination_type=currentDestination;
           if(currentOverride!==originalOverride)changed.destination_override_reason=currentOverride;
           if(currentExpense!==originalExpense)changed.expense_account_id=currentExpense;
           if(currentTaxable!==originalTaxable)changed.is_taxable=currentTaxable;
@@ -163,12 +163,10 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
         const proposedNotes=notes.trim()||null;
         if(proposedNotes!==(receipt.notes??null))changedHeader.notes=proposedNotes;
         const initialBilling=fromReceiptBilling(receipt);
-        const changedBilling:Partial<ReceivingBilling>={};
+        const changedBilling:Record<string,string|number|null>={};
         (Object.keys(billing) as Array<keyof ReceivingBilling>).forEach(key=>{
           if(String(billing[key]??"")!==String(initialBilling[key]??"")){
-            // Index through a homogeneous temporary record; every key and
-            // value comes from the typed ReceivingBilling object.
-            (changedBilling as Record<string,string|number|null>)[key]=billing[key];
+            changedBilling[key]=billing[key];
           }
         });
         if(!changedLines.length&&!addedLines.length&&!removedIds.length&&
