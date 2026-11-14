@@ -72,7 +72,7 @@ def fingerprint(value):
     return sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def load_source(path):
+def load_source(path, tab=TAB):
     if path:
         data = path.read_bytes()
     else:
@@ -83,7 +83,7 @@ def load_source(path):
     with BytesIO(data) as stream:
         workbook = load_workbook(stream, read_only=True, data_only=True)
         try:
-            return list(workbook[TAB].iter_rows(max_col=7, values_only=True))
+            return list(workbook[tab].iter_rows(max_col=7, values_only=True))
         finally:
             workbook.close()
 
@@ -314,10 +314,10 @@ def location_matches(memo, location_names):
     })
 
 
-def assign_locations(drafts, locations, fallback):
+def assign_locations(drafts, locations, fallback, location_overrides=LOCATION_OVERRIDES):
     assignments, exceptions = {}, {}
     for row, _, memo, *_ in drafts:
-        override = LOCATION_OVERRIDES.get(row)
+        override = location_overrides.get(row)
         if override:
             if override not in locations:
                 raise ValueError(f"Approved location {override} for {row} is inactive or missing")
@@ -333,7 +333,9 @@ def assign_locations(drafts, locations, fallback):
     return assignments, exceptions
 
 
-def run_db(args, drafts, control, source):
+def run_db(args, drafts, control, source, *, start=date(2026, 1, 1), end=date(2026, 1, 31),
+           tab=TAB, prefix=PREFIX, fees=TRANSFER_FEES, splits=SPLIT_376,
+           location_overrides=LOCATION_OVERRIDES, supporting_details=SUPPORTING_DETAILS):
     from sqlalchemy import text
     from app import models  # noqa: F401
     from app.api.v1.journals import validate
@@ -349,7 +351,8 @@ def run_db(args, drafts, control, source):
     from app.services.journal_recognition import FINANCIAL_TYPES, period_state
     from app.services.organization_dimensions import validate_dimensions
 
-    start, end = date(2026, 1, 1), date(2026, 1, 31)
+    def reference(row):
+        return prefix + (f"{row:04d}" if isinstance(row, int) else row)
     with SessionLocal() as db, db.begin():
         if args.apply:
             db.execute(text("SET LOCAL lock_timeout = '15s'"))
@@ -366,12 +369,12 @@ def run_db(args, drafts, control, source):
         fallback = locations.get("Pekanbaru")
         if fallback is None:
             raise ValueError("Active Pekanbaru location missing from Project Catering")
-        assignments, location_exceptions = assign_locations(drafts, locations, fallback)
+        assignments, location_exceptions = assign_locations(drafts, locations, fallback, location_overrides)
         for location_id in set(assignments.values()):
             validate_dimensions(db, business_unit_id=unit.id, location_id=location_id, required=True)
         period, opened = period_state(db, start)
         if not opened or period.end_date < end:
-            raise ValueError("An open fiscal period covering January 2026 is required")
+            raise ValueError("An open fiscal period covering the seed month is required")
         codes = set(control) | {"700-500-122"} | {row[6] for row in drafts if row[6] is not None}
         accounts = {a.account_number: a for a in db.query(ChartOfAccount).filter(
             ChartOfAccount.account_number.in_(codes), ChartOfAccount.is_active.is_(True),
@@ -382,13 +385,13 @@ def run_db(args, drafts, control, source):
             raise ValueError(f"Invalid bank or counterpart configuration. Missing posting COA: {sorted(codes - set(accounts))}")
         if any(accounts[code].account_type != "EXPENSE" for code in codes & EXPENSE_RULES.keys()):
             raise ValueError("Expense mapping must use active expense posting accounts")
-        refs = {journal_reference(row[0]) for row in drafts}
+        refs = {reference(row[0]) for row in drafts}
         existing = db.query(JournalEntry.external_reference, JournalEntry.status).filter(
-            JournalEntry.external_reference.like(PREFIX + "%")
+            JournalEntry.external_reference.like(prefix + "%")
         ).all()
         if existing:
             if len(existing) != len(refs) or {r[0] for r in existing} != refs:
-                raise ValueError("A partial or conflicting January seed exists. Inspect before retrying.")
+                raise ValueError("A partial or conflicting monthly seed exists. Inspect before retrying.")
             print(json.dumps({"already_present": len(existing), "statuses": dict(Counter(r[1] for r in existing))}))
             return
         by_movement = defaultdict(set)
@@ -404,9 +407,9 @@ def run_db(args, drafts, control, source):
         for row, stamp, _, bank, debit, credit, contra, sender in drafts:
             matches = by_movement[(stamp, bank, debit, credit)].copy()
             if sender:
-                matches.update(by_movement[(source[sender - 1][0].date(), contra, credit, debit + TRANSFER_FEES.get(row, 0))])
-            if row in SPLIT_376:
-                matches.update(by_movement[(stamp, bank, debit, sum(SPLIT_376.values()))])
+                matches.update(by_movement[(source[sender - 1][0].date(), contra, credit, debit + fees.get(row, 0))])
+            if row in splits:
+                matches.update(by_movement[(stamp, bank, debit, sum(splits.values()))])
             if matches:
                 candidates[str(row)] = sorted(matches)
         token = fingerprint((target, unit.id, {str(k): v for k, v in assignments.items()},
@@ -421,7 +424,7 @@ def run_db(args, drafts, control, source):
                   "location_exceptions_by_source_row": location_exceptions,
                   "transfer_journals": sum(row[7] is not None for row in drafts),
                   "mapped_counterparts": dict(Counter(row[6] for row in drafts if row[6] is not None)),
-                  "missing_counterpart_references": [journal_reference(row[0]) for row in drafts if row[6] is None],
+                  "missing_counterpart_references": [reference(row[0]) for row in drafts if row[6] is None],
                   "bank_control": control, "possible_existing_journals_by_source_row": candidates,
                   "plan": token}
         print(json.dumps(report, indent=2, default=str))
@@ -432,11 +435,11 @@ def run_db(args, drafts, control, source):
         if args.expected_plan is not None and args.expected_plan != token:
             raise ValueError("Plan changed or token is wrong. Run dry-run again.")
         for row, stamp, memo, bank, debit, credit, contra, sender in drafts:
-            ref = journal_reference(row)
+            ref = reference(row)
             scope = {"business_unit_id": unit.id, "location_id": assignments[row]}
             journal = JournalEntry(
                 journal_number=next_document_number(db, "MAN", digits=6), posting_date=stamp,
-                fiscal_year=2026, fiscal_period=1, status="DRAFT", document_type="BULK_JOURNAL_IMPORT",
+                fiscal_year=start.year, fiscal_period=start.month, status="DRAFT", document_type="BULK_JOURNAL_IMPORT",
                 document_number=ref, external_reference=ref, reference_type="MANUAL",
                 reference_id=0, source_type="JOURNAL_IMPORT", description=memo,
                 **scope,
@@ -445,7 +448,7 @@ def run_db(args, drafts, control, source):
                 JournalLine(line_number=1, account_id=accounts[bank].id, debit=debit, credit=credit,
                             description=memo, **scope),
             ]
-            fee = TRANSFER_FEES.get(row, Decimal(0))
+            fee = fees.get(row, Decimal(0))
             journal.lines.append(JournalLine(
                 line_number=2, account_id=accounts[contra].id, debit=credit, credit=debit + fee,
                 description=memo, **scope,
@@ -464,12 +467,12 @@ def run_db(args, drafts, control, source):
                 db=db, user=None, action="JOURNAL_IMPORT_CREATED", entity_type="JOURNAL_ENTRY",
                 entity_id=journal.id, summary=f"Seeded {ref} from Catering Kas Harian",
                 document_number=ref, document_status="DRAFT",
-                details={"actor": "SYSTEM", "sheet": TAB, "source_row": int(str(row).split("-", 1)[0]), "sender_row": sender,
-                                             "proposed_bank_override": row in OVERRIDES,
-                                             "approved_bank_override": row == 397,
+                details={"actor": "SYSTEM", "sheet": tab, "source_row": int(str(row).split("-", 1)[0]), "sender_row": sender,
+                                             "proposed_bank_override": prefix == PREFIX and row in OVERRIDES,
+                                             "approved_bank_override": prefix == PREFIX and row == 397,
                                              "location_fallback": row in location_exceptions,
-                                             "location_override": LOCATION_OVERRIDES.get(row),
-                                             "counterpart_coa": contra, "supporting_row": SUPPORTING_DETAILS.get(row),
+                                             "location_override": location_overrides.get(row),
+                                             "counterpart_coa": contra, "supporting_row": supporting_details.get(row),
                                              "mapping_review": sender is None, "plan": token},
             )
     print(f"COMMITTED {len(drafts)} Project Catering journals as DRAFT.")
