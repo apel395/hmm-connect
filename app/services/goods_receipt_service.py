@@ -952,10 +952,26 @@ class GoodsReceiptService:
                 raise HTTPException(status_code=409, detail=f"Receipt cannot be returned after supplier invoice {downstream_invoice.internal_invoice_number} has been confirmed or modified")
             provisional_invoice = downstream_invoice
         purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == receipt.purchase_order_id).with_for_update().first() if receipt.purchase_order_id else None
+        historical_sources = {}
+        if receipt.source_type == "HISTORICAL_ENTRY":
+            from app.services.receiving_stock_cycle import active_receipt_stock
+            historical_sources = {
+                row.goods_receipt_item_id: row
+                for row in active_receipt_stock(db, receipt.id)
+            }
         for receipt_item in receipt.items:
             quantity = Decimal(receipt_item.quantity)
             if line_destination(receipt, receipt_item) == "WAREHOUSE":
-                inventory = db.query(Inventory).filter(Inventory.product_id == receipt_item.product_id, Inventory.warehouse_id == receipt.warehouse_id).with_for_update().first()
+                source_in = historical_sources.get(receipt_item.id)
+                if receipt.source_type == "HISTORICAL_ENTRY" and source_in is None:
+                    raise HTTPException(
+                        409, f"Original physical stock IN for receipt item {receipt_item.id} was not found"
+                    )
+                physical_warehouse_id = source_in.warehouse_id if source_in else receipt.warehouse_id
+                inventory = db.query(Inventory).filter(
+                    Inventory.product_id == receipt_item.product_id,
+                    Inventory.warehouse_id == physical_warehouse_id
+                ).with_for_update().first()
                 if not inventory or Decimal(inventory.quantity or 0) < quantity: raise HTTPException(status_code=409, detail=f"Insufficient current stock to return product {receipt_item.product_id}")
                 current_qty, current_avg = Decimal(inventory.quantity or 0), Decimal(inventory.average_cost or 0)
                 current_value, return_value = current_qty * current_avg, quantity * Decimal(receipt_item.unit_cost or 0)
@@ -965,26 +981,19 @@ class GoodsReceiptService:
                     if remaining_value < ZERO: raise HTTPException(status_code=409, detail=f"Return would make inventory value negative for product {receipt_item.product_id}")
                     inventory.quantity, inventory.average_cost = new_qty, remaining_value / new_qty
                 returned_stock = cls._movement(receipt, receipt_item, "OUT", "GOODS_RECEIPT_RETURN")
-                if (
-                    receipt.source_type == "HISTORICAL_ENTRY"
-                    and receipt.warehouse
-                    and receipt.warehouse.location_id != receipt.location_id
-                ):
-                    # The corrected historical Location is for reporting. A real
-                    # stock return must retain the source IN physical dimensions.
-                    from app.services.receiving_stock_cycle import active_receipt_stock
-                    source_in = next(
-                        (row for row in active_receipt_stock(db, receipt.id)
-                         if row.goods_receipt_item_id == receipt_item.id),
-                        None,
-                    )
-                    if source_in is None:
-                        raise HTTPException(409, "Original warehouse source IN is required to return historical stock")
+                if source_in is not None:
+                    # A later explicit Return is a real operational event. It
+                    # reverses the source's PHYSICAL warehouse, not an edited
+                    # historical document warehouse. Historical Edit itself
+                    # never posts an OUT/return/transfer.
+                    returned_stock.warehouse_id = source_in.warehouse_id
                     returned_stock.business_unit_id = source_in.business_unit_id
                     returned_stock.location_id = (
                         source_in.warehouse.location_id if source_in.warehouse else source_in.location_id
                     )
                     returned_stock.department_id = source_in.department_id
+                    returned_stock.inventory_account_id = source_in.inventory_account_id
+                    returned_stock.offset_account_id = source_in.offset_account_id
                 db.add(returned_stock)
             if purchase_order and receipt_item.purchase_order_item_id:
                 po_item = db.query(PurchaseOrderItem).filter(PurchaseOrderItem.id == receipt_item.purchase_order_item_id).with_for_update().first()
