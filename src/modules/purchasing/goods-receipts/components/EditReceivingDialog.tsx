@@ -228,7 +228,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           <div className="font-medium">{receipt.receipt_number}</div>
           <div className="text-slate-600">Source {receipt.purchase_order_number ?? "Direct Receiving"} · Supplier {receipt.supplier_name ?? "—"} · BU {receipt.business_unit_name ?? "—"} · Location {receipt.location_name ?? "—"} · Department {receipt.department_name ?? "—"}</div>
           <div className="mt-1 text-xs text-slate-500">{historical
-            ?"Administrator historical correction: only this receipt's source stock IN, inventory balance, open journal and untouched invoice draft are updated. Other stock movement history remains unchanged."
+            ?"Administrator historical correction: Location and recorded Warehouse edits update the Receiving document without transferring stock or changing Inventory balances. Only real item quantity/cost changes affect their original source IN when safe. Linked open journal and untouched invoice draft follow the correction."
             :directReceipt?"Direct Receiving location can be corrected before posting; warehouse must belong to the selected location. Business Unit and Department stay locked. Remove or reselect items below.":"Source organization dimensions and item identity follow the PO / Market List. Lines may be removed before posting."}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
