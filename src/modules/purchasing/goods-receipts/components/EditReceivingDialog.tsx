@@ -206,16 +206,16 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
   };
 
   const originalWarehouse = warehouses.find((row:any)=>row.id===receipt.warehouse_id);
+  const physicalWarehouse = warehouses.find((row:any)=>row.id===receipt.physical_stock_warehouse_id);
   const selectedWarehouse = warehouses.find((row:any)=>row.id===warehouseId);
-  const retainingHistoricalStockLocation = historical && Boolean(selectedWarehouse)
-    && warehouseId===receipt.warehouse_id && Number(selectedWarehouse?.location_id)!==locationId;
+  const correctedRecordedWarehouse = historical && warehouseId!==receipt.warehouse_id;
   const warehouseOptions=warehouses.filter((row:any)=>
     ((row.is_active || row.id===warehouseId) && Number(row.location_id)===locationId)
-    || (historical && row.id===receipt.warehouse_id)
+    || (historical && (row.id===receipt.warehouse_id || row.id===receipt.physical_stock_warehouse_id))
   ).map((row:any)=>({
     id:row.id,
-    label:historical && row.id===receipt.warehouse_id && Number(row.location_id)!==locationId
-      ? `${row.code} — ${row.name} (original physical stock)`
+    label:historical && row.id===receipt.physical_stock_warehouse_id
+      ? `${row.code} — ${row.name} (original stock ledger)`
       : `${row.code} — ${row.name}`,
     keywords:[row.code??"",row.name??""],
   }));
@@ -228,7 +228,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           <div className="font-medium">{receipt.receipt_number}</div>
           <div className="text-slate-600">Source {receipt.purchase_order_number ?? "Direct Receiving"} · Supplier {receipt.supplier_name ?? "—"} · BU {receipt.business_unit_name ?? "—"} · Location {receipt.location_name ?? "—"} · Department {receipt.department_name ?? "—"}</div>
           <div className="mt-1 text-xs text-slate-500">{historical
-            ?"Administrator historical correction: only this receipt's source stock IN, inventory balance, open journal and untouched invoice draft are updated. Other stock movement history remains unchanged."
+            ?"Administrator historical correction: Location and recorded Warehouse edits update the Receiving document without transferring stock or changing Inventory balances. Only real item quantity/cost changes affect their original source IN when safe. Linked open journal and untouched invoice draft follow the correction."
             :directReceipt?"Direct Receiving location can be corrected before posting; warehouse must belong to the selected location. Business Unit and Department stay locked. Remove or reselect items below.":"Source organization dimensions and item identity follow the PO / Market List. Lines may be removed before posting."}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -241,17 +241,16 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
           {historical&&<SearchableSelect label="Department" required value={departmentId??undefined} placeholder="Select department..." options={(departments.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code,row.name]}))} onChange={value=>setDepartmentId(value??null)}/>}
 
 
-          {hasWarehouse&&<SearchableSelect label={historical?"Physical Stock Warehouse":"Warehouse"} required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>}
-          {historical && hasWarehouse && warehouseId!==receipt.warehouse_id && <div role="alert" className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
-            You changed the physical warehouse from {originalWarehouse?.code??receipt.warehouse_id??"the original"} to {selectedWarehouse?.code??warehouseId??"none"}.
-            This is a stock correction, not just a reporting Location correction. If stock was already consumed, saving will be blocked.
-            For a Location-only correction, reselect the original warehouse.
-          </div>}
-          {retainingHistoricalStockLocation&&<div role="status" className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            Reporting location will be corrected; original stock stays in {originalWarehouse?.code??"the original warehouse"}.
-            Existing source stock IN, Store Requests, stock OUT and inventory balances are not moved.
-            To correct the physical warehouse instead, select a warehouse in the new location; changes that would rewrite consumed stock remain blocked.
-          </div>} 
+          {hasWarehouse&&<SearchableSelect label={historical?"Recorded Receiving Warehouse":"Warehouse"} required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>}
+          {historical && hasWarehouse && (
+            <div role="status" className="md:col-span-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+              {correctedRecordedWarehouse
+                ? <>Historical warehouse reference will change from <strong>{originalWarehouse?.code??receipt.warehouse_id??"—"}</strong> to <strong>{selectedWarehouse?.code??warehouseId??"—"}</strong>. </>
+                : <>Historical Receiving warehouse is an editable document reference. </>}
+              The original physical stock IN remains in <strong>{physicalWarehouse?.code??receipt.physical_stock_warehouse_code??originalWarehouse?.code??"the original stock warehouse"}</strong>.
+              Saving this reference does not create Stock OUT, Return, Depost, transfers, or alter existing Inventory balances.
+            </div>
+          )} 
         </div>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           {directReceipt && <label className="mb-2 block text-xs">Item catalog <select className="ml-2 rounded border p-2" value={catalogType} onChange={e=>setCatalogType(e.target.value as "CATERING"|"HOTEL"|"ALL")}><option value="ALL">All Buy Items</option><option value="CATERING">Catering Items</option><option value="HOTEL">Hotel Items</option></select></label>}
