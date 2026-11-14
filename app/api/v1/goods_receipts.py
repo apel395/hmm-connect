@@ -149,6 +149,17 @@ def serialize_receipt(receipt: GoodsReceipt, db: Session | None = None):
         "destination_type": receipt.destination_type,
         "warehouse_id": receipt.warehouse_id,
         "warehouse_name": receipt.warehouse.name if receipt.warehouse else None,
+        "warehouse_location_id": receipt.warehouse.location_id if receipt.warehouse else None,
+        "warehouse_location_name": (
+            receipt.warehouse.location.name
+            if receipt.warehouse and receipt.warehouse.location else None
+        ),
+        "physical_stock_location_retained": bool(
+            receipt.status == "POSTED"
+            and receipt.source_type == "HISTORICAL_ENTRY"
+            and receipt.warehouse
+            and receipt.warehouse.location_id != receipt.location_id
+        ),
         "business_unit_id": receipt.business_unit_id,
         "business_unit_name": receipt.business_unit.name if receipt.business_unit else None,
         "location_id": receipt.location_id,

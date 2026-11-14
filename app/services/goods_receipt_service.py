@@ -270,13 +270,22 @@ class GoodsReceiptService:
         *,
         receipt: GoodsReceipt,
         user,
+        inventory_location_id: int | None = None,
     ) -> JournalEntry | None:
         resolver = DirectCoaService(db)
         ap_suspense = resolver.ap_suspense_account()
         grouped: dict[int, Decimal] = {}
 
         for item in receipt.items:
-            debit_account = cls._receiving_debit_account(resolver, receipt, item.product, getattr(item, "expense_account_id", None), line_destination(receipt, item))
+            destination = line_destination(receipt, item)
+            if inventory_location_id is not None and destination == "WAREHOUSE":
+                # Historical reporting-location corrections may retain the
+                # physical warehouse. Preserve its inventory asset mapping.
+                debit_account = resolver.inventory_account(item.product, inventory_location_id)
+            else:
+                debit_account = cls._receiving_debit_account(
+                    resolver, receipt, item.product, getattr(item, "expense_account_id", None), destination
+                )
 
             amount = (
                 Decimal(item.quantity or 0) * Decimal(item.unit_cost or 0)
@@ -955,7 +964,26 @@ class GoodsReceiptService:
                 else:
                     if remaining_value < ZERO: raise HTTPException(status_code=409, detail=f"Return would make inventory value negative for product {receipt_item.product_id}")
                     inventory.quantity, inventory.average_cost = new_qty, remaining_value / new_qty
-                db.add(cls._movement(receipt, receipt_item, "OUT", "GOODS_RECEIPT_RETURN"))
+                returned_stock = cls._movement(receipt, receipt_item, "OUT", "GOODS_RECEIPT_RETURN")
+                if (
+                    receipt.source_type == "HISTORICAL_ENTRY"
+                    and receipt.warehouse
+                    and receipt.warehouse.location_id != receipt.location_id
+                ):
+                    # The corrected historical Location is for reporting. A real
+                    # stock return must retain the source IN physical dimensions.
+                    from app.services.receiving_stock_cycle import active_receipt_stock
+                    source_in = next(
+                        (row for row in active_receipt_stock(db, receipt.id)
+                         if row.goods_receipt_item_id == receipt_item.id),
+                        None,
+                    )
+                    if source_in is None:
+                        raise HTTPException(409, "Original warehouse source IN is required to return historical stock")
+                    returned_stock.business_unit_id = source_in.business_unit_id
+                    returned_stock.location_id = source_in.location_id
+                    returned_stock.department_id = source_in.department_id
+                db.add(returned_stock)
             if purchase_order and receipt_item.purchase_order_item_id:
                 po_item = db.query(PurchaseOrderItem).filter(PurchaseOrderItem.id == receipt_item.purchase_order_item_id).with_for_update().first()
                 if not po_item: raise HTTPException(status_code=409, detail=f"PO item for receipt line {receipt_item.id} no longer exists")

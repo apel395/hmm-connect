@@ -120,7 +120,10 @@ def _depost(db, receipt_id, user, reason):
         for row in rows:
             db.add(StockMovement(product_id=row.product_id,warehouse_id=row.warehouse_id,goods_receipt_id=receipt.id,goods_receipt_item_id=row.goods_receipt_item_id,
                 movement_type='OUT',quantity=row.quantity,unit_cost=row.unit_cost,reference_type=DEPOST,reference_id=receipt.id,
-                business_unit_id=receipt.business_unit_id,location_id=receipt.location_id,department_id=receipt.department_id,
+                # A historical reporting correction may differ from the source's
+                # physical stock location. Reversal dimensions must match the
+                # original source IN, never another location's later reports.
+                business_unit_id=row.business_unit_id,location_id=row.location_id,department_id=row.department_id,
                 notes=f'Depost reversal of stock movement {row.id}: {reason.strip()}',inventory_account_id=row.inventory_account_id,
                 offset_account_id=row.offset_account_id,journal_entry_id=journal.id if journal else None))
     for row,quantity in po_rows.values():row.received_quantity=Decimal(row.received_quantity)-quantity
