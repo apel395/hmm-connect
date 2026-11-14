@@ -18,7 +18,7 @@ import { useUpdateGoodsReceipt, useCorrectHistoricalReceipt } from "../hooks/use
 import type { GoodsReceipt } from "../types";
 import ReceivingDestinationField from "./ReceivingDestinationField";
 import ReceivingBillingFields from "./ReceivingBillingFields";
-import { emptyReceivingBilling, fromReceiptBilling, receivingBillingPayload, validateReceivingBilling } from "../billing";
+import { emptyReceivingBilling, fromReceiptBilling, receivingBillingPayload, validateReceivingBilling, type ReceivingBilling } from "../billing";
 import { destinationFor, destinationError } from "../destination";
 
 function localDateTime(value: string) {
@@ -104,32 +104,86 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
       if(historical){
         const keptIds = new Set(items.filter(item=>item.item_id).map(item=>Number(item.item_id)));
         const removedIds = receipt.items.filter(item=>!keptIds.has(item.id)).map(item=>item.id);
+        // A historical reporting correction is not a stock edit. Only send
+        // genuinely edited lines; resubmitting every displayed quantity/cost
+        // can inadvertently change a legacy source IN after later stock usage.
+        const changedLines = items.filter(item=>item.item_id).flatMap(item=>{
+          const original=receipt.items.find(row=>row.id===Number(item.item_id));
+          if(!original)return [];
+          const originalDestination=original.destination_type ??
+            (receipt.destination_type==="DIRECT_USE"?"DIRECT_USE":"WAREHOUSE");
+          const currentDestination=destinationFor(item);
+          const originalOverride=original.destination_override_reason??null;
+          const currentOverride=item.destination_override_reason||null;
+          const originalExpense=original.expense_account_id??null;
+          const currentExpense=currentDestination==="DIRECT_USE"?(item.expense_account_id??null):null;
+          const originalTaxable=Boolean(original.is_taxable);
+          const currentTaxable=Boolean(item.is_taxable);
+          const originalRate=originalTaxable?Number(original.tax_rate??0):0;
+          const currentRate=currentTaxable?Number(item.tax_rate??0):0;
+          const changed:{
+            item_id:number;quantity?:number;unit_cost?:number;
+            destination_type?:"WAREHOUSE"|"DIRECT_USE";
+            destination_override_reason?:string|null;
+            expense_account_id?:number|null;
+            is_taxable?:boolean;tax_rate?:number;
+          }={item_id:original.id};
+          if(Number(item.quantity)!==Number(original.quantity))changed.quantity=Number(item.quantity);
+          if(Number(item.unit_cost)!==Number(original.unit_cost))changed.unit_cost=Number(item.unit_cost);
+          if(currentDestination!==originalDestination)changed.destination_type=currentDestination;
+          if(currentOverride!==originalOverride)changed.destination_override_reason=currentOverride;
+          if(currentExpense!==originalExpense)changed.expense_account_id=currentExpense;
+          if(currentTaxable!==originalTaxable)changed.is_taxable=currentTaxable;
+          if(currentRate!==originalRate)changed.tax_rate=currentRate;
+          return Object.keys(changed).length>1?[changed]:[];
+        });
+        const addedLines=items.filter(item=>!item.item_id).map(item=>({
+          product_id:item.product_id,quantity:item.quantity,unit_cost:item.unit_cost,
+          destination_type:item.destination_type??null,
+          destination_override_reason:item.destination_override_reason||null,
+          expense_account_id:destinationFor(item)==="DIRECT_USE"?item.expense_account_id:null,
+          is_taxable:Boolean(item.is_taxable),tax_rate:item.is_taxable?item.tax_rate:0,
+        }));
+        const changedHeader:{
+          supplier_id?:number|null;business_unit_id?:number|null;
+          department_id?:number|null;location_id?:number|null;warehouse_id?:number|null;
+          received_at?:string;external_reference?:string|null;notes?:string|null;
+        }={};
+        if(supplierId!==(receipt.supplier_id??null))changedHeader.supplier_id=supplierId;
+        if(businessUnitId!==(receipt.business_unit_id??null))changedHeader.business_unit_id=businessUnitId;
+        if(departmentId!==(receipt.department_id??null))changedHeader.department_id=departmentId;
+        if(locationId!==(receipt.location_id??null))changedHeader.location_id=locationId;
+        // Warehouse is physical inventory identity, not the Receiving
+        // reporting location. Do not send it unless explicitly changed.
+        const proposedWarehouse=hasWarehouse?warehouseId:null;
+        if(proposedWarehouse!==(receipt.warehouse_id??null))changedHeader.warehouse_id=proposedWarehouse;
+        if(receivedAt!==localDateTime(receipt.received_at))changedHeader.received_at=new Date(receivedAt).toISOString();
+        const proposedReference=reference.trim()||null;
+        if(proposedReference!==(receipt.external_reference??null))changedHeader.external_reference=proposedReference;
+        const proposedNotes=notes.trim()||null;
+        if(proposedNotes!==(receipt.notes??null))changedHeader.notes=proposedNotes;
+        const initialBilling=fromReceiptBilling(receipt);
+        const changedBilling:Partial<ReceivingBilling>={};
+        (Object.keys(billing) as Array<keyof ReceivingBilling>).forEach(key=>{
+          if(String(billing[key]??"")!==String(initialBilling[key]??"")){
+            // Index through a homogeneous temporary record; every key and
+            // value comes from the typed ReceivingBilling object.
+            (changedBilling as Record<string,string|number|null>)[key]=billing[key];
+          }
+        });
+        if(!changedLines.length&&!addedLines.length&&!removedIds.length&&
+           !Object.keys(changedHeader).length&&!Object.keys(changedBilling).length){
+          return toast.error("No Receiving changes detected.");
+        }
         await historicalCorrection.mutateAsync({
           id:receipt.id,
           payload:{
             reason:correctionReason.trim(),
-            supplier_id:supplierId, business_unit_id:businessUnitId, department_id:departmentId,
-            location_id:locationId, warehouse_id:hasWarehouse?warehouseId:null,
-            ...(receivedAt!==localDateTime(receipt.received_at)?{received_at:new Date(receivedAt).toISOString()}:{}),external_reference:reference.trim()||null,
-            notes:notes.trim()||null,...receivingBillingPayload(billing),
-            supplier_invoice_date:billing.supplier_invoice_date,
-            supplier_invoice_due_date:billing.supplier_invoice_due_date,
-            tax_invoice_date:billing.tax_invoice_date,
+            ...changedHeader,
+            ...changedBilling,
             remove_item_ids:removedIds,
-            items:items.filter(item=>item.item_id).map(item=>({
-              item_id:Number(item.item_id),quantity:item.quantity,unit_cost:item.unit_cost,
-              destination_type:item.destination_type??null,
-              destination_override_reason:item.destination_override_reason||null,
-              expense_account_id:destinationFor(item)==="DIRECT_USE"?item.expense_account_id:null,
-              is_taxable:Boolean(item.is_taxable),tax_rate:item.is_taxable?item.tax_rate:0,
-            })),
-            add_items:items.filter(item=>!item.item_id).map(item=>({
-              product_id:item.product_id,quantity:item.quantity,unit_cost:item.unit_cost,
-              destination_type:item.destination_type??null,
-              destination_override_reason:item.destination_override_reason||null,
-              expense_account_id:destinationFor(item)==="DIRECT_USE"?item.expense_account_id:null,
-              is_taxable:Boolean(item.is_taxable),tax_rate:item.is_taxable?item.tax_rate:0,
-            })),
+            items:changedLines,
+            add_items:addedLines,
           },
         });
       }else{
@@ -190,6 +244,11 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
 
 
           {hasWarehouse&&<SearchableSelect label={historical?"Physical Stock Warehouse":"Warehouse"} required value={warehouseId ?? undefined} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={value=>setWarehouseId(value ?? null)}/>}
+          {historical && hasWarehouse && warehouseId!==receipt.warehouse_id && <div role="alert" className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+            You changed the physical warehouse from {originalWarehouse?.code??receipt.warehouse_id??"the original"} to {selectedWarehouse?.code??warehouseId??"none"}.
+            This is a stock correction, not just a reporting Location correction. If stock was already consumed, saving will be blocked.
+            For a Location-only correction, reselect the original warehouse.
+          </div>}
           {retainingHistoricalStockLocation&&<div role="status" className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             Reporting location will be corrected; original stock stays in {originalWarehouse?.code??"the original warehouse"}.
             Existing source stock IN, Store Requests, stock OUT and inventory balances are not moved.
