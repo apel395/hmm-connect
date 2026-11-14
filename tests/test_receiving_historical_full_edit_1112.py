@@ -147,7 +147,7 @@ def _real_consumption_and_corrected_location(db, warehouse, user, product, inven
     return location, out
 
 
-def test_reporting_location_change_preserves_consumed_stock_and_source_location(stock_db):
+def test_reporting_location_changes_original_source_metadata_without_stock_activity(stock_db):
     context, receipt = sample(stock_db)
     db, warehouse, user, products, inventory, *_ = context
     original = active_receipt_stock(db, receipt.id)[0]
@@ -167,7 +167,7 @@ def test_reporting_location_change_preserves_consumed_stock_and_source_location(
     db.refresh(actual_out)
     assert receipt.location_id == location.id
     assert receipt.warehouse_id == original_warehouse_id
-    assert original.location_id == original_location_id
+    assert original.location_id == location.id  # Original IN corrected in place.
     assert original.warehouse_id == original_warehouse_id
     assert actual_out.location_id == original_location_id
     assert actual_out.warehouse_id == original_warehouse_id
@@ -281,7 +281,7 @@ def test_location_only_corrects_legacy_header_warehouse_mismatch_without_stock_m
     before_qty = Decimal(inventory[0].quantity)
     before_avg = Decimal(inventory[0].average_cost)
     before_count = db.query(StockMovement).count()
-    before_source = (source.id, source.warehouse_id, source.location_id,
+    before_source = (source.id, source.warehouse_id,
                      Decimal(source.quantity), Decimal(source.unit_cost),
                      source.department_id, source.inventory_account_id)
     before_out_id = subsequent_out.id
@@ -299,7 +299,8 @@ def test_location_only_corrects_legacy_header_warehouse_mismatch_without_stock_m
     assert result.location_id == location.id
     assert result.warehouse_id == mismatch.id
     db.refresh(source)
-    assert (source.id, source.warehouse_id, source.location_id,
+    assert source.location_id == location.id  # Metadata replacement, not movement.
+    assert (source.id, source.warehouse_id,
             Decimal(source.quantity), Decimal(source.unit_cost),
             source.department_id, source.inventory_account_id) == before_source
     assert db.query(StockMovement).count() == before_count
