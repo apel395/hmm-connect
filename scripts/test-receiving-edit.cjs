@@ -55,6 +55,8 @@ async function run(){
    {id:92,code:'WH-NEW',name:'Corrected location',location_id:6,is_active:true},
  ];
  receipt.warehouse_id=11;
+ receipt.physical_stock_warehouse_id=11;
+ receipt.physical_stock_warehouse_code='WH-OLD';
  receipt.items=Array.from({length:16},(_,i)=>({
    id:13137+i,product_id:6062+i,product_name:`Historical item ${i}`,
    product_code:`OLD-${i}`,catalog_type:'CATERING',
@@ -68,10 +70,10 @@ async function run(){
  await mount();
  const locationSelect=v.root.findByProps({'aria-label':'Location'});
  await renderer.act(async()=>locationSelect.props.onChange({target:{value:'6'}}));
- const physicalWarehouse=v.root.findByProps({'aria-label':'Physical Stock Warehouse'});
- assert.equal(physicalWarehouse.props.value,11,'changing historical reporting Location retains original physical warehouse');
- assert.ok(physicalWarehouse.props.options.some(row=>row.id===11),'original warehouse remains visible even when its location differs');
- assert.match(text(v.root),/original stock stays in WH-OLD/i,'warn that physical stock stays where it was');
+ const recordedWarehouse=v.root.findByProps({'aria-label':'Recorded Receiving Warehouse'});
+ assert.equal(recordedWarehouse.props.value,11,'location correction retains recorded warehouse until explicitly changed');
+ assert.ok(recordedWarehouse.props.options.some(row=>row.id===11),'original source warehouse remains visible');
+ assert.match(text(v.root),/original physical stock IN remains in/i,'disclose separate physical stock warehouse');
  await renderer.act(async()=>v.root.findByProps({'aria-label':'Department'}).props.onChange({target:{value:'1'}}));
  await renderer.act(async()=>v.root.findAllByType('textarea').find(n=>n.props.maxLength===500).props.onChange({target:{value:'Correct old reporting location without stock move'}}));
  await renderer.act(async()=>v.root.findAllByType('button').find(n=>text(n)==='Save Historical Correction').props.onClick());
@@ -84,7 +86,25 @@ async function run(){
  assert.ok(!('supplier_id' in correctedLocationPayload));
  assert.ok(!('discount_amount' in correctedLocationPayload),'unchanged billing is not rewritten');
  await renderer.act(async()=>v.unmount());
- console.log('Receiving edit PASS: draft editing, header-only deltas, and historical GR 1222 location edit preserves 16 stock lines and physical warehouse.');
+ // A real GR 1222 correction changes the recorded warehouse WH-008 to WH-005
+ // without changing the 16 already-recorded physical stock IN rows.
+ await mount();
+ await renderer.act(async()=>{
+   v.root.findByProps({'aria-label':'Location'}).props.onChange({target:{value:'6'}});
+   v.root.findByProps({'aria-label':'Recorded Receiving Warehouse'}).props.onChange({target:{value:'92'}});
+   v.root.findAllByType('textarea').find(n=>n.props.maxLength===500).props.onChange({target:{value:'Correct recorded warehouse and location'}});
+ });
+ assert.match(text(v.root),/Historical warehouse reference will change/);
+ assert.match(text(v.root),/original physical stock IN remains in/i);
+ await renderer.act(async()=>v.root.findAllByType('button').find(n=>text(n)==='Save Historical Correction').props.onClick());
+ const warehouseCorrection=global.__saved.at(-1).payload;
+ assert.equal(warehouseCorrection.location_id,6);
+ assert.equal(warehouseCorrection.warehouse_id,92,'recorded warehouse is corrected');
+ assert.equal(warehouseCorrection.items.length,0,'no original physical stock IN lines are resubmitted');
+ assert.equal(warehouseCorrection.add_items.length,0);
+ assert.deepEqual(warehouseCorrection.remove_item_ids,[]);
+ await renderer.act(async()=>v.unmount());
+ console.log('Receiving edit PASS: historical GR 1222 reporting Location + recorded Warehouse correction sends 0 stock line changes and no transfers.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
 
