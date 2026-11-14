@@ -34,7 +34,10 @@ PAIRS = (
     (1905,1910), (1906,1915), (1908,1914), (2022,1926),
 )
 FAILED_TRANSFERS = ((1852, 1848), (1855, 1850))
-LOCATIONS = {}
+LOCATIONS = {
+    56: "Pekanbaru",  # Shared training for DOBS, PHM, and PRCC without allocation amounts.
+    **dict.fromkeys((211, 347, 349, 350, 1330, 1334), "Gemsmart Duri"),
+}
 SPLIT = {"1316-RUMIN": Decimal("37000000"), "1316-DIR": Decimal("50000000")}
 
 
@@ -104,6 +107,18 @@ def prepare(source):
             raise ValueError(f"March petty cash block changed: {header}/{receiver}")
         details.update(range(header + 1, end + 1))
 
+    # Row 2009 is the funding header. Its breakdown contains spending and
+    # returned cash, whose actual bank dates fall in April.
+    csr_header = source[2008]
+    csr_detail = source[2009:2018]
+    csr_amount = Decimal("5155000.00")
+    if (csr_header[0] != datetime(2026, 3, 31) or account(csr_header[3]) != 116
+            or "CSR PROJECT" not in csr_header[3] or money(csr_header[4]) or money(csr_header[5])
+            or any(row[0] != csr_header[0] or account(row[2]) != 117 for row in csr_detail)
+            or sum(money(row[5]) - money(row[4]) for row in csr_detail) != csr_amount):
+        raise ValueError("March CSR funding breakdown changed")
+    details.update(range(2010, 2019))
+
     movements = {}
     for number, row in enumerate(source[23:2083], 24):
         stamp, _, receipt, memo, debit, credit, _ = row
@@ -134,10 +149,10 @@ def prepare(source):
     for incoming, (header, _, sender, _, _) in TOPUPS.items():
         paired[incoming] = (header, sender)
 
-    # The CSR receipt has no verified counterpart in the bank movements.
     csr = movements[2052]
     if csr[3:6] != (117, Decimal("5155000"), 0) or "CSR PROJECT" not in csr[2]:
         raise ValueError("CSR receipt evidence changed")
+    paired[2052] = (2009, 116)
     journals = []
     net = Counter()
     for number, stamp, memo, bank, debit, credit in movements.values():
@@ -149,8 +164,6 @@ def prepare(source):
             sender, sender_bank = paired[number]
             code = f"100-110-{sender_bank}"
             net[sender_bank] -= debit
-        elif number == 2052:
-            code = None
         else:
             code = counterpart(memo, debit, credit)
         if code == f"100-110-{bank}":
@@ -171,6 +184,30 @@ def prepare(source):
     return journals, control
 
 
+def verify_february_correction():
+    from sqlalchemy import text
+
+    from app import models  # noqa: F401
+    from app.core.database import SessionLocal
+    from app.models.business_unit import BusinessUnit
+    from app.models.journal_entry import JournalEntry
+
+    with SessionLocal() as db, db.begin():
+        db.execute(text("SET TRANSACTION READ ONLY"))
+        unit = db.query(BusinessUnit).filter_by(name="Project Catering", is_active=True).one()
+        entries = db.query(JournalEntry).filter_by(
+            external_reference="KH-CATERING-2026-02-EKI-TAX-2124",
+            business_unit_id=unit.id,
+            posting_date=date(2026, 2, 28),
+        ).all()
+        if len(entries) != 1:
+            return False
+        entry = entries[0]
+        return entry.status in {"DRAFT", "POSTED"} and sorted(
+            (line.account.account_number, line.debit, line.credit) for line in entry.lines
+        ) == [("100-110-117", 0, Decimal("165.04")), ("760-100-102", Decimal("165.04"), 0)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--xlsx", type=Path)
@@ -189,6 +226,11 @@ def main():
     }
     if set(prior_closing) != set(control):
         raise ValueError("February closing accounts changed")
+    eki = "100-110-117"
+    raw_prior_eki = prior_closing[eki]
+    if raw_prior_eki == Decimal("3347846.17") and control[eki]["opening"] == Decimal("3347681.13"):
+        if args.source_only or verify_february_correction():
+            prior_closing[eki] -= Decimal("165.04")
     opening_differences = {
         code: item["opening"] - prior_closing[code]
         for code, item in control.items() if item["opening"] != prior_closing[code]
@@ -200,7 +242,8 @@ def main():
     unresolved = [r[0] for r in drafts if r[6] is None]
     blocked = bool(opening_differences or closing_differences or unresolved)
     print(json.dumps({
-        "ready_to_apply": not blocked,
+        "ready_to_apply": not blocked and not args.source_only,
+        "february_eki_correction_verified_in_db": not args.source_only and prior_closing[eki] != raw_prior_eki,
         "drafts": len(drafts),
         "transfer_journals": sum(r[7] is not None for r in drafts),
         "mapped_counterparts": Counter(r[6] for r in drafts if r[6] is not None),
@@ -213,7 +256,7 @@ def main():
         parser.error("March has unresolved source controls. No journals were written.")
     if not args.source_only:
         run_db(args, drafts, control, source, start=START, end=END, tab=TAB, prefix=PREFIX,
-               fees={}, splits=SPLIT, location_overrides=LOCATIONS, supporting_details={2052: 286})
+               fees={}, splits=SPLIT, location_overrides=LOCATIONS, supporting_details={2052: 2009})
 
 
 if __name__ == "__main__":
