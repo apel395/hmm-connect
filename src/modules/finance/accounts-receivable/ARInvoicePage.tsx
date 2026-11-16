@@ -14,6 +14,7 @@ import Dialog, {
 } from "@/components/ui/Dialog";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import useAuthStore from "@/store/auth";
+import useFormRecovery from "@/hooks/useFormRecovery";
 
 import ARReceiptForm from "./ARReceiptForm";
 import PHRInvoice from "./PHRInvoice";
@@ -23,6 +24,18 @@ import {
   type Layout,
   money,
 } from "./arInvoiceTypes";
+const validInvoiceDraft = (value: unknown): value is InvoiceDocument | null => {
+  if (value === null) return true;
+  if (!value || typeof value !== "object") return false;
+  const doc = value as Record<string, unknown>;
+  return typeof doc.description === "string"
+    && Array.isArray(doc.lines)
+    && typeof doc.tax_amount === "string"
+    && doc.lines.every((line: unknown) => !!line && typeof line === "object"
+      && typeof (line as Record<string, unknown>).registration_number === "string"
+      && typeof (line as Record<string, unknown>).description === "string");
+};
+const cents = (value: string | number) => Math.round(Number(value || 0) * 100);
 const fields = [
   ["title", "Invoice title"],
   ["billing_name", "Client billing name"],
@@ -45,6 +58,7 @@ export default function ARInvoicePage() {
   const [document, setDocument] = useState<InvoiceDocument | null>(null);
   const [open, setOpen] = useState(false);
   const [layout, setLayout] = useState<Layout | null>(null);
+  const documentRecovery = useFormRecovery(`catering:invoice-document:${id}`, document, documentOpen, validInvoiceDraft);
   const invoice = useQuery({
     queryKey: ["ar-invoice-print", id],
     queryFn: async () =>
@@ -53,9 +67,9 @@ export default function ARInvoicePage() {
   useEffect(() => {
     if (invoice.data) {
       setLayout(invoice.data.layout);
-      setDocument(invoice.data.document);
+      if (!documentOpen) setDocument(invoice.data.document);
     }
-  }, [invoice.data]);
+  }, [invoice.data, documentOpen]);
   const save = useMutation({
     mutationFn: () =>
       api.put(`/ar-invoice-print/clients/${invoice.data?.customer_id}`, layout),
@@ -69,14 +83,26 @@ export default function ARInvoicePage() {
   const saveDocument = useMutation({
     mutationFn: () => api.put(`/ar-invoice-print/${id}/document`, document),
     onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["ar-invoice-print"] });
+      documentRecovery.clear();
+      void client.invalidateQueries({ queryKey: ["ar-invoice-print"] });
       setDocumentOpen(false);
       toast.success("Invoice print details saved");
     },
-    onError: () =>
-      toast.error("Service amounts plus tax must equal the AR invoice amount"),
+    onError: (error: any) =>
+      toast.error(typeof error?.response?.data?.detail === "string"
+        ? error.response.data.detail : "Invoice print details could not be saved"),
   });
   const data = invoice.data;
+  const subtotalCents = document?.lines.reduce((total, line) => total + cents(line.amount), 0) ?? 0;
+  const taxCents = cents(document?.tax_amount ?? "0");
+  const grandCents = subtotalCents + taxCents;
+  const expectedCents = cents(data?.amount ?? "0");
+  const documentInvalid = !document || !document.lines.length || grandCents !== expectedCents
+    || !Number.isFinite(grandCents) || !Number.isFinite(taxCents) || taxCents < 0
+    || document.lines.some(line => !line.description.trim() || !Number.isFinite(Number(line.amount))
+      || Number(line.amount) < 0
+      || Boolean(line.service_period_from && line.service_period_to
+        && line.service_period_to < line.service_period_from));
   if (invoice.isPending)
     return <p data-print-ready="false">Loading invoice…</p>;
   if (invoice.isError || !data)
@@ -108,7 +134,10 @@ export default function ARInvoicePage() {
             variant="outline"
             title="Invoice service details"
             aria-label="Invoice service details"
-            onClick={() => setDocumentOpen(true)}
+            onClick={() => {
+              setDocument(documentRecovery.load() ?? data.document);
+              setDocumentOpen(true);
+            }}
           >
             <FilePenLine size={15} />
           </Button>
@@ -285,6 +314,13 @@ export default function ARInvoicePage() {
                   />
                   Show settlement and outstanding
                 </label>
+                <div role="status" className={`rounded border p-3 text-xs ${documentInvalid ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+                  <div className="flex justify-between"><span>Service subtotal</span><strong>Rp {money(subtotalCents / 100)}</strong></div>
+                  <div className="flex justify-between"><span>Tax</span><strong>Rp {money(taxCents / 100)}</strong></div>
+                  <div className="flex justify-between"><span>Printed total</span><strong>Rp {money(grandCents / 100)}</strong></div>
+                  <div className="flex justify-between"><span>Posted AR total</span><strong>Rp {money(data.amount)}</strong></div>
+                  <p className="mt-2">{documentInvalid ? "Complete each line and balance printed total against the existing AR invoice before saving." : "Balanced with posted AR. This changes print details only."}</p>
+                </div>
               </div>
             )}
           </DialogBody>
@@ -308,9 +344,23 @@ export default function ARInvoicePage() {
           <DialogBody>
             {document && (
               <div className="grid gap-3">
-                <p className="text-xs">
-                  AR invoice amount: Rp {money(data.amount)}
+                <p className="text-xs text-slate-600">
+                  Accounting invoice <strong>{data.invoice_number}</strong> · Posted AR amount <strong>Rp {money(data.amount)}</strong>.
+                  Printed service details never change journal, tax liability, or payment balances.
                 </p>
+                {documentRecovery.failed && <p className="text-xs text-amber-700">Browser storage unavailable; keep this dialog open until saved.</p>}
+                <label className="text-xs">
+                  Customer-facing invoice number
+                  <input
+                    aria-label="Printed invoice number"
+                    className="mt-1 w-full rounded border p-2"
+                    maxLength={100}
+                    placeholder="MMH-MNS/186/VI/2026 (optional)"
+                    value={document.billing_invoice_number ?? ""}
+                    onChange={(e) => setDocument({ ...document, billing_invoice_number: e.target.value })}
+                  />
+                  <span className="mt-1 block text-slate-500">Optional printed reference; internal POS/AR invoice ID remains {data.invoice_number}.</span>
+                </label>
                 {(
                   [
                     ["description", "Service period / description"],
@@ -344,101 +394,115 @@ export default function ARInvoicePage() {
                     }
                   />
                 </label>
+                <div className="flex items-center justify-between">
+                  <strong className="text-sm">Service registrations ({document.lines.length})</strong>
+                  <span className="text-xs text-slate-500">Each registration or billing period is a separate line.</span>
+                </div>
                 {document.lines.map((line, index) => (
-                  <div key={index} className="grid gap-1 rounded border p-2">
+                  <div key={line.source_line_id ?? `new-${index}`} className="grid gap-2 rounded border p-3 sm:grid-cols-2">
+                    <div className="flex items-center justify-between sm:col-span-2">
+                      <span className="text-xs font-semibold">Line {index + 1}</span>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setDocument({
+                          ...document,
+                          lines: [...document.lines.slice(0, index + 1), {
+                            source_line_id: null,
+                            registration_number: "",
+                            description: line.description,
+                            service_period_from: null,
+                            service_period_to: null,
+                            amount: line.amount,
+                          }, ...document.lines.slice(index + 1)],
+                        })}>Duplicate</Button>
+                        <Button variant="outline" onClick={() => setDocument({
+                          ...document,
+                          lines: document.lines.filter((_, i) => i !== index),
+                        })}>Remove</Button>
+                      </div>
+                    </div>
                     <label className="text-xs">
                       Registration number
                       <input
-                        className="w-full border p-2"
+                        aria-label={`Registration number line ${index + 1}`}
+                        className="mt-1 w-full rounded border p-2"
+                        maxLength={150}
                         value={line.registration_number}
-                        onChange={(e) =>
-                          setDocument({
-                            ...document,
-                            lines: document.lines.map((l, i) =>
-                              i === index
-                                ? { ...l, registration_number: e.target.value }
-                                : l,
-                            ),
-                          })
-                        }
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, registration_number: e.target.value } : l) })}
                       />
                     </label>
                     <label className="text-xs">
-                      Service
-                      <textarea
-                        className="w-full border p-2"
-                        value={line.description}
-                        onChange={(e) =>
-                          setDocument({
-                            ...document,
-                            lines: document.lines.map((l, i) =>
-                              i === index
-                                ? { ...l, description: e.target.value }
-                                : l,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="text-xs">
-                      Amount
+                      Amount (IDR)
                       <input
+                        aria-label={`Amount line ${index + 1}`}
                         type="number"
                         min="0"
                         step="0.01"
-                        className="w-full border p-2"
+                        className="mt-1 w-full rounded border p-2"
                         value={line.amount}
-                        onChange={(e) =>
-                          setDocument({
-                            ...document,
-                            lines: document.lines.map((l, i) =>
-                              i === index
-                                ? { ...l, amount: e.target.value }
-                                : l,
-                            ),
-                          })
-                        }
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, amount: e.target.value } : l) })}
                       />
                     </label>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        setDocument({
-                          ...document,
-                          lines: document.lines.filter((_, i) => i !== index),
-                        })
-                      }
-                    >
-                      Remove service
-                    </Button>
+                    <label className="text-xs sm:col-span-2">
+                      Service
+                      <textarea
+                        aria-label={`Service line ${index + 1}`}
+                        className="mt-1 w-full rounded border p-2"
+                        maxLength={1000}
+                        rows={2}
+                        value={line.description}
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, description: e.target.value } : l) })}
+                      />
+                    </label>
+                    <label className="text-xs">
+                      Period from
+                      <input
+                        type="date"
+                        aria-label={`Period from line ${index + 1}`}
+                        className="mt-1 w-full rounded border p-2"
+                        value={line.service_period_from ?? ""}
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, service_period_from: e.target.value || null } : l) })}
+                      />
+                    </label>
+                    <label className="text-xs">
+                      Period to
+                      <input
+                        type="date"
+                        aria-label={`Period to line ${index + 1}`}
+                        className="mt-1 w-full rounded border p-2"
+                        value={line.service_period_to ?? ""}
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, service_period_to: e.target.value || null } : l) })}
+                      />
+                    </label>
                   </div>
                 ))}
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    setDocument({
-                      ...document,
-                      lines: [
-                        ...document.lines,
-                        {
-                          registration_number: "",
-                          description: "",
-                          amount: "0",
-                        },
-                      ],
-                    })
-                  }
-                >
-                  Add service
-                </Button>
+                  disabled={document.lines.length >= 200}
+                  onClick={() => setDocument({ ...document, lines: [
+                    ...document.lines, {
+                      source_line_id: null,
+                      registration_number: "",
+                      description: "",
+                      service_period_from: null,
+                      service_period_to: null,
+                      amount: "0",
+                    },
+                  ] })}
+                >Add registration line</Button>
                 <label className="text-xs">
-                  Tax amount
+                  Tax amount {data.source_sale_id ? "(posted — read only)" : ""}
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     className="w-full border p-2"
                     value={document.tax_amount}
+                    disabled={Boolean(data.source_sale_id)}
                     onChange={(e) =>
                       setDocument({ ...document, tax_amount: e.target.value })
                     }
@@ -453,6 +517,7 @@ export default function ARInvoicePage() {
             </Button>
             <Button
               loading={saveDocument.isPending}
+              disabled={documentInvalid || saveDocument.isPending}
               onClick={() => saveDocument.mutate()}
             >
               Save invoice details

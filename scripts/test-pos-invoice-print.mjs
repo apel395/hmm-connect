@@ -10,14 +10,15 @@ const compiled=await build({entryPoints:['src/modules/pos/pages/PosReceiptPrintP
  b.onLoad({filter:/.*/,namespace:'fixture'},a=>({loader:'js',contents:a.path==='@tanstack/react-query'?`export const useQuery=()=>({isLoading:false,data:globalThis.__phrPosDoc});`:a.path==='react-router-dom'?`export const useParams=()=>({id:'12'});`:a.path==='@/api/client'?`export default {};`:a.path.includes('DocumentPrintTemplate')?`import React from 'react';export default p=>React.createElement('div',{'data-standard-print':true},p.title);`:`import React from 'react';export default p=>React.createElement('button',{disabled:p.disabled},p.children);`}));
 }}]});
 const mod={exports:{}};new Function('module','exports','require',compiled.outputFiles[0].text)(mod,mod.exports,require);
-const invoice={id:1,invoice_number:'INV-20261022-00002',invoice_date:'2026-10-22',customer_name:'PHR',amount:'507797906.00',received_amount:'507797906.00',outstanding_amount:'0.00',print_ready:true,layout:{template:'phr',title:'INVOICE',show_settlement:false},document:{description:'Biweekly Catering Service',lines:[{registration_number:'REG-1',description:'Catering period',amount:'461634460.00'}],tax_label:'PBJT',tax_amount:'46163446.00',amount_in_words:''}};
+const invoice={id:1,invoice_number:'INV-20261022-00002',invoice_date:'2026-10-01',customer_name:'PHR',amount:'516179829.00',received_amount:'0.00',outstanding_amount:'516179829.00',print_ready:true,layout:{template:'phr',title:'INVOICE',show_settlement:false},document:{billing_invoice_number:'MMH-MNS/186/VI/2026',description:'Invoice Catering Service in Minas for periode 01-30 Juni 2026',lines:[{source_line_id:1,registration_number:'268/MMH-MINAS/VI/2026',description:'Biweekly Catering Service Minas',service_period_from:'2026-06-01',service_period_to:'2026-06-15',amount:'230817730.00'},{source_line_id:2,registration_number:'274/MMH-MINAS/VI/2026',description:'Biweekly Catering Service Minas',service_period_from:'2026-06-16',service_period_to:'2026-06-30',amount:'238436660.00'}],tax_label:'Tax 10% PB1 Jasa Catering',tax_amount:'46925439.00',amount_in_words:''}};
 globalThis.__phrPosDoc={transaction_type:'INVOICE',client_invoice:invoice};
 const render=()=>renderToStaticMarkup(React.createElement(mod.exports.default));
 let html=render();
-for(const value of ['phr-invoice','Reg No.','REG-1','507,797,906.00','INV-20261022-00002','Signature space'])assert.ok(html.includes(value),value);
+for(const value of ['phr-invoice','Reg No.','268/MMH-MINAS/VI/2026','274/MMH-MINAS/VI/2026','230,817,730.00','238,436,660.00','516,179,829.00','MMH-MNS/186/VI/2026','Periode','Signature space'])assert.ok(html.includes(value),value);
+assert.ok(!html.includes('INV-20261022-00002'),'Printed external invoice number must not be overwritten by internal accounting identity');
 assert.ok(!html.includes('data-standard-print'));
 globalThis.__phrPosDoc={transaction_type:'INVOICE',client_invoice:{...invoice,print_ready:false}};
 assert.ok(render().includes('disabled=""'));
 globalThis.__phrPosDoc={transaction_type:'POS',client_invoice:null,items:[],sale_date:'2026-10-22'};
 html=render();assert.ok(html.includes('data-standard-print')&&html.includes('POS Receipt'));
-console.log('POS print PASS: shared PHR AR invoice, actual identity/tax/amount, incomplete document control, unchanged normal POS receipt.');
+console.log('POS print PASS: PHR two-registration PDF pattern, printed billing number, structured periods, tax/amount, incomplete-document control, unchanged POS receipt.');
