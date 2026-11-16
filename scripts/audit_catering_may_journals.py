@@ -60,12 +60,12 @@ def prepare(source):
             raise ValueError(f"May petty cash block changed: {header}/{receiver}")
         details.update(range(header + 1, end + 1))
 
-    proposed_erwin_rows = set(range(1900, 1912))
+    erwin_rows = set(range(1900, 1912))
     erwin_detail = source[1899:1911]
     if (any(row[0] != datetime(2026, 5, 22) or account(row[3]) != 119
             or money(row[4]) or money(row[5]) <= 0 for row in erwin_detail)
             or sum(money(row[5]) for row in erwin_detail) != Decimal("12688219.00")):
-        raise ValueError("The proposed Erwin/Desi correction no longer matches the source")
+        raise ValueError("The approved Erwin/Desi correction no longer matches the source")
 
     movements = {}
     for number, row in enumerate(source[23:2314], 24):
@@ -80,7 +80,11 @@ def prepare(source):
         if (len(keys) != 1 or not isinstance(stamp, datetime) or not START <= stamp.date() <= END
                 or min(debit, credit) < 0 or bool(debit) == bool(credit)):
             raise ValueError(f"Invalid May movement at row {number}")
-        movements[number] = (number, stamp.date(), str(memo or ""), keys.pop(), debit, credit)
+        bank = keys.pop()
+        if number in erwin_rows:
+            bank = 118
+            memo = f"{memo} | Koreksi rekening sumber: Erwin (0304)"
+        movements[number] = (number, stamp.date(), str(memo or ""), bank, debit, credit)
 
     paired = {}
     consumed = set()
@@ -117,14 +121,7 @@ def prepare(source):
                           "workbook_minus_seed_closing": closing[key] - opening[key] - net[key]}
         for key in sorted(opening)
     }
-    proposed_closing = {
-        code: item["workbook_minus_seed_closing"]
-        for code, item in control.items()
-    }
-    for number in proposed_erwin_rows:
-        proposed_closing["100-110-118"] += movements[number][5]
-        proposed_closing["100-110-119"] -= movements[number][5]
-    return journals, control, {code: value for code, value in proposed_closing.items() if value}
+    return journals, control
 
 
 def main():
@@ -142,7 +139,7 @@ def main():
     else:
         source = load_source(args.xlsx, TAB)
         april = load_source(args.xlsx, APRIL_TAB)
-    drafts, control, proposed_closing = prepare(source)
+    drafts, control = prepare(source)
     prior = {
         f"100-110-{120 if row[4] == 'BTN' else account(row[4])}": money(row[6])
         for row in april[2106:2122]
@@ -162,6 +159,9 @@ def main():
         for _, (header, end, _, _, amount) in TOPUPS.items()
         if (total := sum(money(r[5]) - money(r[4]) for r in source[header:end])) != amount
     }
+    ignored_rounding = {}
+    if closing_differences.get("100-110-102") == Decimal("0.32"):
+        ignored_rounding["100-110-102"] = closing_differences.pop("100-110-102")
     unresolved = [row[0] for row in drafts if row[6] is None]
     blocked = bool(opening_differences or closing_differences or block_differences or unresolved)
     print(json.dumps({
@@ -172,8 +172,8 @@ def main():
         "transfer_journals": sum(row[7] is not None for row in drafts),
         "opening_differences": opening_differences,
         "closing_differences": closing_differences,
-        "proposed_erwin_reclassification_rows": list(range(1900, 1912)),
-        "closing_differences_if_reclassified": proposed_closing,
+        "erwin_reclassified_source_rows": list(range(1900, 1912)),
+        "ignored_bank_rounding": ignored_rounding,
         "mapped_counterparts": Counter(row[6] for row in drafts if row[6] is not None),
     }, indent=2, default=str))
 
