@@ -6,9 +6,11 @@ from decimal import Decimal
 import json
 from pathlib import Path
 import re
+from tempfile import TemporaryDirectory
+from urllib.request import urlopen
 
 from seed_catering_january_journals import (
-    ACCOUNTS, account, load_source, money, run_db,
+    ACCOUNTS, URL, account, load_source, money, run_db,
 )
 
 from seed_catering_march_journals import TAB as MARCH_TAB, counterpart
@@ -113,7 +115,7 @@ def prepare(source):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--xlsx", type=Path, required=True)
+    parser.add_argument("--xlsx", type=Path, help="Use a local XLSX export instead of Google Sheets")
     parser.add_argument("--source-only", action="store_true")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--expected-plan")
@@ -121,9 +123,17 @@ def main():
     if args.source_only and args.apply:
         parser.error("--source-only and --apply are mutually exclusive")
 
-    source = load_source(args.xlsx, TAB)
+    if args.xlsx is None:
+        with TemporaryDirectory(prefix="kas-harian-april-") as temp:
+            workbook = Path(temp) / "kas-harian.xlsx"
+            with urlopen(URL, timeout=60) as response:
+                workbook.write_bytes(response.read())
+            source = load_source(workbook, TAB)
+            march = load_source(workbook, MARCH_TAB)
+    else:
+        source = load_source(args.xlsx, TAB)
+        march = load_source(args.xlsx, MARCH_TAB)
     drafts, control = prepare(source)
-    march = load_source(args.xlsx, MARCH_TAB)
     prior = {
         f"100-110-{120 if row[4] == 'BTN' else account(row[4])}": money(row[6])
         for row in march[2096:2112]
