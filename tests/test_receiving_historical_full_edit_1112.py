@@ -40,7 +40,7 @@ def test_header_only_and_tax_correction_preserves_source_in(stock_db):
     assert active_receipt_stock(db, receipt.id)[0].id == source.id
 
 
-def test_retarget_warehouse_relabels_original_in_without_stock_out(stock_db):
+def test_correct_recorded_warehouse_keeps_physical_in_and_inventory_untouched(stock_db):
     context, receipt = sample(stock_db)
     db, original, user, products, inventory, *_ = context
     new_warehouse = Warehouse(code="WH-HIST-EDIT", name="Historical corrected warehouse",
@@ -50,17 +50,19 @@ def test_retarget_warehouse_relabels_original_in_without_stock_out(stock_db):
     original_movement = active_receipt_stock(db, receipt.id)[0]
     initial_count = db.query(StockMovement).count()
     initial_qty = Decimal(inventory[0].quantity)
+    initial_average = Decimal(inventory[0].average_cost)
     correct_historical_receiving(db, receipt.id, user,
         HistoricalReceiptCorrection(reason="Warehouse was entered incorrectly",
                                     warehouse_id=new_warehouse.id))
     db.refresh(original_movement)
     new_balance = db.query(Inventory).filter_by(warehouse_id=new_warehouse.id,
-                                                product_id=products[0].id).one()
+                                                product_id=products[0].id).first()
     assert receipt.warehouse_id == new_warehouse.id
-    assert original_movement.warehouse_id == new_warehouse.id
+    assert original_movement.warehouse_id == original.id
     assert original_movement.id == active_receipt_stock(db, receipt.id)[0].id
-    assert Decimal(inventory[0].quantity) == initial_qty - Decimal("2")
-    assert Decimal(new_balance.quantity) == Decimal("2")
+    assert Decimal(inventory[0].quantity) == initial_qty
+    assert Decimal(inventory[0].average_cost) == initial_average
+    assert not new_balance or Decimal(new_balance.quantity) == 0
     assert db.query(StockMovement).count() == initial_count
 
 
@@ -100,7 +102,7 @@ def test_supplier_correction_updates_only_the_linked_draft(stock_db):
     assert active_receipt_stock(db, receipt.id)[0].id == movement.id
 
 
-def test_location_and_warehouse_correction_updates_only_original_source(stock_db):
+def test_location_and_recorded_warehouse_correct_without_physical_stock_reassignment(stock_db):
     context, receipt = sample(stock_db)
     db, warehouse, user, products, inventory, *_ = context
     new_location = Location(code="LOC-HIST-EDIT", name="Correct receiving site",
@@ -119,8 +121,8 @@ def test_location_and_warehouse_correction_updates_only_original_source(stock_db
         HistoricalReceiptCorrection(reason="Wrong receiving site on old entry",
             location_id=new_location.id, warehouse_id=new_warehouse.id))
     assert receipt.location_id == new_location.id
-    assert movement.location_id == new_location.id
-    assert movement.warehouse_id == new_warehouse.id
+    assert movement.location_id == new_location.id  # Metadata corrected in place.
+    assert movement.warehouse_id == warehouse.id  # Physical source preserved.
     assert db.query(StockMovement).count() == count
     invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
     assert invoice.location_id == new_location.id
@@ -184,28 +186,38 @@ def test_reporting_location_changes_original_source_metadata_without_stock_activ
     assert db.query(StockMovement.id).count() == initial_movement_count
 
 
-def test_physical_warehouse_change_still_blocked_after_real_stock_usage(stock_db):
+def test_recorded_warehouse_change_after_real_stock_usage_keeps_physical_activity(stock_db):
     context, receipt = sample(stock_db)
     db, warehouse, user, products, inventory, *_ = context
     original = active_receipt_stock(db, receipt.id)[0]
     location, actual_out = _real_consumption_and_corrected_location(
         db, warehouse, user, products[0], inventory[0])
-    second = Warehouse(code="WH-HIST-CONSUMED", name="Corrected physical warehouse",
+    second = Warehouse(code="WH-HIST-CONSUMED", name="Corrected recorded warehouse",
                        location_id=location.id, is_active=True)
     db.add(second)
     db.flush()
     source_id = original.id
     before_qty = Decimal(inventory[0].quantity)
-    with pytest.raises(HTTPException, match="subsequent actual stock usage"):
-        correct_historical_receiving(db, receipt.id, user,
-            HistoricalReceiptCorrection(reason="Try to physically retarget used stock",
-                                        location_id=location.id, warehouse_id=second.id))
-    db.refresh(receipt)
-    assert receipt.location_id == warehouse.location_id
-    assert receipt.warehouse_id == warehouse.id
-    assert db.get(StockMovement, source_id).warehouse_id == warehouse.id
+    before_avg = Decimal(inventory[0].average_cost)
+    before_movement_count = db.query(StockMovement.id).count()
+    corrected = correct_historical_receiving(db, receipt.id, user,
+        HistoricalReceiptCorrection(reason="Correct recorded warehouse without stock movement",
+                                    location_id=location.id, warehouse_id=second.id))
+    db.refresh(original)
+    db.refresh(actual_out)
+    assert corrected.location_id == location.id
+    assert corrected.warehouse_id == second.id
+    assert original.warehouse_id == warehouse.id
+    assert original.location_id == location.id
+    assert original.id == source_id
+    assert actual_out.location_id == warehouse.location_id
+    assert actual_out.warehouse_id == warehouse.id
     assert Decimal(inventory[0].quantity) == before_qty
-    assert db.query(StockMovement.id).filter(StockMovement.reference_type == "STORE_REQUEST").count() == 1
+    assert Decimal(inventory[0].average_cost) == before_avg
+    assert db.query(StockMovement.id).count() == before_movement_count
+    assert db.query(StockMovement.id).filter(
+        StockMovement.reference_type.in_(("GOODS_RECEIPT_UNPOST", "GOODS_RECEIPT_RETURN"))
+    ).count() == 0
 
 
 def _new_location_without_stock_activity(db, user):
@@ -335,3 +347,54 @@ def test_location_with_real_quantity_edit_still_blocks_consumed_legacy_source(st
     assert receipt.warehouse_id == mismatch.id
     assert Decimal(inventory[0].quantity) == before_qty
     assert db.get(StockMovement, real_out.id).reference_type == "STORE_REQUEST"
+
+
+def test_recorded_warehouse_change_reports_physical_source_and_later_return_uses_it(stock_db):
+    from app.api.v1.goods_receipts import serialize_receipt
+    from app.services.goods_receipt_service import GoodsReceiptService
+    context, receipt = sample(stock_db)
+    db, original_warehouse, user, products, inventory, *_ = context
+    physical_source = active_receipt_stock(db, receipt.id)[0]
+    new_location = _new_location_without_stock_activity(db, user)
+    recorded_warehouse = Warehouse(
+        code="WH-HIST-RECORDED-NEW", name="Corrected recorded warehouse",
+        location_id=new_location.id, is_active=True,
+    )
+    db.add(recorded_warehouse)
+    db.flush()
+    count_before = db.query(StockMovement.id).count()
+    original_qty = Decimal(inventory[0].quantity)
+    original_cost = Decimal(inventory[0].average_cost)
+    corrected = correct_historical_receiving(
+        db, receipt.id, user,
+        HistoricalReceiptCorrection(
+            reason="Fix recorded Receiving warehouse, not a physical transfer",
+            location_id=new_location.id, warehouse_id=recorded_warehouse.id,
+        ),
+    )
+    assert corrected.warehouse_id == recorded_warehouse.id
+    assert corrected.location_id == new_location.id
+    assert physical_source.warehouse_id == original_warehouse.id
+    assert physical_source.location_id == new_location.id
+    assert db.query(StockMovement.id).count() == count_before
+    assert Decimal(inventory[0].quantity) == original_qty
+    assert Decimal(inventory[0].average_cost) == original_cost
+
+    serialized = serialize_receipt(corrected, db)
+    assert serialized["warehouse_id"] == recorded_warehouse.id
+    assert serialized["physical_stock_warehouse_id"] == original_warehouse.id
+    assert serialized["physical_stock_location_retained"] is True
+    linked_invoice = db.query(SupplierInvoice).filter_by(goods_receipt_id=receipt.id).one()
+    assert linked_invoice.lines[0].account_id == physical_source.inventory_account_id
+
+    # A later, separately initiated real Return must NOT debit the corrected
+    # recorded warehouse, which received no physical stock.
+    GoodsReceiptService.return_receipt(db, receipt_id=corrected.id, user=user)
+    returned = db.query(StockMovement).filter_by(
+        goods_receipt_id=corrected.id, reference_type="GOODS_RECEIPT_RETURN",
+    ).one()
+    assert returned.warehouse_id == original_warehouse.id
+    assert returned.location_id == original_warehouse.location_id
+    assert db.query(Inventory).filter_by(
+        product_id=products[0].id, warehouse_id=recorded_warehouse.id,
+    ).first() is None
