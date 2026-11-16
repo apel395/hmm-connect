@@ -70,7 +70,10 @@ def test_explicit_shared_service_and_move_draft_keep_identity_and_financial_scop
     assert printed['layout']['billing_address']=='Site billing address'
     assert printed['document']['contract_number']=='INVOICE-CONTRACT'
     assert printed['document']['lines'][0]['registration_number']=='REG-42'
-    assert printed['document']['lines'][0]['description']=='Lunch service\n2026-01-01 — 2026-01-15'
+    assert printed['document']['lines'][0]['description']=='Lunch service'
+    assert printed['document']['lines'][0]['service_period_from']=='2026-01-01'
+    assert printed['document']['lines'][0]['service_period_to']=='2026-01-15'
+    assert printed['document']['lines'][0]['source_line_id']==tx.lines[0].id
     assert printed['print_ready'] and tx.billing_details==snapshot
     assert s.query(StockMovement).count()==s.query(OpeningBalance).count()==0
     ledger=s.query(GeneralLedger).count()
