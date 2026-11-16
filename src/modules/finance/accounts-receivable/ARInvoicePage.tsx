@@ -387,93 +387,106 @@ export default function ARInvoicePage() {
                     }
                   />
                 </label>
+                <div className="flex items-center justify-between">
+                  <strong className="text-sm">Service registrations ({document.lines.length})</strong>
+                  <span className="text-xs text-slate-500">Each registration or billing period is a separate line.</span>
+                </div>
                 {document.lines.map((line, index) => (
-                  <div key={index} className="grid gap-1 rounded border p-2">
+                  <div key={line.source_line_id ?? `new-${index}`} className="grid gap-2 rounded border p-3 sm:grid-cols-2">
+                    <div className="flex items-center justify-between sm:col-span-2">
+                      <span className="text-xs font-semibold">Line {index + 1}</span>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setDocument({
+                          ...document,
+                          lines: [...document.lines.slice(0, index + 1), {
+                            source_line_id: null,
+                            registration_number: "",
+                            description: line.description,
+                            service_period_from: null,
+                            service_period_to: null,
+                            amount: line.amount,
+                          }, ...document.lines.slice(index + 1)],
+                        })}>Duplicate</Button>
+                        <Button variant="outline" onClick={() => setDocument({
+                          ...document,
+                          lines: document.lines.filter((_, i) => i !== index),
+                        })}>Remove</Button>
+                      </div>
+                    </div>
                     <label className="text-xs">
                       Registration number
                       <input
-                        className="w-full border p-2"
+                        aria-label={`Registration number line ${index + 1}`}
+                        className="mt-1 w-full rounded border p-2"
+                        maxLength={150}
                         value={line.registration_number}
-                        onChange={(e) =>
-                          setDocument({
-                            ...document,
-                            lines: document.lines.map((l, i) =>
-                              i === index
-                                ? { ...l, registration_number: e.target.value }
-                                : l,
-                            ),
-                          })
-                        }
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, registration_number: e.target.value } : l) })}
                       />
                     </label>
                     <label className="text-xs">
-                      Service
-                      <textarea
-                        className="w-full border p-2"
-                        value={line.description}
-                        onChange={(e) =>
-                          setDocument({
-                            ...document,
-                            lines: document.lines.map((l, i) =>
-                              i === index
-                                ? { ...l, description: e.target.value }
-                                : l,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="text-xs">
-                      Amount
+                      Amount (IDR)
                       <input
+                        aria-label={`Amount line ${index + 1}`}
                         type="number"
                         min="0"
                         step="0.01"
-                        className="w-full border p-2"
+                        className="mt-1 w-full rounded border p-2"
                         value={line.amount}
-                        onChange={(e) =>
-                          setDocument({
-                            ...document,
-                            lines: document.lines.map((l, i) =>
-                              i === index
-                                ? { ...l, amount: e.target.value }
-                                : l,
-                            ),
-                          })
-                        }
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, amount: e.target.value } : l) })}
                       />
                     </label>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        setDocument({
-                          ...document,
-                          lines: document.lines.filter((_, i) => i !== index),
-                        })
-                      }
-                    >
-                      Remove service
-                    </Button>
+                    <label className="text-xs sm:col-span-2">
+                      Service
+                      <textarea
+                        aria-label={`Service line ${index + 1}`}
+                        className="mt-1 w-full rounded border p-2"
+                        maxLength={1000}
+                        rows={2}
+                        value={line.description}
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, description: e.target.value } : l) })}
+                      />
+                    </label>
+                    <label className="text-xs">
+                      Period from
+                      <input
+                        type="date"
+                        aria-label={`Period from line ${index + 1}`}
+                        className="mt-1 w-full rounded border p-2"
+                        value={line.service_period_from ?? ""}
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, service_period_from: e.target.value || null } : l) })}
+                      />
+                    </label>
+                    <label className="text-xs">
+                      Period to
+                      <input
+                        type="date"
+                        aria-label={`Period to line ${index + 1}`}
+                        className="mt-1 w-full rounded border p-2"
+                        value={line.service_period_to ?? ""}
+                        onChange={(e) => setDocument({ ...document, lines: document.lines.map((l, i) =>
+                          i === index ? { ...l, service_period_to: e.target.value || null } : l) })}
+                      />
+                    </label>
                   </div>
                 ))}
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    setDocument({
-                      ...document,
-                      lines: [
-                        ...document.lines,
-                        {
-                          registration_number: "",
-                          description: "",
-                          amount: "0",
-                        },
-                      ],
-                    })
-                  }
-                >
-                  Add service
-                </Button>
+                  disabled={document.lines.length >= 200}
+                  onClick={() => setDocument({ ...document, lines: [
+                    ...document.lines, {
+                      source_line_id: null,
+                      registration_number: "",
+                      description: "",
+                      service_period_from: null,
+                      service_period_to: null,
+                      amount: "0",
+                    },
+                  ] })}
+                >Add registration line</Button>
                 <label className="text-xs">
                   Tax amount
                   <input
