@@ -1,9 +1,13 @@
 export type ServiceLine = {
+  source_line_id?: number | null;
   registration_number: string;
   description: string;
+  service_period_from?: string | null;
+  service_period_to?: string | null;
   amount: string;
 };
 export type InvoiceDocument = {
+  billing_invoice_number: string;
   description: string;
   contract_number: string;
   contract_date: string | null;
