@@ -14,6 +14,7 @@ import Dialog, {
 } from "@/components/ui/Dialog";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import useAuthStore from "@/store/auth";
+import useFormRecovery from "@/hooks/useFormRecovery";
 
 import ARReceiptForm from "./ARReceiptForm";
 import PHRInvoice from "./PHRInvoice";
@@ -23,6 +24,18 @@ import {
   type Layout,
   money,
 } from "./arInvoiceTypes";
+const validInvoiceDraft = (value: unknown): value is InvoiceDocument | null => {
+  if (value === null) return true;
+  if (!value || typeof value !== "object") return false;
+  const doc = value as Record<string, unknown>;
+  return typeof doc.description === "string"
+    && Array.isArray(doc.lines)
+    && typeof doc.tax_amount === "string"
+    && doc.lines.every((line: unknown) => !!line && typeof line === "object"
+      && typeof (line as Record<string, unknown>).registration_number === "string"
+      && typeof (line as Record<string, unknown>).description === "string");
+};
+const cents = (value: string | number) => Math.round(Number(value || 0) * 100);
 const fields = [
   ["title", "Invoice title"],
   ["billing_name", "Client billing name"],
@@ -45,6 +58,7 @@ export default function ARInvoicePage() {
   const [document, setDocument] = useState<InvoiceDocument | null>(null);
   const [open, setOpen] = useState(false);
   const [layout, setLayout] = useState<Layout | null>(null);
+  const documentRecovery = useFormRecovery(`catering:invoice-document:${id}`, document, documentOpen, validInvoiceDraft);
   const invoice = useQuery({
     queryKey: ["ar-invoice-print", id],
     queryFn: async () =>
@@ -53,9 +67,9 @@ export default function ARInvoicePage() {
   useEffect(() => {
     if (invoice.data) {
       setLayout(invoice.data.layout);
-      setDocument(invoice.data.document);
+      if (!documentOpen) setDocument(invoice.data.document);
     }
-  }, [invoice.data]);
+  }, [invoice.data, documentOpen]);
   const save = useMutation({
     mutationFn: () =>
       api.put(`/ar-invoice-print/clients/${invoice.data?.customer_id}`, layout),
@@ -69,14 +83,26 @@ export default function ARInvoicePage() {
   const saveDocument = useMutation({
     mutationFn: () => api.put(`/ar-invoice-print/${id}/document`, document),
     onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["ar-invoice-print"] });
+      documentRecovery.clear();
+      void client.invalidateQueries({ queryKey: ["ar-invoice-print"] });
       setDocumentOpen(false);
       toast.success("Invoice print details saved");
     },
-    onError: () =>
-      toast.error("Service amounts plus tax must equal the AR invoice amount"),
+    onError: (error: any) =>
+      toast.error(typeof error?.response?.data?.detail === "string"
+        ? error.response.data.detail : "Invoice print details could not be saved"),
   });
   const data = invoice.data;
+  const subtotalCents = document?.lines.reduce((total, line) => total + cents(line.amount), 0) ?? 0;
+  const taxCents = cents(document?.tax_amount ?? "0");
+  const grandCents = subtotalCents + taxCents;
+  const expectedCents = cents(data?.amount ?? "0");
+  const documentInvalid = !document || !document.lines.length || grandCents !== expectedCents
+    || !Number.isFinite(grandCents) || !Number.isFinite(taxCents) || taxCents < 0
+    || document.lines.some(line => !line.description.trim() || !Number.isFinite(Number(line.amount))
+      || Number(line.amount) < 0
+      || Boolean(line.service_period_from && line.service_period_to
+        && line.service_period_to < line.service_period_from));
   if (invoice.isPending)
     return <p data-print-ready="false">Loading invoice…</p>;
   if (invoice.isError || !data)
@@ -108,7 +134,10 @@ export default function ARInvoicePage() {
             variant="outline"
             title="Invoice service details"
             aria-label="Invoice service details"
-            onClick={() => setDocumentOpen(true)}
+            onClick={() => {
+              setDocument(documentRecovery.load() ?? data.document);
+              setDocumentOpen(true);
+            }}
           >
             <FilePenLine size={15} />
           </Button>
@@ -308,9 +337,23 @@ export default function ARInvoicePage() {
           <DialogBody>
             {document && (
               <div className="grid gap-3">
-                <p className="text-xs">
-                  AR invoice amount: Rp {money(data.amount)}
+                <p className="text-xs text-slate-600">
+                  Accounting invoice <strong>{data.invoice_number}</strong> · Posted AR amount <strong>Rp {money(data.amount)}</strong>.
+                  Printed service details never change journal, tax liability, or payment balances.
                 </p>
+                {documentRecovery.failed && <p className="text-xs text-amber-700">Browser storage unavailable; keep this dialog open until saved.</p>}
+                <label className="text-xs">
+                  Customer-facing invoice number
+                  <input
+                    aria-label="Printed invoice number"
+                    className="mt-1 w-full rounded border p-2"
+                    maxLength={100}
+                    placeholder="MMH-MNS/186/VI/2026 (optional)"
+                    value={document.billing_invoice_number ?? ""}
+                    onChange={(e) => setDocument({ ...document, billing_invoice_number: e.target.value })}
+                  />
+                  <span className="mt-1 block text-slate-500">Optional printed reference; internal POS/AR invoice ID remains {data.invoice_number}.</span>
+                </label>
                 {(
                   [
                     ["description", "Service period / description"],
