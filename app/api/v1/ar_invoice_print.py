@@ -2,7 +2,7 @@ from decimal import Decimal
 from datetime import date
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.authorization import require_permission
@@ -38,12 +38,25 @@ class InvoiceLayout(BaseModel):
 
 
 class ServiceLine(BaseModel):
+    # Optional immutable ID of the original posted Catering service line.
+    # Manual printed breakdowns may have no source line, but must still balance.
+    source_line_id: int | None = Field(default=None, ge=1)
     registration_number: str = Field(default="", max_length=150)
     description: str = Field(min_length=1, max_length=1000)
+    service_period_from: date | None = None
+    service_period_to: date | None = None
     amount: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
+
+    @model_validator(mode="after")
+    def valid_service_period(self):
+        if self.service_period_from and self.service_period_to and self.service_period_to < self.service_period_from:
+            raise ValueError("Service period end cannot precede its start")
+        return self
 
 
 class InvoiceDocument(BaseModel):
+    # Customer-facing printed number; does not replace the immutable POS/AR ID.
+    billing_invoice_number: str = Field(default="", max_length=100)
     description: str = Field(default="", max_length=1000)
     contract_number: str = Field(default="", max_length=100)
     contract_date: date | None = None
@@ -98,16 +111,23 @@ def invoice_payload(db, row):
             if index==len(source_lines)-1:share=discount-allocated
             allocated+=share
             description = line.description or (line.product.name if line.product else 'Service')
-            if line.service_period_from or line.service_period_to:
-                description += f"\n{line.service_period_from or ''} — {line.service_period_to or ''}"
-            lines.append(ServiceLine(registration_number=line.registration_number or '', description=description,amount=Decimal(line.line_amount)-share+Decimal(line.service_charge_amount or 0)))
+            lines.append(ServiceLine(
+                source_line_id=line.id,
+                registration_number=line.registration_number or '',
+                description=description,
+                service_period_from=line.service_period_from,
+                service_period_to=line.service_period_to,
+                amount=Decimal(line.line_amount)-share+Decimal(line.service_charge_amount or 0),
+            ))
         document=InvoiceDocument(description=source.notes or '', contract_number=(source.billing_details or {}).get("contract_number", ""), contract_date=(source.billing_details or {}).get("contract_date"), lines=lines,tax_label='PBJT' if any(line.tax_type=='PBJT' for line in source_lines) else 'Tax',tax_amount=source.tax_amount)
     else:
         document = InvoiceDocument(**(saved or {}))
     receipts=[{"id":payment.id,"payment_number":payment.payment_number,"payment_date":payment.payment_date,"amount":payment.amount,"payment_method":payment.payment_method,"reference_number":payment.reference_number,"journal_entry_id":payment.journal_entry_id} for payment in db.query(CustomerPayment).filter_by(account_receivable_id=row.id,status="POSTED").order_by(CustomerPayment.id).all()]
     return dict(receipts=receipts,document=document.model_dump(mode="json"),
         source_sale_id=row.source_sale_id, account_id=row.account_id, location_id=row.location_id,
-        print_ready=(document.total() == Decimal(str(row.amount)) and bool(document.lines)), id=row.id, invoice_number=row.invoice_number, invoice_date=row.invoice_date,
+        print_ready=(document.total() == Decimal(str(row.amount)) and bool(document.lines)
+                     and (source is None or document.tax_amount == Decimal(source.tax_amount or 0))),
+        id=row.id, invoice_number=row.invoice_number, invoice_date=row.invoice_date,
         due_date=row.due_date, amount=row.amount, received_amount=row.received_amount,
         outstanding_amount=row.outstanding_amount, customer_id=row.customer_id,
         customer_name=row.customer.customer_name, customer_address=row.customer.address,
@@ -138,14 +158,42 @@ def update_document(invoice_id: int, data: InvoiceDocument, db: Session = Depend
         raise HTTPException(404, "Invoice not found")
     if not data.lines or data.total() != Decimal(str(invoice_row.amount)):
         raise HTTPException(422, "Service amounts plus tax must equal the AR invoice amount")
+    source = db.get(SalesTransaction, invoice_row.source_sale_id) if invoice_row.source_sale_id else None
+    if source is not None:
+        # Editing a printed invoice cannot silently misstate an already-posted
+        # POS tax liability while keeping the same grand total.
+        if data.tax_amount != Decimal(source.tax_amount or 0):
+            raise HTTPException(422, "Printed invoice tax must match the posted Catering tax amount")
+        source_line_ids = {line.id for line in source.lines}
+        if any(line.source_line_id is not None and line.source_line_id not in source_line_ids
+               for line in data.lines):
+            raise HTTPException(422, "Invoice document refers to a source line outside this Catering invoice")
+    printed_number = data.billing_invoice_number.strip()
+    if printed_number:
+        # Prevent two invoices for the same customer from using one printed
+        # external reference. Accounting invoice numbers remain immutable.
+        duplicate = db.query(AccountReceivable).filter(
+            AccountReceivable.customer_id == invoice_row.customer_id,
+            AccountReceivable.id != invoice_row.id,
+            AccountReceivable.invoice_number.ilike(printed_number),
+        ).first()
+        if duplicate:
+            raise HTTPException(409, "Printed invoice number already belongs to another customer invoice")
     row = db.query(ARInvoiceLayout).filter_by(customer_id=invoice_row.customer_id).with_for_update().first()
     if not row:
         row = ARInvoiceLayout(customer_id=invoice_row.customer_id, configuration={})
         db.add(row)
     config = dict(row.configuration or {})
     documents = dict(config.get("invoice_documents", {}))
+    if printed_number:
+        if any(str(other_id) != str(invoice_id)
+               and str((document or {}).get("billing_invoice_number", "")).strip().casefold() == printed_number.casefold()
+               for other_id, document in documents.items()):
+            raise HTTPException(409, "Printed invoice number is already in use for this customer")
     before = documents.get(str(invoice_id))
-    documents[str(invoice_id)] = data.model_dump(mode="json")
+    documents[str(invoice_id)] = data.model_copy(
+        update={"billing_invoice_number": printed_number}
+    ).model_dump(mode="json")
     row.configuration = {**config, "invoice_documents": documents}
     record_audit(db, user, "AR_INVOICE_DOCUMENT_UPDATED", "ACCOUNT_RECEIVABLE",
         f"Updated print details for invoice {invoice_id}", entity_id=invoice_id,
