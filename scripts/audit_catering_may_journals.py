@@ -35,7 +35,7 @@ PAIRS = (
     (1307,1319), (1659,1808), (1800,1832), (1802,1833), (1804,1834),
     (1806,1835), (1878,1876), (1879,1872), (1934,2087), (2098,2101),
     (2115,2130), (2116,2141), (2118,2169), (2209,2230), (2211,2229),
-    (2219,2213), (2220,2214), (2263,2270),
+    (2219,2213), (2220,2214), (2263,2270), (1897,1875),
 )
 
 
@@ -59,6 +59,13 @@ def prepare(source):
                 or money(receipt[5])):
             raise ValueError(f"May petty cash block changed: {header}/{receiver}")
         details.update(range(header + 1, end + 1))
+
+    proposed_erwin_rows = set(range(1900, 1912))
+    erwin_detail = source[1899:1911]
+    if (any(row[0] != datetime(2026, 5, 22) or account(row[3]) != 119
+            or money(row[4]) or money(row[5]) <= 0 for row in erwin_detail)
+            or sum(money(row[5]) for row in erwin_detail) != Decimal("12688219.00")):
+        raise ValueError("The proposed Erwin/Desi correction no longer matches the source")
 
     movements = {}
     for number, row in enumerate(source[23:2314], 24):
@@ -110,7 +117,14 @@ def prepare(source):
                           "workbook_minus_seed_closing": closing[key] - opening[key] - net[key]}
         for key in sorted(opening)
     }
-    return journals, control
+    proposed_closing = {
+        code: item["workbook_minus_seed_closing"]
+        for code, item in control.items()
+    }
+    for number in proposed_erwin_rows:
+        proposed_closing["100-110-118"] += movements[number][5]
+        proposed_closing["100-110-119"] -= movements[number][5]
+    return journals, control, {code: value for code, value in proposed_closing.items() if value}
 
 
 def main():
@@ -128,7 +142,7 @@ def main():
     else:
         source = load_source(args.xlsx, TAB)
         april = load_source(args.xlsx, APRIL_TAB)
-    drafts, control = prepare(source)
+    drafts, control, proposed_closing = prepare(source)
     prior = {
         f"100-110-{120 if row[4] == 'BTN' else account(row[4])}": money(row[6])
         for row in april[2106:2122]
@@ -158,6 +172,8 @@ def main():
         "transfer_journals": sum(row[7] is not None for row in drafts),
         "opening_differences": opening_differences,
         "closing_differences": closing_differences,
+        "proposed_erwin_reclassification_rows": list(range(1900, 1912)),
+        "closing_differences_if_reclassified": proposed_closing,
         "mapped_counterparts": Counter(row[6] for row in drafts if row[6] is not None),
     }, indent=2, default=str))
 
