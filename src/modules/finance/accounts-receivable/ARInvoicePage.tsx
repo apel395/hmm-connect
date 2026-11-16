@@ -314,6 +314,13 @@ export default function ARInvoicePage() {
                   />
                   Show settlement and outstanding
                 </label>
+                <div role="status" className={`rounded border p-3 text-xs ${documentInvalid ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+                  <div className="flex justify-between"><span>Service subtotal</span><strong>Rp {money(subtotalCents / 100)}</strong></div>
+                  <div className="flex justify-between"><span>Tax</span><strong>Rp {money(taxCents / 100)}</strong></div>
+                  <div className="flex justify-between"><span>Printed total</span><strong>Rp {money(grandCents / 100)}</strong></div>
+                  <div className="flex justify-between"><span>Posted AR total</span><strong>Rp {money(data.amount)}</strong></div>
+                  <p className="mt-2">{documentInvalid ? "Complete each line and balance printed total against the existing AR invoice before saving." : "Balanced with posted AR. This changes print details only."}</p>
+                </div>
               </div>
             )}
           </DialogBody>
@@ -488,13 +495,14 @@ export default function ARInvoicePage() {
                   ] })}
                 >Add registration line</Button>
                 <label className="text-xs">
-                  Tax amount
+                  Tax amount {data.source_sale_id ? "(posted — read only)" : ""}
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     className="w-full border p-2"
                     value={document.tax_amount}
+                    disabled={Boolean(data.source_sale_id)}
                     onChange={(e) =>
                       setDocument({ ...document, tax_amount: e.target.value })
                     }
@@ -509,6 +517,7 @@ export default function ARInvoicePage() {
             </Button>
             <Button
               loading={saveDocument.isPending}
+              disabled={documentInvalid || saveDocument.isPending}
               onClick={() => saveDocument.mutate()}
             >
               Save invoice details
