@@ -8,6 +8,10 @@ const date = (value: string | null) =>
         year: "numeric",
       })
     : "—";
+const servicePeriod = (from?: string | null, to?: string | null) => {
+  if (!from && !to) return "";
+  return `Periode ${from ? date(from) : "—"} — ${to ? date(to) : "—"}`;
+};
 const amount = (value: unknown) =>
   Number(value || 0).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -48,6 +52,7 @@ export default function PHRInvoice({ data }: { data: Invoice }) {
       .phr-invoice .phr-row-no { text-align:center; }
       .phr-invoice .phr-reg-no { text-align:center; }
       .phr-invoice .phr-money { white-space:nowrap!important; text-align:right; font-variant-numeric:tabular-nums; }
+      .phr-line-period { display:block; font-size:7.5pt; margin-top:1mm; }
       .phr-currency { display:inline-block; margin-right:2mm; }
       .phr-invoice .phr-spacer td { height:4mm; padding:0; }
       .phr-invoice .phr-words { height:8mm; font-style:italic; }
@@ -90,7 +95,7 @@ export default function PHRInvoice({ data }: { data: Invoice }) {
             <dt>Inv. Date</dt>
             <dd>: {date(data.invoice_date)}</dd>
             <dt>Inv. Number</dt>
-            <dd>: {data.invoice_number}</dd>
+            <dd>: {doc.billing_invoice_number?.trim() || data.invoice_number}</dd>
             <dt>Contract No.</dt>
             <dd>: {doc.contract_number || layout.contract_number || "—"}</dd>
             <dt>Contract Date</dt>
@@ -126,7 +131,14 @@ export default function PHRInvoice({ data }: { data: Invoice }) {
               <tr key={i}>
                 <td className="phr-row-no">{i + 1}</td>
                 <td className="phr-reg-no">{line.registration_number}</td>
-                <td>{line.description}</td>
+                <td>
+                  <span>{line.description}</span>
+                  {(line.service_period_from || line.service_period_to) && (
+                    <span className="phr-line-period">
+                      {servicePeriod(line.service_period_from, line.service_period_to)}
+                    </span>
+                  )}
+                </td>
                 <td className="phr-money">
                   <span className="phr-currency">Rp</span>
                   {amount(line.amount)}
