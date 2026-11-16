@@ -211,7 +211,12 @@ export default function ReceivingDetailPage() {
           <Info label="Business Unit">{data.business_unit_name ?? data.business_unit_id ?? "—"}</Info>
           <Info label="Location">{data.location_name ?? data.location_id ?? "—"}</Info>
           <Info label="Department">{data.department_name ?? data.department_id ?? "—"}</Info>
-          {data.destination_type !== "DIRECT_USE" && <Info label="Warehouse">{data.warehouse_name ?? "—"}</Info>}
+          {data.destination_type !== "DIRECT_USE" && <Info label={historical?"Recorded Receiving Warehouse":"Warehouse"}>{data.warehouse_name ?? "—"}</Info>}
+          {historical && data.physical_stock_warehouse_id && (
+            <Info label="Original Physical Stock Warehouse">
+              {data.physical_stock_warehouse_code ?? data.physical_stock_warehouse_name ?? data.physical_stock_warehouse_id}
+            </Info>
+          )}
         </dl>
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/70 px-4 py-4 sm:px-6">
           <div className="text-sm text-slate-600">
@@ -227,11 +232,12 @@ export default function ReceivingDetailPage() {
       </div>
 
       {data.physical_stock_location_retained && (
-        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>Historical reporting location corrected.</strong> Physical stock remains in{" "}
-          <strong>{data.warehouse_name ?? "the original warehouse"}</strong>
-          {data.warehouse_location_name ? ` (${data.warehouse_location_name})` : ""}.
-          Original stock IN, actual stock OUT, and other warehouse activity were not transferred.
+        <div role="status" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <strong>Historical Receiving attribution corrected.</strong> The document shows its recorded
+          Location and Warehouse; original physical stock remains in{" "}
+          <strong>{data.physical_stock_warehouse_code ?? data.physical_stock_warehouse_name ?? "the source warehouse"}</strong>
+          {data.physical_stock_warehouse_location_name ? ` (${data.physical_stock_warehouse_location_name})` : ""}.
+          No stock transfers, returns, or other inventory activity were created by the correction.
         </div>
       )}
 
