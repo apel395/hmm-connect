@@ -79,8 +79,10 @@ async function run() {
  const priceFields=()=>v.root.findAllByType('label').filter(n=>text(n).includes('Unit price /')).map(n=>n.findByType('input'));
  assert.equal(priceFields().length,1,'Catering invoice exposes unit price');
  await renderer.act(async()=>priceFields()[0].props.onChange({target:{value:'250'}}));
- await renderer.act(async()=>v.root.findByProps({'aria-label':'Add separate price line Catering service'}).props.onClick());
- assert.equal(priceFields().length,2,'Same menu can have independent price lines');
+ await renderer.act(async()=>v.root.findByProps({'aria-label':'Add service registration Catering service'}).props.onClick());
+ assert.equal(priceFields().length,2,'Same menu can have independent registered billing periods');
+  assert.equal(priceFields()[1].props.value,250,'Duplicate retains agreed price instead of resetting to zero');
+  assert.equal(v.root.findAllByType('input').filter(n=>n.props.maxLength===150).at(-1).props.value,'','New registration starts blank');
  await renderer.act(async()=>priceFields()[1].props.onChange({target:{value:'300'}}));
  assert.deepEqual(priceFields().map(n=>n.props.value),[250,300]);
  assert.ok(text(v.root).includes('Rp 635,25'),'Edited prices recalculate subtotal, service charge and PBJT');
