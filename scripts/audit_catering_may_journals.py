@@ -62,7 +62,7 @@ def prepare(source):
 
     erwin_rows = set(range(1900, 1912))
     erwin_detail = source[1899:1911]
-    if (any(row[0] != datetime(2026, 5, 22) or account(row[3]) != 119
+    if (any(row[0] != datetime(2026, 5, 22) or account(row[3]) not in {118, 119}
             or money(row[4]) or money(row[5]) <= 0 for row in erwin_detail)
             or sum(money(row[5]) for row in erwin_detail) != Decimal("12688219.00")):
         raise ValueError("The approved Erwin/Desi correction no longer matches the source")
@@ -81,7 +81,7 @@ def prepare(source):
                 or min(debit, credit) < 0 or bool(debit) == bool(credit)):
             raise ValueError(f"Invalid May movement at row {number}")
         bank = keys.pop()
-        if number in erwin_rows:
+        if number in erwin_rows and bank == 119:
             bank = 118
             memo = f"{memo} | Koreksi rekening sumber: Erwin (0304)"
         movements[number] = (number, stamp.date(), str(memo or ""), bank, debit, credit)
@@ -109,7 +109,9 @@ def prepare(source):
             code = f"100-110-{sender_bank}"
             net[sender_bank] -= debit
         else:
-            code = counterpart(memo, debit, credit) if number != 1137 else None
+            code = counterpart(memo, debit, credit)
+            if number == 1137:
+                code = "200-100-1" if "BAYAR PT RAP" in memo.upper() else None
             if debit and re.search(r"TERIMA (?:TAG(?:IHAN)?|BAYAR)\b", memo, re.I):
                 code = "100-200-101"
         if code == f"100-110-{bank}":
