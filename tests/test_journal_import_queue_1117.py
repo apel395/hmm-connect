@@ -61,9 +61,9 @@ def test_validation_enqueue_idempotent_without_ssm(context, monkeypatch):
     maker, user_id = context
 
     def forbidden(*_args, **_kwargs):
-        raise AssertionError("SSM dispatch must never occur in the API")
+        raise AssertionError("AWS client must never be created by the queue API")
 
-    monkeypatch.setattr("app.services.journal_import_jobs.trigger_journal_import_job", forbidden)
+    monkeypatch.setattr("app.services.journal_import_jobs.boto3.client", forbidden)
     with maker() as db:
         make_batch(db, user_id=user_id, batch_id=101, status="UPLOADED")
         actor = SimpleNamespace(id=user_id)
