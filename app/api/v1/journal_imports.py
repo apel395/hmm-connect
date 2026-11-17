@@ -24,7 +24,6 @@ from app.models.user import User
 from app.services.journal_import_jobs import (
     head_journal_import_object,
     presigned_upload_url,
-    trigger_journal_import_job,
 )
 from app.services.location_access import assigned_location_id
 
@@ -435,22 +434,26 @@ def start_validation(
     user: User = Depends(journal_import_user),
 ):
     batch = _get_batch(db, job_id, user)
+    # Polling on EC2 owns dispatch.  Never call SSM inside the VPC API request.
+    # S3 events can still arrive during rollout; the worker claims jobs atomically.
+    if batch.status in {"QUEUED", "PROCESSING", "VALIDATED"}:
+        return _serialize(batch)
     if batch.status != "UPLOADED":
         raise HTTPException(409, "Complete the file upload before validation")
-    batch.status = "QUEUED"
-    batch.worker_error_message = None
-    db.commit()
-    try:
-        command_id = trigger_journal_import_job(job_id, mode="validate")
-    except Exception as exc:
-        batch.status = "FAILED"
-        batch.worker_error_message = str(exc)[:2000]
-        batch.worker_completed_at = datetime.now(timezone.utc)
-        db.commit()
-        raise HTTPException(503, "Journal validation worker could not be triggered") from exc
-    batch.worker_command_id = command_id
+    changed = (
+        db.query(ImportBatch)
+        .filter(ImportBatch.id == batch.id, ImportBatch.status == "UPLOADED")
+        .update({
+            ImportBatch.status: "QUEUED",
+            ImportBatch.worker_error_message: None,
+            ImportBatch.worker_started_at: None,
+            ImportBatch.worker_completed_at: None,
+        }, synchronize_session=False)
+    )
     db.commit()
     db.refresh(batch)
+    if not changed and batch.status not in {"QUEUED", "PROCESSING", "VALIDATED"}:
+        raise HTTPException(409, "Journal import status changed; refresh before retrying")
     return _serialize(batch)
 
 
@@ -462,6 +465,11 @@ def confirm_import(
     user: User = Depends(journal_import_user),
 ):
     batch = _get_batch(db, job_id, user)
+    requested_mode = "POST" if data.post_valid else "DRAFT"
+    if batch.status in {"IMPORT_QUEUED", "IMPORTING", "IMPORTED", "IMPORTED_WITH_ERRORS"}:
+        if batch.import_mode != requested_mode:
+            raise HTTPException(409, "This import was already confirmed with a different posting mode")
+        return _serialize(batch)
     if batch.status != "VALIDATED":
         raise HTTPException(409, "Validate and review this import before confirming")
     valid_rows = db.query(ImportRow).filter(
@@ -470,19 +478,25 @@ def confirm_import(
     ).count()
     if not valid_rows:
         raise HTTPException(409, "There are no valid journals to import")
-    batch.status = "IMPORT_QUEUED"
-    batch.worker_error_message = None
-    db.commit()
-    try:
-        command_id = trigger_journal_import_job(job_id, mode="import", post_valid=data.post_valid)
-    except Exception as exc:
-        batch.status = "VALIDATED"
-        batch.worker_error_message = str(exc)[:2000]
-        db.commit()
-        raise HTTPException(503, "Journal import worker could not be triggered") from exc
-    batch.worker_command_id = command_id
+    # Persist the posting choice before dispatch; a worker restart must not
+    # accidentally post a Draft import (or vice versa).
+    changed = (
+        db.query(ImportBatch)
+        .filter(ImportBatch.id == batch.id, ImportBatch.status == "VALIDATED")
+        .update({
+            ImportBatch.status: "IMPORT_QUEUED",
+            ImportBatch.import_mode: requested_mode,
+            ImportBatch.worker_error_message: None,
+            ImportBatch.worker_started_at: None,
+            ImportBatch.worker_completed_at: None,
+        }, synchronize_session=False)
+    )
     db.commit()
     db.refresh(batch)
+    if not changed:
+        if batch.status in {"IMPORT_QUEUED", "IMPORTING", "IMPORTED", "IMPORTED_WITH_ERRORS"} and batch.import_mode == requested_mode:
+            return _serialize(batch)
+        raise HTTPException(409, "Journal import status changed; refresh before retrying")
     return _serialize(batch)
 
 
