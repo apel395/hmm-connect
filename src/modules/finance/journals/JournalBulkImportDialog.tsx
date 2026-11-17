@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 import Button from "@/components/ui/Button";
@@ -59,6 +59,7 @@ export default function JournalBulkImportDialog({
   onOpenChange,
   onImported,
 }: Props) {
+  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [batchName, setBatchName] = useState("Bulk Journal Import");
   const [jobId, setJobId] = useState<number | undefined>(savedJobId);
@@ -137,7 +138,8 @@ export default function JournalBulkImportDialog({
         await job.refetch();
         return;
       }
-      await startJournalImport(id);
+      const queued = await startJournalImport(id);
+      queryClient.setQueryData(["journal-import", id], queued);
       if (jobId) await job.refetch();
       toast.success("File uploaded. Validation is queued on EC2.");
     } catch (error: any) {
