@@ -62,6 +62,7 @@ export default function JournalBulkImportDialog({
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [batchName, setBatchName] = useState("Bulk Journal Import");
+  const [resumeId, setResumeId] = useState("");
   const [jobId, setJobId] = useState<number | undefined>(savedJobId);
 
   const rememberJobId = (id: number | undefined) => {
@@ -69,7 +70,7 @@ export default function JournalBulkImportDialog({
     if (id) window.sessionStorage.setItem(activeJobKey(), String(id));
     else window.sessionStorage.removeItem(activeJobKey());
   };
-  const [action, setAction] = useState<"upload" | "draft" | "post" | "correction" | null>(null);
+  const [action, setAction] = useState<"upload" | "resume" | "draft" | "post" | "correction" | null>(null);
 
   const job = useQuery({
     queryKey: ["journal-import", jobId],
@@ -112,6 +113,7 @@ export default function JournalBulkImportDialog({
   const reset = () => {
     setFile(null);
     setBatchName("Bulk Journal Import");
+    setResumeId("");
     rememberJobId(undefined);
     setAction(null);
   };
@@ -120,6 +122,22 @@ export default function JournalBulkImportDialog({
     if (busy) return;
     // Closing must not discard a created batch. Reopening resumes its job ID.
     onOpenChange(false);
+  };
+
+  const resumeExisting = async () => {
+    const id = Number(resumeId);
+    if (!Number.isSafeInteger(id) || id <= 0) return toast.error("Enter a valid batch ID.");
+    try {
+      setAction("resume");
+      const existing = await getJournalImport(id); // verifies current user's ownership
+      queryClient.setQueryData(["journal-import", id], existing);
+      rememberJobId(id);
+      toast.success(`Resumed journal import batch #${id}.`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Cannot access this batch.");
+    } finally {
+      setAction(null);
+    }
   };
 
   const start = async () => {
@@ -197,12 +215,30 @@ export default function JournalBulkImportDialog({
 
         <DialogBody className="space-y-5">
           {!jobId ? (
-            <UploadStep
-              file={file}
-              batchName={batchName}
-              setFile={setFile}
-              setBatchName={setBatchName}
-            />
+            <>
+              <UploadStep
+                file={file}
+                batchName={batchName}
+                setFile={setFile}
+                setBatchName={setBatchName}
+              />
+              <div className="flex flex-wrap items-end gap-3 rounded-lg border p-3">
+                <label className="text-sm font-medium">
+                  Resume Existing Batch
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 block h-10 w-48 rounded border px-3"
+                    placeholder="e.g. 153"
+                    value={resumeId}
+                    onChange={(event) => setResumeId(event.target.value)}
+                  />
+                </label>
+                <Button variant="outline" loading={action === "resume"} onClick={resumeExisting}>
+                  Resume Batch
+                </Button>
+              </div>
+            </>
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
