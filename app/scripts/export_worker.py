@@ -251,8 +251,33 @@ def next_pending_job_id() -> str | None:
 
 
 def poll(interval: float) -> None:
-    print(f"HMM export worker polling every {interval:g}s", flush=True)
+    # Reuse the installed EC2 worker service for journal imports; no SSM
+    # dispatch, additional Lambda, queue broker or new systemd unit required.
+    # Import jobs are polled less frequently than exports to limit DB traffic.
+    from app.scripts.journal_import_worker import next_queued_job, run_job as run_journal_job
+
+    journal_poll_seconds = 10.0
+    next_journal_check = 0.0
+    print(
+        f"HMM export worker polling every {interval:g}s; "
+        f"journal import queue every {journal_poll_seconds:g}s",
+        flush=True,
+    )
     while True:
+        if time.monotonic() >= next_journal_check:
+            next_journal_check = time.monotonic() + journal_poll_seconds
+            try:
+                queued = next_queued_job()
+                if queued:
+                    import_id, mode = queued
+                    print(f"Claiming journal import {import_id} ({mode})", flush=True)
+                    if run_journal_job(import_id, mode=mode):
+                        print(f"Journal import {import_id} ({mode}) completed", flush=True)
+                    next_journal_check = 0.0
+                    continue
+            except Exception as exc:
+                print(f"Journal import queue check/job failed: {exc}", flush=True)
+
         job_id = next_pending_job_id()
         if not job_id:
             time.sleep(interval)
