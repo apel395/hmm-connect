@@ -10,36 +10,6 @@ def _bucket() -> str:
     return bucket
 
 
-def trigger_journal_import_job(
-    job_id: int,
-    *,
-    mode: str = "validate",
-    post_valid: bool = False,
-) -> str:
-    if not settings.EXPORT_EC2_INSTANCE_ID:
-        raise RuntimeError("EXPORT_EC2_INSTANCE_ID is not configured")
-    if mode not in {"validate", "import"}:
-        raise ValueError("Unsupported journal import worker mode")
-
-    command = (
-        f"cd {settings.EXPORT_WORKDIR} && "
-        f"{settings.EXPORT_PYTHON_BIN} -m app.scripts.journal_import_worker "
-        f"--job-id {int(job_id)} --mode {mode}"
-    )
-    if post_valid:
-        command += " --post-valid"
-
-    ssm = boto3.client("ssm", region_name=settings.AWS_REGION or None)
-    response = ssm.send_command(
-        InstanceIds=[settings.EXPORT_EC2_INSTANCE_ID],
-        DocumentName="AWS-RunShellScript",
-        Parameters={"commands": [command]},
-        Comment=f"HMM Connect journal import {job_id} ({mode})",
-        TimeoutSeconds=settings.EXPORT_COMMAND_TIMEOUT_SECONDS,
-    )
-    return response["Command"]["CommandId"]
-
-
 def journal_import_object_key(user_id: int, job_id: int, filename: str) -> str:
     safe_name = filename.replace("\\", "/").split("/")[-1].strip() or "journal-import.xlsx"
     safe_name = "".join(

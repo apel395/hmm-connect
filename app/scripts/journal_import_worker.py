@@ -623,36 +623,78 @@ def import_valid_groups(db: Session, batch: ImportBatch, user: User, post_valid:
     db.commit()
 
 
-def run_job(job_id: int, mode: str = "validate", post_valid: bool = False) -> None:
+def next_queued_job() -> tuple[int, str] | None:
+    """Find one pending journal batch; run_job performs the atomic claim."""
+    with SessionLocal() as db:
+        row = (
+            db.query(ImportBatch.id, ImportBatch.status)
+            .filter(
+                ImportBatch.source == "JOURNAL_BULK_IMPORT",
+                ImportBatch.status.in_(("QUEUED", "IMPORT_QUEUED")),
+            )
+            .order_by(ImportBatch.created_at.asc(), ImportBatch.id.asc())
+            .first()
+        )
+        if not row:
+            return None
+        return row.id, ("validate" if row.status == "QUEUED" else "import")
+
+
+def run_job(job_id: int, mode: str = "validate", post_valid: bool = False) -> bool:
+    """Process a job only if this invocation wins the compare-and-set claim.
+
+    During rollout the legacy S3->SSM trigger may race the existing EC2 poller.
+    The status transition is committed before any parsing or ledger writes so
+    only one caller can own the batch. No automatic requeue of IMPORTING jobs:
+    an interrupted import may contain committed journal documents.
+    """
+    if mode not in {"validate", "import"}:
+        raise ValueError("Unsupported journal import mode")
     db = SessionLocal()
+    claimed = False
     try:
+        expected = "QUEUED" if mode == "validate" else "IMPORT_QUEUED"
+        running = "PROCESSING" if mode == "validate" else "IMPORTING"
+        claimed = bool(
+            db.query(ImportBatch)
+            .filter(
+                ImportBatch.id == job_id,
+                ImportBatch.source == "JOURNAL_BULK_IMPORT",
+                ImportBatch.status == expected,
+            )
+            .update({
+                ImportBatch.status: running,
+                ImportBatch.worker_started_at: datetime.now(timezone.utc),
+                ImportBatch.worker_completed_at: None,
+                ImportBatch.worker_error_message: None,
+            }, synchronize_session=False)
+        )
+        db.commit()
+        if not claimed:
+            return False
+
         batch = db.get(ImportBatch, job_id)
-        if not batch or batch.source != "JOURNAL_BULK_IMPORT":
-            return
         user = db.get(User, batch.created_by_id)
         if not user:
             raise RuntimeError("Import creator no longer exists")
 
-        expected = {"validate": {"QUEUED", "PROCESSING"}, "import": {"IMPORT_QUEUED", "IMPORTING"}}
-        if batch.status not in expected[mode]:
-            return
-        batch.status = "PROCESSING" if mode == "validate" else "IMPORTING"
-        batch.worker_started_at = datetime.now(timezone.utc)
-        batch.worker_error_message = None
-        db.commit()
-
         if mode == "validate":
             validate_job(db, batch, user)
         else:
-            import_valid_groups(db, batch, user, post_valid)
+            if batch.import_mode not in {"DRAFT", "POST"}:
+                raise RuntimeError("Import posting mode was not confirmed")
+            # The committed batch choice is authoritative, never CLI arguments.
+            import_valid_groups(db, batch, user, batch.import_mode == "POST")
+        return True
     except Exception as exc:
         db.rollback()
-        failed_batch = db.get(ImportBatch, job_id)
-        if failed_batch:
-            failed_batch.status = "FAILED"
-            failed_batch.worker_error_message = str(getattr(exc, "detail", exc))[:4000]
-            failed_batch.worker_completed_at = datetime.now(timezone.utc)
-            db.commit()
+        if claimed:
+            failed_batch = db.get(ImportBatch, job_id)
+            if failed_batch:
+                failed_batch.status = "FAILED"
+                failed_batch.worker_error_message = str(getattr(exc, "detail", exc))[:4000]
+                failed_batch.worker_completed_at = datetime.now(timezone.utc)
+                db.commit()
         raise
     finally:
         db.close()

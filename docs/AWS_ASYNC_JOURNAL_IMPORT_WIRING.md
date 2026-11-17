@@ -1,62 +1,96 @@
-# Async Bulk Journal Import
+# Async Bulk Journal Import — PostgreSQL queue on existing EC2 worker
 
-Bulk Journal Import keeps spreadsheet parsing off Lambda.
+Journal Bulk Import uses the same EC2 service that generates asynchronous XLS
+exports. The API no longer sends AWS SSM Run Command and does not need network
+access to the SSM public endpoint or a paid SSM Interface VPC Endpoint.
 
-## Runtime flow
+## Current runtime flow
 
-1. Journal page creates a JOURNAL_BULK_IMPORT batch through Lambda.
-2. Lambda returns an S3 presigned PUT URL.
-3. Browser uploads XLSX/CSV directly to private S3.
-4. Browser marks upload complete.
-5. Lambda calls SSM AWS-RunShellScript on the existing EC2 worker.
-6. EC2 runs: `.venv/bin/python -m app.scripts.journal_import_worker --job-id <id>`.
-7. EC2 downloads the file from S3 and uses openpyxl for XLSX parsing.
-8. Worker validates the entire batch before creating journals.
-9. Each document_number becomes one Journal Entry; repeated document_number rows become its lines.
-10. DRAFT journals remain drafts. POSTED rows use the same journal posting path as the Journal page, including General Ledger creation.
-11. ImportBatch and ImportRow retain the import audit trail.
+1. Frontend creates a JOURNAL_BULK_IMPORT batch and immediately saves its ID in
+   per-user session storage. Reopening/refreshing the form resumes that batch.
+2. Lambda returns a private S3 presigned PUT URL. The browser uploads XLSX/CSV.
+3. Frontend marks the upload complete; the API verifies the object in S3.
+4. POST `/journal-imports/{id}/start` atomically records QUEUED in PostgreSQL
+   and returns HTTP 202. It **does not call SSM**.
+5. The existing `hmm-connect-export-worker.service` polls journal imports every
+   10 seconds (exports remain polled at their configured interval).
+6. The worker atomically claims QUEUED -> PROCESSING, downloads the S3 object
+   and validates it. It records VALIDATED, error rows, preview and audit data.
+7. The user reviews the preview and confirms "Import Valid as Draft" or
+   "Import & Post Valid". POST `/journal-imports/{id}/confirm` durably stores
+   import_mode=DRAFT or POST and atomically records IMPORT_QUEUED.
+8. Worker claims IMPORT_QUEUED -> IMPORTING, imports valid documents separately,
+   then records IMPORTED or IMPORTED_WITH_ERRORS.
+9. Each document_number is one journal; debits/credits must balance per document.
+   Posting uses the normal journal/GL path, not an alternative accounting path.
 
-## Spreadsheet format
+Only one runner can claim a batch, even during transition while the legacy
+S3-triggered Lambda/SSM path still exists. The claim is a conditional database
+UPDATE; a losing worker exits without touching rows or GL.
 
-Required: document_number, posting_date, account_code, debit, credit.
+## Limits and safety
 
-Recommended: description, reference_type, reference_id, business_unit_code, department_code, location_code, line_description, supplier_code, external_reference, status.
+- Maximum 5,000 spreadsheet rows and 500 journal documents per batch.
+- Start/confirm are idempotent; retries must not create new jobs.
+- Confirmed DRAFT/POST mode is stored before the worker starts and cannot be
+  silently switched after a confirmation.
+- Worker failure marks FAILED. Do **not** automatically requeue a failed or
+  interrupted IMPORTING batch: earlier documents may already be committed.
+  Inspect ImportRow statuses, created JournalEntry records and audit evidence
+  before any manual retry. Do not blindly upload/confirm the same file.
+- Partial validation is separate from any journal, payment or GL posting.
+- No new tables, schema migration, queues, services, instances or paid endpoints
+  are needed. S3 storage and existing EC2/PostgreSQL resource usage remain.
 
-Rules:
-- Repeat document_number for every line of one journal.
-- Every journal must balance.
-- Every account must be an active posting COA.
-- Business unit and location must resolve to active master data.
-- Location access is enforced for the importing user.
-- Department and supplier are optional.
-- Status is DRAFT or POSTED; default is DRAFT.
-- Existing journal document numbers are rejected.
-- The worker validates the full batch before writing journals.
-- Maximum 5,000 spreadsheet rows and 500 journal documents per import.
+## Safe production rollout (order matters)
 
-## AWS permissions
+1. Merge backend PR after passing CI. Do **not** disable the old S3 event yet.
+2. On the existing EC2 checkout, update to the merged `backend` revision,
+   ensure `requirements-worker.txt` is installed and restart only the worker:
+   ```bash
+   cd /opt/hmm-connect
+   git fetch origin backend
+   git checkout backend
+   git pull --ff-only origin backend
+   .venv/bin/python -m compileall -q app/scripts/export_worker.py app/scripts/journal_import_worker.py
+   sudo systemctl restart hmm-connect-export-worker.service
+   sudo systemctl status hmm-connect-export-worker.service --no-pager
+   sudo journalctl -u hmm-connect-export-worker.service -n 30 --no-pager
+   ```
+3. Verify the worker log says it polls the journal import queue.
+4. Verify the deployed API is the merged backend revision. Backend deployment to
+   Lambda is handled by the existing backend GitHub Actions workflow.
+5. On a **small fresh batch**, verify DRAFT -> UPLOADED -> QUEUED -> PROCESSING
+   -> VALIDATED. Then confirm Draft and verify IMPORT_QUEUED -> IMPORTING
+   -> IMPORTED, with exactly one journal per document and no GL posting.
+6. Only after the new polling path works, disable/remove **only** the S3
+   notification that invokes `hmm-connect-journal-import-trigger` on prefix
+   `journal-imports/`. Inspect the bucket notification configuration first.
+   Do not delete unrelated S3 event notifications or the shared S3 bucket.
+7. Keep the Lambda trigger until the rollout is verified; the conditional claim
+   prevents duplicate processing while both are present.
 
-Existing export worker settings are reused: EXPORT_EC2_INSTANCE_ID, EXPORT_WORKDIR, EXPORT_PYTHON_BIN, EXPORT_S3_BUCKET or S3_BUCKET, and AWS_REGION.
+## Monitoring and troubleshooting
 
-Lambda needs ssm:SendCommand and s3:PutObject on journal-imports/*.
-EC2 needs s3:GetObject on journal-imports/*.
+```bash
+sudo journalctl -u hmm-connect-export-worker.service -f
+```
 
-Policy templates:
-- infra/aws/lambda-export-policy.json
-- infra/aws/ec2-export-policy.json
+A missing `worker_command_id` is **normal** for the database queue; SSM is not
+used for new jobs. The durable evidence is `import_batches.status`,
+`worker_started_at`, `worker_completed_at`, and linked `import_rows`.
 
-## S3 browser upload
+Batch #153 (2026-11-17) was validated successfully before migration and was
+not imported at the time of investigation. Existing VALIDATED batches remain
+reviewable/confirmable using the new worker after deployment.
 
-Because the browser uploads directly to S3, configure bucket CORS for the production frontend origin and allow PUT with the Content-Type header. Keep Block Public Access enabled.
+## IAM and hosting
 
-## Lambda dependency rule
+Existing EC2 role needs `s3:GetObject` on `journal-imports/*` and normal
+PostgreSQL access. The API still needs S3 permissions to sign URLs/head objects.
+It no longer needs `ssm:SendCommand` for **journal imports**; other workflows
+such as exports might still require SSM until separately migrated. Do not
+remove their permissions without checking those consumers.
 
-openpyxl remains worker-only. The Lambda deployment workflow removes app/scripts/journal_import_worker.py and rejects spreadsheet-parser dependencies/imports in the Lambda build.
-
-## EC2
-
-The existing worker environment installs requirements-worker.txt, which contains openpyxl.
-
-Production invocation is performed by Lambda through SSM:
-
-`.venv/bin/python -m app.scripts.journal_import_worker --job-id <id>`
+EC2 service installation/update follows `scripts/setup_export_worker.sh` and
+`requirements-worker.txt`. The API Lambda and worker use the same DB.
