@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 import Button from "@/components/ui/Button";
@@ -12,12 +12,14 @@ import Dialog, {
 } from "@/components/ui/Dialog";
 import {
   confirmJournalImport,
+  createJournalImport,
   downloadJournalImportCorrections,
   downloadJournalImportTemplate,
   getJournalImport,
   getJournalImportErrors,
   getJournalImportPreview,
-  uploadJournalImport,
+  startJournalImport,
+  uploadJournalImportFile,
 } from "./api";
 
 type Props = {
@@ -28,6 +30,24 @@ type Props = {
 
 const POLL_TERMINAL = new Set(["VALIDATED", "IMPORTED", "IMPORTED_WITH_ERRORS", "FAILED"]);
 const IMPORT_DONE = new Set(["IMPORTED", "IMPORTED_WITH_ERRORS"]);
+const WORKING = new Set(["QUEUED", "PROCESSING", "IMPORT_QUEUED", "IMPORTING"]);
+
+// Session-scoped, per-user recovery; the API still verifies batch ownership.
+const activeJobKey = () => {
+  if (typeof window === "undefined") return "hmm-journal-import-job";
+  try {
+    const user = JSON.parse(window.localStorage.getItem("user") || "{}");
+    return `hmm-journal-import-job-${user.id ?? user.user_id ?? user.username ?? "unknown"}`;
+  } catch {
+    return "hmm-journal-import-job-unknown";
+  }
+};
+
+const savedJobId = (): number | undefined => {
+  if (typeof window === "undefined") return undefined;
+  const value = Number(window.sessionStorage.getItem(activeJobKey()));
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+};
 
 const currency = new Intl.NumberFormat("id-ID", {
   minimumFractionDigits: 0,
@@ -39,10 +59,18 @@ export default function JournalBulkImportDialog({
   onOpenChange,
   onImported,
 }: Props) {
+  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [batchName, setBatchName] = useState("Bulk Journal Import");
-  const [jobId, setJobId] = useState<number>();
-  const [action, setAction] = useState<"upload" | "draft" | "post" | "correction" | null>(null);
+  const [resumeId, setResumeId] = useState("");
+  const [jobId, setJobId] = useState<number | undefined>(savedJobId);
+
+  const rememberJobId = (id: number | undefined) => {
+    setJobId(id);
+    if (id) window.sessionStorage.setItem(activeJobKey(), String(id));
+    else window.sessionStorage.removeItem(activeJobKey());
+  };
+  const [action, setAction] = useState<"upload" | "resume" | "draft" | "post" | "correction" | null>(null);
 
   const job = useQuery({
     queryKey: ["journal-import", jobId],
@@ -80,31 +108,62 @@ export default function JournalBulkImportDialog({
     [preview.data],
   );
 
-  const busy = Boolean(action) || Boolean(status && !POLL_TERMINAL.has(status));
+  const busy = Boolean(action) || Boolean(status && WORKING.has(status));
 
   const reset = () => {
     setFile(null);
     setBatchName("Bulk Journal Import");
-    setJobId(undefined);
+    setResumeId("");
+    rememberJobId(undefined);
     setAction(null);
   };
 
   const close = () => {
     if (busy) return;
-    reset();
+    // Closing must not discard a created batch. Reopening resumes its job ID.
     onOpenChange(false);
   };
 
+  const resumeExisting = async () => {
+    const id = Number(resumeId);
+    if (!Number.isSafeInteger(id) || id <= 0) return toast.error("Enter a valid batch ID.");
+    try {
+      setAction("resume");
+      const existing = await getJournalImport(id); // verifies current user's ownership
+      queryClient.setQueryData(["journal-import", id], existing);
+      rememberJobId(id);
+      toast.success(`Resumed journal import batch #${id}.`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || "Cannot access this batch.");
+    } finally {
+      setAction(null);
+    }
+  };
+
   const start = async () => {
-    if (!file) return toast.error("Select an XLSX or CSV file.");
-    if (!batchName.trim()) return toast.error("Enter an import name.");
+    if (!jobId && !batchName.trim()) return toast.error("Enter an import name.");
+    if (!file && (!jobId || status === "DRAFT")) return toast.error("Select an XLSX or CSV file.");
     try {
       setAction("upload");
-      const result = await uploadJournalImport(file, batchName.trim());
-      setJobId(result.id);
-      toast.success("File uploaded. Validation is running.");
+      const id = jobId ?? (await createJournalImport(batchName.trim())).id;
+      if (!jobId) rememberJobId(id); // Persist before any S3 request or /start.
+      const currentStatus = jobId ? (await getJournalImport(id)).status : "DRAFT";
+      if (currentStatus === "DRAFT") {
+        if (!file) throw new Error("Re-select the file to resume this batch.");
+        await uploadJournalImportFile(id, file);
+      } else if (currentStatus !== "UPLOADED") {
+        toast.info("This batch has already advanced. Its current status is being loaded.");
+        await job.refetch();
+        return;
+      }
+      const queued = await startJournalImport(id);
+      queryClient.setQueryData(["journal-import", id], queued);
+      if (jobId) await job.refetch();
+      toast.success("File uploaded. Validation is queued on EC2.");
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || error?.message || "Journal validation could not start.");
+      // The existing ID survives a timeout; never create a second batch on retry.
+      if (jobId) await job.refetch().catch(() => undefined);
+      toast.error(error?.response?.data?.detail || error?.message || "Import request failed. Reopen this batch or retry without creating a new one.");
     } finally {
       setAction(null);
     }
@@ -125,6 +184,14 @@ export default function JournalBulkImportDialog({
     } finally {
       setAction(null);
     }
+  };
+
+  const startNew = () => {
+    if (busy) return;
+    if (jobId && ["VALIDATED", "FAILED", "IMPORTED_WITH_ERRORS"].includes(status || "") && !window.confirm(
+      `Start a different import? Batch #${jobId} remains in the database. A failed or partially imported batch may already contain committed journals; review it before uploading the same data again.`,
+    )) return;
+    reset();
   };
 
   const downloadCorrections = async () => {
@@ -148,14 +215,44 @@ export default function JournalBulkImportDialog({
 
         <DialogBody className="space-y-5">
           {!jobId ? (
-            <UploadStep
-              file={file}
-              batchName={batchName}
-              setFile={setFile}
-              setBatchName={setBatchName}
-            />
+            <>
+              <UploadStep
+                file={file}
+                batchName={batchName}
+                setFile={setFile}
+                setBatchName={setBatchName}
+              />
+              <div className="flex flex-wrap items-end gap-3 rounded-lg border p-3">
+                <label className="text-sm font-medium">
+                  Resume Existing Batch
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 block h-10 w-48 rounded border px-3"
+                    placeholder="e.g. 153"
+                    value={resumeId}
+                    onChange={(event) => setResumeId(event.target.value)}
+                  />
+                </label>
+                <Button variant="outline" loading={action === "resume"} onClick={resumeExisting}>
+                  Resume Batch
+                </Button>
+              </div>
+            </>
           ) : (
             <>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
+                <span>Saved import batch <strong>#{jobId}</strong> · This batch can be resumed after closing or refreshing.</span>
+                {!busy && <Button variant="outline" onClick={startNew}>Start New Import</Button>}
+              </div>
+              {job.isError && <Info>Could not load batch #{jobId}. Check your connection or start a new import.</Info>}
+              {status === "DRAFT" && (
+                <>
+                  <Info>This batch has not finished uploading. Select the file again to retry using the same batch ID.</Info>
+                  <UploadStep file={file} batchName={batchName} setFile={setFile} setBatchName={setBatchName} />
+                </>
+              )}
+              {status === "UPLOADED" && <Info>Upload is complete. Start validation using this saved batch.</Info>}
               <div className="grid gap-3 sm:grid-cols-5">
                 <Metric label="Status" value={statusLabel(status)} />
                 <Metric label="Journals" value={job.data?.total_documents ?? 0} />
@@ -253,6 +350,13 @@ export default function JournalBulkImportDialog({
                 <Upload size={16} /> Upload & Validate
               </Button>
             </>
+          ) : status === "DRAFT" || status === "UPLOADED" ? (
+            <>
+              <Button variant="outline" onClick={close} disabled={busy}>Close</Button>
+              <Button onClick={start} loading={action === "upload"} disabled={status === "DRAFT" && !file}>
+                <Upload size={16} /> {status === "DRAFT" ? "Retry Upload & Validate" : "Start Validation"}
+              </Button>
+            </>
           ) : status === "VALIDATED" ? (
             <>
               <Button variant="outline" onClick={close} disabled={busy}>Close</Button>
@@ -336,6 +440,8 @@ function Metric({ label, value, tone }: { label: string; value: string | number;
 
 function statusLabel(status?: string) {
   const labels: Record<string, string> = {
+    DRAFT: "Upload incomplete",
+    UPLOADED: "Uploaded",
     QUEUED: "Queued",
     PROCESSING: "Validating",
     VALIDATED: "Ready to import",
