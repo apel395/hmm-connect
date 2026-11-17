@@ -188,8 +188,8 @@ export default function JournalBulkImportDialog({
 
   const startNew = () => {
     if (busy) return;
-    if (jobId && status === "VALIDATED" && !window.confirm(
-      `Start a different import? Batch #${jobId} will remain VALIDATED in the database.`,
+    if (jobId && ["VALIDATED", "FAILED", "IMPORTED_WITH_ERRORS"].includes(status || "") && !window.confirm(
+      `Start a different import? Batch #${jobId} remains in the database. A failed or partially imported batch may already contain committed journals; review it before uploading the same data again.`,
     )) return;
     reset();
   };
