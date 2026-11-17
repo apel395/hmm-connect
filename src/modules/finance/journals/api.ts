@@ -232,20 +232,20 @@ export const downloadJournalImportCorrections = async (id: number) => {
   downloadBase64File(response.data);
 };
 
-export const uploadJournalImport = async (file: File, batchName: string) => {
-  const job = await createJournalImport(batchName);
+// The dialog creates/persists the job ID BEFORE uploading. A timeout during
+// S3 PUT, completion or validation can then resume the same batch safely.
+export const uploadJournalImportFile = async (jobId: number, file: File) => {
   const contentType = file.type || (file.name.toLowerCase().endsWith(".csv")
     ? "text/csv"
     : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  const upload = await getJournalImportUploadUrl(job.id, file.name, contentType);
+  const upload = await getJournalImportUploadUrl(jobId, file.name, contentType);
   const response = await fetch(upload.upload_url, {
     method: "PUT",
     headers: { "Content-Type": upload.content_type },
     body: file,
   });
   if (!response.ok) throw new Error(`S3 upload failed: HTTP ${response.status}`);
-  await completeJournalImportUpload(job.id);
-  return startJournalImport(job.id);
+  return completeJournalImportUpload(jobId);
 };
 
 export type JournalScope = {
