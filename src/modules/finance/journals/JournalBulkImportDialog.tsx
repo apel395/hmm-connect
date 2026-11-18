@@ -321,6 +321,9 @@ export default function JournalBulkImportDialog({
                                   {row.errors.slice(0, 2).map((message) => <div key={message} className="mt-1 max-w-sm text-xs">{message}</div>)}
                                 </div>
                               )}
+                              {(row.warnings ?? []).map((message) => (
+                                <div key={message} className="mt-1 max-w-sm text-xs text-amber-700">{message}</div>
+                              ))}
                             </td>
                           </tr>
                         ))}
