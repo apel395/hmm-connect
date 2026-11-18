@@ -224,34 +224,31 @@ def normalize(raw: dict) -> dict:
     }
 
 
+def resolve_code_or_name(db: Session, model, value):
+    """Accept a real master code or an unambiguous exact name, never a fuzzy guess."""
+    label = text(value)
+    if not label:
+        return None
+    exact_code = db.query(model).filter(func.lower(func.trim(model.code)) == label.lower()).first()
+    if exact_code:
+        return exact_code
+    name_matches = db.query(model).filter(func.lower(func.trim(model.name)) == label.lower()).limit(2).all()
+    return name_matches[0] if len(name_matches) == 1 else None
+
+
 def resolve_location(db: Session, data: dict) -> Location | None:
-    code = text(data.get("location_code")).upper()
-    name = text(data.get("location"))
-    if code:
-        return db.query(Location).filter(func.upper(Location.code) == code).first()
-    if name:
-        return db.query(Location).filter(func.lower(Location.name) == name.lower()).first()
-    return None
+    return resolve_code_or_name(db, Location, data.get("location_code") or data.get("location"))
 
 
 def resolve_business_unit(db: Session, data: dict, location: Location | None) -> BusinessUnit | None:
-    code = text(data.get("business_unit_code")).upper()
-    name = text(data.get("business_unit"))
-    if code:
-        return db.query(BusinessUnit).filter(func.upper(BusinessUnit.code) == code).first()
-    if name:
-        return db.query(BusinessUnit).filter(func.lower(BusinessUnit.name) == name.lower()).first()
+    supplied = data.get("business_unit_code") or data.get("business_unit")
+    if text(supplied):
+        return resolve_code_or_name(db, BusinessUnit, supplied)
     return location.business_unit if location else None
 
 
 def resolve_department(db: Session, data: dict) -> Department | None:
-    code = text(data.get("department_code")).upper()
-    name = text(data.get("department"))
-    if code:
-        return db.query(Department).filter(func.upper(Department.code) == code).first()
-    if name:
-        return db.query(Department).filter(func.lower(Department.name) == name.lower()).first()
-    return None
+    return resolve_code_or_name(db, Department, data.get("department_code") or data.get("department"))
 
 
 def resolve_line_department(db: Session, data: dict) -> Department | None:
@@ -443,6 +440,56 @@ def build_groups(db: Session, batch: ImportBatch, source_rows: list[tuple[int, s
     return groups
 
 
+def recover_legacy_dimensions(db: Session, rows: list[ImportRow]) -> None:
+    """Recover older templates with Location and line Department values reversed.
+
+    Apply only when both supplied fields fail their intended lookup, and both
+    reverse lookups resolve to active masters in the explicitly selected BU.
+    Preserve raw Excel values and record the mapping as a validation warning.
+    """
+    first = rows[0].normalized_data_json or {}
+    original_location = text(first.get("location_code"))
+    original_department = text(first.get("line_department_code"))
+    if not original_location or not original_department:
+        return
+    if resolve_location(db, first) or resolve_line_department(db, first):
+        return
+    business_unit = resolve_business_unit(db, first, None)
+    location = resolve_code_or_name(db, Location, original_department)
+    department = resolve_code_or_name(db, Department, original_location)
+    if not business_unit or not location or not department:
+        return
+    if not (business_unit.is_active and location.is_active and department.is_active):
+        return
+    if location.business_unit_id != business_unit.id:
+        return
+    if department.business_unit_id not in {None, business_unit.id}:
+        return
+    # Do not silently fix mixed or contradictory locations/departments.
+    for row in rows:
+        data = row.normalized_data_json or {}
+        if text(data.get("location_code")) != original_location:
+            return
+        if text(data.get("line_department_code")) not in {"", original_department}:
+            return
+
+    note = (
+        f"Legacy Excel columns corrected: Location {original_department} -> "
+        f"{location.name} ({location.code}); Department {original_location} -> "
+        f"{department.name} ({department.code}). Check before importing."
+    )
+    for row in rows:
+        data = dict(row.normalized_data_json or {})
+        data["location_code"] = location.code
+        data["location"] = location.name
+        data["business_unit_code"] = business_unit.code
+        if text(data.get("line_department_code")):
+            data["line_department_code"] = department.code
+        data["_dimension_mapping_note"] = note
+        # Reassign JSON; mutating an existing JSON dict is not change-tracked.
+        row.normalized_data_json = data
+
+
 def validate_job(db: Session, batch: ImportBatch, user: User) -> None:
     bucket = settings.EXPORT_S3_BUCKET or settings.S3_BUCKET
     if not bucket or not batch.stored_file_path:
@@ -478,6 +525,7 @@ def validate_job(db: Session, batch: ImportBatch, user: User) -> None:
     valid_documents = 0
     error_documents = 0
     for rows in groups.values():
+        recover_legacy_dimensions(db, rows)
         errors = validate_group(db, user, batch, rows)
         status = "ERROR" if errors else "VALID"
         if errors:
@@ -487,13 +535,14 @@ def validate_job(db: Session, batch: ImportBatch, user: User) -> None:
         for row in rows:
             row.status = status
             row.error_messages_json = errors
-            row.warning_messages_json = []
+            note = (row.normalized_data_json or {}).get("_dimension_mapping_note")
+            row.warning_messages_json = [note] if note else []
 
     batch.total_rows = len(source_rows)
     batch.total_documents = len(groups)
     batch.valid_rows = sum(row.status == "VALID" for rows in groups.values() for row in rows)
     batch.error_rows = sum(row.status == "ERROR" for rows in groups.values() for row in rows)
-    batch.warning_rows = 0
+    batch.warning_rows = sum(bool(row.warning_messages_json) for rows in groups.values() for row in rows)
     batch.success_count = valid_documents
     batch.failed_count = error_documents
     batch.status = "VALIDATED"
