@@ -188,3 +188,121 @@ def test_template_matches_form_columns_and_dropdown_positions(db):
         dropdowns = {v.attrib["sqref"]: v.find("x:formula1", ns).text for v in xml.findall("x:dataValidations/x:dataValidation", ns)}
         assert dropdowns == {"D2:D501": "BusinessUnitCodes", "E2:E501": "LocationCodes", "F2:F501": "DepartmentCodes", "G2:G501": "AccountCodes"}
         assert xml.find("x:autoFilter", ns).attrib["ref"] == "A1:J501"
+
+
+def test_legacy_catering_template_resolves_swapped_location_and_department(db):
+    """Old files may contain Operasional as location and PHM as department."""
+    from app.models.business_unit import BusinessUnit
+    from app.models.department import Department
+    from app.models.location import Location
+    from app.scripts.journal_import_worker import (
+        recover_legacy_dimensions, resolve_business_unit, resolve_line_department,
+        resolve_location,
+    )
+    catering = BusinessUnit(code="002", name="Project Catering", is_active=True)
+    db.add(catering)
+    db.flush()
+    location = Location(code="012", name="PHM", business_unit_id=catering.id, is_active=True)
+    department = Department(code="01", name="Operasional", business_unit_id=catering.id, is_active=True)
+    db.add_all([location, department])
+    db.flush()
+    batch = ImportBatch(id=901, batch_number="LEGACY-901", batch_name="Legacy",
+                        source="JOURNAL_BULK_IMPORT", import_type="JOURNAL_ENTRY",
+                        source_type="JOURNAL_BULK_IMPORT", status="PROCESSING")
+    db.add(batch)
+    db.flush()
+    groups = build_groups(db, batch, [
+        (2, "Journal Import", dict(
+            document_number="PAYROLL-PHM", posting_date="2026-10-31",
+            business_unit_code="Project Catering",
+            location_code="Operasional", line_department_code="PHM",
+            account_code="600-100-100", debit=100, credit=0,
+        )),
+        (3, "Journal Import", dict(
+            business_unit_code="", location_code="",
+            line_department_code="PHM",
+            account_code="100-100-100", debit=0, credit=100,
+        )),
+    ])
+    rows = next(iter(groups.values()))
+    db.flush()
+    assert resolve_location(db, rows[0].normalized_data_json) is None
+    assert resolve_line_department(db, rows[0].normalized_data_json) is None
+    assert resolve_business_unit(db, rows[0].normalized_data_json, None).id == catering.id
+
+    recover_legacy_dimensions(db, rows)
+    db.flush()
+    db.expire_all()
+    corrected = [db.get(type(row), row.id) for row in rows]
+    for row in corrected:
+        normalized = row.normalized_data_json
+        assert normalized["location_code"] == "012"
+        assert normalized["line_department_code"] == "01"
+        assert normalized["business_unit_code"] == "002"
+        assert "Legacy Excel columns corrected" in normalized["_dimension_mapping_note"]
+        assert row.raw_data_json.get("line_department_code") == "PHM"
+    assert corrected[0].raw_data_json["location_code"] == "Operasional"
+
+
+def test_legacy_dimension_recovery_never_crosses_business_units(db):
+    from app.models.business_unit import BusinessUnit
+    from app.models.department import Department
+    from app.models.location import Location
+    from app.scripts.journal_import_worker import recover_legacy_dimensions
+    catering = BusinessUnit(code="002", name="Project Catering", is_active=True)
+    hotel = BusinessUnit(code="001", name="Hotel", is_active=True)
+    db.add_all([catering, hotel])
+    db.flush()
+    db.add_all([
+        Location(code="012", name="PHM", business_unit_id=catering.id, is_active=True),
+        Department(code="01", name="Operasional", business_unit_id=hotel.id, is_active=True),
+    ])
+    db.flush()
+    batch = ImportBatch(id=902, batch_number="LEGACY-902", batch_name="Mismatch",
+                        source="JOURNAL_BULK_IMPORT", import_type="JOURNAL_ENTRY",
+                        source_type="JOURNAL_BULK_IMPORT", status="PROCESSING")
+    db.add(batch)
+    db.flush()
+    rows = next(iter(build_groups(db, batch, [(2, "Journal Import", {
+        "document_number": "MISMATCH", "posting_date": "2026-10-31",
+        "business_unit_code": "Project Catering", "location_code": "Operasional",
+        "line_department_code": "PHM", "account_code": "1", "debit": 10,
+    })]).values()))
+    recover_legacy_dimensions(db, rows)
+    assert rows[0].normalized_data_json["location_code"] == "Operasional"
+    assert rows[0].normalized_data_json["line_department_code"] == "PHM"
+    assert "_dimension_mapping_note" not in rows[0].normalized_data_json
+
+
+def test_valid_hotel_dimensions_by_exact_names_are_not_swapped(db):
+    from app.models.business_unit import BusinessUnit
+    from app.models.department import Department
+    from app.models.location import Location
+    from app.scripts.journal_import_worker import (
+        recover_legacy_dimensions, resolve_business_unit, resolve_line_department,
+        resolve_location,
+    )
+    hotel = BusinessUnit(code="001", name="Hotel", is_active=True)
+    db.add(hotel)
+    db.flush()
+    location = Location(code="009", name="Hotel", business_unit_id=hotel.id, is_active=True)
+    department = Department(code="001", name="Front Office", business_unit_id=hotel.id, is_active=True)
+    db.add_all([location, department])
+    db.flush()
+    batch = ImportBatch(id=903, batch_number="HOTEL-903", batch_name="Hotel",
+                        source="JOURNAL_BULK_IMPORT", import_type="JOURNAL_ENTRY",
+                        source_type="JOURNAL_BULK_IMPORT", status="PROCESSING")
+    db.add(batch)
+    db.flush()
+    rows = next(iter(build_groups(db, batch, [(2, "Journal Import", {
+        "document_number": "HOTEL-EXAMPLE", "posting_date": "2026-10-31",
+        "business_unit_code": "Hotel", "location_code": "Hotel",
+        "line_department_code": "Front Office", "account_code": "1", "debit": 10,
+    })]).values()))
+    assert resolve_business_unit(db, rows[0].normalized_data_json, None).id == hotel.id
+    assert resolve_location(db, rows[0].normalized_data_json).id == location.id
+    assert resolve_line_department(db, rows[0].normalized_data_json).id == department.id
+    recover_legacy_dimensions(db, rows)
+    assert rows[0].normalized_data_json["location_code"] == "Hotel"
+    assert rows[0].normalized_data_json["line_department_code"] == "Front Office"
+    assert "_dimension_mapping_note" not in rows[0].normalized_data_json
