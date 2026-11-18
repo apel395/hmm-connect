@@ -269,7 +269,7 @@ def test_legacy_dimension_recovery_never_crosses_business_units(db):
         "line_department_code": "PHM", "account_code": "1", "debit": 10,
     })]).values()))
     recover_legacy_dimensions(db, rows)
-    assert rows[0].normalized_data_json["location_code"] == "Operasional"
+    assert rows[0].normalized_data_json["location_code"] == "OPERASIONAL"
     assert rows[0].normalized_data_json["line_department_code"] == "PHM"
     assert "_dimension_mapping_note" not in rows[0].normalized_data_json
 
@@ -303,6 +303,6 @@ def test_valid_hotel_dimensions_by_exact_names_are_not_swapped(db):
     assert resolve_location(db, rows[0].normalized_data_json).id == location.id
     assert resolve_line_department(db, rows[0].normalized_data_json).id == department.id
     recover_legacy_dimensions(db, rows)
-    assert rows[0].normalized_data_json["location_code"] == "Hotel"
-    assert rows[0].normalized_data_json["line_department_code"] == "Front Office"
+    assert rows[0].normalized_data_json["location_code"] == "HOTEL"
+    assert rows[0].normalized_data_json["line_department_code"] == "FRONT OFFICE"
     assert "_dimension_mapping_note" not in rows[0].normalized_data_json
