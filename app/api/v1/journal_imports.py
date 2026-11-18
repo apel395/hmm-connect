@@ -518,6 +518,7 @@ def get_preview(
         debit = sum((_decimal((row.normalized_data_json or {}).get("debit")) for row in group_rows), Decimal("0"))
         credit = sum((_decimal((row.normalized_data_json or {}).get("credit")) for row in group_rows), Decimal("0"))
         errors = list(dict.fromkeys(message for row in group_rows for message in (row.error_messages_json or [])))
+        warnings = list(dict.fromkeys(message for row in group_rows for message in (row.warning_messages_json or [])))
         result.append({
             "journal_group": first.get("_group_label"),
             "document_number": first.get("document_number"),
@@ -530,6 +531,7 @@ def get_preview(
             "difference": debit - credit,
             "status": "ERROR" if errors else "VALID",
             "errors": errors,
+            "warnings": warnings,
         })
     return {"job_id": batch.id, "status": batch.status, "journals": result}
 
