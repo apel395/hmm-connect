@@ -19,3 +19,25 @@ Corrections preserve optional supplier/reference metadata found in older files.
 API changes deploy through backend. On EC2, update the export/import worker code
 with `git pull --ff-only origin backend` and restart
 `hmm-connect-export-worker`. No database migration is needed.
+
+
+## Business dimensions and legacy spreadsheets
+
+Project Catering (Business Unit 002): the Location is the catering site/project
+(e.g. PHM = 012, Zamped = 003), while the operational Department is
+Operasional = 01. Hotel (Business Unit 001): select the Hotel Location = 009
+(the physical premises may be in Pekanbaru), and select the appropriate hotel
+line Department (Front Office, House Keeping, etc.). Pekanbaru = 002 belongs
+to Project Catering, so it is not a substitute for Hotel Location.
+
+The code columns accept either the exact master code or an unambiguous, exact
+master name (case-insensitively); no fuzzy guesses are made. Some previously
+distributed spreadsheets have Location/line Department values reversed
+(e.g. Location=Operasional, line Department=PHM). On new validation, the worker
+corrects that legacy inversion **only** if both original lookups fail, the
+reversed values uniquely identify active masters, and their Business Unit
+associations match the explicitly selected Business Unit. The corrected
+dimensions and a warning appear in the preview. Raw spreadsheet values are
+preserved in the import audit records. Any other unknown or conflicting value
+remains a validation error. Existing validated batches are not automatically
+rerun; create a new batch to revalidate an old file.
