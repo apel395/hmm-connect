@@ -151,6 +151,7 @@ export type JournalImportPreviewRow = {
   difference: number;
   status: "VALID" | "ERROR";
   errors: string[];
+  warnings?: string[];
 };
 
 export type JournalImportErrorRow = {
