@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
+import useAuthStore from "@/store/auth";
+import ARImportStagingDialog from "./ARImportStagingDialog";
 
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -35,6 +37,8 @@ const bucketLabels: Record<AgingBucket, string> = {
 
 export default function ARReportingPage() {
   const location = useLocation();
+  const canManage = useAuthStore((store) => store.hasPermission("finance.manage"));
+  const [importOpen, setImportOpen] = useState(false);
   const section = location.pathname.endsWith("/detail")
     ? "detail"
     : location.pathname.endsWith("/aging")
@@ -68,6 +72,12 @@ export default function ARReportingPage() {
   return (
     <div className="space-y-5">
       <ARWorkspaceHeader />
+      {canManage && (
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>Stage AR Excel</Button>
+        </div>
+      )}
+      {canManage && <ARImportStagingDialog open={importOpen} onOpenChange={setImportOpen} />}
 
       <Card className="p-4">
         <form
