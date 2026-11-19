@@ -167,7 +167,7 @@ def parse_catering_workbook(content: bytes) -> list[dict]:
                 errors.append(issue("AR_TOTAL_MISMATCH", f"AR differs from monthly totals by {ar - gross}"))
             if abs(ar - receipt - aging) > Decimal("0.02"):
                 errors.append(issue("AGING_RECONCILIATION", f"AR - receipt - aging = {ar - receipt - aging}"))
-            if any(value != value.quantize(CENTS, rounding=ROUND_HALF_UP) for value in (dpp, pb1, gross, ar, receipt, aging)):
+            if any(abs(value - value.quantize(CENTS, rounding=ROUND_HALF_UP)) > Decimal("0.00001") for value in (dpp, pb1, gross, ar, receipt, aging)):
                 errors.append(issue("PRECISION_GT_2_DECIMALS", "Source contains more than two decimal places; confirm rounding"))
             if receipt > ZERO and not receipt_date:
                 errors.append(issue("RECEIPT_MISSING_DATE", "Receipt amount has no payment date"))
