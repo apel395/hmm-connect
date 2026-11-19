@@ -104,7 +104,7 @@ def parse_catering_workbook(content: bytes) -> list[dict]:
         if header_row is None:
             raise ValueError("Expected revenue recap headers: LOKASI / TANGGAL INVOICE")
         labels = list(next(sheet.iter_rows(min_row=header_row+1, max_row=header_row+1, max_col=45, values_only=True)))
-        if any(str(labels[4+(month-1)*3+part] or "").strip().upper() not in ("DPP", "PB-1", "TOTAL")[part:part+1] for month in MONTHS for part in (0, 1, 2)):
+        if any(str(labels[4+(month-1)*3+part] or "").strip().upper() != ("DPP", "PB-1", "TOTAL")[part] for month in MONTHS for part in (0, 1, 2)):
             raise ValueError("Expected 12 monthly DPP / PB-1 / TOTAL groups")
         if str(labels[42] or "").strip().lower() != "jumlah" or str(labels[43] or "").strip().lower() != "sisa aging":
             raise ValueError("Expected Jumlah and Sisa Aging columns")
