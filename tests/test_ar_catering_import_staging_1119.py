@@ -103,3 +103,63 @@ def test_excel_number_date_and_decimal_precision():
     assert source_date(46024).isoformat() == "2026-01-02"
     assert decimal_value("1.234.567,89") == Decimal("1234567.89")
     assert decimal_value("1,234,567.89") == Decimal("1234567.89")
+
+
+def test_staging_creates_only_import_rows_and_no_financial_entries():
+    import asyncio
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import UploadFile
+
+    from app.models import Base
+    from app.models.account_receivable import AccountReceivable
+    from app.models.business_unit import BusinessUnit
+    from app.models.department import Department
+    from app.models.general_ledger import GeneralLedger
+    from app.models.import_batch import ImportBatch, ImportRow
+    from app.models.journal_entry import JournalEntry
+    from app.models.location import Location
+    from app.models.location_department import LocationDepartment
+    from app.models.sales_transaction import SalesTransaction
+    from app.models.user import User
+    from app.api.v1.ar_imports import stage
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as db:
+        unit = BusinessUnit(code="002", name="Project Catering", is_active=True)
+        db.add(unit)
+        db.flush()
+        loc = Location(code="005", name="Rumin", business_unit_id=unit.id, is_active=True)
+        dept = Department(code="01", name="Operasional", business_unit_id=unit.id, is_active=True)
+        user = User(username="ar-stage-test", email="ar-stage@example.test",
+                    full_name="Test User", password_hash="x")
+        db.add_all([loc, dept, user])
+        db.flush()
+        db.add(LocationDepartment(location_id=loc.id, department_id=dept.id))
+        db.commit()
+
+        payload = workbook_bytes([{"number": "RUMIN-TEST-01", "date": datetime(2026, 1, 2)}])
+        result = asyncio.run(stage(
+            file=UploadFile(file=BytesIO(payload), filename="recap.xlsx"),
+            db=db, user=user,
+        ))
+        assert result["status"] == "STAGED"
+        assert result["total_rows"] == 1
+        assert result["imported_rows"] == 0
+        assert db.query(ImportBatch).count() == 1
+        assert db.query(ImportRow).count() == 1
+        assert db.query(AccountReceivable).count() == 0
+        assert db.query(SalesTransaction).count() == 0
+        assert db.query(JournalEntry).count() == 0
+        assert db.query(GeneralLedger).count() == 0
+
+        # Reupload of the same source returns the same batch, no duplication.
+        retry = asyncio.run(stage(
+            file=UploadFile(file=BytesIO(payload), filename="recap.xlsx"),
+            db=db, user=user,
+        ))
+        assert retry["id"] == result["id"]
+        assert db.query(ImportRow).count() == 1
+    engine.dispose()
