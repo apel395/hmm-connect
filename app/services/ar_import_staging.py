@@ -115,12 +115,16 @@ def parse_catering_workbook(content: bytes) -> list[dict]:
             if str(cells[0] or "").strip().upper() in ("TOTAL", "BALANCE"):
                 break
             number = str(cells[3] or "").strip()
+            if not number and not cells[2] and all(
+                value in (None, "", " ", 0)
+                for value in cells[4:44]
+            ):
+                # Some source exports leave the location in an otherwise
+                # empty separator row (e.g. 117 and 126). No invoice exists.
+                continue
             if not number and not cells[1]:
                 continue
-            if not number:
-                # A row containing a location but no document number remains
-                # an exception to review rather than disappearing silently.
-                pass
+            # Missing number with nonzero amounts must remain an exception.
             errors: list[dict] = []
             try:
                 invoice_date = source_date(cells[2])
