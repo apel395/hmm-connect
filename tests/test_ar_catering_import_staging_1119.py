@@ -1,5 +1,6 @@
 """Synthetic AR revenue recap tests; no customer financial data committed to GitHub."""
 from datetime import datetime
+from decimal import Decimal
 from io import BytesIO
 
 import pytest
@@ -100,5 +101,5 @@ def test_rejects_wrong_layout_instead_of_guessing_columns():
 
 def test_excel_number_date_and_decimal_precision():
     assert source_date(46024).isoformat() == "2026-01-02"
-    assert decimal_value("1.234.567,89") == 1234567.89
-    assert decimal_value("1,234,567.89") == 1234567.89
+    assert decimal_value("1.234.567,89") == Decimal("1234567.89")
+    assert decimal_value("1,234,567.89") == Decimal("1234567.89")
