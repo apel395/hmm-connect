@@ -6,13 +6,15 @@ Uploaded source rows and validation results are staged separately for review.
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
+import posixpath
+import re
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
 from typing import Any
 
-from openpyxl import load_workbook
-from openpyxl.utils.datetime import from_excel
 
 CENTS = Decimal("0.01")
 ZERO = Decimal("0")
@@ -67,8 +69,9 @@ def source_date(value: Any) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
-    if isinstance(value, (float, int)):
-        return from_excel(value).date()
+    if isinstance(value, (float, int, Decimal)):
+        # Modern Excel serial dates (1900 date system) use this epoch.
+        return (datetime(1899, 12, 30) + timedelta(days=float(value))).date()
     if isinstance(value, str):
         raw = value.strip()
         for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
@@ -87,13 +90,124 @@ def issue(code: str, details: str = "") -> dict[str, str]:
     return {"code": code, "severity": "BLOCK" if code in HARD else "REVIEW", "message": details or code}
 
 
+X_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+P_NS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+
+
+class XlsxSheet:
+    """Read-only, bounded 45-column sheet with cached formula values."""
+    def __init__(self, title: str, rows: dict[int, list]):
+        self.title = title
+        self.rows = rows
+
+    def iter_rows(self, *, min_row=1, max_row=None, max_col=45, values_only=True):
+        if not values_only:
+            raise ValueError("Only cell values are supported")
+        last = max_row if max_row is not None else max(self.rows, default=0)
+        for number in range(min_row, last + 1):
+            cells = self.rows.get(number, [])
+            yield tuple((cells + [None] * max_col)[:max_col])
+
+
+class XlsxBook:
+    def __init__(self, sheet: XlsxSheet):
+        self.worksheets = [sheet]
+
+    def close(self):
+        pass
+
+
+def load_recap_xlsx(content: bytes) -> XlsxBook:
+    """Read XLSX XML with the stdlib; Lambda has no openpyxl dependency.
+
+    XLSX is an OOXML ZIP container. Formula cells must supply their cached
+    <v> values; the importer never calculates untrusted spreadsheet formulas.
+    """
+    with ZipFile(BytesIO(content)) as archive:
+        if sum(item.file_size for item in archive.infolist()) > 40 * 1024 * 1024:
+            raise ValueError("Uncompressed XLSX is too large")
+        paths = set(archive.namelist())
+        if "xl/workbook.xml" not in paths or "xl/_rels/workbook.xml.rels" not in paths:
+            raise ValueError("Not a valid XLSX workbook")
+        book = ET.fromstring(archive.read("xl/workbook.xml"))
+        properties = book.find(f"{X_NS}workbookPr")
+        if properties is not None and properties.attrib.get("date1904") in {"1", "true"}:
+            raise ValueError("1904-date-system XLSX is not supported; convert to 1900 date system")
+        sheets = book.find(f"{X_NS}sheets")
+        first_sheet = next(iter(sheets), None) if sheets is not None else None
+        if first_sheet is None:
+            raise ValueError("XLSX has no worksheets")
+        sheet_id = first_sheet.attrib.get(f"{R_NS}id")
+        sheet_title = first_sheet.attrib.get("name") or "Sheet1"
+        relations = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        targets = {r.attrib.get("Id"): r.attrib.get("Target") for r in relations}
+        target = targets.get(sheet_id)
+        if not target:
+            raise ValueError("Missing first worksheet reference")
+        sheet_path = (target.lstrip("/") if target.startswith("/") else
+                      posixpath.normpath(posixpath.join("xl", target)))
+        if sheet_path not in paths or not sheet_path.startswith("xl/worksheets/"):
+            raise ValueError("Invalid worksheet path")
+        shared = []
+        if "xl/sharedStrings.xml" in paths:
+            strings = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+            shared = [
+                "".join(t.text or "" for t in item.iter(f"{X_NS}t"))
+                for item in strings.findall(f"{X_NS}si")
+            ]
+        xml = ET.fromstring(archive.read(sheet_path))
+        sheet_rows: dict[int, list] = {}
+        for r in xml.findall(f".//{X_NS}sheetData/{X_NS}row"):
+            row_number = int(r.attrib.get("r") or 0)
+            if row_number <= 0:
+                continue
+            values = [None] * 45
+            for cell in r.findall(f"{X_NS}c"):
+                ref = cell.attrib.get("r", "")
+                match = re.match(r"([A-Z]+)", ref)
+                if not match:
+                    continue
+                column = 0
+                for letter in match.group(1):
+                    column = column * 26 + (ord(letter) - 64)
+                if not 1 <= column <= 45:
+                    continue
+                kind = cell.attrib.get("t")
+                if kind == "inlineStr":
+                    inline = cell.find(f"{X_NS}is")
+                    value = "".join(t.text or "" for t in inline.iter(f"{X_NS}t")) if inline is not None else None
+                else:
+                    node = cell.find(f"{X_NS}v")
+                    raw = node.text if node is not None else None
+                    if raw is None:
+                        value = None
+                    elif kind == "s":
+                        index = int(raw)
+                        if index >= len(shared) or index < 0:
+                            raise ValueError("Invalid shared string index")
+                        value = shared[index]
+                    elif kind in ("str", "e"):
+                        value = raw
+                    elif kind == "b":
+                        value = raw == "1"
+                    else:
+                        try:
+                            value = Decimal(raw)
+                        except InvalidOperation:
+                            value = raw
+                values[column - 1] = value
+            sheet_rows[row_number] = values
+        return XlsxBook(XlsxSheet(sheet_title, sheet_rows))
+
+
 def parse_catering_workbook(content: bytes) -> list[dict]:
     """Read the actual revenue-recap layout (12 monthly DPP/PB1/TOTAL triplets).
 
     Do not interpret the month's column as the invoice issue date. Keep the
     invoice date, revenue-period month and source monetary precision separately.
     """
-    workbook = load_workbook(BytesIO(content), data_only=True, read_only=True)
+    workbook = load_recap_xlsx(content)
     try:
         sheet = workbook.worksheets[0]
         header_row = None
