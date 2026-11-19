@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
 from hashlib import sha256
+from zipfile import BadZipFile
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -128,7 +129,7 @@ async def stage(
         return serialise(previous)
     try:
         parsed = parse_catering_workbook(contents)
-    except (ValueError, OSError, KeyError, IndexError, TypeError) as exc:
+    except (ValueError, OSError, KeyError, IndexError, TypeError, BadZipFile) as exc:
         raise HTTPException(422, f"AR Excel structure invalid: {str(exc)[:500]}") from exc
 
     validate_master_references(db, user, parsed)
