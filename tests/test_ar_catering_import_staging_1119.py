@@ -163,3 +163,33 @@ def test_staging_creates_only_import_rows_and_no_financial_entries():
         assert retry["id"] == result["id"]
         assert db.query(ImportRow).count() == 1
     engine.dispose()
+
+
+def test_zero_value_location_separator_is_not_an_invoice():
+    wb = Workbook()
+    sh = wb.active
+    sh.cell(5, 2, "LOKASI")
+    sh.cell(5, 3, "TANGGAL INVOICE")
+    for month in range(12):
+        for delta, heading in enumerate(("DPP", "PB-1", "TOTAL")):
+            sh.cell(6, 5 + month * 3 + delta, heading)
+    sh.cell(6, 43, "Jumlah")
+    sh.cell(6, 44, "Sisa Aging")
+    sh.cell(8, 2, "RUMIN")
+    sh.cell(8, 41, 0)
+    sh.cell(8, 44, 0)
+    sh.cell(9, 2, "RUMIN")
+    sh.cell(9, 3, datetime(2026, 1, 10))
+    sh.cell(9, 4, "VALID-INV")
+    sh.cell(9, 5, 100)
+    sh.cell(9, 6, 10)
+    sh.cell(9, 7, 110)
+    sh.cell(9, 41, 110)
+    sh.cell(9, 44, 110)
+    sh.cell(10, 1, "TOTAL")
+    output = BytesIO()
+    wb.save(output)
+    wb.close()
+    rows = parse_catering_workbook(output.getvalue())
+    assert len(rows) == 1
+    assert rows[0]["source_row"] == 9
