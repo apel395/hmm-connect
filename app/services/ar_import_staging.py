@@ -125,10 +125,15 @@ def load_recap_xlsx(content: bytes) -> XlsxBook:
     <v> values; the importer never calculates untrusted spreadsheet formulas.
     """
     with ZipFile(BytesIO(content)) as archive:
+        if sum(item.file_size for item in archive.infolist()) > 40 * 1024 * 1024:
+            raise ValueError("Uncompressed XLSX is too large")
         paths = set(archive.namelist())
         if "xl/workbook.xml" not in paths or "xl/_rels/workbook.xml.rels" not in paths:
             raise ValueError("Not a valid XLSX workbook")
         book = ET.fromstring(archive.read("xl/workbook.xml"))
+        properties = book.find(f"{X_NS}workbookPr")
+        if properties is not None and properties.attrib.get("date1904") in {"1", "true"}:
+            raise ValueError("1904-date-system XLSX is not supported; convert to 1900 date system")
         sheets = book.find(f"{X_NS}sheets")
         first_sheet = next(iter(sheets), None) if sheets is not None else None
         if first_sheet is None:
