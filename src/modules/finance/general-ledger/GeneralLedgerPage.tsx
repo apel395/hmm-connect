@@ -5,10 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Fragment, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
-import { ChevronDown, ChevronRight, Download, Layers3, List, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Layers3, List, Rows3, SlidersHorizontal } from "lucide-react";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
+import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import { TABLE_UI } from "@/config/tableUi";
 import SearchableSelect from "@/components/form/SearchableSelect";
@@ -28,6 +29,8 @@ export default function GeneralLedgerPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("ledger-page-size")) === 100 ? 100 : 50);
   const [showFilters, setShowFilters] = useState(false);
+  const [showDisplayTools, setShowDisplayTools] = useState(false);
+  const [denseRows, setDenseRows] = useState(() => window.localStorage.getItem("gl-row-density") !== "comfortable");
   const [groupByAccount, setGroupByAccount] = useState(true);
   const [collapsedAccounts, setCollapsedAccounts] = useState<number[]>([]);
   const [filters, setFilters] = useState<any>({ account_ids: searchParams.get("account_ids") || "", search: searchParams.get("search") || "", search_type: searchParams.get("search_type") || "ALL", account_id: searchParams.get("account_id") || "", account_from_id: searchParams.get("account_from_id") || "", account_to_id: searchParams.get("account_to_id") || "", date_from: searchParams.get("date_from") ?? `${new Date().getFullYear()}-01-01`, date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
@@ -43,6 +46,7 @@ export default function GeneralLedgerPage() {
   const summary = useQuery({ queryKey: ["ledger-summary", filters.account_id, filters.date_from, filters.date_to, filters.business_unit_id, filters.location_id, filters.department_id], queryFn: () => getAccountSummary(Number(filters.account_id), { business_unit_id:Number(filters.business_unit_id)||undefined, location_id:Number(filters.location_id)||undefined, department_id:Number(filters.department_id)||undefined, date_from: filters.date_from || undefined, date_to: filters.date_to || undefined }), enabled: !!filters.account_id });
   const change = (key: string, value: string) => { setFilters({ ...filters, [key]: value }); setPage(1); };
   useEffect(() => window.localStorage.setItem("ledger-page-size", String(pageSize)), [pageSize]);
+  useEffect(() => window.localStorage.setItem("gl-row-density", denseRows ? "dense" : "comfortable"), [denseRows]);
   const input = "h-8 rounded border border-slate-300 bg-white px-2 text-xs";
   const activeAdvancedFilters = ["search_type","account_id","account_ids","account_from_id","account_to_id","reference_type","supplier_id","department_id","location_id"].filter(key => filters[key] && (key !== "search_type" || filters[key] !== "ALL")).length;
 
@@ -188,7 +192,7 @@ export default function GeneralLedgerPage() {
     return <TR key={row.id}>
       <TD className="whitespace-nowrap">{row.posting_date}</TD>
       <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
-      <TD className="max-w-[200px]"><TableCellStack primary={row.account_name} secondary={row.account_code}/></TD>
+      <TD className="max-w-[200px]"><span className="inline-flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap" title={`${row.account_code} — ${row.account_name}`}><span className="shrink-0 font-mono text-[11px] text-slate-500">{row.account_code}</span><span className="min-w-0 truncate">{row.account_name}</span></span></TD>
       <TD className="max-w-[220px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
       <TD className="max-w-[160px]">{documentLink(row) ? <Link className={TABLE_UI.documentLink} to={documentLink(row)!} title={row.reference_number || "Open source document"}>{row.reference_number || row.reference_type || "Open source"}</Link> : <span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span>}</TD>
       <TD numeric className="whitespace-nowrap">{amount(row.debit)}</TD>
@@ -203,7 +207,12 @@ export default function GeneralLedgerPage() {
       ? "Preparing XLS..."
       : "Download XLS";
 
-  return <DataWorkspace area="Accounting" className="print-document "><style>{`@page{size:landscape;margin:10mm}`}</style><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
+  return <DataWorkspace area="Accounting" className="print-document "><style>{`@page{size:landscape;margin:10mm}
+    .gl-compact-ledger tbody tr td { padding: 2px 7px; font-size: 12px; line-height: 16px; }
+    .gl-compact-ledger thead tr th { height: 27px; padding: 4px 7px; }
+    .gl-compact-ledger tbody tr button { line-height: 16px; }
+    @media print { .gl-compact-ledger tbody tr td { padding: 4px 7px; font-size: 11px; } }
+  `}</style><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
     <div className="print:hidden space-y-2">
     <PageHeader actions={<div className="flex items-center gap-2">
     <Button size="sm" variant="outline" title={exportLabel} aria-label={exportLabel} onClick={handleExport} disabled={exportBusy}><Download size={15} />{exportBusy && <span>{exportLabel}</span>}</Button>
@@ -222,29 +231,65 @@ export default function GeneralLedgerPage() {
         <label className="min-w-[145px] flex-1 text-xs font-medium text-slate-700">To Date
           <input className={`${input} mt-0.5 w-full`} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/>
         </label>
-        <Button type="button" size="sm" variant="outline" title="Advanced filters" aria-label="General ledger advanced filters" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}><SlidersHorizontal size={15}/> Filters{activeAdvancedFilters ? ` (${activeAdvancedFilters})` : ""}</Button>
+        <Button type="button" size="sm" variant="outline" title="Open transaction filters" aria-label="Open General Ledger filters" aria-expanded={showFilters} onClick={() => setShowFilters(true)}><SlidersHorizontal size={15}/><span className="sr-only">Filters</span>{activeAdvancedFilters ? <span className="text-xs">{activeAdvancedFilters}</span> : null}</Button>
+        <Button type="button" size="sm" variant="outline" title="Display preferences" aria-label="Ledger display preferences" onClick={() => setShowDisplayTools(true)}><Rows3 size={15}/><span className="sr-only">Display</span></Button>
       </div>
-      {showFilters && <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
+    </Card>
+    <Dialog open={showFilters} onOpenChange={setShowFilters}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader><DialogTitle>General Ledger filters</DialogTitle></DialogHeader>
+        <DialogBody>
+          <p className="mb-3 text-xs text-slate-500">Filters update the report immediately. Close this panel to return to the ledger; dates and business unit remain available on the main screen.</p>
+          <div className="space-y-3">
+
         <div className="grid gap-2 md:grid-cols-3">
           <label className="text-xs">Search Type
             <select className={`${input} mt-0.5 w-full`} value={filters.search_type} onChange={event=>change("search_type",event.target.value)}>
               <option value="ALL">All fields</option><option value="JOURNAL">Journal No.</option><option value="DOCUMENT">Document No.</option><option value="DESCRIPTION">Description</option><option value="ACCOUNT">Account</option><option value="SUPPLIER">Supplier</option>
             </select>
           </label>
-          <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="Single Account" value={filters.account_id ? Number(filters.account_id) : undefined} disabled={accounts.isLoading} placeholder="Exact account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_id", id ? String(id) : "")} />
+          <SearchableSelect inlineDropdown maxOptions={Number.POSITIVE_INFINITY} label="Single Account" value={filters.account_id ? Number(filters.account_id) : undefined} disabled={accounts.isLoading} placeholder="Exact account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_id", id ? String(id) : "")} />
           <select className={input} aria-label="Document type" value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
-          <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="From Account" value={filters.account_from_id ? Number(filters.account_from_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="Start account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_from_id", id ? String(id) : "")} />
-          <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="To Account" value={filters.account_to_id ? Number(filters.account_to_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="End account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_to_id", id ? String(id) : "")} />
+          <SearchableSelect inlineDropdown dropdownPlacement="top" maxOptions={Number.POSITIVE_INFINITY} label="From Account" value={filters.account_from_id ? Number(filters.account_from_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="Start account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_from_id", id ? String(id) : "")} />
+          <SearchableSelect inlineDropdown dropdownPlacement="top" maxOptions={Number.POSITIVE_INFINITY} label="To Account" value={filters.account_to_id ? Number(filters.account_to_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="End account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_to_id", id ? String(id) : "")} />
         </div>
         <div className="grid gap-2 md:grid-cols-3">
-          <SearchableSelect label="Supplier" value={filters.supplier_id ? Number(filters.supplier_id) : undefined} disabled={suppliers.isLoading} placeholder="Select supplier..." options={(suppliers.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("supplier_id", id ? String(id) : "")}/>
-          <SearchableSelect label="Department" value={filters.department_id ? Number(filters.department_id) : undefined} disabled={departments.isLoading} placeholder="Select department..." options={(departments.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("department_id", id ? String(id) : "")}/>
-          <SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} />
+          <SearchableSelect inlineDropdown dropdownPlacement="top" label="Supplier" value={filters.supplier_id ? Number(filters.supplier_id) : undefined} disabled={suppliers.isLoading} placeholder="Select supplier..." options={(suppliers.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("supplier_id", id ? String(id) : "")}/>
+          <SearchableSelect inlineDropdown dropdownPlacement="top" label="Department" value={filters.department_id ? Number(filters.department_id) : undefined} disabled={departments.isLoading} placeholder="Select department..." options={(departments.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("department_id", id ? String(id) : "")}/>
+          <SearchableSelect inlineDropdown dropdownPlacement="top" label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} />
         </div>
-      </div>}
-    </Card>
+
+          </div>
+        </DialogBody>
+        <DialogFooter><div className="flex w-full items-center justify-between gap-2">
+          <button type="button" className="rounded border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => {
+            setFilters((current: any) => ({...current, search_type: "ALL", account_id: "", account_ids: "", account_from_id: "", account_to_id: "", reference_type: "", supplier_id: "", department_id: "", location_id: ""}));
+            setPage(1);
+          }}>Clear advanced filters</button>
+          <Button type="button" size="sm" onClick={() => setShowFilters(false)}>Close</Button>
+        </div></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={showDisplayTools} onOpenChange={setShowDisplayTools}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Ledger display</DialogTitle></DialogHeader>
+        <DialogBody>
+          <p className="mb-3 text-xs text-slate-500">Choose how many transaction rows fit on your screen.</p>
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-xs font-semibold text-slate-700">Row spacing</legend>
+            <label className="flex cursor-pointer items-center gap-2 rounded border border-slate-200 p-2 text-sm">
+              <input type="radio" name="gl-density" checked={denseRows} onChange={() => setDenseRows(true)}/> Dense — more entries visible
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 rounded border border-slate-200 p-2 text-sm">
+              <input type="radio" name="gl-density" checked={!denseRows} onChange={() => setDenseRows(false)}/> Comfortable — more spacing
+            </label>
+          </fieldset>
+        </DialogBody>
+        <DialogFooter><Button size="sm" onClick={() => setShowDisplayTools(false)}>Done</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Card className="workspace-summary px-2 py-1"><div className="workspace-summary-fields"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit)}</small></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.credit)}</small></div><div><small>Difference</small><div className="font-bold tabular-nums">{filteredTotals ? <Link to={unbalancedJournalPath(filters)} title="Find unbalanced posted journals in this period and scope" className="text-emerald-700 hover:underline">{amount(filteredTotals.debit-filteredTotals.credit)}</Link> : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit-pageTotals.credit)}</small></div></div></Card>
     {summary.data && <Card className="workspace-summary px-2 py-1"><div className="workspace-summary-fields"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
     </div>
@@ -259,7 +304,7 @@ export default function GeneralLedgerPage() {
       </div>
     </div>
     <Card className="workspace-data">
-      <Table variant="grid" stickyHeader className="workspace-ledger-table min-w-[980px]" containerClassName="min-h-[min(54vh,520px)] max-h-[calc(100dvh-300px)] overflow-auto border-0 shadow-none print:max-h-none print:min-h-0 print:overflow-visible">
+      <Table variant="grid" stickyHeader className={`workspace-ledger-table min-w-[980px] ${denseRows ? "gl-compact-ledger" : ""}`} containerClassName="min-h-[min(54vh,520px)] max-h-[calc(100dvh-300px)] overflow-auto border-0 shadow-none print:max-h-none print:min-h-0 print:overflow-visible">
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
         <TBody>
           {ledger.isLoading && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">Loading ledger…</TD></TR>}
