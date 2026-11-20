@@ -100,11 +100,25 @@ def listing(
     )
     total = q.count()
     total_debit, total_credit = ledger_totals(q)
-    rows = ledger_rows_with_balance(q).offset((page - 1) * page_size).limit(page_size).all()
+    # Running balances belong to the account and organizational scope, not to
+    # search matches or document/supplier slices. Those filters only select
+    # which transactions to display.
+    balance_q = build_ledger_query(
+        db,
+        account_id=account_id,
+        account_ids=account_ids,
+        account_from_id=account_from_id,
+        account_to_id=account_to_id,
+        date_from=date_from,
+        date_to=date_to,
+        department_id=department_id,
+        location_id=location_id,
+        business_unit_id=business_unit_id,
+    )
+    rows = ledger_rows_with_balance(q, balance_query=balance_q).offset((page - 1) * page_size).limit(page_size).all()
     openings = opening_balances(
         db, account_id=account_id, account_ids=account_ids, account_from_id=account_from_id,
         account_to_id=account_to_id, date_from=date_from,
-        reference_type=reference_type, supplier_id=supplier_id,
         department_id=department_id, location_id=location_id,
         business_unit_id=business_unit_id,
     )
