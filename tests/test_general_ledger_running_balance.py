@@ -77,6 +77,24 @@ def test_document_search_uses_full_account_running_balance_and_matches_trial_bal
         assert filtered_debit == Decimal("0.00")
         assert filtered_credit == Decimal("20.00")
 
+        from app.api.v1 import general_ledger
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        with patch.object(general_ledger, "access"), patch.object(general_ledger, "resolve_organization_access", return_value={}):
+            account_totals = general_ledger.account_balances(
+                account_ids=str(cash.id),
+                date_from=date(2026, 1, 1),
+                date_to=date(2026, 1, 31),
+                business_unit_id=None,
+                location_id=None,
+                department_id=None,
+                db=session,
+                user=SimpleNamespace(id=1),
+            )
+        assert account_totals["balance_scope"] == "ACCOUNT_PERIOD"
+        assert account_totals["items"][0]["opening_balance"] == Decimal("100.00")
+        assert account_totals["items"][0]["closing_balance"] == Decimal("160.00")
+
         tb = TrialBalanceService(session).report(
             date_from=date(2026, 1, 1),
             date_to=date(2026, 1, 31),
