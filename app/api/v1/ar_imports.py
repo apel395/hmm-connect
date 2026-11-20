@@ -8,6 +8,7 @@ from zipfile import BadZipFile
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,8 @@ from app.models.account_receivable import AccountReceivable
 from app.models.business_unit import BusinessUnit
 from app.models.department import Department
 from app.models.import_batch import ImportBatch, ImportRow
+from app.services.ar_import_preparation import available_accounts, prepare_batch, journal_preview
+from app.services.audit import record_audit
 from app.models.journal_entry import JournalEntry
 from app.models.location import Location
 from app.models.location_department import LocationDepartment
@@ -170,6 +173,70 @@ async def stage(
     return serialise(batch)
 
 
+class ARBatchPrepare(BaseModel):
+    """The finance user must explicitly verify the contract and ledger mappings."""
+
+    customer_id: int = Field(gt=0)
+    payment_terms_days: int = Field(ge=0, le=365)
+    ar_account_id: int = Field(gt=0)
+    revenue_account_id: int = Field(gt=0)
+    pb1_liability_account_id: int = Field(gt=0)
+    terms_confirmed: bool
+    accounts_confirmed: bool
+
+
+@router.get("/options")
+def prepare_options(db: Session = Depends(get_db), user: User = Depends(reviewer)):
+    return available_accounts(db)
+
+
+@router.post("/{batch_id}/prepare")
+def prepare_staged_batch(
+    batch_id: int,
+    data: ARBatchPrepare,
+    db: Session = Depends(get_db),
+    user: User = Depends(reviewer),
+):
+    if not data.terms_confirmed or not data.accounts_confirmed:
+        raise HTTPException(422, "Finance must verify contractual payment terms and the selected COA accounts")
+    batch = owned_batch(db, batch_id, user)
+    results = prepare_batch(
+        db, batch, user=user,
+        customer_id=data.customer_id,
+        payment_terms_days=data.payment_terms_days,
+        ar_account_id=data.ar_account_id,
+        revenue_account_id=data.revenue_account_id,
+        pb1_liability_account_id=data.pb1_liability_account_id,
+    )
+    record_audit(
+        db, user, "AR_IMPORT_PREPARED", "IMPORT_BATCH",
+        f"Prepared Project Catering AR staging batch {batch.batch_number}",
+        entity_id=batch.id, import_batch_id=batch.id,
+        details={
+            **results,
+            "payment_terms_days": data.payment_terms_days,
+            "ar_account_id": data.ar_account_id,
+            "revenue_account_id": data.revenue_account_id,
+            "pb1_liability_account_id": data.pb1_liability_account_id,
+            "terms_confirmed": True,
+            "accounts_confirmed": True,
+            "accounting_posted": False,
+        },
+    )
+    db.commit()
+    db.refresh(batch)
+    return {**serialise(batch), "preparation": results}
+
+
+@router.get("/{batch_id}/journal-preview")
+def get_journal_preview(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(reviewer),
+):
+    return journal_preview(db, owned_batch(db, batch_id, user))
+
+
 @router.get("/{batch_id}")
 def get_batch(batch_id: int, db: Session = Depends(get_db), user: User = Depends(reviewer)):
     return serialise(owned_batch(db, batch_id, user))
@@ -180,7 +247,7 @@ def list_rows(
     batch_id: int,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    status: str | None = Query(None, pattern="^(ERROR|REVIEW)$"),
+    status: str | None = Query(None, pattern="^(ERROR|REVIEW|READY)$"),
     db: Session = Depends(get_db),
     user: User = Depends(reviewer),
 ):
@@ -228,5 +295,6 @@ def get_summary(batch_id: int, db: Session = Depends(get_db), user: User = Depen
         "locations": {site: {k: (str(v.quantize(Decimal("0.01"))) if isinstance(v, Decimal) else v) for k, v in values.items()} for site, values in locations.items()},
         "issues": issue_counts,
         "posting_enabled": False,
-        "reason": "Source lacks customer, due date, revenue account and certified bank/tax reconciliation; existing GL must be matched first.",
+        "ready_rows": batch.valid_rows,
+        "reason": "Preparation only. PHR, finance-confirmed due dates and accounts may be mapped; no AR, revenue, tax, payment, journal or GL is posted.",
     }
