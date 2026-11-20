@@ -305,93 +305,72 @@ def ledger_grouped_report(
     business_unit_id: int | None = None,
     search: str | None = None,
 ) -> tuple[list[dict], Decimal, Decimal]:
-    """Audit-ready ledger grouped by account with opening/activity/closing blocks."""
+    """Printed account groups use actual balances, independent of search matches.
+
+    Account totals and running balances use all recognized movements in the
+    selected period/scope. Search, reference type and supplier restrict only
+    displayed rows and control totals, not actual account closing balances.
+    """
+    params = dict(
+        account_id=account_id, account_ids=account_ids,
+        account_from_id=account_from_id, account_to_id=account_to_id,
+        date_from=date_from, date_to=date_to, department_id=department_id,
+        location_id=location_id, business_unit_id=business_unit_id,
+    )
+    balance_q = build_ledger_query(db, **params)
     q = build_ledger_query(
-        db,
-        account_id=account_id,
-        account_ids=account_ids,
-        account_from_id=account_from_id,
-        account_to_id=account_to_id,
-        search_type=search_type,
-        date_from=date_from,
-        date_to=date_to,
-        reference_type=reference_type,
-        supplier_id=supplier_id,
-        department_id=department_id,
-        location_id=location_id,
-        business_unit_id=business_unit_id,
-        search=search,
+        db, **params, search_type=search_type, search=search,
+        reference_type=reference_type, supplier_id=supplier_id,
     )
     openings = opening_balances(
-        db,
-        account_id=account_id,
-        account_ids=account_ids,
-        account_from_id=account_from_id,
-        account_to_id=account_to_id,
-        date_from=date_from,
-        reference_type=reference_type,
-        supplier_id=supplier_id,
-        department_id=department_id,
-        location_id=location_id,
-        business_unit_id=business_unit_id,
+        db, account_id=account_id, account_ids=account_ids,
+        account_from_id=account_from_id, account_to_id=account_to_id,
+        date_from=date_from, department_id=department_id,
+        location_id=location_id, business_unit_id=business_unit_id,
     )
-
+    full_movements = {
+        account: (Decimal(debit), Decimal(credit))
+        for account, debit, credit in (
+            balance_q.with_entities(
+                JournalLine.account_id,
+                func.coalesce(func.sum(JournalLine.debit), 0),
+                func.coalesce(func.sum(JournalLine.credit), 0),
+            ).group_by(JournalLine.account_id).all()
+        )
+    }
     groups: dict[int, dict] = {}
-    for line in ledger_report_rows(q).all():
-        account = line.account
-        group = groups.get(account.id)
-        if group is None:
+
+    def ensure_group(account):
+        if account.id not in groups:
+            debit, credit = full_movements.get(account.id, (ZERO, ZERO))
             opening = openings.get(account.id, ZERO)
-            group = {
+            delta = debit - credit if account.normal_balance == "DEBIT" else credit - debit
+            groups[account.id] = {
                 **_account_metadata(account),
                 "opening_balance": opening,
-                "running_balance": opening,
-                "total_debit": ZERO,
-                "total_credit": ZERO,
+                "total_debit": debit,
+                "total_credit": credit,
+                "closing_balance": opening + delta,
                 "rows": [],
             }
-            groups[account.id] = group
-        debit = Decimal(line.debit or 0)
-        credit = Decimal(line.credit or 0)
-        delta = (debit - credit) if account.normal_balance == "DEBIT" else (credit - debit)
-        group["running_balance"] += delta
-        group["total_debit"] += debit
-        group["total_credit"] += credit
-        group["rows"].append(_report_row(line, group["running_balance"]))
+        return groups[account.id]
 
-    # Accounts that had prior activity but no rows in the period still need a block.
-    for account_id_value, opening in openings.items():
-        if account_id_value in groups or opening == ZERO:
-            continue
-        account = db.get(ChartOfAccount, account_id_value)
-        if not account:
-            continue
-        groups[account_id_value] = {
-            **_account_metadata(account),
-            "opening_balance": opening,
-            "running_balance": opening,
-            "total_debit": ZERO,
-            "total_credit": ZERO,
-            "rows": [],
-        }
+    for line, balance in ledger_rows_with_balance(q, balance_query=balance_q).all():
+        group = ensure_group(line.account)
+        group["rows"].append(_report_row(line, Decimal(balance or 0) + group["opening_balance"]))
 
-    # When a single account is requested, always show its block even if empty.
-    if account_id and account_id not in groups:
-        account = db.get(ChartOfAccount, account_id)
-        if account:
-            groups[account_id] = {
-                **_account_metadata(account),
-                "opening_balance": ZERO,
-                "running_balance": ZERO,
-                "total_debit": ZERO,
-                "total_credit": ZERO,
-                "rows": [],
-            }
+    # Without display-only filters, carry-forward accounts still need a group.
+    if not (search or reference_type or supplier_id):
+        for account_id_value, opening in openings.items():
+            if opening and account_id_value not in groups:
+                account = db.get(ChartOfAccount, account_id_value)
+                if account:
+                    ensure_group(account)
+        if account_id and account_id not in groups:
+            account = db.get(ChartOfAccount, account_id)
+            if account:
+                ensure_group(account)
 
     accounts = sorted(groups.values(), key=lambda group: group["account_code"])
-    for group in accounts:
-        group["closing_balance"] = group["running_balance"]
-
-    control_debit = sum((group["total_debit"] for group in accounts), ZERO)
-    control_credit = sum((group["total_credit"] for group in accounts), ZERO)
+    control_debit, control_credit = ledger_totals(q)
     return accounts, control_debit, control_credit
