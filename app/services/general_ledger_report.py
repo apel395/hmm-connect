@@ -143,6 +143,8 @@ def serialize_ledger_item(line, balance: Decimal | None) -> dict:
         "account_name": account.account_name,
         "description": line.description,
         "reference_type": line.journal_entry.reference_type,
+        "reference_id": line.journal_entry.reference_id,
+        "document_type": line.journal_entry.document_type,
         "reference_number": line.journal_entry.document_number,
         "debit": line.debit,
         "credit": line.credit,
