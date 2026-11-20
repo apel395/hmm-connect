@@ -14,6 +14,9 @@ interface Props<T extends string | number = number> {
   required?: boolean;
   className?: string;
   maxOptions?: number;
+  /** Keep the dropdown inside a modal focus trap (opt-in). */
+  inlineDropdown?: boolean;
+  dropdownPlacement?: "top" | "bottom";
   onChange: (value: T | undefined) => void;
 }
 
@@ -28,6 +31,8 @@ export default function SearchableSelect<T extends string | number = number>({
   required = false,
   className = "",
   maxOptions = 50,
+  inlineDropdown = false,
+  dropdownPlacement = "bottom",
   onChange,
 }: Props<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -121,16 +126,18 @@ export default function SearchableSelect<T extends string | number = number>({
     scrollOptionIntoView(next);
   };
 
-  const dropdown = open && !disabled && position && typeof document !== "undefined"
-    ? createPortal(
-        <div ref={dropdownRef} role="listbox" className="pointer-events-auto fixed z-[10000] max-h-64 overflow-y-auto overscroll-contain will-change-transform rounded-md border border-slate-200 bg-white shadow-xl" style={{ left: position.left, top: position.top, width: position.width }}>
+  const dropdownContent = open && !disabled && (inlineDropdown || position) && typeof document !== "undefined"
+    ? <div ref={dropdownRef} role="listbox" className={`pointer-events-auto z-[10000] max-h-52 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-xl ${inlineDropdown ? `absolute left-0 w-full ${dropdownPlacement === "top" ? "bottom-full mb-1" : "top-full mt-1"}` : "fixed max-h-64 will-change-transform"}`} style={inlineDropdown ? undefined : { left: position!.left, top: position!.top, width: position!.width }}>
           {filteredOptions.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No matching options.</div> : filteredOptions.map((option, index) => (
             <button key={String(option.id)} ref={(element) => { optionRefs.current[index] = element; }} type="button" role="option" aria-selected={index === activeIndex} className={`pointer-events-auto block w-full border-b border-slate-100 px-2 py-1 text-left text-xs last:border-b-0 focus:outline-none ${index === activeIndex ? "bg-emerald-50 text-slate-900" : "bg-white text-slate-800 hover:bg-emerald-50"}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectOption(option); }}>
               {optionLabel(option)}
             </button>
           ))}
-        </div>, document.body)
+        </div>
     : null;
+  // Modal dialogs trap focus within their content. Opt-in inline rendering
+  // keeps the listbox inside that trap instead of portalling it to body.
+  const dropdown = inlineDropdown ? dropdownContent : (dropdownContent ? createPortal(dropdownContent, document.body) : null);
 
   return <label className="block">
     {label && <span className={`${FORM_UI.label} ${FORM_UI.density.compact.label}`}>{label}{required ? <span className="text-red-500"> *</span> : null}</span>}
