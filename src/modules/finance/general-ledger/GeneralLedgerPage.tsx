@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Fragment, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
-import { ChevronDown, ChevronRight, Download, List, Layers3, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Layers3, List, SlidersHorizontal } from "lucide-react";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
@@ -122,9 +122,10 @@ export default function GeneralLedgerPage() {
     debit: sum.debit + Number(row.debit || 0),
     credit: sum.credit + Number(row.credit || 0),
   }), { debit: 0, credit: 0 });
-  // Group only the current API page: totals below must never be presented as full-period account totals.
+  // This grouping uses the current API page; page subtotals are not account closing balances.
+  type AccountGroup = { id: number; code: string; name: string; rows: any[]; debit: number; credit: number };
   const accountGroups = Array.from(
-    (ledger.data?.items ?? []).reduce((groups: Map<number, { id: number; code: string; name: string; rows: any[]; debit: number; credit: number }>, row: any) => {
+    (ledger.data?.items ?? []).reduce((groups: Map<number, AccountGroup>, row: any) => {
       const id = Number(row.account_id);
       if (!groups.has(id)) groups.set(id, { id, code: row.account_code || "—", name: row.account_name || "Unknown account", rows: [], debit: 0, credit: 0 });
       const group = groups.get(id)!;
@@ -132,7 +133,7 @@ export default function GeneralLedgerPage() {
       group.debit += Number(row.debit || 0);
       group.credit += Number(row.credit || 0);
       return groups;
-    }, new Map<number, { id: number; code: string; name: string; rows: any[]; debit: number; credit: number }>()).values(),
+    }, new Map<number, AccountGroup>()).values(),
   ).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   const balanceIsFiltered = Boolean(filters.search || filters.reference_type || filters.supplier_id);
   const toggleAccount = (id: number) => setCollapsedAccounts(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]);
@@ -208,8 +209,18 @@ export default function GeneralLedgerPage() {
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
       <div className="flex items-center gap-2 text-xs text-slate-600">
-        <span>{amount(ledger.data?.total_items ?? 0).replace(/,00$/, "")} matching entries</span>
-        {balanceIsFiltered && <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900" title="Filtered running balance is calculated on matching transac        <TBody>
+        <span>{ledger.data?.total_items ?? 0} matching entries</span>
+        {balanceIsFiltered && <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">Running balances reflect matching movements, not necessarily all account movements.</span>}
+      </div>
+      <div className="inline-flex items-center gap-1 rounded-md border border-slate-200 p-1" role="group" aria-label="Ledger display mode">
+        <button type="button" onClick={() => setGroupByAccount(true)} aria-pressed={groupByAccount} className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${groupByAccount ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}><Layers3 size={14}/> By account</button>
+        <button type="button" onClick={() => setGroupByAccount(false)} aria-pressed={!groupByAccount} className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${!groupByAccount ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}><List size={14}/> Transactions</button>
+      </div>
+    </div>
+    <Card className="workspace-data">
+      <Table variant="grid" stickyHeader className="workspace-ledger-table min-w-[980px]" containerClassName="max-h-[70vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible">
+        <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
+        <TBody>
           {ledger.isLoading && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">Loading ledger…</TD></TR>}
           {ledger.isError && <TR><TD colSpan={9} className="py-10 text-center text-red-700">Ledger could not be loaded. Use Refresh to try again.</TD></TR>}
           {!ledger.isLoading && !ledger.isError && !ledger.data?.items.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">No entries match these filters.</TD></TR>}
@@ -217,7 +228,7 @@ export default function GeneralLedgerPage() {
           {groupByAccount && accountGroups.map(group => {
             const collapsed = collapsedAccounts.includes(group.id);
             return <Fragment key={group.id}>
-              <TR key={`account-${group.id}`} className="bg-slate-100/80">
+              <TR className="bg-slate-100/80">
                 <TD colSpan={9} className="px-3 py-2">
                   <button type="button" onClick={() => toggleAccount(group.id)} aria-expanded={!collapsed} className="flex w-full flex-wrap items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800">
                     <span className="inline-flex items-center gap-2">{collapsed ? <ChevronRight size={16}/> : <ChevronDown size={16}/>}<span className="font-mono">{group.code}</span> — {group.name}</span>
@@ -226,7 +237,7 @@ export default function GeneralLedgerPage() {
                 </TD>
               </TR>
               {!collapsed && group.rows.map(renderLedgerRow)}
-              {!collapsed && <TR key={`subtotal-${group.id}`} className="bg-slate-50 font-medium text-slate-700">
+              {!collapsed && <TR className="bg-slate-50 font-medium text-slate-700">
                 <TD colSpan={5} className="text-right text-xs">Page subtotal — {group.code} (not full account closing)</TD>
                 <TD numeric className="whitespace-nowrap">{amount(group.debit)}</TD>
                 <TD numeric className="whitespace-nowrap">{amount(group.credit)}</TD>
@@ -234,20 +245,7 @@ export default function GeneralLedgerPage() {
               </TR>}
             </Fragment>;
           })}
-        </TBody>xtPrimary = row.supplier_name || row.business_unit_name;
-          const contextSecondary = [row.department_name, row.location_name].filter(Boolean).join(" · ");
-          return <TR key={row.id}>
-            <TD className="whitespace-nowrap">{row.posting_date}</TD>
-            <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
-            <TD className="max-w-[200px]"><TableCellStack primary={row.account_name}/></TD>
-            <TD className="max-w-[220px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
-            <TD className="max-w-[160px]"><span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span></TD>
-            <TD numeric className="whitespace-nowrap">{amount(row.debit)}</TD>
-            <TD numeric className="whitespace-nowrap">{amount(row.credit)}</TD>
-            <TD numeric className="whitespace-nowrap font-semibold">{amount(row.balance)}</TD>
-            <TD className="max-w-[180px]">{contextPrimary || contextSecondary ? <TableCellStack primary={contextPrimary || contextSecondary} secondary={contextPrimary ? contextSecondary : undefined}/> : "—"}</TD>
-          </TR>;
-        })}</TBody>
+        </TBody>
       </Table>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs print:hidden"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{ledger.data?.total_items ?? 0} entries · Page {page} of {Math.max(ledger.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div>
     </Card>
