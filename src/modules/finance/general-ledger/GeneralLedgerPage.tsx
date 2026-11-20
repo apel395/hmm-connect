@@ -192,7 +192,7 @@ export default function GeneralLedgerPage() {
     return <TR key={row.id}>
       <TD className="whitespace-nowrap">{row.posting_date}</TD>
       <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
-      <TD className="max-w-[200px]"><span className="block truncate" title={`${row.account_code} — ${row.account_name}`}>{row.account_name}</span></TD>
+      <TD className="max-w-[200px]"><span className="inline-flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap" title={`${row.account_code} — ${row.account_name}`}><span className="shrink-0 font-mono text-[11px] text-slate-500">{row.account_code}</span><span className="min-w-0 truncate">{row.account_name}</span></span></TD>
       <TD className="max-w-[220px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
       <TD className="max-w-[160px]">{documentLink(row) ? <Link className={TABLE_UI.documentLink} to={documentLink(row)!} title={row.reference_number || "Open source document"}>{row.reference_number || row.reference_type || "Open source"}</Link> : <span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span>}</TD>
       <TD numeric className="whitespace-nowrap">{amount(row.debit)}</TD>
@@ -239,7 +239,7 @@ export default function GeneralLedgerPage() {
       <DialogContent className="max-w-3xl">
         <DialogHeader><DialogTitle>General Ledger filters</DialogTitle></DialogHeader>
         <DialogBody>
-          <p className="mb-3 text-xs text-slate-500">Refine the displayed transactions. Dates and business unit remain available on the main screen.</p>
+          <p className="mb-3 text-xs text-slate-500">Filters update the report immediately. Close this panel to return to the ledger; dates and business unit remain available on the main screen.</p>
           <div className="space-y-3">
 
         <div className="grid gap-2 md:grid-cols-3">
@@ -248,17 +248,17 @@ export default function GeneralLedgerPage() {
               <option value="ALL">All fields</option><option value="JOURNAL">Journal No.</option><option value="DOCUMENT">Document No.</option><option value="DESCRIPTION">Description</option><option value="ACCOUNT">Account</option><option value="SUPPLIER">Supplier</option>
             </select>
           </label>
-          <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="Single Account" value={filters.account_id ? Number(filters.account_id) : undefined} disabled={accounts.isLoading} placeholder="Exact account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_id", id ? String(id) : "")} />
+          <SearchableSelect inlineDropdown maxOptions={Number.POSITIVE_INFINITY} label="Single Account" value={filters.account_id ? Number(filters.account_id) : undefined} disabled={accounts.isLoading} placeholder="Exact account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_id", id ? String(id) : "")} />
           <select className={input} aria-label="Document type" value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
-          <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="From Account" value={filters.account_from_id ? Number(filters.account_from_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="Start account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_from_id", id ? String(id) : "")} />
-          <SearchableSelect maxOptions={Number.POSITIVE_INFINITY} label="To Account" value={filters.account_to_id ? Number(filters.account_to_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="End account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_to_id", id ? String(id) : "")} />
+          <SearchableSelect inlineDropdown dropdownPlacement="top" maxOptions={Number.POSITIVE_INFINITY} label="From Account" value={filters.account_from_id ? Number(filters.account_from_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="Start account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_from_id", id ? String(id) : "")} />
+          <SearchableSelect inlineDropdown dropdownPlacement="top" maxOptions={Number.POSITIVE_INFINITY} label="To Account" value={filters.account_to_id ? Number(filters.account_to_id) : undefined} disabled={accounts.isLoading || Boolean(filters.account_id)} placeholder="End account..." options={(accounts.data ?? []).map((account: any) => ({ id: account.id, label: `${account.account_code} — ${account.account_name}${account.is_active ? "" : " (Inactive)"}`, keywords: [account.account_code ?? "", account.account_name ?? ""] }))} onChange={(id) => change("account_to_id", id ? String(id) : "")} />
         </div>
         <div className="grid gap-2 md:grid-cols-3">
-          <SearchableSelect label="Supplier" value={filters.supplier_id ? Number(filters.supplier_id) : undefined} disabled={suppliers.isLoading} placeholder="Select supplier..." options={(suppliers.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("supplier_id", id ? String(id) : "")}/>
-          <SearchableSelect label="Department" value={filters.department_id ? Number(filters.department_id) : undefined} disabled={departments.isLoading} placeholder="Select department..." options={(departments.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("department_id", id ? String(id) : "")}/>
-          <SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} />
+          <SearchableSelect inlineDropdown dropdownPlacement="top" label="Supplier" value={filters.supplier_id ? Number(filters.supplier_id) : undefined} disabled={suppliers.isLoading} placeholder="Select supplier..." options={(suppliers.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("supplier_id", id ? String(id) : "")}/>
+          <SearchableSelect inlineDropdown dropdownPlacement="top" label="Department" value={filters.department_id ? Number(filters.department_id) : undefined} disabled={departments.isLoading} placeholder="Select department..." options={(departments.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("department_id", id ? String(id) : "")}/>
+          <SearchableSelect inlineDropdown dropdownPlacement="top" label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} />
         </div>
 
           </div>
@@ -268,7 +268,7 @@ export default function GeneralLedgerPage() {
             setFilters((current: any) => ({...current, search_type: "ALL", account_id: "", account_ids: "", account_from_id: "", account_to_id: "", reference_type: "", supplier_id: "", department_id: "", location_id: ""}));
             setPage(1);
           }}>Clear advanced filters</button>
-          <Button type="button" size="sm" onClick={() => setShowFilters(false)}>Show results</Button>
+          <Button type="button" size="sm" onClick={() => setShowFilters(false)}>Close</Button>
         </div></DialogFooter>
       </DialogContent>
     </Dialog>
