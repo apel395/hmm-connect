@@ -124,7 +124,7 @@ export default function GeneralLedgerPage() {
   }), { debit: 0, credit: 0 });
   // This grouping uses the current API page; page subtotals are not account closing balances.
   type AccountGroup = { id: number; code: string; name: string; rows: any[]; debit: number; credit: number };
-  const accountGroups = Array.from(
+  const accountGroups: AccountGroup[] = Array.from(
     (ledger.data?.items ?? []).reduce((groups: Map<number, AccountGroup>, row: any) => {
       const id = Number(row.account_id);
       if (!groups.has(id)) groups.set(id, { id, code: row.account_code || "—", name: row.account_name || "Unknown account", rows: [], debit: 0, credit: 0 });
