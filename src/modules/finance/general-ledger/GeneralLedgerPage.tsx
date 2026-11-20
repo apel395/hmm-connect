@@ -2,10 +2,10 @@ import { unbalancedJournalPath } from "../journals/journalFilters";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
-import { Download, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, List, Layers3, SlidersHorizontal } from "lucide-react";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
@@ -16,7 +16,7 @@ import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listLocations } from "@/modules/admin/organization/api";
 import { createLedgerExport, getAccountSummary, getExport, listLedger } from "./api";
 
-const amount = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID");
+const amount = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
 const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
 const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -26,6 +26,8 @@ export default function GeneralLedgerPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("ledger-page-size")) === 100 ? 100 : 50);
   const [showFilters, setShowFilters] = useState(false);
+  const [groupByAccount, setGroupByAccount] = useState(true);
+  const [collapsedAccounts, setCollapsedAccounts] = useState<number[]>([]);
   const [filters, setFilters] = useState<any>({ account_ids: searchParams.get("account_ids") || "", search: searchParams.get("search") || "", search_type: searchParams.get("search_type") || "ALL", account_id: searchParams.get("account_id") || "", account_from_id: searchParams.get("account_from_id") || "", account_to_id: searchParams.get("account_to_id") || "", date_from: searchParams.get("date_from") || "", date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
@@ -120,6 +122,20 @@ export default function GeneralLedgerPage() {
     debit: sum.debit + Number(row.debit || 0),
     credit: sum.credit + Number(row.credit || 0),
   }), { debit: 0, credit: 0 });
+  // Group only the current API page: totals below must never be presented as full-period account totals.
+  const accountGroups = Array.from(
+    (ledger.data?.items ?? []).reduce((groups: Map<number, { id: number; code: string; name: string; rows: any[]; debit: number; credit: number }>, row: any) => {
+      const id = Number(row.account_id);
+      if (!groups.has(id)) groups.set(id, { id, code: row.account_code || "—", name: row.account_name || "Unknown account", rows: [], debit: 0, credit: 0 });
+      const group = groups.get(id)!;
+      group.rows.push(row);
+      group.debit += Number(row.debit || 0);
+      group.credit += Number(row.credit || 0);
+      return groups;
+    }, new Map<number, { id: number; code: string; name: string; rows: any[]; debit: number; credit: number }>()).values(),
+  ).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const balanceIsFiltered = Boolean(filters.search || filters.reference_type || filters.supplier_id);
+  const toggleAccount = (id: number) => setCollapsedAccounts(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]);
   const summaryAvailable = ledger.data?.summary?.total_debit != null && ledger.data?.summary?.total_credit != null;
   const filteredTotals = summaryAvailable ? {
     debit: Number(ledger.data.summary.total_debit),
@@ -134,6 +150,21 @@ export default function GeneralLedgerPage() {
     }
     return parts.join(" · ");
   })();
+  const renderLedgerRow = (row: any) => {
+    const contextPrimary = row.supplier_name || row.business_unit_name;
+    const contextSecondary = [row.department_name, row.location_name].filter(Boolean).join(" · ");
+    return <TR key={row.id}>
+      <TD className="whitespace-nowrap">{row.posting_date}</TD>
+      <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
+      <TD className="max-w-[200px]"><TableCellStack primary={row.account_name} secondary={row.account_code}/></TD>
+      <TD className="max-w-[220px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
+      <TD className="max-w-[160px]"><span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span></TD>
+      <TD numeric className="whitespace-nowrap">{amount(row.debit)}</TD>
+      <TD numeric className="whitespace-nowrap">{amount(row.credit)}</TD>
+      <TD numeric className="whitespace-nowrap font-semibold">{amount(row.balance)}</TD>
+      <TD className="max-w-[180px]">{contextPrimary || contextSecondary ? <TableCellStack primary={contextPrimary || contextSecondary} secondary={contextPrimary ? contextSecondary : undefined}/> : "—"}</TD>
+    </TR>;
+  };
   const exportLabel = exportStatus === "starting"
     ? "Starting export..."
     : exportStatus === "processing"
@@ -175,11 +206,35 @@ export default function GeneralLedgerPage() {
     <Card className="workspace-summary p-2"><div className="workspace-summary-fields"><div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div></div><div><small>Filtered Debit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit)}</small></div><div><small>Filtered Credit</small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.credit)}</small></div><div><small>Difference</small><div className="font-bold tabular-nums">{filteredTotals ? <Link to={unbalancedJournalPath(filters)} title="Find unbalanced posted journals in this period and scope" className="text-emerald-700 hover:underline">{amount(filteredTotals.debit-filteredTotals.credit)}</Link> : "Awaiting backend totals"}</div><small>Page: {amount(pageTotals.debit-pageTotals.credit)}</small></div></div></Card>
     {summary.data && <Card className="workspace-summary p-2"><div className="workspace-summary-fields"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
     </div>
-    <Card className="workspace-data">
-      <Table variant="grid" stickyHeader className="workspace-ledger-table min-w-[980px]" containerClassName="max-h-[70vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible">
-        <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
-        <TBody>{ledger.isLoading && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">Loading ledger…</TD></TR>}{ledger.isError && <TR><TD colSpan={9} className="py-10 text-center text-red-700">Ledger could not be loaded. Use Refresh to try again.</TD></TR>}{!ledger.isLoading && !ledger.isError && !ledger.data?.items.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">No entries match these filters.</TD></TR>}{ledger.data?.items.map((row: any) => {
-          const contextPrimary = row.supplier_name || row.business_unit_name;
+    <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+      <div className="flex items-center gap-2 text-xs text-slate-600">
+        <span>{amount(ledger.data?.total_items ?? 0).replace(/,00$/, "")} matching entries</span>
+        {balanceIsFiltered && <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900" title="Filtered running balance is calculated on matching transac        <TBody>
+          {ledger.isLoading && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">Loading ledger…</TD></TR>}
+          {ledger.isError && <TR><TD colSpan={9} className="py-10 text-center text-red-700">Ledger could not be loaded. Use Refresh to try again.</TD></TR>}
+          {!ledger.isLoading && !ledger.isError && !ledger.data?.items.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">No entries match these filters.</TD></TR>}
+          {!groupByAccount && (ledger.data?.items ?? []).map(renderLedgerRow)}
+          {groupByAccount && accountGroups.map(group => {
+            const collapsed = collapsedAccounts.includes(group.id);
+            return <Fragment key={group.id}>
+              <TR key={`account-${group.id}`} className="bg-slate-100/80">
+                <TD colSpan={9} className="px-3 py-2">
+                  <button type="button" onClick={() => toggleAccount(group.id)} aria-expanded={!collapsed} className="flex w-full flex-wrap items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800">
+                    <span className="inline-flex items-center gap-2">{collapsed ? <ChevronRight size={16}/> : <ChevronDown size={16}/>}<span className="font-mono">{group.code}</span> — {group.name}</span>
+                    <span className="text-xs font-normal text-slate-600">{group.rows.length} entries on this page · Debit {amount(group.debit)} · Credit {amount(group.credit)}</span>
+                  </button>
+                </TD>
+              </TR>
+              {!collapsed && group.rows.map(renderLedgerRow)}
+              {!collapsed && <TR key={`subtotal-${group.id}`} className="bg-slate-50 font-medium text-slate-700">
+                <TD colSpan={5} className="text-right text-xs">Page subtotal — {group.code} (not full account closing)</TD>
+                <TD numeric className="whitespace-nowrap">{amount(group.debit)}</TD>
+                <TD numeric className="whitespace-nowrap">{amount(group.credit)}</TD>
+                <TD colSpan={2} className="text-xs text-slate-500">Full account closing: select one account</TD>
+              </TR>}
+            </Fragment>;
+          })}
+        </TBody>xtPrimary = row.supplier_name || row.business_unit_name;
           const contextSecondary = [row.department_name, row.location_name].filter(Boolean).join(" · ");
           return <TR key={row.id}>
             <TD className="whitespace-nowrap">{row.posting_date}</TD>
