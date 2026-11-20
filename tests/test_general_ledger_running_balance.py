@@ -63,6 +63,20 @@ def test_document_search_uses_full_account_running_balance_and_matches_trial_bal
         all_rows = ledger_rows_with_balance(full_query).all()
         assert [Decimal(balance) for _, balance in all_rows] == [Decimal("50.00"), Decimal("30.00"), Decimal("60.00")]
         assert Decimal(ledger_rows_with_balance(selected_query, balance_query=full_query).offset(0).limit(1).one()[1]) == Decimal("30.00")
+        from app.services.general_ledger_report import ledger_grouped_report
+        printed, filtered_debit, filtered_credit = ledger_grouped_report(
+            session, **scope, search="DOC-2", search_type="DOCUMENT"
+        )
+        assert len(printed) == 1
+        assert printed[0]["opening_balance"] == Decimal("100.00")
+        assert printed[0]["total_debit"] == Decimal("80.00")
+        assert printed[0]["total_credit"] == Decimal("20.00")
+        assert printed[0]["closing_balance"] == Decimal("160.00")
+        assert len(printed[0]["rows"]) == 1
+        assert printed[0]["rows"][0]["balance"] == Decimal("130.00")
+        assert filtered_debit == Decimal("0.00")
+        assert filtered_credit == Decimal("20.00")
+
         tb = TrialBalanceService(session).report(
             date_from=date(2026, 1, 1),
             date_to=date(2026, 1, 31),
