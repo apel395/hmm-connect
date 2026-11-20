@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import api from "@/api/interceptor";
+import ARImportPreparationPanel from "./ARImportPreparationPanel";
 import Button from "@/components/ui/Button";
 import Dialog, {
   DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -15,6 +16,7 @@ type StageBatch = {
   error_rows: number;
   warning_rows: number;
   imported_rows: number;
+  valid_rows: number;
   message: string;
 };
 type StageSummary = StageBatch & {
@@ -31,6 +33,7 @@ type StagedRow = {
   data: {
     location_name?: string;
     invoice_date?: string | null;
+    due_date?: string | null;
     gross?: string;
     receipt?: string;
     aging?: string;
@@ -56,7 +59,7 @@ export default function ARImportStagingDialog({
   const [batchId, setBatchId] = useState<number | null>(null);
   const [resumeId, setResumeId] = useState("");
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<"ALL" | "ERROR" | "REVIEW">("ALL");
+  const [filter, setFilter] = useState<"ALL" | "ERROR" | "REVIEW" | "READY">("ALL");
   const [uploading, setUploading] = useState(false);
 
   const summary = useQuery({
@@ -116,7 +119,8 @@ export default function ARImportStagingDialog({
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             Review-only upload: creates a saved staging batch, not an AR invoice.
             No sales revenue, customer receipt, payment, journal, or GL posting occurs.
-            Customer, due date and bank/tax evidence must be reconciled first.
+            Customer PHR is confirmed for this workbook. Due dates, PB-1 tax accounts,
+             and historic receipts must still be reconciled.
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <label className="min-w-52 flex-1 text-sm">
@@ -149,9 +153,10 @@ export default function ARImportStagingDialog({
                     <div className="rounded border p-3 text-sm"><div className="text-slate-500">Aging source</div><strong>{currency(data.totals.aging)}</strong></div>
                   </div>
                   <div className="text-xs text-slate-600">
-                    {data.error_rows} invoice(s) with blocking data issues; {data.warning_rows} with review warnings.
+                    {data.valid_rows || 0} prepared, {data.error_rows} invoice(s) with blocking data issues; {data.warning_rows} with review warnings.
                     These staged values are not yet part of the Accounts Receivable balance.
                   </div>
+                  <ARImportPreparationPanel key={batchId} batchId={batchId} onPrepared={() => { void summary.refetch(); void rows.refetch(); }} />
                   <div className="flex flex-wrap gap-2 text-xs">
                     {Object.entries(data.locations).map(([site, location]) => (
                       <div key={site} className="rounded border px-3 py-2">
@@ -167,13 +172,14 @@ export default function ARImportStagingDialog({
                       <option value="ALL">All invoices</option>
                       <option value="ERROR">Blocking errors</option>
                       <option value="REVIEW">Review items</option>
+                      <option value="READY">Prepared invoices</option>
                     </select>
                   </div>
                   <div className="overflow-x-auto rounded border">
                     <table className="w-full min-w-[850px] text-left text-xs">
                       <thead className="bg-slate-100">
                         <tr>
-                          {["Excel Row", "Invoice", "Location", "Date", "Gross", "Receipt", "Status & findings"].map((col) => (
+                          {["Excel Row", "Invoice", "Location", "Date / Due", "Gross", "Receipt", "Status & findings"].map((col) => (
                             <th key={col} className="px-2 py-2">{col}</th>
                           ))}
                         </tr>
@@ -184,11 +190,13 @@ export default function ARImportStagingDialog({
                             <td className="px-2 py-2">{r.row_number}</td>
                             <td className="max-w-44 break-words px-2 py-2 font-medium">{r.invoice_number}</td>
                             <td className="px-2 py-2">{r.data.location_name}</td>
-                            <td className="px-2 py-2">{r.data.invoice_date ?? "MISSING"}</td>
+                            <td className="px-2 py-2">{r.data.invoice_date ?? "MISSING"}
+                              {r.data.due_date && <div className="text-slate-500">Due {r.data.due_date}</div>}
+                            </td>
                             <td className="whitespace-nowrap px-2 py-2">{currency(r.data.gross)}</td>
                             <td className="whitespace-nowrap px-2 py-2">{currency(r.data.receipt)}</td>
                             <td className="max-w-96 px-2 py-2">
-                              <strong className={r.status === "ERROR" ? "text-red-700" : "text-amber-700"}>{r.status}</strong>
+                              <strong className={r.status === "ERROR" ? "text-red-700" : r.status === "READY" ? "text-emerald-700" : "text-amber-700"}>{r.status}</strong>
                               {r.errors.map((message) => <p key={message} className="mt-1 text-red-700">{message}</p>)}
                               {r.warnings.slice(0, 4).map((message) => <p key={message} className="mt-1 text-slate-600">{message}</p>)}
                               {r.warnings.length > 4 && <p className="mt-1 text-slate-500">+{r.warnings.length - 4} more review notes</p>}
