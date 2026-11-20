@@ -50,10 +50,12 @@ rejecting the legal identifier.
 2. Preview totals, normalized month, original number, source row,
    duplicates, active master mappings, issues and reconciliations using
    `GET /ar-imports/{id}/summary` and `/rows`.
-3. Obtain legal Customer mapping for each invoice; source location is
-   **not** a substitute for customer identity. Obtain original contractual
-   due dates and AR/revenue/PB-1/withholding COA mapping. Keep reviewed
-   source rows linked to their staged batch.
+3. **Confirmed by the business owner on 20 Nov 2026:** all 229 Project Catering
+   invoice rows belong to the active customer **PHR**. Preparation looks up the
+   unique active PHR master (not by assumed numerical customer ID), and stores
+   the mapping only in the normalized staging rows. No other Catering import
+   inherits this mapping by default. Finance still supplies approved contractual
+   payment terms and AR/revenue/PB-1 liability account IDs.
 4. Reconcile each source invoice with existing AR, sales transaction,
    journal and GL evidence. Existing monthly/bulk journals may contain
    booked revenue or AR balances without carrying an external invoice
@@ -103,8 +105,7 @@ false until the document breakdown is supplied).
 ## Pending business data
 
 Required to proceed with approved AR activation:
-- Customer master mapping for each external invoice or an authoritative
-  mapping by contract and invoice prefix.
+- **Customer mapped:** all 229 rows to PHR per business-owner confirmation.
 - Documented due date or signed payment terms per customer/invoice.
 - Revenue/AR/PB-1/withholding accounts and evidence of prior journal
   posting or opening-balance recognition.
@@ -113,3 +114,37 @@ Required to proceed with approved AR activation:
 
 The work is intentionally not blocked at the XLSX upload stage when
 these external documents are missing; only accounting activation is held.
+
+
+## Finance preparation (phase 2, no accounting writes)
+
+The Accounts Receivable > **Stage AR Excel** dialog has a **PHR Invoice
+Preparation** form. Use \`GET /api/v1/ar-imports/options\` to fetch the uniquely
+matched active PHR customer and eligible chart-of-account choices. Use
+\`POST /api/v1/ar-imports/{batch_id}/prepare\` with:
+
+- \`customer_id\` matching the unique active PHR record
+- \`payment_terms_days\` (0–365), **verified against the source contract**
+- \`ar_account_id\` (active 100-200 asset/debit posting COA)
+- \`revenue_account_id\` (active Project Catering operating revenue COA)
+- \`pb1_liability_account_id\` (active liability/credit posting COA, must
+  specifically be confirmed as PB-1 by Finance)
+- \`terms_confirmed: true\` and \`accounts_confirmed: true\`
+
+The API recomputes the due date from the invoice date without changing the
+source invoice date; it never chooses payment terms silently. It re-checks
+customer uniqueness, Catering BU/dept/location, account classes, exact monetary
+balance, source duplicate numbers, and existing AR/Sales/Journal references.
+Rows with source exceptions stay \`ERROR\` rather than being auto-corrected.
+Other rows become \`READY\` **in staging only**. See
+\`GET /api/v1/ar-imports/{batch_id}/journal-preview\` for the balanced
+**proposed** debit AR, credit Project Catering revenue, credit PB-1 liability
+entries. Staging rows retain original source values in \`raw_data_json\`
+and mapped review values in \`normalized_data_json\`. Re-running preparation
+only updates the staging mappings and audit records; it never registers a
+real AccountReceivable, creates a CustomerPayment, or posts Journal/GL.
+
+This phase deliberately **does not implement /commit or accounting activation**.
+When implementing accounting activation, a separate approved design must
+avoid inadvertent live AR aging overstatement before reconciling the 62
+historical customer receipts and PPh23/PB-1 withholdings.
