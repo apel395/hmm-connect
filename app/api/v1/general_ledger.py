@@ -210,6 +210,66 @@ def printable(
     }
 
 
+@router.get("/account-balances")
+def account_balances(
+    account_ids: str = Query(..., description="Comma-separated account IDs on the visible GL page"),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    business_unit_id: int | None = None,
+    location_id: int | None = None,
+    department_id: int | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Return complete account balances, never subtotals from a search/page.
+
+    Organization scope is resolved on the server and the journal-recognition
+    predicate is identical to Trial Balance.
+    """
+    access(user)
+    try:
+        ids = list(dict.fromkeys(int(part.strip()) for part in account_ids.split(",")))
+    except ValueError as exc:
+        raise HTTPException(422, "Invalid account selection") from exc
+    if not ids or len(ids) > 100 or any(value <= 0 for value in ids):
+        raise HTTPException(422, "Select between 1 and 100 valid accounts")
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "From Date must not be after To Date")
+    scope = resolve_organization_access(
+        db, user, business_unit_id=business_unit_id,
+        location_id=location_id, department_id=department_id,
+    )
+    accounts = {account.id: account for account in db.query(ChartOfAccount).filter(ChartOfAccount.id.in_(ids)).all()}
+    if len(accounts) != len(ids):
+        raise HTTPException(404, "Account not found")
+    q = build_ledger_query(db, account_ids=",".join(map(str, ids)), date_from=date_from, date_to=date_to, **scope)
+    totals = {
+        account: (Decimal(debit), Decimal(credit))
+        for account, debit, credit in (
+            q.with_entities(JournalLine.account_id, func.sum(JournalLine.debit), func.sum(JournalLine.credit))
+            .group_by(JournalLine.account_id).all()
+        )
+    }
+    opening = opening_balances(db, account_ids=",".join(map(str, ids)), date_from=date_from, **scope)
+    rows = []
+    for account_id in ids:
+        account = accounts[account_id]
+        debit, credit = totals.get(account_id, (ZERO, ZERO))
+        start = opening.get(account_id, ZERO)
+        change = debit - credit if account.normal_balance == "DEBIT" else credit - debit
+        rows.append({
+            "account_id": account_id,
+            "account_code": account.account_number,
+            "account_name": account.account_name,
+            "normal_balance": account.normal_balance,
+            "opening_balance": start,
+            "total_debit": debit,
+            "total_credit": credit,
+            "closing_balance": start + change,
+        })
+    return {"items": rows, "balance_scope": "ACCOUNT_PERIOD", "search_applied_to_balance": False}
+
+
 @router.get("/accounts/{account_id}/summary")
 def summary(account_id: int, date_from: date | None = None, date_to: date | None = None, business_unit_id: int | None = None, location_id: int | None = None, department_id: int | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     access(user)
