@@ -87,18 +87,38 @@ def build_ledger_query(
     return q
 
 
-def ledger_rows_with_balance(q):
+def ledger_rows_with_balance(q, *, balance_query=None):
+    """Return matching lines with balances over the complete account movement.
+
+    A document, description or supplier search changes visible rows, never
+    the amount carried through a posting. Build the window in its own query
+    first, then restrict the outer result to the matching line IDs. Apply
+    pagination only to that outer result.
+    """
+    if balance_query is None:
+        balance_query = q
     debit_normal_delta = func.coalesce(JournalLine.debit, 0) - func.coalesce(JournalLine.credit, 0)
     credit_normal_delta = func.coalesce(JournalLine.credit, 0) - func.coalesce(JournalLine.debit, 0)
     delta = case((ChartOfAccount.normal_balance == "DEBIT", debit_normal_delta), else_=credit_normal_delta)
-    running_balance = func.sum(delta).over(
-        partition_by=JournalLine.account_id,
-        order_by=(JournalEntry.posting_date, JournalEntry.id, JournalLine.line_number, JournalLine.id),
-        rows=(None, 0),
-    ).label("running_balance")
+    window = (
+        balance_query.join(ChartOfAccount, ChartOfAccount.id == JournalLine.account_id)
+        .with_entities(
+            JournalLine.id.label("line_id"),
+            func.sum(delta).over(
+                partition_by=JournalLine.account_id,
+                order_by=(JournalEntry.posting_date, JournalEntry.id, JournalLine.line_number, JournalLine.id),
+                rows=(None, 0),
+            ).label("running_balance"),
+        )
+        .order_by(None)
+        .subquery()
+    )
+    visible_ids = q.with_entities(JournalLine.id).order_by(None).subquery()
     return (
-        q.join(ChartOfAccount, ChartOfAccount.id == JournalLine.account_id)
-        .with_entities(JournalLine, running_balance)
+        q.session.query(JournalLine, window.c.running_balance)
+        .join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id)
+        .join(window, window.c.line_id == JournalLine.id)
+        .join(visible_ids, visible_ids.c.id == JournalLine.id)
         .order_by(JournalEntry.posting_date, JournalEntry.id, JournalLine.line_number, JournalLine.id)
     )
 
