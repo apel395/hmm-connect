@@ -13,8 +13,10 @@ import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui
 import { TABLE_UI } from "@/config/tableUi";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
-import { listLocations } from "@/modules/admin/organization/api";
-import { createLedgerExport, getAccountSummary, getExport, listLedger } from "./api";
+import { listDepartments, listLocations } from "@/modules/admin/organization/api";
+import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
+import { createLedgerExport, getAccountSummary, getExport, getLedgerAccountBalances, listLedger } from "./api";
+import type { LedgerAccountBalance } from "./api";
 
 const amount = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
@@ -35,6 +37,8 @@ export default function GeneralLedgerPage() {
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: pageSize }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
   const locations = useQuery({ queryKey: ["ledger-filter-locations", filters.business_unit_id], queryFn: () => listLocations({ is_active: true, business_unit_id:Number(filters.business_unit_id)||undefined }) });
+  const departments = useQuery({ queryKey: ["ledger-filter-departments", filters.business_unit_id], queryFn: () => listDepartments({ is_active: true, business_unit_id: Number(filters.business_unit_id) || undefined }) });
+  const suppliers = useSuppliers("", 100, showFilters);
   const accounts = useQuery({ queryKey: ["ledger-accounts", "all"], queryFn: () => getAllAccountLookup() });
   const summary = useQuery({ queryKey: ["ledger-summary", filters.account_id, filters.date_from, filters.date_to, filters.business_unit_id, filters.location_id, filters.department_id], queryFn: () => getAccountSummary(Number(filters.account_id), { business_unit_id:Number(filters.business_unit_id)||undefined, location_id:Number(filters.location_id)||undefined, department_id:Number(filters.department_id)||undefined, date_from: filters.date_from || undefined, date_to: filters.date_to || undefined }), enabled: !!filters.account_id });
   const change = (key: string, value: string) => { setFilters({ ...filters, [key]: value }); setPage(1); };
@@ -135,6 +139,20 @@ export default function GeneralLedgerPage() {
       return groups;
     }, new Map<number, AccountGroup>()).values(),
   ).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const accountGroupIds = accountGroups.map(group => group.id).join(",");
+  const accountBalances = useQuery({
+    queryKey: ["gl-account-balances", accountGroupIds, filters.date_from, filters.date_to, filters.business_unit_id, filters.location_id, filters.department_id],
+    queryFn: () => getLedgerAccountBalances({
+      account_ids: accountGroupIds,
+      date_from: filters.date_from || undefined,
+      date_to: filters.date_to || undefined,
+      business_unit_id: filters.business_unit_id || undefined,
+      location_id: filters.location_id || undefined,
+      department_id: filters.department_id || undefined,
+    }),
+    enabled: groupByAccount && Boolean(accountGroupIds),
+  });
+  const accountBalanceById = new Map<number, LedgerAccountBalance>((accountBalances.data?.items ?? []).map(row => [row.account_id, row]));
   const balanceIsFiltered = Boolean(filters.search || filters.reference_type || filters.supplier_id);
   const toggleAccount = (id: number) => setCollapsedAccounts(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]);
   const summaryAvailable = ledger.data?.summary?.total_debit != null && ledger.data?.summary?.total_credit != null;
@@ -151,6 +169,18 @@ export default function GeneralLedgerPage() {
     }
     return parts.join(" · ");
   })();
+  const documentLink = (row: any): string | null => {
+    const id = Number(row.reference_id);
+    if (!Number.isSafeInteger(id) || id <= 0) return null;
+    const paths: Record<string, string> = {
+      GOODS_RECEIPT: "/receiving",
+      SUPPLIER_INVOICE: "/supplier-invoices",
+      SUPPLIER_PAYMENT: "/payments",
+      BANK_TRANSFER: "/bank-transfers",
+    };
+    const base = paths[String(row.reference_type ?? "").toUpperCase()];
+    return base ? `${base}/${id}` : null;
+  };
   const renderLedgerRow = (row: any) => {
     const contextPrimary = row.supplier_name || row.business_unit_name;
     const contextSecondary = [row.department_name, row.location_name].filter(Boolean).join(" · ");
@@ -159,7 +189,7 @@ export default function GeneralLedgerPage() {
       <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
       <TD className="max-w-[200px]"><TableCellStack primary={row.account_name} secondary={row.account_code}/></TD>
       <TD className="max-w-[220px]"><span className="block truncate" title={row.description || undefined}>{row.description || "—"}</span></TD>
-      <TD className="max-w-[160px]"><span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span></TD>
+      <TD className="max-w-[160px]">{documentLink(row) ? <Link className={TABLE_UI.documentLink} to={documentLink(row)!} title={row.reference_number || "Open source document"}>{row.reference_number || row.reference_type || "Open source"}</Link> : <span className="block truncate font-medium text-slate-700" title={row.reference_number || undefined}>{row.reference_number || "—"}</span>}</TD>
       <TD numeric className="whitespace-nowrap">{amount(row.debit)}</TD>
       <TD numeric className="whitespace-nowrap">{amount(row.credit)}</TD>
       <TD numeric className="whitespace-nowrap font-semibold">{amount(row.balance)}</TD>
@@ -198,8 +228,8 @@ export default function GeneralLedgerPage() {
       </div>
       <div className="grid gap-2 md:grid-cols-4">
         <select className={input} value={filters.reference_type} onChange={event => change("reference_type", event.target.value)}><option value="">All document types</option><option>SUPPLIER_INVOICE</option><option>SUPPLIER_PAYMENT</option><option>MANUAL</option></select>
-        <input className={input} placeholder="Supplier ID" value={filters.supplier_id} onChange={event => change("supplier_id", event.target.value)}/>
-        <input className={input} placeholder="Department ID" value={filters.department_id} onChange={event => change("department_id", event.target.value)}/>
+        <SearchableSelect label="Supplier" value={filters.supplier_id ? Number(filters.supplier_id) : undefined} disabled={suppliers.isLoading} placeholder="Select supplier..." options={(suppliers.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("supplier_id", id ? String(id) : "")}/>
+        <SearchableSelect label="Department" value={filters.department_id ? Number(filters.department_id) : undefined} disabled={departments.isLoading} placeholder="Select department..." options={(departments.data ?? []).map(item => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code, item.name] }))} onChange={id => change("department_id", id ? String(id) : "")}/>
         <SearchableSelect label="Location" value={filters.location_id ? Number(filters.location_id) : undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => change("location_id", id ? String(id) : "")} />
       </div>
       </div>}
@@ -210,7 +240,7 @@ export default function GeneralLedgerPage() {
     <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
       <div className="flex items-center gap-2 text-xs text-slate-600">
         <span>{ledger.data?.total_items ?? 0} matching entries</span>
-        {balanceIsFiltered && <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">Running balances reflect matching movements, not necessarily all account movements.</span>}
+        {balanceIsFiltered && <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">Running balances include complete account movements; debit/credit search totals cover matching entries only.</span>}
       </div>
       <div className="inline-flex items-center gap-1 rounded-md border border-slate-200 p-1" role="group" aria-label="Ledger display mode">
         <button type="button" onClick={() => setGroupByAccount(true)} aria-pressed={groupByAccount} className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${groupByAccount ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}><Layers3 size={14}/> By account</button>
@@ -232,16 +262,26 @@ export default function GeneralLedgerPage() {
                 <TD colSpan={9} className="px-3 py-2">
                   <button type="button" onClick={() => toggleAccount(group.id)} aria-expanded={!collapsed} className="flex w-full flex-wrap items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800">
                     <span className="inline-flex items-center gap-2">{collapsed ? <ChevronRight size={16}/> : <ChevronDown size={16}/>}<span className="font-mono">{group.code}</span> — {group.name}</span>
-                    <span className="text-xs font-normal text-slate-600">{group.rows.length} entries on this page · Debit {amount(group.debit)} · Credit {amount(group.credit)}</span>
+                    <span className="text-xs font-normal text-slate-600">{group.rows.length} entries on this page</span>
                   </button>
                 </TD>
               </TR>
+              {!collapsed && <TR className="bg-slate-50 text-xs text-slate-700">
+                <TD colSpan={9}>
+                  {accountBalanceById.get(group.id) ? <span className="flex flex-wrap gap-x-5 gap-y-1">
+                    <span>Opening: <strong>{amount(accountBalanceById.get(group.id)!.opening_balance)}</strong></span>
+                    <span>Period debit: <strong>{amount(accountBalanceById.get(group.id)!.total_debit)}</strong></span>
+                    <span>Period credit: <strong>{amount(accountBalanceById.get(group.id)!.total_credit)}</strong></span>
+                    <span>Closing: <strong>{amount(accountBalanceById.get(group.id)!.closing_balance)}</strong></span>
+                  </span> : <span>{accountBalances.isLoading ? "Loading full account balances..." : "Full account balances unavailable"}</span>}
+                </TD>
+              </TR>}
               {!collapsed && group.rows.map(renderLedgerRow)}
               {!collapsed && <TR className="bg-slate-50 font-medium text-slate-700">
                 <TD colSpan={5} className="text-right text-xs">Page subtotal — {group.code} (not full account closing)</TD>
                 <TD numeric className="whitespace-nowrap">{amount(group.debit)}</TD>
                 <TD numeric className="whitespace-nowrap">{amount(group.credit)}</TD>
-                <TD colSpan={2} className="text-xs text-slate-500">Full account closing: select one account</TD>
+                <TD colSpan={2} className="text-xs text-slate-500">Closing: {accountBalanceById.get(group.id) ? amount(accountBalanceById.get(group.id)!.closing_balance) : "—"}</TD>
               </TR>}
             </Fragment>;
           })}

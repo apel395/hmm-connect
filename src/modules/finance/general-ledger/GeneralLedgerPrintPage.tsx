@@ -43,7 +43,7 @@ export default function GeneralLedgerPrintPage() {
     ? `${longDate(data.period?.date_from) || "…"} - ${longDate(data.period?.date_to) || "…"}`
     : "All time";
   const accountLine = filters.account_code
-    ? filters.account_name || "Selected account"
+    ? `${filters.account_code} — ${filters.account_name || "Selected account"}`
     : "ALL";
 
   return (
@@ -82,13 +82,12 @@ export default function GeneralLedgerPrintPage() {
       {accounts.map((account) => (
         <section key={account.account_id} className="gl-account mb-6">
           <div className="mb-1 border-b border-slate-500 pb-1">
-            <div className="font-bold">{account.account_name}</div>
-            <div>{account.account_name}</div>
+            <div className="font-bold">{account.account_code} — {account.account_name}</div>
             <div className="text-[9px] text-slate-600">{account.account_type} | Normal Balance: {account.normal_balance}</div>
           </div>
 
           <div className="mb-1 flex justify-between font-semibold">
-            <span>Opening Balance</span>
+            <span>Opening Balance (brought forward)</span>
             <span className="tabular-nums">{money(account.opening_balance)}</span>
           </div>
 
@@ -119,7 +118,7 @@ export default function GeneralLedgerPrintPage() {
             </tbody>
             <tfoot>
               <tr className="font-bold">
-                <td colSpan={7} className="border border-slate-700 px-1.5 py-1 text-right">ACCOUNT TOTAL</td>
+                <td colSpan={7} className="border border-slate-700 px-1.5 py-1 text-right">FULL ACCOUNT TOTAL</td>
                 <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(account.total_debit)}</td>
                 <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(account.total_credit)}</td>
                 <td className="border border-slate-700 px-1.5 py-1" />
@@ -128,7 +127,7 @@ export default function GeneralLedgerPrintPage() {
           </table>
 
           <div className="mt-1 flex justify-between font-semibold">
-            <span>Closing Balance</span>
+            <span>Closing Balance (all period movements)</span>
             <span className="tabular-nums">{money(account.closing_balance)}</span>
           </div>
         </section>
@@ -137,7 +136,7 @@ export default function GeneralLedgerPrintPage() {
       {!accounts.length && <p className="py-6 text-center text-slate-500">No ledger activity for the selected filters.</p>}
 
       <section className="mt-4 border-t-2 border-slate-800 pt-2">
-        <div className="mb-1 text-center font-bold">GENERAL LEDGER CONTROL TOTAL</div>
+        <div className="mb-1 text-center font-bold">FILTERED GENERAL LEDGER CONTROL TOTAL</div>
         <div className="mx-auto flex w-72 justify-between"><span>Total Debits :</span><span className="tabular-nums">{money(control.total_debit)}</span></div>
         <div className="mx-auto flex w-72 justify-between"><span>Total Credits :</span><span className="tabular-nums">{money(control.total_credit)}</span></div>
         <div className="mx-auto flex w-72 justify-between font-bold"><span>Difference :</span><span className="tabular-nums">{money(control.difference)}</span></div>
