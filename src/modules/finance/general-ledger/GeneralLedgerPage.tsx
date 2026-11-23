@@ -1,7 +1,8 @@
 import { unbalancedJournalPath } from "../journals/journalFilters";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
-import { useQuery } from "@tanstack/react-query";
-import { Fragment, useEffect, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Download, Info, Layers3, List, RotateCw, Rows3, SlidersHorizontal, X } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -151,6 +152,8 @@ export default function GeneralLedgerPage() {
     queryKey: ["general-ledger-grouped", printParams],
     queryFn: () => getLedgerPrint(printParams),
     enabled: groupByAccount,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
   const printQuery = new URLSearchParams(printParams as Record<string, string>).toString();
   const printSrc = `/general-ledger/print${printQuery ? `?${printQuery}` : ""}`;
@@ -183,6 +186,7 @@ export default function GeneralLedgerPage() {
   ).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
   // The grouped report uses the print row shape; normalize it to the ledger row shape
   // so the same renderer handles both views.
+  type GroupItem = { kind: "group" | "total"; group: AccountGroup; height: number } | { kind: "row"; row: any; height: number };
   const accountGroups: AccountGroup[] = groupedReport.data?.accounts?.length
     ? groupedReport.data.accounts.map((group: any) => ({
         id: Number(group.account_id),
@@ -234,6 +238,34 @@ export default function GeneralLedgerPage() {
   const activeTotalItems = groupByAccount && groupedReport.data
     ? groupedReport.data.accounts.reduce((count: number, group: any) => count + (group.rows?.length ?? 0), 0)
     : (ledger.data?.total_items ?? 0);
+  const groupedPending = groupByAccount && groupedReport.isLoading && !groupedReport.data;
+
+  // Windowing keeps the full, correct grouped dataset in memory without mounting
+  // ~19,000 table rows at once — that render cost was the main load-time spike.
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (groupByAccount) setScrollEl(document.querySelector<HTMLElement>(".gl-ledger-viewport"));
+  }, [groupByAccount]);
+  const groupedItems = useMemo<GroupItem[]>(() => {
+    if (!groupByAccount) return [];
+    const items: GroupItem[] = [];
+    for (const group of accountGroups) {
+      items.push({ kind: "group", group, height: 52 });
+      if (!collapsedAccounts.includes(group.id)) {
+        for (const row of group.rows) items.push({ kind: "row", row, height: 32 });
+        items.push({ kind: "total", group, height: 28 });
+      }
+    }
+    return items;
+  }, [groupByAccount, accountGroups, collapsedAccounts]);
+  const rowVirtualizer = useVirtualizer({
+    count: groupedItems.length,
+    getScrollElement: () => scrollEl,
+    estimateSize: (index) => groupedItems[index]?.height ?? 32,
+    overscan: 8,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+
   const printHeader = (() => {
     const parts: string[] = [];
     if (filters.date_from || filters.date_to) parts.push(`${filters.date_from || "…"} to ${filters.date_to || "…"}`);
@@ -270,6 +302,38 @@ export default function GeneralLedgerPage() {
       <TD className="max-w-[180px]">{contextPrimary || contextSecondary ? <TableCellStack primary={contextPrimary || contextSecondary} secondary={contextPrimary ? contextSecondary : undefined}/> : "—"}</TD>
     </TR>;
   };
+  const renderGroupItem = (item: GroupItem) => {
+    if (item.kind === "row") return renderLedgerRow(item.row);
+    const group = item.group;
+    const collapsed = collapsedAccounts.includes(group.id);
+    const accountBalance = accountBalanceById.get(group.id);
+    const opening = group.opening ?? accountBalance?.opening_balance;
+    const closing = group.closing ?? accountBalance?.closing_balance;
+    if (item.kind === "group") return <TR key={`group-${group.id}`} className="gl-v-group bg-slate-100/80">
+      <TD colSpan={9}>
+        <div className="flex items-center justify-between gap-2">
+          <button type="button" onClick={() => toggleAccount(group.id)} aria-expanded={!collapsed} className="gl-group-toggle flex items-center gap-2 text-left text-sm font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">
+            {collapsed ? <ChevronRight size={16}/> : <ChevronDown size={16}/>}<span className="font-mono text-xs text-slate-600">{group.code}</span> — {group.name}
+          </button>
+          <span className="text-xs font-normal text-slate-600">{group.rows.length} {group.rows.length === 1 ? "entry" : "entries"}</span>
+        </div>
+        <div className="mt-0.5 flex flex-wrap gap-x-5 gap-y-0 overflow-hidden text-xs text-slate-700">
+          {opening != null || accountBalance ? <>
+            <span>Opening: <strong>{amount(opening ?? 0)}</strong></span>
+            <span>Period debit: <strong>{amount(group.debit)}</strong></span>
+            <span>Period credit: <strong>{amount(group.credit)}</strong></span>
+            <span>Closing: <strong>{amount(closing ?? 0)}</strong></span>
+          </> : <span className="text-slate-600">{accountBalances.isLoading ? "Loading full account balances…" : "Full account balances unavailable"}</span>}
+        </div>
+      </TD>
+    </TR>;
+    return <TR key={`total-${group.id}`} className="gl-v-total bg-slate-50 font-medium text-slate-700">
+      <TD colSpan={5} className="text-right text-xs text-slate-600">Period total — {group.code}</TD>
+      <TD numeric className="whitespace-nowrap">{amount(group.debit)}</TD>
+      <TD numeric className="whitespace-nowrap">{amount(group.credit)}</TD>
+      <TD colSpan={2} className="text-xs text-slate-500">Closing: {closing != null ? amount(closing) : "—"}</TD>
+    </TR>;
+  };
   const exportLabel = exportStatus === "starting"
     ? "Starting export..."
     : exportStatus === "processing"
@@ -296,6 +360,10 @@ export default function GeneralLedgerPage() {
     .gl-compact-ledger thead tr th { height: 26px; padding: 4px 8px; font-size: 11px; }
     .gl-compact-ledger tbody tr button { line-height: 17px; }
     .gl-compact-ledger .text-slate-400 { color: #475569 !important; }
+    .gl-v-notice td { padding: 3px 10px !important; height: 24px; font-size: 11px; color: #92610a; background: #fffbeb; }
+    .gl-v-group td { height: 52px; padding: 2px 10px !important; }
+    .gl-v-total td { height: 28px; padding: 2px 10px !important; }
+    .gl-v-spacer td { height: auto; padding: 0 !important; border: 0 !important; background: white; }
     .gl-group-toggle { min-height: 30px; }
     .gl-view-toggle button { min-height: 24px; }
     @media print { .gl-compact-ledger tbody tr td { padding: 4px 7px; font-size: 11px; } }
@@ -379,48 +447,25 @@ export default function GeneralLedgerPage() {
       <Table variant="grid" stickyHeader className={`workspace-ledger-table min-w-[980px] ${denseRows ? "gl-compact-ledger" : ""}`} containerClassName="gl-ledger-viewport overflow-auto border-0 shadow-none print:max-h-none print:min-h-0 print:overflow-visible">
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
         <TBody>
-          {activeLoading && <GlTableSkeleton />}
-          {activeError && <TR><TD colSpan={9} className="py-10 text-center text-red-700"><p className="mb-2">Ledger could not be loaded.</p><Button size="sm" variant="outline" onClick={() => activeRefetch()}><RotateCw size={14}/> Retry</Button></TD></TR>}
+          {activeLoading && !accountGroups.length && <GlTableSkeleton />}
+          {groupedPending && accountGroups.length > 0 && <TR className="gl-v-notice"><TD colSpan={9}>Loading complete account data… showing this page until all entries are ready.</TD></TR>}
+          {activeError && !accountGroups.length && <TR><TD colSpan={9} className="py-10 text-center text-red-700"><p className="mb-2">Ledger could not be loaded.</p><Button size="sm" variant="outline" onClick={() => activeRefetch()}><RotateCw size={14}/> Retry</Button></TD></TR>}
           {!activeLoading && !activeError && !groupByAccount && !ledger.data?.items.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
-          {!activeLoading && !activeError && groupByAccount && !groupedReport.data?.accounts?.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
+          {!activeLoading && !activeError && groupByAccount && !accountGroups.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
           {!activeLoading && !activeError && !groupByAccount && (ledger.data?.items ?? []).map(renderLedgerRow)}
-          {!activeLoading && !activeError && groupByAccount && accountGroups.map(group => {
-            const collapsed = collapsedAccounts.includes(group.id);
-            const accountBalance = accountBalanceById.get(group.id);
-            const opening = group.opening ?? accountBalance?.opening_balance;
-            const closing = group.closing ?? accountBalance?.closing_balance;
-            return <Fragment key={group.id}>
-              <TR className="bg-slate-100/80">
-                <TD colSpan={9} className="px-3 py-2">
-                  <button type="button" onClick={() => toggleAccount(group.id)} aria-expanded={!collapsed} className="gl-group-toggle flex w-full flex-wrap items-center justify-between gap-2 px-1 text-left text-sm font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">
-                    <span className="inline-flex items-center gap-2">{collapsed ? <ChevronRight size={16}/> : <ChevronDown size={16}/>}<span className="font-mono text-xs text-slate-600">{group.code}</span> — {group.name}</span>
-                    <span className="text-xs font-normal text-slate-600">{group.rows.length} {group.rows.length === 1 ? "entry" : "entries"}</span>
-                  </button>
-                </TD>
-              </TR>
-              {!collapsed && <TR className="bg-slate-50 text-xs text-slate-700">
-                <TD colSpan={9}>
-                  {opening != null || accountBalance ? <span className="flex flex-wrap gap-x-5 gap-y-1">
-                    <span>Opening: <strong>{amount(opening ?? 0)}</strong></span>
-                    <span>Period debit: <strong>{amount(group.debit)}</strong></span>
-                    <span>Period credit: <strong>{amount(group.credit)}</strong></span>
-                    <span>Closing: <strong>{amount(closing ?? 0)}</strong></span>
-                  </span> : <span className="inline-flex items-center gap-2 text-slate-600">{accountBalances.isLoading ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-emerald-700" />Loading full account balances...</> : "Full account balances unavailable"}</span>}
-                </TD>
-              </TR>}
-              {!collapsed && group.rows.map(renderLedgerRow)}
-              {!collapsed && <TR className="bg-slate-50 font-medium text-slate-700">
-                <TD colSpan={5} className="text-right text-xs text-slate-600">Period total — {group.code}</TD>
-                <TD numeric className="whitespace-nowrap">{amount(group.debit)}</TD>
-                <TD numeric className="whitespace-nowrap">{amount(group.credit)}</TD>
-                <TD colSpan={2} className="text-xs text-slate-500">Closing: {closing != null ? amount(closing) : "—"}</TD>
-              </TR>}
-            </Fragment>;
-          })}
+          {!activeError && groupByAccount && scrollEl && groupedItems.length > 0 && (() => {
+            const paddingTop = virtualRows[0]?.start ?? 0;
+            const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0);
+            return <>
+              {paddingTop > 0 && <TR className="gl-v-spacer"><TD colSpan={9} style={{ height: paddingTop }} /></TR>}
+              {virtualRows.map(virtualRow => renderGroupItem(groupedItems[virtualRow.index]))}
+              {paddingBottom > 0 && <TR className="gl-v-spacer"><TD colSpan={9} style={{ height: paddingBottom }} /></TR>}
+            </>;
+          })()}
         </TBody>
       </Table>
       <div className="gl-statusbar print:hidden">
-        <span><strong>{activeTotalItems}</strong> entries{groupByAccount ? " · all shown" : ""}</span>
+        <span><strong>{activeTotalItems}</strong> entries{groupByAccount ? groupedPending ? " · reconciling…" : " · all shown" : ""}</span>
         <span>Debit <strong>{filteredTotals ? amount(filteredTotals.debit) : activeLoading ? "…" : "—"}</strong></span>
         <span>Credit <strong>{filteredTotals ? amount(filteredTotals.credit) : activeLoading ? "…" : "—"}</strong></span>
         <span className="inline-flex items-center gap-1">Diff <strong>{filteredTotals ? <Link to={unbalancedJournalPath(filters)} title="Difference across all matching entries — review unbalanced journals in this period and scope." className="text-emerald-700 hover:underline">{amount(filteredTotals.debit - filteredTotals.credit)}</Link> : "…"}</strong><Info size={11} aria-hidden="true" /></span>

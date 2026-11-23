@@ -73,14 +73,14 @@ async function run(){
  for (const value of ['Hotel','Rumin','Operasional','Finance']) assert.ok(view.root.findAllByType('span').some(n=>n.children.includes(value)),`${value} dimension visible`);
  assert.ok(view.root.findByType('print-preview').props.src.includes('difference_amount=45000'));
  assert.ok(view.root.findAllByType('input').some(n=>n.props['aria-label']==='Journal period'));
- assert.ok(view.root.findAllByType('header').some(n=>n.findAllByProps({'aria-label':'Journal business unit'}).length>0),'Business-unit switcher shares the register header');
- assert.ok(view.root.findAllByProps({'aria-label':'Filtered journal totals'}).some(n=>String(n.props.className).includes('grid-cols-2')),'Totals use a compact responsive strip');
- const bulkButtons=()=>view.root.findAllByType('button').filter(n=>n.children.some(c=>typeof c==='string'&&c.includes('selected (')));
+ assert.ok(view.root.findAllByProps({'aria-label':'Journal business unit'}).length>0,'Business-unit switcher is in the compact toolbar');
+ assert.ok(view.root.findAllByProps({'aria-label':'Journal register status'}).length>0,'Totals moved to a compact status bar');
+ const bulkButtons=()=>view.root.findAllByType('button').filter(n=>n.children.some(c=>typeof c==='string'&&(c.includes('Post (')||c.includes('Unpost ('))));
  assert.equal(bulkButtons().length,0,'No bulk action appears without a selection');
  assert.equal(global.__journalBulkActions.length,0);
  const selectRow=view.root.findAllByType('input').find(n=>n.props['aria-label']==='Select DIFF-45000');
  await renderer.act(async()=>selectRow.props.onChange());
- const unpostSelected=bulkButtons().find(n=>n.children.some(c=>typeof c==='string'&&c.includes('Unpost selected')));
+ const unpostSelected=bulkButtons().find(n=>n.children.some(c=>typeof c==='string'&&c.includes('Unpost (')));
  assert.ok(unpostSelected,'Unpost selected appears after row selection');
  await renderer.act(async()=>unpostSelected.props.onClick());
  assert.deepEqual(global.__journalBulkActions,[{ids:[1],action:'unpost'}]);
