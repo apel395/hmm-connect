@@ -6,6 +6,7 @@ import BudgetFormPage from "@/modules/finance/budgets/BudgetFormPage";
 import BudgetDetailPage from "@/modules/finance/budgets/BudgetDetailPage";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import AppLayout from "@/layouts/AppLayout";
+import LegacyGeneralLedgerRedirect from "@/router/LegacyGeneralLedgerRedirect";
 import AuthGuard from "@/components/guard/AuthGuard";
 import PermissionGuard from "@/components/guard/PermissionGuard";
 import LoginPage from "@/modules/auth/pages/LoginPage";
@@ -48,7 +49,6 @@ import JournalRegisterPrintPage from "@/modules/finance/journals/JournalRegister
 import AccountingPrintPage from "@/modules/finance/AccountingPrintPage";
 import PaymentListPage from "@/modules/finance/payments/PaymentListPage";
 import PaymentDetailPage from "@/modules/finance/payments/PaymentDetailPage";
-import GeneralLedgerPage from "@/modules/finance/general-ledger/GeneralLedgerPage";
 import GeneralLedgerPrintPage from "@/modules/finance/general-ledger/GeneralLedgerPrintPage";
 import CashFlowDashboardPage from "@/modules/finance/cash-flow/CashFlowDashboardPage";
 import CashAccountsPage from "@/modules/finance/cash-flow/CashAccountsPage";
@@ -230,7 +230,7 @@ const router = createBrowserRouter([
       { path: "journal-entries", element: <JournalListPage /> },
       { path: "journal-entries/:id", element: <JournalDetailPage /> },
       { path: "journal-entries/:id/print", element: <AccountingPrintPage kind="journal-entries" /> },
-      { path: "general-ledger", element: <GeneralLedgerPage /> },
+      { path: "general-ledger", element: <LegacyGeneralLedgerRedirect /> },
       { path: "general-ledger/print", element: <GeneralLedgerPrintPage /> },
       { path: "trial-balance", element: <TrialBalancePage /> },
       { path: "trial-balance/print", element: <TrialBalancePrintPage /> },
