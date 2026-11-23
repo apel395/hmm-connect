@@ -1,8 +1,15 @@
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+MONEY_QUANTUM = Decimal("0.01")
+
+
+def money(value) -> Decimal:
+    """Currency arithmetic must match Numeric(18,2) storage and the UI."""
+    return Decimal(value or 0).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
 
 
 class SupplierInvoiceLineInput(BaseModel):
@@ -27,7 +34,7 @@ class SupplierInvoiceLineInput(BaseModel):
             self.tax_amount = Decimal("0")
             return self
         line_subtotal = Decimal(self.quantity) * Decimal(self.unit_price)
-        self.tax_amount = line_subtotal * Decimal(self.tax_rate) / Decimal("100")
+        self.tax_amount = money(line_subtotal * Decimal(self.tax_rate) / Decimal("100"))
         return self
 
 
@@ -68,14 +75,31 @@ class SupplierInvoiceInput(BaseModel):
     def calculate_totals(self):
         if not self.lines:
             raise ValueError("Invoice must contain at least one line")
+        self.discount_amount = money(self.discount_amount)
+        self.withholding_tax_amount = money(self.withholding_tax_amount)
+        self.shipping_fee_amount = money(self.shipping_fee_amount)
+        self.admin_fee_amount = money(self.admin_fee_amount)
+        self.other_fee_amount = money(self.other_fee_amount)
+        if self.supplier_document_total is not None:
+            self.supplier_document_total = money(self.supplier_document_total)
         if not (
             self.source_type == "HISTORICAL_IMPORT"
             and "tax_amount" in self.model_fields_set
         ):
-            self.tax_amount = sum((Decimal(line.tax_amount) for line in self.lines), Decimal("0"))
-        subtotal = sum((Decimal(line.quantity) * Decimal(line.unit_price) for line in self.lines), Decimal("0"))
-        calculated_total = subtotal - Decimal(self.discount_amount) + self.tax_amount - Decimal(self.withholding_tax_amount) + self.shipping_fee_amount + self.admin_fee_amount + self.other_fee_amount
-        if self.total_amount is not None and Decimal(self.total_amount) != calculated_total:
+            self.tax_amount = sum((money(line.tax_amount) for line in self.lines), Decimal("0"))
+        else:
+            self.tax_amount = money(self.tax_amount)
+        subtotal = sum((money(Decimal(line.quantity) * Decimal(line.unit_price)) for line in self.lines), Decimal("0"))
+        calculated_total = money(
+            subtotal
+            - self.discount_amount
+            + self.tax_amount
+            - self.withholding_tax_amount
+            + self.shipping_fee_amount
+            + self.admin_fee_amount
+            + self.other_fee_amount
+        )
+        if self.total_amount is not None and money(self.total_amount) != calculated_total:
             raise ValueError("Invoice total does not match line totals, item PPN, and adjustments")
         self.total_amount = calculated_total
         return self

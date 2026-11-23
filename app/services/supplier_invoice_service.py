@@ -16,7 +16,7 @@ from app.models.journal_line import JournalLine
 from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
 from app.models.supplier_invoice import SupplierInvoice, SupplierInvoiceLine
-from app.schemas.supplier_invoice import SupplierInvoiceInput
+from app.schemas.supplier_invoice import SupplierInvoiceInput, money
 from app.services.direct_coa_service import DirectCoaService
 from app.services.audit import record_audit
 from app.services.document_number import next_document_number
@@ -25,6 +25,25 @@ from app.services.payable_balance import sync_account_payable, sync_invoice_bala
 
 ZERO = Decimal("0")
 PRICE_TOLERANCE = Decimal("0.01")
+
+
+def field_error(
+    code: str,
+    message: str,
+    path: str,
+    field_message: str,
+    *,
+    actual=None,
+    expected=None,
+    **extra,
+):
+    """HTTPException detail that keeps the legacy message but adds field metadata."""
+    issue = {"path": path, "message": field_message}
+    if actual is not None:
+        issue["actual"] = str(actual)
+    if expected is not None:
+        issue["expected"] = str(expected)
+    return {"message": message, "code": code, "fields": [issue], **extra}
 
 
 class SupplierInvoiceService:
@@ -36,9 +55,21 @@ class SupplierInvoiceService:
             account_id = getattr(data, f"{name}_fee_account_id", None)
             account = self.db.get(ChartOfAccount, account_id) if account_id else None
             if not account or not account.is_active or not account.is_posting or account.account_type != "EXPENSE" or account.normal_balance != "DEBIT":
-                raise HTTPException(422, f"{name.title()} fee needs an active expense account")
+                message = f"{name.title()} fee needs an active expense account"
+                raise HTTPException(422, field_error(
+                    "FEE_ACCOUNT_INVALID",
+                    message,
+                    f"{name}_fee_account_id",
+                    f"Choose an active, posting expense account for the {name} fee.",
+                ))
             if name == "other" and not (getattr(data, "other_fee_description", "") or "").strip():
-                raise HTTPException(422, "Other supplier charge needs a description")
+                message = "Other supplier charge needs a description"
+                raise HTTPException(422, field_error(
+                    "OTHER_FEE_DESCRIPTION_REQUIRED",
+                    message,
+                    "other_fee_description",
+                    "Describe the other supplier charge.",
+                ))
 
     def __init__(self, db: Session):
         self.db = db
@@ -311,22 +342,54 @@ class SupplierInvoiceService:
                 # the legacy single header FK must not misrepresent the source.
                 data.goods_receipt_id=None
 
-        subtotal = sum((Decimal(line.quantity) * Decimal(line.unit_price) for line in data.lines), ZERO)
+        subtotal = sum((money(Decimal(line.quantity) * Decimal(line.unit_price)) for line in data.lines), ZERO)
         tax_amount = (
-            Decimal(data.tax_amount or 0)
+            money(data.tax_amount)
             if data.source_type == "HISTORICAL_IMPORT"
-            else sum((Decimal(line.tax_amount or 0) for line in data.lines), ZERO)
+            else sum((money(line.tax_amount) for line in data.lines), ZERO)
         )
         data.tax_amount = tax_amount
-        total = subtotal - Decimal(data.discount_amount) + tax_amount - Decimal(data.withholding_tax_amount) + sum(
-            (Decimal(getattr(data, f"{name}_fee_amount", 0) or 0) for name in ("shipping", "admin", "other")), ZERO)
-        if Decimal(data.discount_amount) > subtotal:
-            raise HTTPException(422, "Discount cannot exceed invoice goods subtotal")
+        fees = {name: money(getattr(data, f"{name}_fee_amount", 0)) for name in ("shipping", "admin", "other")}
+        discount = money(data.discount_amount)
+        withholding = money(data.withholding_tax_amount)
+        total = money(subtotal - discount + tax_amount - withholding + sum(fees.values(), ZERO))
+        if discount > subtotal:
+            message = "Discount cannot exceed invoice goods subtotal"
+            raise HTTPException(422, field_error(
+                "DISCOUNT_EXCEEDS_SUBTOTAL",
+                message,
+                "discount_amount",
+                f"Discount cannot exceed the invoice goods subtotal ({subtotal}).",
+            ))
         self._validate_fee_accounts(data)
-        if data.supplier_document_total is not None and Decimal(data.supplier_document_total) != total:
-            raise HTTPException(422, "Invoice charges and taxes do not match the supplier document total")
-        if data.total_amount is not None and Decimal(data.total_amount) != total:
-            raise HTTPException(400, "Invoice total does not match line totals and adjustments")
+        if data.supplier_document_total is not None and money(data.supplier_document_total) != total:
+            message = "Invoice charges and taxes do not match the supplier document total"
+            raise HTTPException(422, field_error(
+                "SUPPLIER_DOCUMENT_TOTAL_MISMATCH",
+                message,
+                "supplier_document_total",
+                f"Document Total must equal the recalculated Invoice Total ({total}).",
+                actual=money(data.supplier_document_total),
+                expected=total,
+                totals={
+                    "subtotal": str(subtotal),
+                    "tax": str(tax_amount),
+                    "discount": str(discount),
+                    "withholding": str(withholding),
+                    "fees": {name: str(value) for name, value in fees.items()},
+                    "calculated_total": str(total),
+                },
+            ))
+        if data.total_amount is not None and money(data.total_amount) != total:
+            message = "Invoice total does not match line totals and adjustments"
+            raise HTTPException(400, field_error(
+                "INVOICE_TOTAL_MISMATCH",
+                message,
+                "total_amount",
+                f"Invoice Total must equal the recalculated total ({total}).",
+                actual=money(data.total_amount),
+                expected=total,
+            ))
         data.total_amount = total
         return subtotal, total
 
@@ -709,7 +772,12 @@ class SupplierInvoiceService:
         summary = self.match_summary(invoice)
         if not summary["can_verify"]:
             detail = summary["issues"][0] if summary["issues"] else "Three-way matching failed"
-            raise HTTPException(409, f"Three-way match required: {detail}")
+            raise HTTPException(409, field_error(
+                "THREE_WAY_MATCH_REQUIRED",
+                f"Three-way match required: {detail}",
+                "three_way_match",
+                detail,
+            ))
         return summary
 
     def create(self, data, user):
@@ -752,7 +820,7 @@ class SupplierInvoiceService:
             created_by_id=user.id,
         )
         for line in data.lines:
-            invoice.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=Decimal(line.quantity) * Decimal(line.unit_price)))
+            invoice.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=money(Decimal(line.quantity) * Decimal(line.unit_price))))
         sync_invoice_balance(invoice)
         self.db.add(invoice)
         self.db.flush()
@@ -785,7 +853,7 @@ class SupplierInvoiceService:
         invoice.total_amount = total
         invoice.lines.clear()
         for line in data.lines:
-            invoice.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=Decimal(line.quantity) * Decimal(line.unit_price)))
+            invoice.lines.append(SupplierInvoiceLine(**line.model_dump(), line_amount=money(Decimal(line.quantity) * Decimal(line.unit_price))))
         sync_invoice_balance(invoice)
         self.db.flush()
         resolver = DirectCoaService(self.db)
@@ -818,18 +886,42 @@ class SupplierInvoiceService:
             (invoice.external_reference or "").startswith("AUTO_RECEIPT:")
             and (invoice.supplier_invoice_number or "").startswith("PENDING-")
         ):
-            raise HTTPException(409, "Enter the actual supplier invoice number before verification")
+            message = "Enter the actual supplier invoice number before verification"
+            raise HTTPException(409, field_error(
+                "SUPPLIER_REFERENCE_REQUIRED",
+                message,
+                "supplier_invoice_number",
+                "Enter the supplier's invoice number before verification.",
+            ))
         self._ensure_invoice_location(invoice)
         match = self.assert_match(invoice)
 
         if Decimal(invoice.tax_amount or 0) > ZERO:
             if not invoice.supplier.is_pkp:
-                raise HTTPException(409, "Invoice contains PPN but supplier is not marked as PKP")
+                message = "Invoice contains PPN but supplier is not marked as PKP"
+                raise HTTPException(409, field_error(
+                    "SUPPLIER_NOT_PKP",
+                    message,
+                    "vat_decision",
+                    "PPN requires a PKP supplier. Confirm the supplier or remove PPN.",
+                ))
             if invoice.source_type != "HISTORICAL_IMPORT":
                 if not (invoice.tax_invoice_number or "").strip():
-                    raise HTTPException(409, "Tax invoice number is required for a supplier invoice containing PPN")
+                    message = "Tax invoice number is required for a supplier invoice containing PPN"
+                    raise HTTPException(409, field_error(
+                        "TAX_INVOICE_NUMBER_REQUIRED",
+                        message,
+                        "tax_invoice_number",
+                        "Enter the Faktur Pajak number before verification.",
+                    ))
                 if not invoice.tax_invoice_date:
-                    raise HTTPException(409, "Tax invoice date is required for a supplier invoice containing PPN")
+                    message = "Tax invoice date is required for a supplier invoice containing PPN"
+                    raise HTTPException(409, field_error(
+                        "TAX_INVOICE_DATE_REQUIRED",
+                        message,
+                        "tax_invoice_date",
+                        "Enter the Faktur Pajak date before verification.",
+                    ))
 
         invoice.status = "VERIFIED"
         invoice.verified_at = datetime.now(timezone.utc)
