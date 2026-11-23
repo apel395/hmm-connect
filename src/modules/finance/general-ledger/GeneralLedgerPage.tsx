@@ -14,7 +14,7 @@ import SearchableSelect from "@/components/form/SearchableSelect";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
-import { createLedgerExport, getAccountSummary, getExport, getLedgerAccountBalances, listLedger } from "./api";
+import { createLedgerExport, getAccountSummary, getExport, getLedgerAccountBalances, getLedgerPrint, listLedger } from "./api";
 import type { LedgerAccountBalance } from "./api";
 
 const amount = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -144,6 +144,14 @@ export default function GeneralLedgerPage() {
   }, [exportJobId]);
 
   const printParams = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
+  // Grouped view needs every entry for each account, not one globally paginated slice.
+  // The report endpoint already returns the complete account-grouped ledger with
+  // matching opening/movement/closing values, so reuse it instead of grouping a page.
+  const groupedReport = useQuery({
+    queryKey: ["general-ledger-grouped", printParams],
+    queryFn: () => getLedgerPrint(printParams),
+    enabled: groupByAccount,
+  });
   const printQuery = new URLSearchParams(printParams as Record<string, string>).toString();
   const printSrc = `/general-ledger/print${printQuery ? `?${printQuery}` : ""}`;
 
@@ -161,9 +169,8 @@ export default function GeneralLedgerPage() {
   };
 
   const exportBusy = exportStatus === "starting" || exportStatus === "processing";
-  // This grouping uses the current API page; page subtotals are not account closing balances.
-  type AccountGroup = { id: number; code: string; name: string; rows: any[]; debit: number; credit: number };
-  const accountGroups = Array.from<AccountGroup>(
+  type AccountGroup = { id: number; code: string; name: string; rows: any[]; debit: number; credit: number; opening?: string | number; closing?: string | number };
+  const pagedAccountGroups = Array.from<AccountGroup>(
     (ledger.data?.items ?? []).reduce((groups: Map<number, AccountGroup>, row: any) => {
       const id = Number(row.account_id);
       if (!groups.has(id)) groups.set(id, { id, code: row.account_code || "—", name: row.account_name || "Unknown account", rows: [], debit: 0, credit: 0 });
@@ -174,6 +181,27 @@ export default function GeneralLedgerPage() {
       return groups;
     }, new Map<number, AccountGroup>()).values(),
   ).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  // The grouped report uses the print row shape; normalize it to the ledger row shape
+  // so the same renderer handles both views.
+  const accountGroups: AccountGroup[] = groupedReport.data?.accounts?.length
+    ? groupedReport.data.accounts.map((group: any) => ({
+        id: Number(group.account_id),
+        code: group.account_code || "—",
+        name: group.account_name || "Unknown account",
+        opening: group.opening_balance,
+        closing: group.closing_balance,
+        debit: Number(group.total_debit || 0),
+        credit: Number(group.total_credit || 0),
+        rows: (group.rows ?? []).map((row: any) => ({
+          ...row,
+          account_id: group.account_id,
+          account_code: group.account_code,
+          account_name: group.account_name,
+          reference_number: row.document_number ?? row.reference ?? "",
+          reference_type: row.document_type ?? "",
+        })),
+      }))
+    : pagedAccountGroups;
   const accountGroupIds = accountGroups.map(group => group.id).join(",");
   const accountBalances = useQuery({
     queryKey: ["gl-account-balances", accountGroupIds, filters.date_from, filters.date_to, filters.business_unit_id, filters.location_id, filters.department_id],
@@ -185,16 +213,27 @@ export default function GeneralLedgerPage() {
       location_id: filters.location_id || undefined,
       department_id: filters.department_id || undefined,
     }),
-    enabled: groupByAccount && Boolean(accountGroupIds),
+    enabled: groupByAccount && !groupedReport.data?.accounts?.length && Boolean(accountGroupIds),
   });
   const accountBalanceById = new Map<number, LedgerAccountBalance>((accountBalances.data?.items ?? []).map(row => [row.account_id, row]));
   const balanceIsFiltered = Boolean(filters.search || filters.reference_type || filters.supplier_id);
   const toggleAccount = (id: number) => setCollapsedAccounts(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]);
-  const summaryAvailable = ledger.data?.summary?.total_debit != null && ledger.data?.summary?.total_credit != null;
-  const filteredTotals = summaryAvailable ? {
-    debit: Number(ledger.data.summary.total_debit),
-    credit: Number(ledger.data.summary.total_credit),
-  } : null;
+  const groupedTotals = groupedReport.data?.control;
+  const summaryAvailable = groupByAccount && groupedTotals
+    ? groupedTotals.total_debit != null && groupedTotals.total_credit != null
+    : ledger.data?.summary?.total_debit != null && ledger.data?.summary?.total_credit != null;
+  const filteredTotals = groupByAccount && groupedTotals
+    ? { debit: Number(groupedTotals.total_debit), credit: Number(groupedTotals.total_credit) }
+    : summaryAvailable ? {
+        debit: Number(ledger.data.summary.total_debit),
+        credit: Number(ledger.data.summary.total_credit),
+      } : null;
+  const activeLoading = groupByAccount ? groupedReport.isLoading : ledger.isLoading;
+  const activeError = groupByAccount ? groupedReport.isError : ledger.isError;
+  const activeRefetch = groupByAccount ? groupedReport.refetch : ledger.refetch;
+  const activeTotalItems = groupByAccount && groupedReport.data
+    ? groupedReport.data.accounts.reduce((count: number, group: any) => count + (group.rows?.length ?? 0), 0)
+    : (ledger.data?.total_items ?? 0);
   const printHeader = (() => {
     const parts: string[] = [];
     if (filters.date_from || filters.date_to) parts.push(`${filters.date_from || "…"} to ${filters.date_to || "…"}`);
@@ -340,46 +379,50 @@ export default function GeneralLedgerPage() {
       <Table variant="grid" stickyHeader className={`workspace-ledger-table min-w-[980px] ${denseRows ? "gl-compact-ledger" : ""}`} containerClassName="gl-ledger-viewport overflow-auto border-0 shadow-none print:max-h-none print:min-h-0 print:overflow-visible">
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
         <TBody>
-          {ledger.isLoading && <GlTableSkeleton />}
-          {ledger.isError && <TR><TD colSpan={9} className="py-10 text-center text-red-700"><p className="mb-2">Ledger could not be loaded.</p><Button size="sm" variant="outline" onClick={() => ledger.refetch()}><RotateCw size={14}/> Retry</Button></TD></TR>}
-          {!ledger.isLoading && !ledger.isError && !ledger.data?.items.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
-          {!groupByAccount && (ledger.data?.items ?? []).map(renderLedgerRow)}
-          {groupByAccount && accountGroups.map(group => {
+          {activeLoading && <GlTableSkeleton />}
+          {activeError && <TR><TD colSpan={9} className="py-10 text-center text-red-700"><p className="mb-2">Ledger could not be loaded.</p><Button size="sm" variant="outline" onClick={() => activeRefetch()}><RotateCw size={14}/> Retry</Button></TD></TR>}
+          {!activeLoading && !activeError && !groupByAccount && !ledger.data?.items.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
+          {!activeLoading && !activeError && groupByAccount && !groupedReport.data?.accounts?.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
+          {!activeLoading && !activeError && !groupByAccount && (ledger.data?.items ?? []).map(renderLedgerRow)}
+          {!activeLoading && !activeError && groupByAccount && accountGroups.map(group => {
             const collapsed = collapsedAccounts.includes(group.id);
+            const accountBalance = accountBalanceById.get(group.id);
+            const opening = group.opening ?? accountBalance?.opening_balance;
+            const closing = group.closing ?? accountBalance?.closing_balance;
             return <Fragment key={group.id}>
               <TR className="bg-slate-100/80">
                 <TD colSpan={9} className="px-3 py-2">
                   <button type="button" onClick={() => toggleAccount(group.id)} aria-expanded={!collapsed} className="gl-group-toggle flex w-full flex-wrap items-center justify-between gap-2 px-1 text-left text-sm font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">
                     <span className="inline-flex items-center gap-2">{collapsed ? <ChevronRight size={16}/> : <ChevronDown size={16}/>}<span className="font-mono text-xs text-slate-600">{group.code}</span> — {group.name}</span>
-                    <span className="text-xs font-normal text-slate-600">{group.rows.length} entries on this page</span>
+                    <span className="text-xs font-normal text-slate-600">{group.rows.length} {group.rows.length === 1 ? "entry" : "entries"}</span>
                   </button>
                 </TD>
               </TR>
               {!collapsed && <TR className="bg-slate-50 text-xs text-slate-700">
                 <TD colSpan={9}>
-                  {accountBalanceById.get(group.id) ? <span className="flex flex-wrap gap-x-5 gap-y-1">
-                    <span>Opening: <strong>{amount(accountBalanceById.get(group.id)!.opening_balance)}</strong></span>
-                    <span>Period debit: <strong>{amount(accountBalanceById.get(group.id)!.total_debit)}</strong></span>
-                    <span>Period credit: <strong>{amount(accountBalanceById.get(group.id)!.total_credit)}</strong></span>
-                    <span>Closing: <strong>{amount(accountBalanceById.get(group.id)!.closing_balance)}</strong></span>
+                  {opening != null || accountBalance ? <span className="flex flex-wrap gap-x-5 gap-y-1">
+                    <span>Opening: <strong>{amount(opening ?? 0)}</strong></span>
+                    <span>Period debit: <strong>{amount(group.debit)}</strong></span>
+                    <span>Period credit: <strong>{amount(group.credit)}</strong></span>
+                    <span>Closing: <strong>{amount(closing ?? 0)}</strong></span>
                   </span> : <span className="inline-flex items-center gap-2 text-slate-600">{accountBalances.isLoading ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-emerald-700" />Loading full account balances...</> : "Full account balances unavailable"}</span>}
                 </TD>
               </TR>}
               {!collapsed && group.rows.map(renderLedgerRow)}
               {!collapsed && <TR className="bg-slate-50 font-medium text-slate-700">
-                <TD colSpan={5} className="text-right text-xs text-slate-600">Page subtotal — {group.code} (not full account closing)</TD>
+                <TD colSpan={5} className="text-right text-xs text-slate-600">Period total — {group.code}</TD>
                 <TD numeric className="whitespace-nowrap">{amount(group.debit)}</TD>
                 <TD numeric className="whitespace-nowrap">{amount(group.credit)}</TD>
-                <TD colSpan={2} className="text-xs text-slate-500">Closing: {accountBalanceById.get(group.id) ? amount(accountBalanceById.get(group.id)!.closing_balance) : "—"}</TD>
+                <TD colSpan={2} className="text-xs text-slate-500">Closing: {closing != null ? amount(closing) : "—"}</TD>
               </TR>}
             </Fragment>;
           })}
         </TBody>
       </Table>
       <div className="gl-statusbar print:hidden">
-        <span><strong>{ledger.data?.total_items ?? 0}</strong> entries</span>
-        <span>Debit <strong>{filteredTotals ? amount(filteredTotals.debit) : ledger.isLoading ? "…" : "—"}</strong></span>
-        <span>Credit <strong>{filteredTotals ? amount(filteredTotals.credit) : ledger.isLoading ? "…" : "—"}</strong></span>
+        <span><strong>{activeTotalItems}</strong> entries{groupByAccount ? " · all shown" : ""}</span>
+        <span>Debit <strong>{filteredTotals ? amount(filteredTotals.debit) : activeLoading ? "…" : "—"}</strong></span>
+        <span>Credit <strong>{filteredTotals ? amount(filteredTotals.credit) : activeLoading ? "…" : "—"}</strong></span>
         <span className="inline-flex items-center gap-1">Diff <strong>{filteredTotals ? <Link to={unbalancedJournalPath(filters)} title="Difference across all matching entries — review unbalanced journals in this period and scope." className="text-emerald-700 hover:underline">{amount(filteredTotals.debit - filteredTotals.credit)}</Link> : "…"}</strong><Info size={11} aria-hidden="true" /></span>
         {summary.data && <span title="Account activity for the selected account and period">Account closing <strong>{amount(summary.data.closing_balance)}</strong></span>}
         {balanceIsFiltered && <span title="Running balances include complete account movements; debit/credit totals cover matching entries only." className="cursor-help text-amber-800">⚠ filtered balance</span>}
