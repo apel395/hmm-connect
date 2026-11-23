@@ -8,6 +8,8 @@ interface Props {
   disabled?: boolean;
   min?: number;
   placeholder?: string;
+  dataField?: string;
+  invalid?: boolean;
 }
 
 const formatCurrency = (value: number) =>
@@ -25,6 +27,8 @@ export default function CurrencyInput({
   disabled,
   min = 0,
   placeholder,
+  dataField,
+  invalid = false,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [display, setDisplay] = useState(value === 0 ? "0.00" : formatCurrency(value));
@@ -67,7 +71,9 @@ export default function CurrencyInput({
       onBlur={handleBlur}
       data-form-control
       data-form-density="compact"
-      className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} text-right tabular-nums ${className}`}
+      data-field={dataField}
+      aria-invalid={invalid || undefined}
+      className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} text-right tabular-nums ${invalid ? "border-red-500 ring-2 ring-red-200" : ""} ${className}`}
     />
   );
 }

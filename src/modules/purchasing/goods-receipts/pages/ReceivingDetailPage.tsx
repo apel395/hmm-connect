@@ -54,7 +54,10 @@ export default function ReceivingDetailPage() {
       toast.success("Supplier invoice draft is ready for confirmation.");
       navigate("/supplier-invoices/" + invoice.id);
     },
-    onError: (error: any) => toast.error(error?.response?.data?.detail || "Unable to prepare invoice draft"),
+    onError: (error: any) => {
+      const detail = error?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : detail?.message || "Unable to prepare invoice draft");
+    },
   });
   const depost = useDepostGoodsReceipt();
   const submitApproval = useSubmitGoodsReceipt();

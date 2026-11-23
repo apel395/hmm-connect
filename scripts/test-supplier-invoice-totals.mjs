@@ -85,4 +85,8 @@ const withDecision = withSyncedDocumentTotal(form, correctedLines, totals.total,
 assert.equal(withDecision.vat_decision, "NO_PPN_RECORDED");
 assert.equal(withDecision.supplier_document_total, 105);
 
-console.log("Supplier invoice totals PASS: explicit payload, PPN document-total sync, manual override preserved.");
+const withFee = withSyncedDocumentTotal(form, form.lines, totals.total, { shipping_fee_amount: 8 });
+assert.equal(withFee.supplier_document_total, 119, "document total follows fee correction");
+assert.equal(withFee.shipping_fee_amount, 8);
+
+console.log("Supplier invoice totals PASS: explicit payload, PPN/fee document-total sync, manual override preserved.");

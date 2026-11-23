@@ -9,6 +9,8 @@ interface Props {
   step?: number;
   className?: string;
   disabled?: boolean;
+  dataField?: string;
+  invalid?: boolean;
 }
 
 export default function QuantityInput({
@@ -19,6 +21,8 @@ export default function QuantityInput({
   step = 0.01,
   className = "",
   disabled,
+  dataField,
+  invalid = false,
 }: Props) {
   const [text, setText] = useState(value > 0 ? String(value) : "");
   const [focused, setFocused] = useState(false);
@@ -36,7 +40,9 @@ export default function QuantityInput({
       placeholder="0.00"
       data-form-control
       data-form-density="compact"
-      className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} text-right tabular-nums ${className}`}
+      data-field={dataField}
+      aria-invalid={invalid || undefined}
+      className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} text-right tabular-nums ${invalid ? "border-red-500 ring-2 ring-red-200" : ""} ${className}`}
       onFocus={() => {
         setFocused(true);
         if (Number(text) === 0) setText("");
