@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AlertTriangle, SlidersHorizontal } from "lucide-react";
-import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
@@ -204,62 +203,58 @@ export default function JournalListPage() {
   const hasDifference = filteredDifference !== null && Math.abs(filteredDifference) > 0.005;
   const formatAmount = (value: number) => value.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  return <DataWorkspace area="Accounting" className="journal-register-workspace">
-    <PageHeader title="Journal Register" description="Balanced draft journals are recognized while the period is open. Closing the period finalizes and locks its journals." actions={<div className="flex flex-wrap items-center gap-2">
-      <div className="flex flex-wrap items-center gap-1 border-r border-slate-200 pr-3" aria-label="Journal business unit">
-        {!scope.data?.location_locked && <Button size="sm" variant={!filterUnitId ? "primary" : "outline"} onClick={() => { setFilterUnitId(undefined); setFilterLocationId(undefined); setFilterDepartmentId(undefined); setPage(1); }}>All units</Button>}
-        {scope.data?.units.map(unit => <Button key={unit.id} size="sm" variant={filterUnitId === unit.id ? "primary" : "outline"} onClick={() => { setFilterDepartmentId(undefined); setFilterUnitId(unit.id); if (!scope.data.location_locked) setFilterLocationId(undefined); setPage(1); }}>{unit.name}</Button>)}
-      </div>
-      <Button variant="outline" onClick={() => setBulkImportOpen(true)}>Import Excel</Button>
-      <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
-      <Button disabled={!scopeReady} onClick={openCreate}>+ New Journal</Button>
-    </div>} />
-    {scope.isError && <p role="alert" className="text-sm text-red-700">Journal location scope could not be loaded.</p>}
-    <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm xl:grid-cols-4" aria-label="Filtered journal totals">
-      <div className="min-w-0 border-b border-r border-slate-100 px-3 py-2 xl:border-b-0"><div className="text-[11px] font-medium text-slate-500">Journal entries</div><div className="text-lg font-semibold tabular-nums leading-6 text-slate-900">{(q.data?.total_items ?? 0).toLocaleString("id-ID")}</div><div className="text-[10px] text-slate-500">Matching current filters</div></div>
-      <div className="min-w-0 border-b border-slate-100 px-3 py-2 xl:border-b-0 xl:border-r"><div className="text-[11px] font-medium text-slate-500">Total debit</div><div className="truncate text-base font-semibold tabular-nums leading-6 text-slate-900" title={filteredJournalTotals ? formatAmount(filteredJournalTotals.debit) : undefined}>{filteredJournalTotals ? formatAmount(filteredJournalTotals.debit) : "—"}</div><div className="truncate text-[10px] tabular-nums text-slate-500" title={`This page: ${formatAmount(visibleTotals.debit)}`}>Page: {formatAmount(visibleTotals.debit)}</div></div>
-      <div className="min-w-0 border-r border-slate-100 px-3 py-2"><div className="text-[11px] font-medium text-slate-500">Total credit</div><div className="truncate text-base font-semibold tabular-nums leading-6 text-slate-900" title={filteredJournalTotals ? formatAmount(filteredJournalTotals.credit) : undefined}>{filteredJournalTotals ? formatAmount(filteredJournalTotals.credit) : "—"}</div><div className="truncate text-[10px] tabular-nums text-slate-500" title={`This page: ${formatAmount(visibleTotals.credit)}`}>Page: {formatAmount(visibleTotals.credit)}</div></div>
-      <div className={`min-w-0 px-3 py-2 ${hasDifference ? "bg-red-50/70" : "bg-emerald-50/30"}`}>
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">Debit − credit {hasDifference && <AlertTriangle className="text-red-600" size={13}/>}</div>
-        <div className={`truncate text-base font-semibold tabular-nums leading-6 ${hasDifference ? "text-red-700" : "text-slate-900"}`} title={filteredDifference === null ? undefined : formatAmount(filteredDifference)}>{filteredDifference === null ? "—" : formatAmount(filteredDifference)}</div>
-        {hasDifference ? <button type="button" className="text-[10px] font-semibold text-red-700 underline underline-offset-2 hover:text-red-900" onClick={() => { setBalanceState("UNBALANCED"); setShowFilters(true); setPage(1); }}>Review unbalanced journals</button> : <div className="text-[10px] text-slate-500">{filteredDifference === null ? "Totals unavailable" : "Balanced"}</div>}
+  const activeChips = [
+    search && `Search: ${search}`,
+    selectedMonth && `Period: ${selectedMonth}`,
+    !selectedMonth && (dateFrom || dateTo) && `Dates: ${dateFrom || "Any"} – ${dateTo || "Any"}`,
+    status && `Status: ${status}`,
+    referenceType && `Source: ${referenceType.replaceAll("_", " ")}`,
+    filterUnitId && `Unit: ${scope.data?.units.find(unit => unit.id === filterUnitId)?.name ?? filterUnitId}`,
+    filterLocationId && `Location: ${filterLocationOptions.find(item => item.id === filterLocationId)?.label ?? filterLocationId}`,
+    filterAccountId && `Account: ${filterAccountId}`,
+    filterDepartmentId && `Department: ${filterDepartmentId}`,
+    filterSupplierId && `Supplier: ${filterSupplierId}`,
+    balanceState !== "ALL" && `Balance: ${balanceState}`,
+    differenceAmount && `Difference: ${differenceAmount}`,
+  ].filter(Boolean) as string[];
+
+  return <DataWorkspace area="Accounting" className="journal-register-workspace data-first">
+    <div className="df-toolbar print:hidden" aria-label="Journal register toolbar">
+      <input className="df-search" placeholder="Journal no., document, or description" aria-label="Find a journal" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+      <input type="month" aria-label="Journal period" className="df-field" value={selectedMonth} onChange={e => changeMonth(e.target.value)} />
+      <select aria-label="Journal status" className="df-field" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="POSTED">Posted</option><option value="VOID">Void</option></select>
+      <select aria-label="Source type" className="df-field" value={referenceType} onChange={e=>{setReferenceType(e.target.value);setPage(1);}}><option value="">All sources</option>{Array.from(new Set<string>([...(q.data?.reference_types??[]),...(referenceType?[referenceType]:[])])).map(value=><option key={value} value={value}>{value.replaceAll("_"," ")}</option>)}</select>
+      <select aria-label="Journal business unit" className="df-field" value={filterUnitId ?? "all"} disabled={scope.data?.location_locked} onChange={e => { const value = e.target.value; setFilterUnitId(value === "all" ? undefined : Number(value)); setFilterLocationId(undefined); setFilterDepartmentId(undefined); setPage(1); }}>
+        {!scope.data?.location_locked && <option value="all">All units</option>}
+        {scope.data?.units.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+      </select>
+      <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}><SlidersHorizontal size={14}/> Filters{advancedFilterCount ? ` (${advancedFilterCount})` : ""}</Button>
+      <div className="ml-auto flex items-center gap-1">
+        <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Import</Button>
+        <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
+        <Button size="sm" disabled={!scopeReady} onClick={openCreate}>+ New Journal</Button>
       </div>
     </div>
+    {scope.isError && <p role="alert" className="text-xs text-red-700">Journal location scope could not be loaded.</p>}
+    {activeChips.length > 0 && <div className="df-chips print:hidden" aria-label="Active filters">{activeChips.map(chip => <span key={chip} className="df-chip">{chip}</span>)}<button type="button" className="text-[11px] font-medium text-emerald-800 hover:underline" onClick={clearJournalFilters}>Clear all</button></div>}
+    {showFilters && <Card className="df-filters print:hidden p-2">
+      <div className="grid gap-2 md:grid-cols-4">
+        <label className="text-xs">From Date<input aria-label="From Date" className="mt-1 h-7 w-full rounded border px-2" type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPage(1);}}/></label>
+        <label className="text-xs">To Date<input aria-label="To Date" className="mt-1 h-7 w-full rounded border px-2" type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setPage(1);}}/></label>
+        <label className="text-xs">Balance<select aria-label="Journal balance" className="mt-1 h-7 w-full rounded border px-2" value={balanceState} onChange={e=>{setBalanceState(e.target.value);setPage(1);}}><option value="ALL">All</option><option value="BALANCED">Balanced</option><option value="UNBALANCED">Unbalanced</option></select></label>
+        <label className="text-xs">Difference amount<input aria-label="Difference amount" className="mt-1 h-7 w-full rounded border px-2 text-right" type="number" min="0" step="0.01" placeholder="Any difference" value={differenceAmount} onChange={e=>{setDifferenceAmount(e.target.value);setPage(1);}}/></label>
+        <SearchableSelect label="Account" value={filterAccountId} placeholder="Account code or name..." options={(filterAccounts.data??[]).map(row=>({id:row.id,label:`${row.account_code} — ${row.account_name}`}))} onChange={id=>{setFilterAccountId(id);setPage(1);}}/>
+        <SearchableSelect label="Department" value={filterDepartmentId} placeholder="Department name..." options={(filterDepartments.data??[]).map(row=>({id:row.id,label:row.name}))} onChange={id=>{setFilterDepartmentId(id);setPage(1);}}/>
+        <SearchableSelect label="Location" value={filterLocationId} disabled={scope.isLoading || scope.data?.location_locked} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={filterLocationOptions} onChange={(id) => { setFilterLocationId(id); setFilterDepartmentId(undefined); setPage(1); }} />
+        <SearchableSelect label="Supplier" value={filterSupplierId} disabled={filterSuppliers.isLoading} placeholder={filterSuppliers.isLoading ? "Loading suppliers..." : "Type supplier code or name..."} options={filterSupplierOptions} onChange={(id) => { setFilterSupplierId(id); setPage(1); }} />
+      </div>
+    </Card>}
     <Card className="workspace-data overflow-hidden p-0">
-    <div className="workspace-toolbar flex flex-wrap items-end gap-3 border-b border-slate-100 pb-3">
-      <label className="min-w-[210px] flex-[2] text-xs font-medium text-slate-600">Find a journal
-        <input className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus:border-emerald-600" placeholder="Journal no., document, or description" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-      </label>
-      <label className="min-w-[145px] flex-1 text-xs font-medium text-slate-600">Period
-        <input type="month" aria-label="Journal period" className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 outline-none focus:border-emerald-600" value={selectedMonth} onChange={e => changeMonth(e.target.value)} />
-      </label>
-      <label className="min-w-[140px] flex-1 text-xs font-medium text-slate-600">Status
-        <select className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="POSTED">Posted</option><option value="VOID">Void</option></select>
-      </label>
-      <label className="min-w-[150px] flex-1 text-xs font-medium text-slate-600">Source
-        <select aria-label="Source type" className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2" value={referenceType} onChange={e=>{setReferenceType(e.target.value);setPage(1);}}><option value="">All sources</option>{Array.from(new Set<string>([...(q.data?.reference_types??[]),...(referenceType?[referenceType]:[])])).map(value=><option key={value} value={value}>{value.replaceAll("_"," ")}</option>)}</select>
-      </label>
-      <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}>
-        <SlidersHorizontal size={15}/> More filters{advancedFilterCount ? ` (${advancedFilterCount})` : ""}
-      </Button>
-      {(search || status || dateFrom || dateTo || referenceType || advancedFilterCount > 0) && <button type="button" className="h-9 text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline" onClick={clearJournalFilters}>Clear filters</button>}
-    </div>
-    {(dateFrom || dateTo) && !selectedMonth && <p className="mb-2 text-xs text-slate-500">Custom date range: {dateFrom || "Any"} – {dateTo || "Any"}. Change it in More filters.</p>}
-    {showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-3">
-      <label className="text-xs">From Date<input aria-label="From Date" className="mt-1 h-9 w-full rounded border px-2" type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPage(1);}}/></label>
-      <label className="text-xs">To Date<input aria-label="To Date" className="mt-1 h-9 w-full rounded border px-2" type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setPage(1);}}/></label>
-      <label className="text-xs">Balance<select aria-label="Journal balance" className="mt-1 h-9 w-full rounded border px-2" value={balanceState} onChange={e=>{setBalanceState(e.target.value);setPage(1);}}><option value="ALL">All</option><option value="BALANCED">Balanced</option><option value="UNBALANCED">Unbalanced</option></select></label>
-      <label className="text-xs">Difference amount<input aria-label="Difference amount" className="mt-1 h-9 w-full rounded border px-2 text-right" type="number" min="0" step="0.01" placeholder="Any difference" value={differenceAmount} onChange={e=>{setDifferenceAmount(e.target.value);setPage(1);}}/></label>
-      <SearchableSelect label="Account" value={filterAccountId} placeholder="Account code or name..." options={(filterAccounts.data??[]).map(row=>({id:row.id,label:`${row.account_code} — ${row.account_name}`}))} onChange={id=>{setFilterAccountId(id);setPage(1);}}/>
-      <SearchableSelect label="Department" value={filterDepartmentId} placeholder="Department name..." options={(filterDepartments.data??[]).map(row=>({id:row.id,label:row.name}))} onChange={id=>{setFilterDepartmentId(id);setPage(1);}}/>
-      <SearchableSelect label="Location" value={filterLocationId} disabled={scope.isLoading || scope.data?.location_locked} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={filterLocationOptions} onChange={(id) => { setFilterLocationId(id); setFilterDepartmentId(undefined); setPage(1); }} />
-      <SearchableSelect label="Supplier" value={filterSupplierId} disabled={filterSuppliers.isLoading} placeholder={filterSuppliers.isLoading ? "Loading suppliers..." : "Type supplier code or name..."} options={filterSupplierOptions} onChange={(id) => { setFilterSupplierId(id); setPage(1); }} />
-    </div>}
-      {canBulkManage && selectedRows.length > 0 && <div role="toolbar" aria-label="Selected journal actions" className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
-        <span className="mr-1 font-semibold text-emerald-900">{selectedRows.length} selected on this page</span>
-        <Button size="sm" disabled={bulkLifecycle.isPending || bulkCandidates("post").length === 0} loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post selected ({bulkCandidates("post").length})</Button>
-        <Button size="sm" variant="outline" disabled={bulkLifecycle.isPending || bulkCandidates("unpost").length === 0} loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost selected ({bulkCandidates("unpost").length})</Button>
-        <button type="button" className="ml-auto font-medium text-emerald-800 hover:underline" onClick={() => setSelected([])}>Clear selection</button>
+      {canBulkManage && selectedRows.length > 0 && <div role="toolbar" aria-label="Selected journal actions" className="df-chips border-b border-emerald-200 bg-emerald-50 px-2 py-1 print:hidden">
+        <span className="font-semibold text-emerald-900">{selectedRows.length} selected</span>
+        <Button size="sm" disabled={bulkLifecycle.isPending || bulkCandidates("post").length === 0} loading={bulkLifecycle.isPending} onClick={() => runBulk("post")}>Post ({bulkCandidates("post").length})</Button>
+        <Button size="sm" variant="outline" disabled={bulkLifecycle.isPending || bulkCandidates("unpost").length === 0} loading={bulkLifecycle.isPending} onClick={() => runBulk("unpost")}>Unpost ({bulkCandidates("unpost").length})</Button>
+        <button type="button" className="ml-auto font-medium text-emerald-800 hover:underline" onClick={() => setSelected([])}>Clear</button>
       </div>}
       <JournalRegisterTable
         rows={visibleRows} loading={q.isLoading} error={q.isError} selectedIds={selected}
@@ -271,11 +266,19 @@ export default function JournalListPage() {
         onVoidPayment={(row) => { if (window.confirm(`Void payment ${row.reference_number} and its draft journal ${row.journal_number}? This releases the invoice reservation and keeps both records as VOID.`)) voidSourcePayment.mutate(row.reference_id); }}
         actionPending={copy.isPending || lifecycle.isPending || voidSourcePayment.isPending}
       />
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs">
-        <label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label>
-        <div className="flex items-center gap-2"><span>{q.data?.total_items ?? 0} journals · Page {page} of {Math.max(q.data?.total_pages ?? 0, 1)}</span><Button size="sm" variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div>
-      </div>
     </Card>
+    <div className="df-statusbar print:hidden" aria-label="Journal register status">
+      <span><strong>{(q.data?.total_items ?? 0).toLocaleString("id-ID")}</strong> journals</span>
+      <span title={`This page: ${formatAmount(visibleTotals.debit)}`}>Debit <strong>{filteredJournalTotals ? formatAmount(filteredJournalTotals.debit) : "—"}</strong></span>
+      <span title={`This page: ${formatAmount(visibleTotals.credit)}`}>Credit <strong>{filteredJournalTotals ? formatAmount(filteredJournalTotals.credit) : "—"}</strong></span>
+      <span className={hasDifference ? "text-red-700" : ""}>Diff <strong>{filteredDifference === null ? "—" : formatAmount(filteredDifference)}</strong>{hasDifference && <AlertTriangle className="ml-1 inline text-red-600" size={12}/>}</span>
+      {hasDifference && <button type="button" className="font-semibold text-red-700 underline underline-offset-2" onClick={() => { setBalanceState("UNBALANCED"); setShowFilters(true); setPage(1); }}>Review unbalanced</button>}
+      <span className="df-spacer" />
+      <label>Rows <select className="ml-1 rounded border border-slate-300 bg-white px-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label>
+      <span>Page {page} / {Math.max(q.data?.total_pages ?? 0, 1)}</span>
+      <Button size="sm" variant="outline" disabled={!q.data?.has_previous} onClick={() => setPage(page - 1)}>‹</Button>
+      <Button size="sm" variant="outline" disabled={!q.data?.has_next} onClick={() => setPage(page + 1)}>›</Button>
+    </div>
 
     <JournalBulkImportDialog open={bulkImportOpen} onOpenChange={setBulkImportOpen} onImported={refreshFinance} />
 

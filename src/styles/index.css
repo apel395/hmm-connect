@@ -571,6 +571,23 @@ h6 {
     .workspace-report-controls { gap: 6px; }.workspace-scope-label { width: 100%; margin: 0; }
   }
 }
+/* Opt-in data-first workspaces: one compact toolbar, table fills the screen, thin status bar. */
+@media screen {
+  body:has(.data-first) [data-workspace-content] { padding: 3px 5px !important; }
+  .data-workspace.data-first { height: calc(100dvh - 94px) !important; gap: 3px !important; }
+  .data-workspace.data-first > * { flex-shrink: 0; }
+  .data-workspace.data-first > .workspace-data { flex: 1 1 0 !important; min-height: 0 !important; }
+  .data-first .df-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .data-first .df-toolbar :is(input:not([type="checkbox"]),select,button) { height: 28px !important; min-height: 28px !important; font-size: 12px !important; }
+  .data-first .df-search { flex: 2 1 220px; min-width: 150px; padding: 0 8px; border: 1px solid #d5dce2; border-radius: 6px; background: white; }
+  .data-first .df-field { flex: 0 1 140px; padding: 0 6px; border: 1px solid #d5dce2; border-radius: 6px; background: white; }
+  .data-first .df-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .data-first .df-chip { padding: 2px 7px; border: 1px solid #d5e5de; border-radius: 999px; background: #edf5f0; color: #17614e; font-size: 11px; line-height: 15px; }
+  .data-first .df-filters :is(input:not([type="checkbox"]),select) { height: 28px; font-size: 12px; }
+  .data-first .df-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 36px; padding: 3px 8px; border: 1px solid #dce3e8; border-radius: 6px; background: white; font-size: 11px; color: #566572; }
+  .data-first .df-statusbar strong { color: #263540; font-variant-numeric: tabular-nums; }
+  .data-first .df-spacer { flex: 1 1 auto; }
+}
 @media print {
   .data-workspace, .workspace-accounting-shell, .workspace-body, .workspace-data, .workspace-table-stack, .workspace-table-scroll, .workspace-report-grid, .workspace-report-table, .workspace-profit-table {
     display: block !important; height: auto !important; min-height: 0 !important; max-height: none !important; overflow: visible !important; box-shadow: none !important;

@@ -32,7 +32,7 @@ export default function JournalRegisterTable({
   onView, onCopy, onPost, onUnpost, onVoidPayment, actionPending,
 }: JournalRegisterTableProps) {
   return (
-    <Table stickyHeader className="workspace-journal-table w-full min-w-[1780px] table-fixed" containerClassName="workspace-table-scroll max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible">
+    <Table stickyHeader className="workspace-journal-table w-full min-w-[1780px] table-fixed" containerClassName="workspace-table-scroll overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible">
       <THead>
         <TR className="whitespace-nowrap">
           <TH className="w-[38px]"><input type="checkbox" aria-label="Select all journals on this page" checked={allPageSelected} onChange={onTogglePage} /></TH>
