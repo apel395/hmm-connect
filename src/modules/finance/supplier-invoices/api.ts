@@ -143,6 +143,7 @@ export type InvoicePayload = {
   currency: string;
   discount_amount: number;
   withholding_tax_amount: number;
+  tax_amount?: number;
   tax_invoice_number?: string | null;
   tax_invoice_date?: string | null;
   notes?: string | null;

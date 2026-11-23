@@ -19,6 +19,7 @@ import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/a
 import purchaseOrderApi from "@/modules/purchasing/purchase-order/api/purchaseOrderApi";
 import goodsReceiptApi from "@/modules/purchasing/goods-receipts/api/goodsReceiptApi";
 import { createInvoice, getInvoice, InvoiceLine, listEligibleReceiptSources, listInvoices, updateInvoice } from "./api";
+import { buildInvoicePayload, computeInvoiceTotals, withSyncedDocumentTotal } from "./totals";
 import { createVoucher, listEligibleInvoices } from "@/modules/finance/payment-vouchers/api";
 import useAuthorization from "@/hooks/useAuthorization";
 import useFormRecovery from "@/hooks/useFormRecovery";
@@ -37,12 +38,20 @@ const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { m
 const emptyForm = (): any => ({ supplier_id: 0, supplier_invoice_number: "", supplier_document_total: null, invoice_date: today(), received_date: today(), due_date: addDays(today(), 30), purchase_order_id: null, goods_receipt_id: null, business_unit_id: null, department_id: null, location_id: null, currency: "IDR", discount_amount: 0, withholding_tax_amount: 0, shipping_fee_amount: 0, admin_fee_amount: 0, other_fee_amount: 0, shipping_fee_account_id: null, admin_fee_account_id: null, other_fee_account_id: null, other_fee_description: "", supplier_document_url: "", tax_invoice_number: "", tax_invoice_date: "", notes: "", source_type: "LIVE", vat_decision:"", lines: [blankLine()] });
 const validInvoiceInput = (v: unknown): v is ReturnType<typeof emptyForm> => { const x = v as any; return !!x && typeof x.invoice_date === "string" && typeof x.supplier_id === "number" && Array.isArray(x.lines); };
 const invoiceErrorMessage = (error: unknown) => {
-  if (!axios.isAxiosError(error)) return "Invoice could not be saved";
-  const detail = error.response?.data?.detail;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) return detail.map((item: any) => item?.msg ?? String(item)).join("; ");
-  if (detail && typeof detail === "object" && "message" in detail) return String((detail as any).message);
-  return error.message || "Invoice could not be saved";
+  let message = "Invoice could not be saved";
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail;
+    if (typeof detail === "string") message = detail;
+    else if (Array.isArray(detail)) message = detail.map((item: any) => item?.msg ?? String(item)).join("; ");
+    else if (detail && typeof detail === "object" && "message" in detail) message = String((detail as any).message);
+    else message = error.message || message;
+  } else if (error instanceof Error) {
+    message = error.message;
+  }
+  if (/total amount|document total/i.test(message)) {
+    return `${message} If you corrected PPN, update Document Total to the recalculated Invoice Total before saving.`;
+  }
+  return message;
 };
 
 const withTaxSnapshot = (item: any, extra: Record<string, unknown> = {}): InvoiceLine => ({
@@ -271,15 +280,24 @@ export default function SupplierInvoiceListPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const calculation = useMemo(() => {
-    const subtotal = form.lines.reduce((sum: number, line: any) => sum + Number(line.quantity || 0) * Number(line.unit_price || 0), 0);
-    const tax = form.lines.reduce((sum: number, line: any) => {
-      const base = Number(line.quantity || 0) * Number(line.unit_price || 0);
-      return sum + (line.is_taxable ? base * Number(line.tax_rate || 0) / 100 : 0);
-    }, 0);
-    const total = subtotal - Number(form.discount_amount || 0) + tax - Number(form.withholding_tax_amount || 0) + Number(form.shipping_fee_amount || 0) + Number(form.admin_fee_amount || 0) + Number(form.other_fee_amount || 0);
-    return { subtotal, tax, total };
-  }, [form.lines, form.discount_amount, form.withholding_tax_amount, form.shipping_fee_amount, form.admin_fee_amount, form.other_fee_amount]);
+  const calculation = useMemo(() => computeInvoiceTotals(form.lines, form), [form]);
+
+  const changeVatDecision = (decision: string) => {
+    const nextLines: InvoiceLine[] = decision === "NO_PPN_RECORDED"
+      ? form.lines.map((line: InvoiceLine) => ({ ...line, is_taxable: false, tax_rate: 0, tax_amount: 0 }))
+      : form.lines;
+    const extra: Record<string, unknown> = { vat_decision: decision };
+    if (decision === "NO_PPN_RECORDED") {
+      extra.tax_invoice_number = "";
+      extra.tax_invoice_date = "";
+    }
+    setForm(withSyncedDocumentTotal(form, nextLines, calculation.total, extra));
+  };
+
+  const changeLineTax = (index: number, patch: Partial<InvoiceLine>) => {
+    const nextLines = form.lines.map((line: InvoiceLine, i: number) => i === index ? { ...line, ...patch } : line);
+    setForm(withSyncedDocumentTotal(form, nextLines, calculation.total));
+  };
 
   const receiptOptions = useMemo(() => {
     const rows = receipts.data ?? [];
@@ -376,21 +394,9 @@ export default function SupplierInvoiceListPage() {
       if (hasVat && !selectedSupplier?.is_pkp) return failSubmit("This invoice records PPN but the supplier is non-PKP. Check the invoice and supplier status; do not add PPN solely because the item is taxable.");
       if (hasVat && form.source_type!=="HISTORICAL_IMPORT" && !form.tax_invoice_number.trim()) return failSubmit("Faktur Pajak Number is required for an invoice with PPN.");
       if (hasVat && form.source_type!=="HISTORICAL_IMPORT" && !form.tax_invoice_date) return failSubmit("Faktur Pajak Date is required for an invoice with PPN.");
+      if (form.supplier_document_total != null && Math.abs(Number(form.supplier_document_total || 0) - calculation.total) >= 0.01) return failSubmit(`Document Total does not match the recalculated Invoice Total (${money(calculation.total)}). Update Document Total if you corrected PPN.`);
 
-      const payload = {
-        ...form,
-        tax_amount: calculation.tax,
-        tax_invoice_number: form.tax_invoice_number || null,
-        tax_invoice_date: form.tax_invoice_date || null,
-        due_date: form.due_date || null,
-        lines: form.lines.map((line: any) => ({
-          ...line,
-          line_amount: undefined,
-          tax_amount: undefined,
-          line_total: undefined,
-        })),
-      };
-      save.mutate(payload);
+      save.mutate(buildInvoicePayload(form, calculation));
     } catch (error) {
       failSubmit(invoiceErrorMessage(error));
     }
@@ -442,13 +448,13 @@ export default function SupplierInvoiceListPage() {
         <label className="text-sm">Location *<select disabled={sourceLocked || !form.business_unit_id} required className={input} value={form.location_id ?? ""} onChange={(event) => setForm({ ...form, location_id: Number(event.target.value) })}><option value="">Select Location</option>{locations.data?.map((row: any) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
         <div className="space-y-1 text-sm"><span className="block">Invoice Number (System)</span><div className="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 font-medium text-emerald-800">{form.internal_invoice_number || "Generated automatically on Save Draft"}</div></div>
         <label className="text-sm">Supplier Reference (optional)<input className={input} placeholder="Number printed on supplier's invoice, if available" value={form.supplier_invoice_number} onChange={(event) => setForm({ ...form, supplier_invoice_number: event.target.value })} /></label>
-        <label className="text-sm">Document Total<CurrencyInput value={Number(form.supplier_document_total||0)} onValueChange={value=>setForm({...form,supplier_document_total:value||null})}/></label><label className="text-sm">Invoice Date *<input required type="date" className={input} value={form.invoice_date} onChange={(event) => setForm({ ...form, invoice_date: event.target.value, due_date: addDays(event.target.value, 30) })} /></label>
+        <div className="text-sm"><label>Document Total<CurrencyInput value={Number(form.supplier_document_total||0)} onValueChange={value=>setForm({...form,supplier_document_total:value||null})}/></label>{form.supplier_document_total != null && Math.abs(Number(form.supplier_document_total||0)-calculation.total) >= 0.01 ? <span className="mt-1 block text-xs text-amber-700">Differs from calculated Invoice Total ({money(calculation.total)}). Update if you corrected PPN.</span> : null}</div><label className="text-sm">Invoice Date *<input required type="date" className={input} value={form.invoice_date} onChange={(event) => setForm({ ...form, invoice_date: event.target.value, due_date: addDays(event.target.value, 30) })} /></label>
         <label className="text-sm">Due Date<input type="date" className={input} value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} /></label>
       </div>
-      <div className="rounded border border-slate-200 p-3"><div className="flex flex-wrap items-center gap-3"><label className="text-xs font-medium">Does this supplier invoice record PPN?<select aria-label="Invoice PPN confirmation" required className="ml-2 h-8 rounded border px-2" value={form.vat_decision||""} onChange={event=>{const decision=event.target.value;setForm({...form,vat_decision:decision,...(decision==="NO_PPN_RECORDED"?{tax_invoice_number:"",tax_invoice_date:"",lines:form.lines.map((line:InvoiceLine)=>({...line,is_taxable:false,tax_rate:0,tax_amount:0}))}:{})});}}><option value="">Choose from invoice</option><option value="NO_PPN_RECORDED">No PPN recorded</option><option value="DOCUMENT_PPN">PPN recorded</option></select></label><Badge variant={selectedSupplier?.is_pkp?"success":"secondary"}>{selectedSupplier?.is_pkp?"Supplier PKP":"Supplier non-PKP / unconfirmed"}</Badge></div></div>
+      <div className="rounded border border-slate-200 p-3"><div className="flex flex-wrap items-center gap-3"><label className="text-xs font-medium">Does this supplier invoice record PPN?<select aria-label="Invoice PPN confirmation" required className="ml-2 h-8 rounded border px-2" value={form.vat_decision||""} onChange={event=>changeVatDecision(event.target.value)}><option value="">Choose from invoice</option><option value="NO_PPN_RECORDED">No PPN recorded</option><option value="DOCUMENT_PPN">PPN recorded</option></select></label><Badge variant={selectedSupplier?.is_pkp?"success":"secondary"}>{selectedSupplier?.is_pkp?"Supplier PKP":"Supplier non-PKP / unconfirmed"}</Badge></div></div>
       {sourceLocked && <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Business Unit, Department and Location follow the source. Confirm PPN below from the supplier invoice.</div>}
 
-      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-slate-500">Accounting codes are applied automatically; open the account picker only when a line must be overridden.</span><Button variant="outline" size="sm" onClick={() => setShowAccounts((value) => !value)}>{showAccounts ? "Hide Account Codes" : "Assign Accounts"}</Button></div><div className="overflow-x-auto rounded border"><table className="min-w-[1250px] w-full text-sm"><thead><tr><th>Item / Description</th><th>Qty</th><th>UOM</th><th>Unit Price</th><th>Subtotal</th><th>PPN</th><th>Tax</th><th>Line Total</th>{showAccounts && <th>COA (auto if empty)</th>}<th/></tr></thead><tbody>{form.lines.map((line: any, index: number) => { const base=Number(line.quantity)*Number(line.unit_price); const lineTax=line.is_taxable?base*Number(line.tax_rate||0)/100:0; return <tr key={index} className="border-t"><td>{line.product_name ? <><div>{line.product_name}</div><div className="text-xs text-slate-500">{line.description}</div></> : <input required className={input} value={line.description} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, description: event.target.value } : row))} />}</td><td><QuantityInput value={Number(line.quantity)} onValueChange={(value) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, quantity: value } : row))} /></td><td><input className={input} value={line.uom ?? ""} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, uom: event.target.value } : row))} /></td><td><CurrencyInput value={Number(line.unit_price)} onValueChange={(value) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, unit_price: value } : row))} /></td><td className="text-right">{money(base)}</td><td><div className="flex items-center gap-1"><input aria-label={`PPN applies to invoice line ${index+1}`} type="checkbox" disabled={form.vat_decision!=="DOCUMENT_PPN"} checked={Boolean(line.is_taxable)} onChange={event=>setLines(form.lines.map((row:InvoiceLine,i:number)=>i===index?{...row,is_taxable:event.target.checked,tax_rate:event.target.checked?row.tax_rate||0:0}:row))}/><input aria-label={`Invoice PPN rate for line ${index+1}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" disabled={form.vat_decision!=="DOCUMENT_PPN"||!line.is_taxable} value={line.tax_rate||0} onChange={event=>setLines(form.lines.map((row:InvoiceLine,i:number)=>i===index?{...row,tax_rate:Number(event.target.value)}:row))}/><span>%</span></div></td><td className="text-right">{money(lineTax)}</td><td className="text-right font-semibold">{money(base+lineTax)}</td>{showAccounts && <td><AccountPicker value={line.account_id} selectedCode={line.account_code} selectedName={line.account_name} onChange={(accountId) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, account_id: accountId } : row))} /></td>}<td>{!sourceLocked&&<Button variant="outline" size="xs" onClick={() => setLines(form.lines.filter((_: any, rowIndex: number) => rowIndex !== index))}>Remove</Button>}</td></tr> })}</tbody></table></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-slate-500">Accounting codes are applied automatically; open the account picker only when a line must be overridden.</span><Button variant="outline" size="sm" onClick={() => setShowAccounts((value) => !value)}>{showAccounts ? "Hide Account Codes" : "Assign Accounts"}</Button></div><div className="overflow-x-auto rounded border"><table className="min-w-[1250px] w-full text-sm"><thead><tr><th>Item / Description</th><th>Qty</th><th>UOM</th><th>Unit Price</th><th>Subtotal</th><th>PPN</th><th>Tax</th><th>Line Total</th>{showAccounts && <th>COA (auto if empty)</th>}<th/></tr></thead><tbody>{form.lines.map((line: any, index: number) => { const base=Number(line.quantity)*Number(line.unit_price); const lineTax=line.is_taxable?base*Number(line.tax_rate||0)/100:0; return <tr key={index} className="border-t"><td>{line.product_name ? <><div>{line.product_name}</div><div className="text-xs text-slate-500">{line.description}</div></> : <input required className={input} value={line.description} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, description: event.target.value } : row))} />}</td><td><QuantityInput value={Number(line.quantity)} onValueChange={(value) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, quantity: value } : row))} /></td><td><input className={input} value={line.uom ?? ""} onChange={(event) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, uom: event.target.value } : row))} /></td><td><CurrencyInput value={Number(line.unit_price)} onValueChange={(value) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, unit_price: value } : row))} /></td><td className="text-right">{money(base)}</td><td><div className="flex items-center gap-1"><input aria-label={`PPN applies to invoice line ${index+1}`} type="checkbox" disabled={form.vat_decision!=="DOCUMENT_PPN"} checked={Boolean(line.is_taxable)} onChange={event=>changeLineTax(index,{is_taxable:event.target.checked,tax_rate:event.target.checked?(form.lines[index]?.tax_rate||0):0})}/><input aria-label={`Invoice PPN rate for line ${index+1}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" disabled={form.vat_decision!=="DOCUMENT_PPN"||!line.is_taxable} value={line.tax_rate||0} onChange={event=>changeLineTax(index,{tax_rate:Number(event.target.value)})}/><span>%</span></div></td><td className="text-right">{money(lineTax)}</td><td className="text-right font-semibold">{money(base+lineTax)}</td>{showAccounts && <td><AccountPicker value={line.account_id} selectedCode={line.account_code} selectedName={line.account_name} onChange={(accountId) => setLines(form.lines.map((row: any, rowIndex: number) => rowIndex === index ? { ...row, account_id: accountId } : row))} /></td>}<td>{!sourceLocked&&<Button variant="outline" size="xs" onClick={() => setLines(form.lines.filter((_: any, rowIndex: number) => rowIndex !== index))}>Remove</Button>}</td></tr> })}</tbody></table></div>
       {!sourceLocked && <Button variant="outline" onClick={() => setLines([...form.lines, blankLine()])}>Add Manual Line</Button>}
 
       {hasVat && <div className="rounded-lg border border-blue-200 bg-blue-50 p-4"><div className="mb-3 flex items-center justify-between"><div><div className="font-semibold text-blue-950">Faktur Pajak</div><div className="text-xs text-blue-700">Required because this invoice contains PPN.</div></div><Badge variant={selectedSupplier?.is_pkp ? "success" : "danger"}>{selectedSupplier?.is_pkp ? "Supplier PKP" : "Supplier is not PKP"}</Badge></div><div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Faktur Pajak Number *<input className={input} value={form.tax_invoice_number} onChange={(event)=>setForm({...form,tax_invoice_number:event.target.value})}/></label><label className="text-sm">Faktur Pajak Date *<input type="date" className={input} value={form.tax_invoice_date} onChange={(event)=>setForm({...form,tax_invoice_date:event.target.value})}/></label></div></div>}
