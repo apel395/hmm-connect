@@ -1,5 +1,6 @@
 import {
   createContext,
+  forwardRef,
   HTMLAttributes,
   TableHTMLAttributes,
   TdHTMLAttributes,
@@ -69,9 +70,10 @@ export function TFoot({ className, children, ...props }: TFootProps) {
 
 export type TRProps = HTMLAttributes<HTMLTableRowElement>;
 
-export function TR({ className, children, ...props }: TRProps) {
+export const TR = forwardRef<HTMLTableRowElement, TRProps>(function TR({ className, children, ...props }, ref) {
   return (
     <tr
+      ref={ref}
       className={clsx(
         "transition-colors hover:bg-slate-50 aria-selected:bg-blue-50 data-[state=selected]:bg-blue-50",
         className,
@@ -81,7 +83,7 @@ export function TR({ className, children, ...props }: TRProps) {
       {children}
     </tr>
   );
-}
+});
 
 export interface THProps extends ThHTMLAttributes<HTMLTableCellElement> {
   numeric?: boolean;

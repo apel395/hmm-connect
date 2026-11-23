@@ -2,6 +2,7 @@ import { unbalancedJournalPath } from "../journals/journalFilters";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { todayLocal } from "@/utils/dateConstraints";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Download, Info, Layers3, List, RotateCw, Rows3, SlidersHorizontal, X } from "lucide-react";
@@ -33,6 +34,9 @@ function GlTableSkeleton() {
   </TR>)}</>;
 }
 
+const glToday = todayLocal();
+const glMonthStart = `${glToday.slice(0, 7)}-01`;
+
 export default function GeneralLedgerPage() {
   const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
@@ -42,7 +46,7 @@ export default function GeneralLedgerPage() {
   const [denseRows, setDenseRows] = useState(() => window.localStorage.getItem("gl-row-density") !== "comfortable");
   const [groupByAccount, setGroupByAccount] = useState(true);
   const [collapsedAccounts, setCollapsedAccounts] = useState<number[]>([]);
-  const [filters, setFilters] = useState<any>({ account_ids: searchParams.get("account_ids") || "", search: searchParams.get("search") || "", search_type: searchParams.get("search_type") || "ALL", account_id: searchParams.get("account_id") || "", account_from_id: searchParams.get("account_from_id") || "", account_to_id: searchParams.get("account_to_id") || "", date_from: searchParams.get("date_from") ?? `${new Date().getFullYear()}-01-01`, date_to: searchParams.get("date_to") || "", reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
+  const [filters, setFilters] = useState<any>({ account_ids: searchParams.get("account_ids") || "", search: searchParams.get("search") || "", search_type: searchParams.get("search_type") || "ALL", account_id: searchParams.get("account_id") || "", account_from_id: searchParams.get("account_from_id") || "", account_to_id: searchParams.get("account_to_id") || "", date_from: searchParams.get("date_from") ?? glMonthStart, date_to: searchParams.get("date_to") ?? glToday, reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
@@ -243,9 +247,13 @@ export default function GeneralLedgerPage() {
   // Windowing keeps the full, correct grouped dataset in memory without mounting
   // ~19,000 table rows at once — that render cost was the main load-time spike.
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
   useEffect(() => {
-    if (groupByAccount) setScrollEl(document.querySelector<HTMLElement>(".gl-ledger-viewport"));
-  }, [groupByAccount]);
+    if (!groupByAccount) return;
+    const el = document.querySelector<HTMLElement>(".gl-ledger-viewport");
+    setScrollEl(el);
+    setScrollMargin(el?.querySelector("thead")?.getBoundingClientRect().height ?? 0);
+  }, [groupByAccount, denseRows]);
   const groupedItems = useMemo<GroupItem[]>(() => {
     if (!groupByAccount) return [];
     const items: GroupItem[] = [];
@@ -263,8 +271,16 @@ export default function GeneralLedgerPage() {
     getScrollElement: () => scrollEl,
     estimateSize: (index) => groupedItems[index]?.height ?? 32,
     overscan: 8,
+    scrollMargin,
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
+
+  // Cached measurements are index-based, so clear them when row sizes or item
+  // positions change. Otherwise the final spacer can be wrong on density
+  // changes, collapses, or a refetched report — that was the trailing blank.
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [denseRows, collapsedAccounts, groupedReport.data, groupByAccount, rowVirtualizer]);
 
   const printHeader = (() => {
     const parts: string[] = [];
@@ -287,10 +303,10 @@ export default function GeneralLedgerPage() {
     const base = paths[String(row.reference_type ?? "").toUpperCase()];
     return base ? `${base}/${id}` : null;
   };
-  const renderLedgerRow = (row: any) => {
+  const renderLedgerRow = (row: any, virtualIndex?: number) => {
     const contextPrimary = row.supplier_name || row.business_unit_name;
     const contextSecondary = [row.department_name, row.location_name].filter(Boolean).join(" · ");
-    return <TR key={row.id}>
+    return <TR key={row.id} ref={virtualIndex !== undefined ? rowVirtualizer.measureElement : undefined} data-index={virtualIndex}>
       <TD className="whitespace-nowrap">{row.posting_date}</TD>
       <TD className="whitespace-nowrap"><Link className={TABLE_UI.documentLink} to={`/journal-entries/${row.journal_id}`}>{row.journal_number}</Link></TD>
       <TD className="max-w-[200px]"><span className="inline-flex min-w-0 max-w-full items-center gap-1.5 whitespace-nowrap" title={`${row.account_code} — ${row.account_name}`}><span className="shrink-0 font-mono text-[11px] text-slate-500">{row.account_code}</span><span className="min-w-0 truncate">{row.account_name}</span></span></TD>
@@ -302,14 +318,14 @@ export default function GeneralLedgerPage() {
       <TD className="max-w-[180px]">{contextPrimary || contextSecondary ? <TableCellStack primary={contextPrimary || contextSecondary} secondary={contextPrimary ? contextSecondary : undefined}/> : "—"}</TD>
     </TR>;
   };
-  const renderGroupItem = (item: GroupItem) => {
-    if (item.kind === "row") return renderLedgerRow(item.row);
+  const renderGroupItem = (item: GroupItem, index: number) => {
+    if (item.kind === "row") return renderLedgerRow(item.row, index);
     const group = item.group;
     const collapsed = collapsedAccounts.includes(group.id);
     const accountBalance = accountBalanceById.get(group.id);
     const opening = group.opening ?? accountBalance?.opening_balance;
     const closing = group.closing ?? accountBalance?.closing_balance;
-    if (item.kind === "group") return <TR key={`group-${group.id}`} className="gl-v-group bg-slate-100/80">
+    if (item.kind === "group") return <TR key={`group-${group.id}`} ref={rowVirtualizer.measureElement} data-index={index} className="gl-v-group bg-slate-100/80">
       <TD colSpan={9}>
         <div className="flex items-center justify-between gap-2">
           <button type="button" onClick={() => toggleAccount(group.id)} aria-expanded={!collapsed} className="gl-group-toggle flex items-center gap-2 text-left text-sm font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">
@@ -327,7 +343,7 @@ export default function GeneralLedgerPage() {
         </div>
       </TD>
     </TR>;
-    return <TR key={`total-${group.id}`} className="gl-v-total bg-slate-50 font-medium text-slate-700">
+    return <TR key={`total-${group.id}`} ref={rowVirtualizer.measureElement} data-index={index} className="gl-v-total bg-slate-50 font-medium text-slate-700">
       <TD colSpan={5} className="text-right text-xs text-slate-600">Period total — {group.code}</TD>
       <TD numeric className="whitespace-nowrap">{amount(group.debit)}</TD>
       <TD numeric className="whitespace-nowrap">{amount(group.credit)}</TD>
@@ -454,11 +470,11 @@ export default function GeneralLedgerPage() {
           {!activeLoading && !activeError && groupByAccount && !accountGroups.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
           {!activeLoading && !activeError && !groupByAccount && (ledger.data?.items ?? []).map(renderLedgerRow)}
           {!activeError && groupByAccount && scrollEl && groupedItems.length > 0 && (() => {
-            const paddingTop = virtualRows[0]?.start ?? 0;
-            const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0);
+            const paddingTop = Math.max(0, (virtualRows[0]?.start ?? 0) - scrollMargin);
+            const paddingBottom = Math.max(0, rowVirtualizer.getTotalSize() - scrollMargin - (virtualRows[virtualRows.length - 1]?.end ?? 0));
             return <>
               {paddingTop > 0 && <TR className="gl-v-spacer"><TD colSpan={9} style={{ height: paddingTop }} /></TR>}
-              {virtualRows.map(virtualRow => renderGroupItem(groupedItems[virtualRow.index]))}
+              {virtualRows.map(virtualRow => renderGroupItem(groupedItems[virtualRow.index], virtualRow.index))}
               {paddingBottom > 0 && <TR className="gl-v-spacer"><TD colSpan={9} style={{ height: paddingBottom }} /></TR>}
             </>;
           })()}
