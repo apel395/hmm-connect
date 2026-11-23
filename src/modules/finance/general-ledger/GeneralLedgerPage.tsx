@@ -1,10 +1,8 @@
 import { unbalancedJournalPath } from "../journals/journalFilters";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
-import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import PageHeader from "@/components/common/PageHeader";
 import { ChevronDown, ChevronRight, Download, Info, Layers3, List, RotateCw, Rows3, SlidersHorizontal, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
@@ -14,7 +12,7 @@ import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui
 import { TABLE_UI } from "@/config/tableUi";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
-import { listDepartments, listLocations } from "@/modules/admin/organization/api";
+import { listBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
 import { createLedgerExport, getAccountSummary, getExport, getLedgerAccountBalances, listLedger } from "./api";
 import type { LedgerAccountBalance } from "./api";
@@ -25,16 +23,6 @@ const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
 const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 const SKELETON_WIDTHS = ["w-16", "w-24", "w-32", "w-40", "w-24", "w-20", "w-20", "w-20", "w-24"];
-
-function GlSummarySkeleton() {
-  return <Card className="workspace-summary gl-summary px-2 py-1"><div className="workspace-summary-fields">
-    {["Filtered Entries", "Filtered Debit", "Filtered Credit", "Difference"].map(label => <div key={label}>
-      <small>{label}</small>
-      <div className="mt-1 h-4 w-28 animate-pulse rounded bg-slate-200" />
-      <small className="text-transparent">—</small>
-    </div>)}
-  </div></Card>;
-}
 
 function GlTableSkeleton() {
   return <>{SKELETON_WIDTHS.slice(0, 8).map((_, rowIndex) => <TR key={`gl-skeleton-${rowIndex}`} className="gl-skeleton-row">
@@ -59,12 +47,19 @@ export default function GeneralLedgerPage() {
   const [exportError, setExportError] = useState<string | null>(null);
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: pageSize }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
+  const businessUnits = useQuery({ queryKey: ["report-units"], queryFn: listBusinessUnits });
   const locations = useQuery({ queryKey: ["ledger-filter-locations", filters.business_unit_id], queryFn: () => listLocations({ is_active: true, business_unit_id:Number(filters.business_unit_id)||undefined }) });
   const departments = useQuery({ queryKey: ["ledger-filter-departments", filters.business_unit_id], queryFn: () => listDepartments({ is_active: true, business_unit_id: Number(filters.business_unit_id) || undefined }) });
   const suppliers = useSuppliers("", 100, showFilters);
   const accounts = useQuery({ queryKey: ["ledger-accounts", "all"], queryFn: () => getAllAccountLookup() });
   const summary = useQuery({ queryKey: ["ledger-summary", filters.account_id, filters.date_from, filters.date_to, filters.business_unit_id, filters.location_id, filters.department_id], queryFn: () => getAccountSummary(Number(filters.account_id), { business_unit_id:Number(filters.business_unit_id)||undefined, location_id:Number(filters.location_id)||undefined, department_id:Number(filters.department_id)||undefined, date_from: filters.date_from || undefined, date_to: filters.date_to || undefined }), enabled: !!filters.account_id });
   const change = (key: string, value: string) => { setFilters({ ...filters, [key]: value }); setPage(1); };
+  useEffect(() => {
+    const units = businessUnits.data;
+    if (units?.length === 1 && !filters.business_unit_id) {
+      setFilters((current: any) => ({ ...current, business_unit_id: String(units[0].id), location_id: "", department_id: "" }));
+    }
+  }, [businessUnits.data, filters.business_unit_id]);
   useEffect(() => window.localStorage.setItem("ledger-page-size", String(pageSize)), [pageSize]);
   useEffect(() => window.localStorage.setItem("gl-row-density", denseRows ? "dense" : "comfortable"), [denseRows]);
   const input = "h-9 rounded border border-slate-300 bg-white px-2 text-[13px] leading-5";
@@ -166,10 +161,6 @@ export default function GeneralLedgerPage() {
   };
 
   const exportBusy = exportStatus === "starting" || exportStatus === "processing";
-  const pageTotals = (ledger.data?.items ?? []).reduce((sum: { debit: number; credit: number }, row: any) => ({
-    debit: sum.debit + Number(row.debit || 0),
-    credit: sum.credit + Number(row.credit || 0),
-  }), { debit: 0, credit: 0 });
   // This grouping uses the current API page; page subtotals are not account closing balances.
   type AccountGroup = { id: number; code: string; name: string; rows: any[]; debit: number; credit: number };
   const accountGroups = Array.from<AccountGroup>(
@@ -246,40 +237,50 @@ export default function GeneralLedgerPage() {
       ? "Preparing XLS..."
       : "Download XLS";
 
-  return <DataWorkspace area="Accounting" className="print-document "><style>{`@page{size:landscape;margin:10mm}
-    .gl-compact-ledger tbody tr td { padding: 4px 8px; font-size: 13px; line-height: 18px; }
-    .gl-compact-ledger thead tr th { height: 30px; padding: 5px 8px; font-size: 11px; }
-    .gl-compact-ledger tbody tr button { line-height: 18px; }
+  return <DataWorkspace area="Accounting" className="print-document gl-data-first"><style>{`@page{size:landscape;margin:10mm}
+    body:has(.gl-data-first) [data-workspace-content] { padding: 3px 5px !important; }
+    .gl-data-first { height: calc(100dvh - 94px) !important; gap: 3px !important; }
+    .gl-data-first > * { flex-shrink: 0; }
+    .gl-data-first .gl-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 0 0 auto; }
+    .gl-data-first .gl-toolbar :is(input,select,button) { height: 28px !important; min-height: 28px !important; font-size: 12px !important; }
+    .gl-data-first .gl-search { flex: 2 1 240px; min-width: 160px; padding: 0 8px; border: 1px solid #d5dce2; border-radius: 6px; background: white; }
+    .gl-data-first .gl-date { flex: 0 1 132px; min-width: 120px; padding: 0 6px; border: 1px solid #d5dce2; border-radius: 6px; background: white; }
+    .gl-data-first .gl-unit-select { flex: 0 1 140px; padding: 0 6px; border: 1px solid #d5dce2; border-radius: 6px; background: white; }
+    .gl-data-first .gl-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 0 0 auto; }
+    .gl-data-first .gl-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; flex: 0 0 auto; padding: 4px 10px !important; border-top: 1px solid #e6ebef; background: #fafbfc; font-size: 11px; line-height: 16px; color: #52616d; }
+    .gl-data-first .gl-statusbar strong { color: #1f2d38; font-variant-numeric: tabular-nums; }
+    .gl-data-first .gl-statusbar select { height: 24px !important; min-height: 24px !important; }
+    .gl-data-first .gl-statusbar button { height: 24px !important; min-height: 24px !important; padding: 0 8px !important; }
+    .gl-data-first .workspace-data { flex: 1 1 0 !important; min-height: 0 !important; }
+    .gl-data-first .gl-ledger-viewport { min-height: 0 !important; max-height: none !important; }
+    .gl-compact-ledger tbody tr td { padding: 3px 8px; font-size: 13px; line-height: 17px; }
+    .gl-compact-ledger thead tr th { height: 26px; padding: 4px 8px; font-size: 11px; }
+    .gl-compact-ledger tbody tr button { line-height: 17px; }
     .gl-compact-ledger .text-slate-400 { color: #475569 !important; }
-    .gl-summary small, .gl-summary .workspace-summary-fields small { font-size: 12px !important; color: #475569 !important; }
-    .gl-summary > div > div:first-child { font-size: 13px !important; text-transform: none !important; letter-spacing: 0 !important; }
-    .gl-summary > div > div:last-child:not(:nth-child(2)) { font-size: 11px !important; color: #475569 !important; }
-    .gl-group-toggle { min-height: 36px; }
-    .gl-view-toggle button { min-height: 32px; }
+    .gl-group-toggle { min-height: 30px; }
+    .gl-view-toggle button { min-height: 24px; }
     @media print { .gl-compact-ledger tbody tr td { padding: 4px 7px; font-size: 11px; } }
   `}</style><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
-    <div className="print:hidden space-y-2">
-    <PageHeader actions={<div className="flex items-center gap-2">
-    <Button size="md" variant="outline" title={exportLabel} aria-label={exportLabel} onClick={handleExport} disabled={exportBusy}><Download size={15} />{exportBusy && <span>{exportLabel}</span>}</Button>
-    <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" />
-  </div>} title="General Ledger"/>
-    <ReportUnitButtons value={filters.business_unit_id} onChange={id=>{setFilters({...filters,business_unit_id:id,location_id:"",department_id:""});setPage(1);}}/>
-    {exportError && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div>}
-    <Card className="workspace-filter-panel p-2">
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="min-w-[220px] flex-[2_1_320px] text-xs font-medium text-slate-700">Search
-          <input className={`${input} mt-0.5 w-full`} placeholder="Journal, document, description, account..." value={filters.search} onChange={event => change("search", event.target.value)}/>
-        </label>
-        <label className="min-w-[145px] flex-1 text-xs font-medium text-slate-700">From Date
-          <input className={`${input} mt-0.5 w-full`} type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/>
-        </label>
-        <label className="min-w-[145px] flex-1 text-xs font-medium text-slate-700">To Date
-          <input className={`${input} mt-0.5 w-full`} type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/>
-        </label>
-        <Button type="button" size="md" variant="outline" title="Open transaction filters" aria-label="Open General Ledger filters" aria-expanded={showFilters} onClick={() => setShowFilters(true)}><SlidersHorizontal size={15}/><span className="sr-only">Filters</span>{activeAdvancedFilters ? <span className="text-xs">{activeAdvancedFilters}</span> : null}</Button>
-        <Button type="button" size="md" variant="outline" title="Display preferences" aria-label="Ledger display preferences" onClick={() => setShowDisplayTools(true)}><Rows3 size={15}/><span className="sr-only">Display</span></Button>
-      </div>
-    </Card>
+    <div className="gl-toolbar print:hidden">
+      <input className="gl-search" aria-label="Search general ledger" placeholder="Search journal, document, description, account..." value={filters.search} onChange={event => change("search", event.target.value)}/>
+      <input className="gl-date" aria-label="From date" title="From date" type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/>
+      <input className="gl-date" aria-label="To date" title="To date" type="date" value={filters.date_to} onChange={event => change("date_to", event.target.value)}/>
+      <select className="gl-unit-select" aria-label="Business unit" title="Business unit" value={filters.business_unit_id} onChange={event => { setFilters({ ...filters, business_unit_id: event.target.value, location_id: "", department_id: "" }); setPage(1); }}>
+        {businessUnits.data?.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+        <option value="">Consolidated</option>
+      </select>
+      <Button type="button" size="md" variant="outline" title="Open transaction filters" aria-label="Open General Ledger filters" aria-expanded={showFilters} onClick={() => setShowFilters(true)}><SlidersHorizontal size={15}/><span className="sr-only">Filters</span>{activeAdvancedFilters ? <span className="text-xs">{activeAdvancedFilters}</span> : null}</Button>
+      <Button type="button" size="md" variant="outline" title="Display preferences" aria-label="Ledger display preferences" onClick={() => setShowDisplayTools(true)}><Rows3 size={15}/><span className="sr-only">Display</span></Button>
+      <Button size="md" variant="outline" title={exportLabel} aria-label={exportLabel} onClick={handleExport} disabled={exportBusy}><Download size={15} />{exportBusy && <span>{exportLabel}</span>}</Button>
+      <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" />
+    </div>
+    {activeChips.length > 0 && <div className="gl-chips print:hidden">
+      {activeChips.map(chip => <button key={chip.key} type="button" onClick={() => change(chip.key, "")} title={`Remove ${chip.label} filter`} className="inline-flex min-h-6 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">
+        <span className="font-medium">{chip.label}:</span><span className="max-w-[180px] truncate">{chip.value}</span><X size={11} aria-hidden="true" />
+      </button>)}
+      <button type="button" onClick={clearAllChips} className="min-h-6 rounded px-1.5 text-[11px] text-slate-600 underline underline-offset-2 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">Clear all</button>
+    </div>}
+    {exportError && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 print:hidden">{exportError}</div>}
     <Dialog open={showFilters} onOpenChange={setShowFilters}>
       <DialogContent className="max-w-3xl">
         <DialogHeader><DialogTitle>General Ledger filters</DialogTitle></DialogHeader>
@@ -335,33 +336,8 @@ export default function GeneralLedgerPage() {
         <DialogFooter><Button size="sm" onClick={() => setShowDisplayTools(false)}>Done</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    {ledger.isLoading && !summaryAvailable ? <GlSummarySkeleton /> : <Card className="workspace-summary gl-summary px-2 py-1"><div className="workspace-summary-fields">
-      <div><small>Filtered Entries</small><div className="font-bold tabular-nums">{ledger.data?.total_items ?? 0}</div><small>All matching entries</small></div>
-      <div><small>Filtered Debit <span className="text-[10px] font-normal uppercase tracking-wide text-slate-600">(all matches)</span></small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.debit) : "Awaiting backend totals"}</div><small>This page ({ledger.data?.items?.length ?? 0} rows): {amount(pageTotals.debit)}</small></div>
-      <div><small>Filtered Credit <span className="text-[10px] font-normal uppercase tracking-wide text-slate-600">(all matches)</span></small><div className="font-bold tabular-nums">{filteredTotals ? amount(filteredTotals.credit) : "Awaiting backend totals"}</div><small>This page ({ledger.data?.items?.length ?? 0} rows): {amount(pageTotals.credit)}</small></div>
-      <div><small className="inline-flex items-center gap-1">Difference <Info size={12} aria-hidden="true" /></small><div className="font-bold tabular-nums">{filteredTotals ? <Link to={unbalancedJournalPath(filters)} title="Difference across all matching entries. Open to review unbalanced journals in this period and scope." className="text-emerald-700 hover:underline">{amount(filteredTotals.debit - filteredTotals.credit)}</Link> : "Awaiting backend totals"}</div><small>All matches · This page: {amount(pageTotals.debit - pageTotals.credit)}</small></div>
-    </div></Card>}
-    {summary.data && <Card className="workspace-summary gl-summary px-2 py-1"><div className="workspace-summary-fields"><div><small>Opening Balance</small><div className="font-bold tabular-nums">{amount(summary.data.opening_balance)}</div></div><div><small>Account Debit</small><div className="font-bold tabular-nums">{amount(summary.data.total_debit)}</div></div><div><small>Account Credit</small><div className="font-bold tabular-nums">{amount(summary.data.total_credit)}</div></div><div><small>Closing Balance</small><div className="font-bold tabular-nums">{amount(summary.data.closing_balance)}</div></div></div></Card>}
-    </div>
-    <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-        <span>{ledger.data?.total_items ?? 0} matching entries</span>
-        {balanceIsFiltered && <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">Running balances include complete account movements; debit/credit search totals cover matching entries only.</span>}
-      </div>
-      <div className="gl-view-toggle inline-flex items-center gap-1 rounded-md border border-slate-200 p-1" role="group" aria-label="Ledger display mode">
-        <button type="button" onClick={() => setGroupByAccount(true)} aria-pressed={groupByAccount} className={`flex items-center gap-1 rounded px-3 py-1.5 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] ${groupByAccount ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}><Layers3 size={14}/> By account</button>
-        <button type="button" onClick={() => setGroupByAccount(false)} aria-pressed={!groupByAccount} className={`flex items-center gap-1 rounded px-3 py-1.5 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] ${!groupByAccount ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}><List size={14}/> Transactions</button>
-      </div>
-    </div>
-    {activeChips.length > 0 && <div className="flex flex-wrap items-center gap-1.5 print:hidden">
-      <span className="text-xs font-medium text-slate-600">Active filters:</span>
-      {activeChips.map(chip => <button key={chip.key} type="button" onClick={() => change(chip.key, "")} title={`Remove ${chip.label} filter`} className="inline-flex min-h-7 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">
-        <span className="font-medium">{chip.label}:</span><span className="max-w-[220px] truncate">{chip.value}</span><X size={12} aria-hidden="true" />
-      </button>)}
-      <button type="button" onClick={clearAllChips} className="min-h-7 rounded px-2 text-xs text-slate-600 underline underline-offset-2 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">Clear all</button>
-    </div>}
     <Card className="workspace-data">
-      <Table variant="grid" stickyHeader className={`workspace-ledger-table min-w-[980px] ${denseRows ? "gl-compact-ledger" : ""}`} containerClassName="gl-ledger-viewport min-h-[min(54vh,520px)] max-h-[calc(100dvh-300px)] overflow-auto border-0 shadow-none print:max-h-none print:min-h-0 print:overflow-visible">
+      <Table variant="grid" stickyHeader className={`workspace-ledger-table min-w-[980px] ${denseRows ? "gl-compact-ledger" : ""}`} containerClassName="gl-ledger-viewport overflow-auto border-0 shadow-none print:max-h-none print:min-h-0 print:overflow-visible">
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
         <TBody>
           {ledger.isLoading && <GlTableSkeleton />}
@@ -400,8 +376,23 @@ export default function GeneralLedgerPage() {
           })}
         </TBody>
       </Table>
-      <p className="mt-1 text-[11px] text-slate-600 sm:hidden print:hidden">Scroll the table sideways to see all columns →</p>
-      <div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-1 text-xs print:hidden"><label>Rows per page <select className="ml-1 h-8 rounded border border-slate-300 bg-white px-2" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{ledger.data?.total_items ?? 0} entries · Page {page} of {Math.max(ledger.data?.total_pages ?? 0, 1)}</span><Button size="md" variant="outline" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="md" variant="outline" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div>
+      <div className="gl-statusbar print:hidden">
+        <span><strong>{ledger.data?.total_items ?? 0}</strong> entries</span>
+        <span>Debit <strong>{filteredTotals ? amount(filteredTotals.debit) : ledger.isLoading ? "…" : "—"}</strong></span>
+        <span>Credit <strong>{filteredTotals ? amount(filteredTotals.credit) : ledger.isLoading ? "…" : "—"}</strong></span>
+        <span className="inline-flex items-center gap-1">Diff <strong>{filteredTotals ? <Link to={unbalancedJournalPath(filters)} title="Difference across all matching entries — review unbalanced journals in this period and scope." className="text-emerald-700 hover:underline">{amount(filteredTotals.debit - filteredTotals.credit)}</Link> : "…"}</strong><Info size={11} aria-hidden="true" /></span>
+        {summary.data && <span title="Account activity for the selected account and period">Account closing <strong>{amount(summary.data.closing_balance)}</strong></span>}
+        {balanceIsFiltered && <span title="Running balances include complete account movements; debit/credit totals cover matching entries only." className="cursor-help text-amber-800">⚠ filtered balance</span>}
+        <div className="gl-view-toggle inline-flex items-center gap-1 rounded-md border border-slate-200 p-0.5 ml-auto" role="group" aria-label="Ledger display mode">
+          <button type="button" onClick={() => setGroupByAccount(true)} aria-pressed={groupByAccount} title="Group by account" className={`flex items-center gap-1 rounded px-2 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] ${groupByAccount ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}><Layers3 size={13}/> By account</button>
+          <button type="button" onClick={() => setGroupByAccount(false)} aria-pressed={!groupByAccount} title="Show transactions" className={`flex items-center gap-1 rounded px-2 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A] ${!groupByAccount ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}><List size={13}/> Transactions</button>
+        </div>
+        <span>Page {page}/{Math.max(ledger.data?.total_pages ?? 0, 1)}</span>
+        <label className="inline-flex items-center gap-1">Rows <select className="rounded border border-slate-300 bg-white px-1" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50</option><option value={100}>100</option></select></label>
+        <Button size="md" variant="outline" title="Previous page" aria-label="Previous page" disabled={!ledger.data?.has_previous} onClick={() => setPage(page - 1)}>‹</Button>
+        <Button size="md" variant="outline" title="Next page" aria-label="Next page" disabled={!ledger.data?.has_next} onClick={() => setPage(page + 1)}>›</Button>
+      </div>
+      <p className="px-2 pb-1 text-[10px] text-slate-600 sm:hidden print:hidden">Scroll sideways to see all columns →</p>
     </Card>
   </DataWorkspace>;
 }
