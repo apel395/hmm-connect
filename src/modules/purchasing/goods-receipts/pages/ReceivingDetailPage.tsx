@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, RotateCcw } from "lucide-react";
-import axios from "axios";
 import { toast } from "sonner";
 
 import Badge from "@/components/ui/Badge";
@@ -38,6 +37,18 @@ const receivingDate = (value?: string) => {
     date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Jakarta" });
 };
 
+function errorMessage(error: unknown) {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object") {
+    const structured = detail as { message?: unknown; fields?: Array<{ path?: string; message?: string }> };
+    if (typeof structured.message === "string") return structured.message;
+    const firstField = structured.fields?.[0];
+    if (firstField?.message) return firstField.message;
+  }
+  return (error as { message?: string })?.message || "The action could not be completed.";
+}
+
 export default function ReceivingDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -55,8 +66,9 @@ export default function ReceivingDetailPage() {
       navigate("/supplier-invoices/" + invoice.id);
     },
     onError: (error: any) => {
-      const detail = error?.response?.data?.detail;
-      toast.error(typeof detail === "string" ? detail : detail?.message || "Unable to prepare invoice draft");
+      const message = errorMessage(error);
+      setActionError(message);
+      toast.error(message);
     },
   });
   const depost = useDepostGoodsReceipt();
@@ -76,10 +88,26 @@ export default function ReceivingDetailPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
   const [returnOpen, setReturnOpen] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [costError, setCostError] = useState("");
+  const [costErrorItemId, setCostErrorItemId] = useState<number>();
 
   useEffect(() => {
     if (data) setCosts(Object.fromEntries(data.items.map(item => [item.id, Number(item.unit_cost)])));
   }, [data]);
+
+  useEffect(() => {
+    if (!actionError) return;
+    const target = document.querySelector<HTMLElement>("[data-field='receiving-action']");
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [actionError]);
+
+  useEffect(() => {
+    if (!costErrorItemId) return;
+    const target = document.querySelector<HTMLElement>(`[data-receipt-item='${costErrorItemId}']`);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    target?.querySelector<HTMLElement>("input")?.focus();
+  }, [costErrorItemId]);
 
   if (isLoading) return <Loading />;
   if (!data) return null;
@@ -93,16 +121,20 @@ export default function ReceivingDetailPage() {
   const canPost = canPerform("post", ["WAREHOUSE", "PURCHASING"], actions?.can_post ?? false, "receiving.post");
   const canReturn = canPerform("receive", ["WAREHOUSE", "PURCHASING"], actions?.can_return ?? false);
 
+  const reportActionError = (error: unknown, fallback: string) => {
+    const message = errorMessage(error);
+    setActionError(message);
+    toast.error(message || fallback);
+  };
   const postReceipt = () => post.mutate(data.id, {
-    onSuccess: () => toast.success("Receiving posted"),
-    onError: error => {
-      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
-      toast.error(typeof detail === "string" ? detail : "Receiving could not be posted");
-    },
+    onSuccess: () => { setActionError(""); toast.success("Receiving posted"); },
+    onError: error => reportActionError(error, "Receiving could not be posted"),
   });
   const openCostCorrection = () => {
     setCosts(Object.fromEntries(data.items.map(item => [item.id, Number(item.unit_cost)])));
     setReason("");
+    setCostError("");
+    setCostErrorItemId(undefined);
     setCostDialogOpen(true);
   };
   let primary: ReceivingPrimaryAction | undefined;
@@ -111,13 +143,19 @@ export default function ReceivingDetailPage() {
   } else if (canApprove) {
     primary = {
       label: "Approve Receiving",
-      onClick: () => approve.mutate({ id: data.id }, { onSuccess: () => toast.success("Approval stage completed") }),
+      onClick: () => approve.mutate({ id: data.id }, {
+        onSuccess: () => { setActionError(""); toast.success("Approval stage completed"); },
+        onError: error => reportActionError(error, "Receiving could not be approved"),
+      }),
       loading: approve.isPending,
     };
   } else if (canSubmit) {
     primary = {
       label: "Submit for Approval",
-      onClick: () => submitApproval.mutate(data.id, { onSuccess: () => toast.success("Receiving submitted for approval") }),
+      onClick: () => submitApproval.mutate(data.id, {
+        onSuccess: () => { setActionError(""); toast.success("Receiving submitted for approval"); },
+        onError: error => reportActionError(error, "Receiving could not be submitted"),
+      }),
       loading: submitApproval.isPending,
     };
   } else if (data.status === "POSTED" && data.supplier_invoice_id && hasPermission("supplier_invoice.view")) {
@@ -131,7 +169,7 @@ export default function ReceivingDetailPage() {
       label: "Prepare Supplier Invoice",
       icon: "prepare",
       loading: prepareInvoice.isPending,
-      onClick: () => prepareInvoice.mutate(data.id),
+      onClick: () => { setActionError(""); prepareInvoice.mutate(data.id); },
     };
   }
 
@@ -162,8 +200,18 @@ export default function ReceivingDetailPage() {
   const changedItems = data.items.filter(item =>
     Number(costs[item.id] ?? item.unit_cost) !== Number(item.unit_cost));
   const submitCostCorrection = async () => {
-    if (!changedItems.length) return toast.error("Change at least one unit cost.");
-    if (reason.trim().length < 3) return toast.error("Correction reason is required.");
+    setCostError("");
+    setCostErrorItemId(undefined);
+    if (!changedItems.length) {
+      const message = "Change at least one unit cost.";
+      setCostError(message);
+      return toast.error(message);
+    }
+    if (reason.trim().length < 3) {
+      const message = "Correction reason is required.";
+      setCostError(message);
+      return toast.error(message);
+    }
     try {
       await correctCosts.mutateAsync({
         id: data.id,
@@ -176,8 +224,13 @@ export default function ReceivingDetailPage() {
       setCostDialogOpen(false);
       setReason("");
     } catch (error) {
-      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
-      toast.error(typeof detail === "string" ? detail : "Cost correction failed");
+      const message = errorMessage(error);
+      setCostError(message);
+      const itemMatch = message.match(/receipt item (\d+)/i) ?? message.match(/product (\d+)/i);
+      const matchedId = itemMatch ? Number(itemMatch[1]) : undefined;
+      const item = matchedId ? data.items.find(candidate => candidate.id === matchedId || candidate.product_id === matchedId) : undefined;
+      setCostErrorItemId(item?.id);
+      toast.error(message);
     }
   };
   return (
@@ -244,6 +297,12 @@ export default function ReceivingDetailPage() {
         </div>
       )}
 
+      {actionError && (
+        <div role="alert" data-field="receiving-action" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {actionError}
+        </div>
+      )}
+
       {!historical && data.status === "DRAFT" && data.approval_status !== "APPROVED" &&
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           Receiving is not posted yet. It must complete Store → Chef → PM/Camp Boss approval before posting.
@@ -271,11 +330,12 @@ export default function ReceivingDetailPage() {
             <Button disabled={depostReason.trim().length < 3} loading={depost.isPending}
               onClick={() => depost.mutate({ id: data.id, reason: depostReason.trim() }, {
                 onSuccess: () => {
+                  setActionError("");
                   setDepostOpen(false);
                   setEditOpen(true);
                   toast.success("Receiving deposted. Correct the draft, complete approval and post it again.");
                 },
-                onError: (error: any) => toast.error(error?.response?.data?.detail || "Receiving could not be deposted"),
+                onError: error => reportActionError(error, "Receiving could not be deposted"),
               })}>Depost and Edit</Button>
           </DialogFooter>
         </DialogContent>
@@ -294,7 +354,8 @@ export default function ReceivingDetailPage() {
             <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
             <Button variant="danger" disabled={!rejectComment.trim()} loading={reject.isPending}
               onClick={() => reject.mutate({ id: data.id, comment: rejectComment.trim() }, {
-                onSuccess: () => { toast.success("Receiving rejected"); setRejectOpen(false); setRejectComment(""); },
+                onSuccess: () => { setActionError(""); toast.success("Receiving rejected"); setRejectOpen(false); setRejectComment(""); },
+                onError: error => reportActionError(error, "Receiving could not be rejected"),
               })}>Reject</Button>
           </DialogFooter>
         </DialogContent>
@@ -313,8 +374,8 @@ export default function ReceivingDetailPage() {
             <Button variant="outline" disabled={returned.isPending} onClick={() => setReturnOpen(false)}>Cancel</Button>
             <Button variant="danger" loading={returned.isPending}
               onClick={() => returned.mutate(data.id, {
-                onSuccess: () => { setReturnOpen(false); toast.success("Receiving returned"); },
-                onError: (error: any) => toast.error(error?.response?.data?.detail || "Unable to return Receiving"),
+                onSuccess: () => { setActionError(""); setReturnOpen(false); toast.success("Receiving returned"); },
+                onError: error => reportActionError(error, "Unable to return Receiving"),
               })}><RotateCcw size={16} /> Return Goods</Button>
           </DialogFooter>
         </DialogContent>
@@ -327,6 +388,7 @@ export default function ReceivingDetailPage() {
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               Cost corrections are audited. The backend blocks unsafe historical revaluation when downstream documents depend on this receipt.
             </div>
+            {costError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{costError}</p>}
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-slate-50">
@@ -335,11 +397,14 @@ export default function ReceivingDetailPage() {
                     <th className="p-3 text-right">Amount</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {data.items.map(item => <tr key={item.id}>
+                  {data.items.map(item => <tr key={item.id} data-receipt-item={item.id}
+                    className={costErrorItemId === item.id ? "bg-red-50 ring-2 ring-inset ring-red-300" : undefined}>
                     <td className="p-3">{item.product_name}</td>
                     <td className="p-3 text-right">{item.quantity}</td>
                     <td className="p-3 text-right">{money(item.unit_cost)}</td>
-                    <td className="p-3"><CurrencyInput value={Number(costs[item.id] ?? item.unit_cost)}
+                    <td className="p-3" data-field={`cost-${item.id}`}><CurrencyInput value={Number(costs[item.id] ?? item.unit_cost)}
+                      dataField={`cost-${item.id}`}
+                      invalid={costErrorItemId === item.id}
                       onValueChange={value => setCosts(current => ({ ...current, [item.id]: value }))} /></td>
                     <td className="p-3 text-right">{money(Number(item.quantity) * Number(costs[item.id] ?? item.unit_cost))}</td>
                   </tr>)}

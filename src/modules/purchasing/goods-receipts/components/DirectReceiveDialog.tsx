@@ -3,7 +3,6 @@ import "../receiving-lines.css";
 import api from "@/api/client";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
 import Button from "@/components/ui/Button";
 import Dialog, {
   DialogBody,
@@ -33,6 +32,7 @@ import ReceivingDestinationField from "./ReceivingDestinationField";
 import ReceivingBillingFields from "./ReceivingBillingFields";
 import { emptyReceivingBilling, receivingBillingPayload, validateReceivingBilling } from "../billing";
 import { destinationFor, destinationError, type LineRouting } from "../destination";
+import { mapPurchasingFieldPaths, readPurchasingError, usePurchasingFieldErrors } from "../../fieldErrors";
 
 type Line = LineRouting & { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; tax_rate?:number; expense_account_id?: number | null };
 const money = (value: unknown) =>
@@ -72,6 +72,7 @@ export default function DirectReceiveDialog({
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
   const [billing, setBilling] = useState(emptyReceivingBilling);
+  const fieldErrors = usePurchasingFieldErrors(open);
   const [lines, setLines] = useState<Line[]>([
     { product_id: 0, quantity: 1, unit_cost: 0 },
   ]);
@@ -129,22 +130,24 @@ export default function DirectReceiveDialog({
       current.map((line, i) => (i === index ? { ...line, ...value } : line)),
     );
   const submit = async () => {
-    if (marketListMode && !marketListId) return alert("Choose an approved Market List");
-    if (!supplierId || !businessUnitId || !departmentId || !locationId)
-      return alert(
-        "Supplier, Business Unit, Department and Location are required.",
-      );
-    if (hasWarehouse && !warehouseId)
-      return alert("Warehouse is required.");
-    if (!receivedAt)
-      return alert("Receipt Date/Time is required.");
+    const fail = (field: string, message: string) => { fieldErrors.setLocal(field, message); return undefined; };
+    if (marketListMode && !marketListId) return fail("market_list_id", "Choose an approved Market List");
+    if (!supplierId) return fail("supplier_id", "Supplier is required.");
+    if (!businessUnitId) return fail("business_unit_id", "Business Unit is required.");
+    if (!departmentId) return fail("department_id", "Department is required.");
+    if (!locationId) return fail("location_id", "Location is required.");
+    if (hasWarehouse && !warehouseId) return fail("warehouse_id", "Warehouse is required.");
+    if (!receivedAt) return fail("received_at", "Receipt Date/Time is required.");
     const billingIssue = validateReceivingBilling(billing, subtotal);
-    if (billingIssue) return alert(billingIssue);
-    const routingIssue = lines.filter(line => line.product_id && line.quantity > 0).map(line => destinationError(routingFor(line))).find(Boolean);
-    if (routingIssue) return alert(routingIssue);
-    const items = lines
-      .filter((line) => line.product_id && line.quantity > 0)
-      .map((line) => ({
+    if (billingIssue) return fail("billing", billingIssue);
+    const routingIndex = lines.findIndex(line => line.product_id && line.quantity > 0 && Boolean(destinationError(routingFor(line))));
+    if (routingIndex >= 0) return fail(`items[${routingIndex}].destination_type`, destinationError(routingFor(lines[routingIndex])) || "Choose a destination for every received item.");
+    const validIndexes = lines
+      .map((line, index) => line.product_id && line.quantity > 0 ? index : -1)
+      .filter((index) => index >= 0);
+    const items = validIndexes.map((index) => {
+      const line = lines[index];
+      return {
         market_list_item_id: line.market_list_item_id,
         product_id: line.product_id,
         destination_type: line.destination_type ?? null,
@@ -154,16 +157,18 @@ export default function DirectReceiveDialog({
         unit_cost: line.unit_cost,
         is_taxable: Number(line.tax_rate||0)>0,
         tax_rate: Number(line.tax_rate||0),
-      }));
-    if (!items.length) return alert("Add at least one valid item.");
-    if (items.some(item => {
-      const product=productRows.find(row=>row.id===item.product_id);
-      return destinationFor({...item, inventory_treatment: product?.inventory_treatment}) === "DIRECT_USE" && product?.catalog_type === "HOTEL" && product.inventory_treatment !== "FIXED_ASSET" && !item.expense_account_id;
-    })) return alert("Choose an expense destination for each Hotel Direct Use item in the selected department.");
-    if (items.some((item) => Number(item.unit_cost) <= 0))
-      return alert(
-        "Unit cost must be greater than zero for every received item.",
-      );
+      };
+    });
+    if (!items.length) return fail("items[0].quantity", "Add at least one valid item.");
+    const expenseIndex = validIndexes.find((index) => {
+      const line = lines[index];
+      const product = productRows.find(row => row.id === line.product_id);
+      return destinationFor(routingFor(line)) === "DIRECT_USE" && product?.catalog_type === "HOTEL" && product.inventory_treatment !== "FIXED_ASSET" && !line.expense_account_id;
+    });
+    if (expenseIndex !== undefined) return fail(`items[${expenseIndex}].expense_account_id`, "Choose an expense destination for each Hotel Direct Use item in the selected department.");
+    const costIndex = validIndexes.find((index) => Number(lines[index].unit_cost) <= 0);
+    if (costIndex !== undefined) return fail(`items[${costIndex}].unit_cost`, "Unit cost must be greater than zero for every received item.");
+    fieldErrors.clear();
     try {
       await receive.mutateAsync({
         payload: {
@@ -183,14 +188,8 @@ export default function DirectReceiveDialog({
       });
       onClose();
     } catch (error) {
-      const detail = axios.isAxiosError(error)
-        ? error.response?.data?.detail
-        : null;
-      alert(
-        typeof detail === "string"
-          ? detail
-          : "Direct receipt could not be saved",
-      );
+      const info = readPurchasingError(error);
+      fieldErrors.show(mapPurchasingFieldPaths(info, (path) => path.replace(/^items\[(\d+)\]/, (_, index: string) => `items[${validIndexes[Number(index)] ?? Number(index)}]`)));
     }
   };
   return (
@@ -200,25 +199,31 @@ export default function DirectReceiveDialog({
           <DialogTitle>{marketListMode ? "Receiving from Market List" : "Create Direct Receiving Draft"}</DialogTitle>
         </DialogHeader>
         <DialogBody className="space-y-4">
+          {fieldErrors.message && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{fieldErrors.message}</div>}
           {hasPermission("receiving.post") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={historical} onChange={event => setHistorical(event.target.checked)}/> Historical entry (Draft → Post)</label>}
           {!historical && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
             Use this only when goods/services are received without a Purchase
             Order. Saving creates a <strong>Draft RR</strong>; it must follow
             Store and PM/Camp Boss approval by two different people before posting.
           </div>}
-          {marketListMode && <SearchableSelect label="Approved Market List" value={marketListId} options={(marketLists.data ?? []).map((row: any)=>({id:row.id,label:`${row.ml_number} · ${row.request_date}`}))} onChange={setMarketListId} />}
+          {marketListMode && <div><SearchableSelect label="Approved Market List" required dataField="market_list_id" invalid={Boolean(fieldErrors.errors.market_list_id)} value={marketListId} options={(marketLists.data ?? []).map((row: any)=>({id:row.id,label:`${row.ml_number} · ${row.request_date}`}))} onChange={setMarketListId}/>{fieldErrors.fieldError("market_list_id")}</div>}
           {supplierQuery.isError && <p role="alert" className="text-sm text-red-700">Suppliers could not load. <button type="button" className="underline" onClick={() => void supplierQuery.refetch()}>Retry</button></p>}
           <div className="grid gap-3 md:grid-cols-2">
-            <SearchableSelect
+            <div><SearchableSelect
               label="Supplier"
+              required
+              dataField="supplier_id"
+              invalid={Boolean(fieldErrors.errors.supplier_id)}
               value={supplierId}
               disabled={supplierQuery.isLoading}
               placeholder={supplierQuery.isLoading ? "Loading suppliers…" : "Type supplier code or name..."}
               options={(suppliers as any[]).map(option)}
               onChange={setSupplierId}
-            />
-            <SearchableSelect
+            />{fieldErrors.fieldError("supplier_id")}</div>
+            <div><SearchableSelect
               label="Business Unit"
+              dataField="business_unit_id"
+              invalid={Boolean(fieldErrors.errors.business_unit_id)}
               disabled={marketListMode}
               value={businessUnitId}
               placeholder="Type business unit..."
@@ -228,34 +233,39 @@ export default function DirectReceiveDialog({
                 setDepartmentId(undefined);
                 setLocationId(undefined);
               }}
-            />
-            <SearchableSelect
+            />{fieldErrors.fieldError("business_unit_id")}</div>
+            <div><SearchableSelect
               label="Department"
+              dataField="department_id"
+              invalid={Boolean(fieldErrors.errors.department_id)}
               disabled={marketListMode || !locationId || departments.isLoading}
               value={departmentId}
               placeholder="Type department..."
               options={(departments.data ?? []).map(option)}
               onChange={setDepartmentId}
-            />
-            <SearchableSelect
+            />{fieldErrors.fieldError("department_id")}</div>
+            <div><SearchableSelect
               label="Location"
+              dataField="location_id"
+              invalid={Boolean(fieldErrors.errors.location_id)}
               disabled={marketListMode}
               value={locationId}
               placeholder="Type location..."
               options={(locations.data ?? []).map(option)}
               onChange={id=>{setLocationId(id);setDepartmentId(undefined);setWarehouseId(undefined)}}
-            />
+            />{fieldErrors.fieldError("location_id")}</div>
             <label className="text-xs font-medium text-slate-700">
               Receipt Date
               <input
                 type="datetime-local" disabled={!historical}
                 data-accounting-date="true"
                 data-min-date="2026-01-01"
+                data-field="received_at"
                 min="2026-01-01T00:00"
                 className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
                 value={receivedAt}
                 onChange={(e) => setReceivedAt(e.target.value)}
-              />
+              />{fieldErrors.fieldError("received_at")}
             </label>
             <label className="text-xs font-medium text-slate-700">
               Delivery Note / Reference
@@ -266,13 +276,15 @@ export default function DirectReceiveDialog({
               />
             </label>
             {hasWarehouse && (
-              <SearchableSelect
+              <div><SearchableSelect
                 label="Warehouse"
+                dataField="warehouse_id"
+                invalid={Boolean(fieldErrors.errors.warehouse_id)}
                 value={warehouseId}
                 placeholder="Type warehouse code or name..."
                 options={(warehouses as any[]).filter(row => row.is_active && Number(row.location_id) === locationId).map(option)}
                 onChange={setWarehouseId}
-              />
+              />{fieldErrors.fieldError("warehouse_id")}</div>
             )}
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -315,24 +327,28 @@ export default function DirectReceiveDialog({
                         />
 
                       </td>
-                      <td className="p-2"><ReceivingDestinationField name={product?.name ?? `item ${index+1}`} line={routingFor(line)} onChange={value => patch(index, value)}/></td>
+                      <td className="p-2"><div data-field={`items[${index}].destination_type`}><ReceivingDestinationField name={product?.name ?? `item ${index+1}`} line={routingFor(line)} onChange={value => patch(index, value)}/>{fieldErrors.fieldError(`items[${index}].destination_type`)}</div></td>
                       <td>{product?.uom ?? "—"}</td>
                       <td className="p-2">
                         <QuantityInput
                           value={line.quantity}
+                          dataField={`items[${index}].quantity`}
+                          invalid={Boolean(fieldErrors.errors[`items[${index}].quantity`])}
                           onValueChange={(value) =>
                             patch(index, { quantity: value })
                           }
-                        />
+                        />{fieldErrors.fieldError(`items[${index}].quantity`)}
                       </td>
                       <td className="p-2">
                         <CurrencyInput
                           value={line.unit_cost}
+                          dataField={`items[${index}].unit_cost`}
+                          invalid={Boolean(fieldErrors.errors[`items[${index}].unit_cost`])}
                           onValueChange={(value) =>
                             patch(index, { unit_cost: value })
                           }
-                        />
-                        {destinationFor(routingFor(line)) === "DIRECT_USE" && product?.inventory_treatment !== "FIXED_ASSET" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" className="w-full rounded border p-1" value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}
+                        />{fieldErrors.fieldError(`items[${index}].unit_cost`)}
+                        {destinationFor(routingFor(line)) === "DIRECT_USE" && product?.inventory_treatment !== "FIXED_ASSET" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" data-field={`items[${index}].expense_account_id`} className={`w-full rounded border p-1 ${fieldErrors.errors[`items[${index}].expense_account_id`] ? "border-red-500 ring-2 ring-red-200" : ""}`} value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select>{fieldErrors.fieldError(`items[${index}].expense_account_id`)}</label>}
                       </td>
                       <td>
                         <input aria-label={`PPN rate for item ${index+1}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={line.tax_rate??0} onChange={event=>patch(index,{tax_rate:Number(event.target.value)})}/>
@@ -391,7 +407,7 @@ export default function DirectReceiveDialog({
               </div>
             </div>
           </div>
-          <ReceivingBillingFields value={billing} onChange={setBilling} subtotal={subtotal} tax={tax} open={open}/>
+          <div data-field="billing"><ReceivingBillingFields value={billing} onChange={setBilling} subtotal={subtotal} tax={tax} open={open}/>{fieldErrors.fieldError("billing")}</div>
           <label className="block text-xs font-medium text-slate-700">
             Notes
             <textarea

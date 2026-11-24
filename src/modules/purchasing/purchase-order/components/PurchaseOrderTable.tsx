@@ -17,7 +17,7 @@ export default function PurchaseOrderTable({ rows = [], onView }: Props) {
   return <Table className="min-w-[1100px]">
     <THead><TR className="whitespace-nowrap"><TH>Purchase Order</TH><TH>Supplier</TH><TH>Organization</TH><TH>Dates</TH><TH numeric>Total</TH><TH>Approval</TH><TH>Receiving</TH><TH>Status</TH><TH numeric>Actions</TH></TR></THead>
     <TBody>{rows.map((row) => <TR key={row.id} className="whitespace-nowrap">
-      <TD><TableCellStack primary={row.po_number} secondary={row.creation_type === "FROM_PR" ? `From ${row.source_pr_number ?? "PR"}` : "Direct"}/></TD>
+      <TD><TableCellStack primary={row.po_number} secondary={row.creation_type === "FROM_PR" ? `From ${row.source_pr_number ?? "PR"}` : row.creation_type === "FROM_MARKET_LIST" || row.market_list_id ? `From ${row.source_market_list_number ?? "ML"}` : "Direct"}/></TD>
       <TD className="font-medium">{row.supplier_name ?? "—"}</TD>
       <TD>{row.department_name || row.location_name ? <TableCellStack primary={row.department_name || row.location_name} secondary={row.department_name ? row.location_name : undefined}/> : "—"}</TD>
       <TD><TableCellStack primary={row.order_date} secondary={row.expected_date ? `Expected ${row.expected_date}` : undefined}/></TD>

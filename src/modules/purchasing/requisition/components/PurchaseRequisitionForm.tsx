@@ -8,6 +8,7 @@ import SearchableSelect from "@/components/form/SearchableSelect";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { isBeforeDate, todayLocal } from "@/utils/dateConstraints";
 import { useAuthStore } from "@/store/auth";
+import { readPurchasingError, usePurchasingFieldErrors } from "../../fieldErrors";
 
 import PurchaseRequisitionItems, { PurchaseRequisitionItemRow, Product } from "./PurchaseRequisitionItems";
 
@@ -27,7 +28,8 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
   const [expiryDate, setExpiryDate] = useState("");
   const [requestDate, setRequestDate] = useState("");
   const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState("");
+  const fieldErrors = usePurchasingFieldErrors(Boolean(onClose));
+  const formError = fieldErrors.message;
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<PurchaseRequisitionItemRow[]>([{ product_id: 0, quantity: 1, estimated_price: 0 }]);
 
@@ -106,24 +108,19 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
     event.preventDefault();
     const validItems = items.filter((item) => item.product_id > 0 && item.quantity > 0 && item.estimated_price > 0);
     const badPrice = items.some((item) => item.product_id > 0 && (item.quantity <= 0 || item.estimated_price <= 0));
-    const validation = !businessUnitId ? { message: "Business Unit is required.", field: "business-unit" }
-      : !departmentId ? { message: "Department is required.", field: "department" }
-      : !locationId ? { message: "Location is required.", field: "location" }
-      : !requestDate ? { message: "Request Date is required.", field: "request-date" }
-      : !editing && expiryDate && isBeforeDate(expiryDate, requestDate || todayLocal()) ? { message: "Valid Until cannot be before Request Date.", field: "expiry-date" }
+    const validation = !businessUnitId ? { message: "Business Unit is required.", field: "business_unit_id" }
+      : !departmentId ? { message: "Department is required.", field: "department_id" }
+      : !locationId ? { message: "Location is required.", field: "location_id" }
+      : !requestDate ? { message: "Request Date is required.", field: "request_date" }
+      : !editing && expiryDate && isBeforeDate(expiryDate, requestDate || todayLocal()) ? { message: "Valid Until cannot be before Request Date.", field: "expiry_date" }
       : !validItems.length ? { message: badPrice ? "Estimated price and quantity must be greater than zero." : "Please add valid products.", field: "items" }
       : null;
     if (validation) {
-      setFormError(validation.message);
-      window.requestAnimationFrame(() => {
-        const container = document.querySelector(`[data-pr-field="${validation.field}"]`);
-        (container?.querySelector("input,button") as HTMLElement | null)?.focus();
-        container?.scrollIntoView({ block: "center", behavior: "smooth" });
-      });
+      fieldErrors.setLocal(validation.field, validation.message);
       return;
     }
     if (saving) return;
-    setFormError("");
+    fieldErrors.clear();
     try {
       setSaving(true);
       await onSubmit({
@@ -136,6 +133,8 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
         items: validItems,
       });
       onClose();
+    } catch (error) {
+      fieldErrors.show(readPurchasingError(error));
     } finally { setSaving(false); }
   }
 
@@ -150,14 +149,14 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
       <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6">
         {formError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{formError}</div>}
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          <label data-pr-field="business-unit" className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" value={businessUnitId} options={businessUnits.data ?? []} disabled={lockedBusinessUnit} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} /></label>
-          <label data-pr-field="location" className="text-sm font-medium">Location<SearchableSelect className="mt-1" value={locationId} options={activeLocations} disabled={lockedLocation || !businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => changeLocation(id || undefined)} /></label>
-          <label data-pr-field="department" className="text-sm font-medium">Department<SearchableSelect className="mt-1" value={departmentId} options={activeDepartments} disabled={lockedDepartment || !locationId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} /></label>
-          <label data-pr-field="request-date" className="text-sm font-medium">Request Date<input type="date" data-accounting-date="true" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/></label>
-          <label data-pr-field="expiry-date" className="text-sm font-medium">Valid Until<input type="date" min={requestDate || undefined} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/></label>
+          <label data-pr-field="business-unit" className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" dataField="business_unit_id" invalid={Boolean(fieldErrors.errors.business_unit_id)} value={businessUnitId} options={businessUnits.data ?? []} disabled={lockedBusinessUnit} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} />{fieldErrors.fieldError("business_unit_id")}</label>
+          <label data-pr-field="location" className="text-sm font-medium">Location<SearchableSelect className="mt-1" dataField="location_id" invalid={Boolean(fieldErrors.errors.location_id)} value={locationId} options={activeLocations} disabled={lockedLocation || !businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => changeLocation(id || undefined)} />{fieldErrors.fieldError("location_id")}</label>
+          <label data-pr-field="department" className="text-sm font-medium">Department<SearchableSelect className="mt-1" dataField="department_id" invalid={Boolean(fieldErrors.errors.department_id)} value={departmentId} options={activeDepartments} disabled={lockedDepartment || !locationId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} />{fieldErrors.fieldError("department_id")}</label>
+          <label data-pr-field="request-date" className="text-sm font-medium">Request Date<input data-field="request_date" type="date" data-accounting-date="true" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/>{fieldErrors.fieldError("request_date")}</label>
+          <label data-pr-field="expiry-date" className="text-sm font-medium">Valid Until<input data-field="expiry_date" type="date" min={requestDate || undefined} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/>{fieldErrors.fieldError("expiry_date")}</label>
         </div>
         <div><label className="mb-2 block text-sm font-medium">Purpose / Notes</label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}/></div>
-        <div data-pr-field="items"><PurchaseRequisitionItems items={items} products={products} onChange={setItems} onProductLoaded={rememberProduct}/></div>
+        <div data-pr-field="items" data-field="items"><PurchaseRequisitionItems items={items} products={products} onChange={setItems} onProductLoaded={rememberProduct}/>{fieldErrors.fieldError("items")}</div>
       </div>
       <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 px-6 py-4"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" loading={saving}>{editing ? "Save Changes" : "Create Purchase Requisition"}</Button></div>
     </form>

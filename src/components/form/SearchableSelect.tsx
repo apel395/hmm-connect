@@ -13,6 +13,9 @@ interface Props<T extends string | number = number> {
   placeholder?: string;
   required?: boolean;
   className?: string;
+  /** Stable validation path used by purchasing's field focus/highlight helper. */
+  dataField?: string;
+  invalid?: boolean;
   maxOptions?: number;
   /** Keep the dropdown inside a modal focus trap (opt-in). */
   inlineDropdown?: boolean;
@@ -30,6 +33,8 @@ export default function SearchableSelect<T extends string | number = number>({
   placeholder = "Type to search...",
   required = false,
   className = "",
+  dataField,
+  invalid = false,
   maxOptions = 50,
   inlineDropdown = false,
   dropdownPlacement = "bottom",
@@ -142,7 +147,7 @@ export default function SearchableSelect<T extends string | number = number>({
   return <label className="block">
     {label && <span className={`${FORM_UI.label} ${FORM_UI.density.compact.label}`}>{label}{required ? <span className="text-red-500"> *</span> : null}</span>}
     <div ref={rootRef} className={`relative ${label ? "mt-1" : ""}`}>
-      <input ref={inputRef} type="text" value={query} disabled={disabled} required={required} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} ${className}`} onFocus={(event) => { updatePosition(); setOpen(true); event.currentTarget.select(); }} onChange={(event) => { setQuery(event.target.value); updatePosition(); setOpen(true); setActiveIndex(0); if (!event.target.value.trim() && value !== undefined) onChange(undefined); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && filteredOptions.length > 0) { event.preventDefault(); setActiveIndex(0); scrollOptionIntoView(0); return; } if (event.key === "End" && open && filteredOptions.length > 0) { event.preventDefault(); const endIndex = filteredOptions.length - 1; setActiveIndex(endIndex); scrollOptionIntoView(endIndex); return; } if (event.key === "Enter" && open && activeIndex >= 0 && filteredOptions[activeIndex]) { event.preventDefault(); selectOption(filteredOptions[activeIndex]); return; } }} onBlur={() => { window.setTimeout(() => { if (!dropdownRef.current?.matches(":hover")) setQuery(selectedLabel); }, 0); }} />
+      <input ref={inputRef} type="text" value={query} disabled={disabled} required={required} placeholder={placeholder} autoComplete="off" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-autocomplete="list" aria-invalid={invalid} data-field={dataField} data-form-control data-form-density="compact" className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.control} ${invalid ? "border-red-500 ring-2 ring-red-200" : ""} ${className}`} onFocus={(event) => { updatePosition(); setOpen(true); event.currentTarget.select(); }} onChange={(event) => { setQuery(event.target.value); updatePosition(); setOpen(true); setActiveIndex(0); if (!event.target.value.trim() && value !== undefined) onChange(undefined); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; } if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; } if (event.key === "Home" && open && filteredOptions.length > 0) { event.preventDefault(); setActiveIndex(0); scrollOptionIntoView(0); return; } if (event.key === "End" && open && filteredOptions.length > 0) { event.preventDefault(); const endIndex = filteredOptions.length - 1; setActiveIndex(endIndex); scrollOptionIntoView(endIndex); return; } if (event.key === "Enter" && open && activeIndex >= 0 && filteredOptions[activeIndex]) { event.preventDefault(); selectOption(filteredOptions[activeIndex]); return; } }} onBlur={() => { window.setTimeout(() => { if (!dropdownRef.current?.matches(":hover")) setQuery(selectedLabel); }, 0); }} />
       {dropdown}
     </div>
   </label>;
