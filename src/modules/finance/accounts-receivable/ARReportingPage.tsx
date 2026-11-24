@@ -240,6 +240,7 @@ export default function ARReportingPage() {
               onSearch={setSearchInput}
               filters={section === "detail" ? statusSelect : undefined}
               onExport={exportPage}
+              exportLabel="Export current page CSV"
               onRefresh={() => activeQuery.refetch()}
               footer={
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">

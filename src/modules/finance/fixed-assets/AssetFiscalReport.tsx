@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Download, Printer, RefreshCw } from "lucide-react";
+import { Printer, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { ExportButton } from "@/components/common/ReportActions";
 import Button from "@/components/ui/Button";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import AssetReportFilters, { type AssetFilters } from "./AssetReportFilters";
@@ -15,7 +16,7 @@ export default function AssetFiscalReport() {
   const q = useQuery({ queryKey: ["asset-fiscal-report", params], queryFn: () => getFiscalReport(params), enabled: year >= 1900 && year <= 9998 });
   const cols = ["opening", "book_depreciation", "fiscal_depreciation", "disposal_value", "closing", "difference"];
   return <div className="space-y-2">
-    <div className="flex items-center gap-2 print:hidden"><label className="text-sm">Year <input aria-label="Fiscal year" className="w-24 h-8 rounded border px-2" type="number" min={1900} max={9998} value={year} onChange={e => setYear(Number(e.target.value))}/></label><Button variant="outline" title="Refresh" aria-label="Refresh fiscal report" onClick={() => q.refetch()}><RefreshCw size={15}/></Button><Button variant="outline" title="Export Excel" aria-label="Export fiscal Excel" onClick={() => downloadAssetReport("/reports/fixed-assets-fiscal/export", params, `asset-fiscal-${year}.xlsx`).catch(() => toast.error("Export failed"))}><Download size={15}/></Button><Button variant="outline" title="Print" aria-label="Print fiscal report" onClick={() => window.print()}><Printer size={15}/></Button></div>
+    <div className="flex items-center gap-2 print:hidden"><label className="text-sm">Year <input aria-label="Fiscal year" className="w-24 h-8 rounded border px-2" type="number" min={1900} max={9998} value={year} onChange={e => setYear(Number(e.target.value))}/></label><Button variant="outline" title="Refresh" aria-label="Refresh fiscal report" onClick={() => q.refetch()}><RefreshCw size={15}/></Button><ExportButton scope="filtered" format="excel" onClick={() => downloadAssetReport("/reports/fixed-assets-fiscal/export", params, `asset-fiscal-${year}.xlsx`).catch(() => toast.error("Export failed"))} /><Button variant="outline" title="Print" aria-label="Print fiscal report" onClick={() => window.print()}><Printer size={15}/></Button></div>
     <AssetReportFilters value={filters} onChange={setFilters}/>
     <p className="text-sm">Fiscal comparison {year} · Configured {q.data?.configured ?? "—"} · Not configured / outside fiscal opening {q.data?.unconfigured ?? "—"}</p>
     {q.isLoading && <p>Loading…</p>}{q.isError && <p role="alert">Could not load fiscal comparison.</p>}

@@ -48,6 +48,7 @@ async function run(){
  else if(a.path.includes('SearchableSelect'))contents="import React from 'react';export default p=>React.createElement('picker',p);";
  else if(a.path.includes('PageHeader'))contents="import React from 'react';export default p=>React.createElement('header',null,p.actions,p.children);";
  else if(a.path.includes('PrintPreviewButton'))contents="import React from 'react';export default p=>React.createElement('print-preview',p);";
+ else if(a.path.includes('reportActionCopy'))contents="export const GENERIC_JOURNAL_PRINT_NOTE='shared document template',GENERIC_REPORT_PRINT_NOTE='shared report layout';";
  else if(a.path.includes('/Table'))contents="import React from 'react';const C=p=>React.createElement('cell',p,p.children);export const Table=C,TBody=C,TD=C,TH=C,THead=C,TR=C,TableCellStack=C;";
  else if(a.path.includes('/Dialog'))contents="import React from 'react';const C=p=>React.createElement('div',null,p.children);export const DialogBody=C,DialogContent=C,DialogFooter=C,DialogHeader=C,DialogTitle=C;export default p=>p.open?React.createElement(C,p):null;";
  else if(a.path.includes('/Button'))contents="import React from 'react';export default p=>React.createElement('button',p,p.children);";

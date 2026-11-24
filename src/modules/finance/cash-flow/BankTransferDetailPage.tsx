@@ -40,7 +40,7 @@ export default function BankTransferDetailPage() {
           <h1 className="text-2xl font-bold">{x.transfer_number}</h1><Badge>{x.status}</Badge>{admin && <Badge variant="outline">Admin</Badge>}
         </div>
         <div className="flex flex-wrap gap-2">
-          <PrintPreviewButton src={`/bank-transfers/${x.id}/print`} title={`Bank Transfer ${x.transfer_number}`} ariaLabel="Preview bank transfer" />
+          <PrintPreviewButton src={`/bank-transfers/${x.id}/print`} title={`Bank Transfer ${x.transfer_number}`} ariaLabel="Preview bank transfer" label="Print" />
           {x.allowed_actions.can_edit && <Button variant="outline" onClick={() => {
             const amount = window.prompt("Transfer amount", String(x.amount)); if (amount === null) return;
             const reference_number = window.prompt("Reference number", x.reference_number || ""); if (reference_number === null) return;

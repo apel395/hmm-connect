@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Printer, RefreshCw } from "lucide-react";
+import { Printer, RefreshCw } from "lucide-react";
+import { ExportButton } from "@/components/common/ReportActions";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -91,7 +92,7 @@ export default function Lampiran1DPage() {
         <PageHeader title="Lampiran 1D (Jasa)" description={`Fiscal Year ${year} · Coretax PER-11/PJ/2025 Lampiran L1-D — Rekonsiliasi Laporan Keuangan, Jasa sector. Commercial figures reconciled to fiscal by fiscal classification; balance sheet half below.`} actions={
           <>
             <Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>
-            <Button variant="outline" onClick={exportData}><Download size={16} /> CSV</Button>
+            <ExportButton scope="filtered" format="csv" onClick={exportData} />
             <Button variant="outline" onClick={() => { recon.refetch(); ds.refetch(); }}><RefreshCw size={16} /> Refresh</Button>
           </>
         } />

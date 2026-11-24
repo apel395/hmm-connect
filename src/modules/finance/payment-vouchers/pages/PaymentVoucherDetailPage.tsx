@@ -81,7 +81,7 @@ export default function PaymentVoucherDetailPage() {
                   <PrintPreviewButton
                     src={`/finance/payment-vouchers/${voucherId}/print`}
                     title={`Payment Voucher ${(query.data as any).voucher_number}`}
-                    ariaLabel="Preview payment voucher"
+                    ariaLabel="Preview payment voucher" label="Print"
                   />
                 )}
                 {(query.data as any).allowed_actions?.can_submit && (

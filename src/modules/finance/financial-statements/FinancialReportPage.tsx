@@ -1,3 +1,4 @@
+import { ExportButton } from "@/components/common/ReportActions";
 import BalanceStatus from "./BalanceStatus";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
@@ -5,7 +6,7 @@ import { normalizeReportUnit, reportUnitKind } from "@/components/reports/unitSc
 import { useEffect, useState } from "react";
 import { loadReportPreferences, saveReportPreferences } from "./reportState";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ListFilter, Settings2 } from "lucide-react";
+import { ListFilter, Settings2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { DepartmentPerformance } from "./DepartmentPerformanceTable";
@@ -91,7 +92,7 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     <PageHeader title={title} description={`${filters.as_of_date} · ${period} · ${scopeNames.join(" · ") || "Consolidated"}${filters.kap ? " · KAP" : ""}`} actions={<div className="flex gap-1 print:hidden">
       <Button variant="outline" size="sm" title="Filters" aria-label="Report filters" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}><ListFilter size={15} /></Button>
       {canManage && <Link to="/finance-setup/reports" className="inline-flex h-8 items-center rounded border px-2" title="Report setup" aria-label="Report setup"><Settings2 size={15} /></Link>}
-      <Button variant="outline" size="sm" title="Export Excel" aria-label="Export Excel" disabled={!data} onClick={exportReport}><Download size={15} /></Button>
+      <ExportButton scope="filtered" format="excel" disabled={!data} onClick={exportReport} />
       {kind === "BALANCE_SHEET" ? <PrintPreviewButton src="/balance-sheet/print" title="Balance Sheet" ariaLabel="Print balance sheet" layouts={(["KAP", "DETAIL"] as const).map(layout => ({label: layout === "KAP" ? "KAP summary" : "Detail", title: `Balance Sheet — ${layout}`, src: `/balance-sheet/print?${new URLSearchParams(Object.fromEntries(Object.entries({...params, kap:layout === "KAP", detail:layout === "DETAIL"}).map(([key,value])=>[key,String(value)])))}`}))} /> : <PrintPreviewButton src={`/profit-loss/print?${new URLSearchParams(Object.fromEntries(Object.entries(params).map(([key,value])=>[key,String(value)])))}`} title={title} ariaLabel="Print profit and loss" />}
     </div>} />
     {showFilters && <Card className="p-2 print:hidden"><form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); setFilters({ ...draft }); setShowFilters(false); }}>

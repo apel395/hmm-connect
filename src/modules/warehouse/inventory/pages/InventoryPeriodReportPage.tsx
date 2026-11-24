@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import api from "@/api/client";
+import { ExportButton } from "@/components/common/ReportActions";
 import PageHeader from "@/components/common/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -154,13 +155,13 @@ export default function InventoryPeriodReportPage() {
         title="Stock Movement Summary"
         actions={
           <>
-            <Button
-              variant="outline"
-              disabled={!valid || exporting}
+            <ExportButton
+              scope="filtered"
+              format="excel"
+              disabled={!valid}
+              loading={exporting}
               onClick={exportExcel}
-            >
-              {exporting ? "Preparing…" : "Excel"}
-            </Button>
+            />
             <InventoryPrintButton
               disabled={!valid}
               loadReport={async () => {

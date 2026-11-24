@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Printer } from "lucide-react";
 import type { PrintWindow } from "./printTracking";
 import Button from "@/components/ui/Button";
+import { ReportScopeNote } from "@/components/common/ReportActions";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 
 interface PrintPreviewButtonProps {
@@ -11,10 +12,11 @@ interface PrintPreviewButtonProps {
   title: string;
   ariaLabel?: string;
   label?: string;
+  note?: string;
   layouts?: { label: string; src: string; title: string }[];
 }
 
-export default function PrintPreviewButton({ src, title, ariaLabel = "Print preview", label, layouts }: PrintPreviewButtonProps) {
+export default function PrintPreviewButton({ src, title, ariaLabel = "Print preview", label, note, layouts }: PrintPreviewButtonProps) {
   const [open, setOpen] = useState(false);
   const queryClient=useQueryClient();
   const [layoutIndex, setLayoutIndex] = useState(0);
@@ -75,6 +77,7 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
             </div>
           </DialogHeader>
           <DialogBody className="bg-slate-100 p-3">
+            {note && <ReportScopeNote className="mb-2">{note}</ReportScopeNote>}
             <iframe
               ref={frameRef}
               key={previewSrc}

@@ -2,8 +2,9 @@ import AssetFiscalReport from "./AssetFiscalReport";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Download, Printer, RefreshCw } from "lucide-react";
+import { Printer, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { ExportButton } from "@/components/common/ReportActions";
 import Button from "@/components/ui/Button";
 import PageHeader from "@/components/common/PageHeader";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
@@ -16,7 +17,7 @@ export default function FixedAssetReportPage() {
   const q = useQuery({ queryKey: ["fixed-asset-report", filters], queryFn: () => getAssetReport(filters), enabled: view === "book" });
   const totals = q.data?.totals;
   return <div className="space-y-2">
-    <PageHeader title="Fixed Asset Register" actions={view === "book" ? <><Button variant="outline" aria-label="Refresh" title="Refresh" onClick={() => q.refetch()}><RefreshCw size={15}/></Button><Button variant="outline" aria-label="Export Excel" title="Export Excel" onClick={() => downloadAssetReport("/reports/fixed-assets/export", filters, "fixed-assets.xlsx").catch(() => toast.error("Export failed"))}><Download size={15}/></Button><Button variant="outline" aria-label="Print" title="Print" onClick={() => window.print()}><Printer size={15}/></Button></> : undefined}/>
+    <PageHeader title="Fixed Asset Register" actions={view === "book" ? <><Button variant="outline" aria-label="Refresh" title="Refresh" onClick={() => q.refetch()}><RefreshCw size={15}/></Button><ExportButton scope="filtered" format="excel" onClick={() => downloadAssetReport("/reports/fixed-assets/export", filters, "fixed-assets.xlsx").catch(() => toast.error("Export failed"))} /><Button variant="outline" aria-label="Print" title="Print" onClick={() => window.print()}><Printer size={15}/></Button></> : undefined}/>
     <div className="flex gap-2 print:hidden"><Button variant={view === "book" ? "primary" : "outline"} onClick={() => setView("book")}>Book register</Button><Button variant={view === "fiscal" ? "primary" : "outline"} onClick={() => setView("fiscal")}>Fiscal comparison</Button></div>
     {view === "fiscal" ? <AssetFiscalReport/> : <>
     <AssetReportFilters value={filters} onChange={setFilters}/>

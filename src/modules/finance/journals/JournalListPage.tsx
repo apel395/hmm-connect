@@ -1,5 +1,6 @@
 import { journalFilterParams } from "./journalFilters";
 import { journalAllowsBulk } from "./journalState";
+import { GENERIC_REPORT_PRINT_NOTE } from "@/components/common/reportActionCopy";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -231,7 +232,7 @@ export default function JournalListPage() {
       <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}><SlidersHorizontal size={14}/> Filters{advancedFilterCount ? ` (${advancedFilterCount})` : ""}</Button>
       <div className="ml-auto flex items-center gap-1">
         <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Import</Button>
-        <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" />
+        <PrintPreviewButton src={printSrc} title="Journal Register" ariaLabel="Preview journal register" label="Print" note={GENERIC_REPORT_PRINT_NOTE} />
         <Button size="sm" disabled={!scopeReady} onClick={openCreate}>+ New Journal</Button>
       </div>
     </div>

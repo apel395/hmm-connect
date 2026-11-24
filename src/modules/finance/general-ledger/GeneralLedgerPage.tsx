@@ -5,7 +5,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { todayLocal } from "@/utils/dateConstraints";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, Download, Info, Layers3, List, RotateCw, Rows3, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Info, Layers3, List, RotateCw, Rows3, SlidersHorizontal, X } from "lucide-react";
+import { ExportButton } from "@/components/common/ReportActions";
 import Button from "@/components/ui/Button";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
@@ -350,12 +351,6 @@ export default function GeneralLedgerPage() {
       <TD colSpan={2} className="text-xs text-slate-500">Closing: {closing != null ? amount(closing) : "—"}</TD>
     </TR>;
   };
-  const exportLabel = exportStatus === "starting"
-    ? "Starting export..."
-    : exportStatus === "processing"
-      ? "Preparing XLS..."
-      : "Download XLS";
-
   return <DataWorkspace area="Accounting" className="print-document gl-data-first"><style>{`@page{size:landscape;margin:10mm}
     body:has(.gl-data-first) [data-workspace-content] { padding: 3px 5px !important; }
     .gl-data-first { height: calc(100dvh - 94px) !important; gap: 3px !important; }
@@ -394,8 +389,8 @@ export default function GeneralLedgerPage() {
       </select>
       <Button type="button" size="md" variant="outline" title="Open transaction filters" aria-label="Open General Ledger filters" aria-expanded={showFilters} onClick={() => setShowFilters(true)}><SlidersHorizontal size={15}/><span className="sr-only">Filters</span>{activeAdvancedFilters ? <span className="text-xs">{activeAdvancedFilters}</span> : null}</Button>
       <Button type="button" size="md" variant="outline" title="Display preferences" aria-label="Ledger display preferences" onClick={() => setShowDisplayTools(true)}><Rows3 size={15}/><span className="sr-only">Display</span></Button>
-      <Button size="md" variant="outline" title={exportLabel} aria-label={exportLabel} onClick={handleExport} disabled={exportBusy}><Download size={15} />{exportBusy && <span>{exportLabel}</span>}</Button>
-      <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" />
+      <ExportButton scope="filtered" format="excel" size="md" loading={exportBusy} onClick={handleExport} />
+      <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" label="Print" />
     </div>
     {activeChips.length > 0 && <div className="gl-chips print:hidden">
       {activeChips.map(chip => <button key={chip.key} type="button" onClick={() => change(chip.key, "")} title={`Remove ${chip.label} filter`} className="inline-flex min-h-6 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-900 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086B5A]">

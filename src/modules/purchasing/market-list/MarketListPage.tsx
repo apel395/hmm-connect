@@ -105,6 +105,7 @@ export default function MarketListPage() {
             onSearch={setSearch}
             filters={statusSelect}
             onExport={exportPage}
+            exportLabel="Export current page CSV"
             onRefresh={() => query.refetch()}
             footer={<div className="text-xs text-slate-500">{total} Market List{total === 1 ? "" : "s"} match current filters</div>}
           />

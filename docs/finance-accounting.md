@@ -23,6 +23,12 @@ Posting memeriksa period yang mencakup tanggal transaksi. Period tertutup menola
 
 Tanggal bisnis menggunakan Asia/Jakarta. Receiving normal mengikuti waktu submit; Historical Entry mempunyai jalur khusus yang dijelaskan pada [purchasing](purchasing-inventory.md).
 
+## Export dan cetak
+
+Label ekspor menyatakan cakupannya. `Export current page CSV` hanya memakai baris pada halaman yang sedang ditampilkan. `Export all filtered rows CSV` / `to Excel` mengambil seluruh baris yang cocok dengan filter aktif. `Export all rows to Excel` memakai seluruh dataset yang tersedia untuk laporan tersebut. Jangan menganggap ekspor satu halaman sebagai laporan lengkap.
+
+Preview cetak tidak mengubah route, template, atau isi dokumen. Catatan di preview hanya penjelas UI dan tersembunyi saat mencetak: journal detail memakai template dokumen akuntansi bersama, sedangkan Journal Register dan Trial Balance memakai layout laporan keuangan bersama. Untuk register formal, buka Journal → Journal Register. Cetak purchasing dan inventory tetap memakai tombol, route, serta tracking yang sudah ada.
+
 ## AP: receiving sampai pembayaran
 
 Alur normal: receiving → supplier invoice → payment. Payment Voucher adalah dokumen approval internal opsional; voucher sendiri bukan posting GL.

@@ -1,4 +1,5 @@
 import { journalAccountingLabel } from "./journalState";
+import { GENERIC_JOURNAL_PRINT_NOTE } from "@/components/common/reportActionCopy";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import FormRecoveryActions from "@/components/form/FormRecoveryActions";
 import SearchableSelect from "@/components/form/SearchableSelect";
@@ -163,7 +164,7 @@ export default function JournalDetailPage() {
       <div className="flex items-center gap-3"><WorkspaceBackButton /><h1 className="text-2xl font-bold">{x.journal_number}</h1><Badge>{x.status}</Badge><span className="text-xs text-slate-500" title={x.recognition_reason??undefined}>{x.period_locked?`Locked · ${x.period_name??"Accounting period"}`:`${journalAccountingLabel(x)} in accounting`}</span></div>
       <div className="flex flex-wrap gap-2">
         {sourcePath && <Button variant="outline" onClick={() => nav(sourcePath, { state: { returnTo: `/journal-entries/${x.id}` } })}>Open Source Document</Button>}
-        <PrintPreviewButton src={`/journal-entries/${x.id}/print`} title={`Journal ${x.journal_number}`} ariaLabel="Preview journal" />
+        <PrintPreviewButton src={`/journal-entries/${x.id}/print`} title={`Journal ${x.journal_number}`} ariaLabel="Preview journal" label="Print" note={GENERIC_JOURNAL_PRINT_NOTE} />
         {a.can_edit && <Button variant="outline" onClick={openEditor}>Edit</Button>}
         {a.can_post && <Button loading={act.isPending} onClick={() => act.mutate("post")}>Post</Button>}
         {a.can_unpost && <Button loading={act.isPending} variant="outline" onClick={confirmUnpost}>Unpost</Button>}

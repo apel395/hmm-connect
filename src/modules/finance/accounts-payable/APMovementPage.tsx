@@ -183,6 +183,7 @@ export default function APMovementPage() {
               searchPlaceholder="Document number, supplier reference, or supplier name..."
               onSearch={(value) => setDraft({ ...draft, search: value })}
               onExport={exportPage}
+              exportLabel="Export current page CSV"
               onRefresh={() => movement.refetch()}
               filters={
                 <>

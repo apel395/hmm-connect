@@ -1,3 +1,5 @@
+import { ExportButton } from "@/components/common/ReportActions";
+import { GENERIC_REPORT_PRINT_NOTE } from "@/components/common/reportActionCopy";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { useEffect, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
@@ -90,8 +92,8 @@ export default function TrialBalancePage() {
       </select>
       <Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)}><SlidersHorizontal size={14}/> Filters</Button>
       <div className="ml-auto flex items-center gap-1">
-        <Button variant="outline" size="sm" disabled={!data || exporting} loading={exporting} onClick={downloadExcel}>Export</Button>
-        <PrintPreviewButton src={printSrc} title="Trial Balance" ariaLabel="Preview trial balance" label="Print" />
+        <ExportButton scope="filtered" format="excel" disabled={!data} loading={exporting} onClick={downloadExcel} />
+        <PrintPreviewButton src={printSrc} title="Trial Balance" ariaLabel="Preview trial balance" label="Print" note={GENERIC_REPORT_PRINT_NOTE} />
       </div>
     </div>
     {activeChips.length > 0 && <div className="df-chips print:hidden" aria-label="Active filters">{activeChips.map(chip => <span key={chip} className="df-chip">{chip}</span>)}<button type="button" className="text-[11px] font-medium text-emerald-800 hover:underline" onClick={clearFilters}>Clear all</button></div>}

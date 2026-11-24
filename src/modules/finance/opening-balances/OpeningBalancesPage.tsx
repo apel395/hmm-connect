@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import { toast } from "sonner";
+import { ExportButton } from "@/components/common/ReportActions";
 import PageHeader from "@/components/common/PageHeader";
 import ModuleSummary from "@/components/common/ModuleSummary";
 import Button from "@/components/ui/Button";
@@ -118,7 +119,7 @@ export default function OpeningBalancesPage() {
       <PageHeader
         title="Opening Balances"
         description="Set the starting debit or credit value for each balance-sheet account."
-        actions={<div className="flex gap-2"><Button type="button" variant="secondary" disabled={exporting || accounts.isLoading} onClick={exportExcel} title="Export saved opening balances to Excel" aria-label="Export opening balances to Excel"><Download size={16} /></Button><PrintPreviewButton src={`/finance-setup/opening-balances/print?year=${fiscalYear}`} title="Opening Balance Report" ariaLabel="Preview opening balance report" label="Print" /></div>}
+        actions={<div className="flex gap-2"><ExportButton scope="filtered" format="excel" variant="secondary" disabled={accounts.isLoading} loading={exporting} onClick={exportExcel} /><PrintPreviewButton src={`/finance-setup/opening-balances/print?year=${fiscalYear}`} title="Opening Balance Report" ariaLabel="Preview opening balance report" label="Print" /></div>}
       />
 
       <ModuleSummary metrics={[

@@ -127,7 +127,7 @@ export default function AccountsPayablePage() {
           }
           actions={
             isAging && agingTab === "OPEN" ? (
-              <PrintPreviewButton src="/accounts-payable/aging/print" title="Account Payable Aging" ariaLabel="Print AP aging" />
+              <PrintPreviewButton src="/accounts-payable/aging/print" title="Account Payable Aging" ariaLabel="Print AP aging" label="Print" />
             ) : undefined
           }
         >

@@ -5,8 +5,9 @@ import Dialog,{DialogContent,DialogHeader,DialogTitle,DialogBody} from "@/compon
 import { amortizationAssetAccount } from "./accountRules";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {CalendarDays, Download, Pencil, Plus, Printer} from "lucide-react";
+import {CalendarDays, Pencil, Plus, Printer} from "lucide-react";
 import { toast } from "sonner";
+import { ExportButton } from "@/components/common/ReportActions";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -82,7 +83,7 @@ export default function AmortizationPage() {
   return <div className="space-y-5">
     <PageHeader title="Amortization" description="Manage straight-line amortization for intangible assets and other amortizable costs." actions={<>
 <Button onClick={() => setShowForm((value) => !value)}><Plus size={16}/> Amortization</Button>
-<Button variant="outline" title="Download Excel" onClick={() => downloadAssetReport("/amortizations/report/export", {}, "amortization-register.xlsx").catch(() => toast.error("Export failed"))}><Download size={16}/></Button>
+<ExportButton scope="dataset" format="excel" onClick={() => downloadAssetReport("/amortizations/report/export", {}, "amortization-register.xlsx").catch(() => toast.error("Export failed"))} />
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>} />
     <div className="grid gap-3 md:grid-cols-3"><Card className="p-4"><div className="text-xs uppercase text-slate-500">Active Records</div><div className="mt-2 text-2xl font-semibold">{(records.data ?? []).filter((x: any) => x.status === "ACTIVE").length}</div></Card><Card className="p-4"><div className="text-xs uppercase text-slate-500">Total Net Book Value</div><div className="mt-2 text-2xl font-semibold">{totalNetBookValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div></Card><Card className="p-4"><div className="text-xs uppercase text-slate-500">Method</div><div className="mt-2 text-lg font-semibold">Straight Line</div></Card></div>
