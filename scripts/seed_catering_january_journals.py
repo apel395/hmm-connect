@@ -335,7 +335,7 @@ def assign_locations(drafts, locations, fallback, location_overrides=LOCATION_OV
 
 def run_db(args, drafts, control, source, *, start=date(2026, 1, 1), end=date(2026, 1, 31),
            tab=TAB, prefix=PREFIX, fees=TRANSFER_FEES, splits=SPLIT_376,
-           location_overrides=LOCATION_OVERRIDES, supporting_details=SUPPORTING_DETAILS):
+           location_overrides=LOCATION_OVERRIDES, supporting_details=SUPPORTING_DETAILS, existing_coverage=None):
     from sqlalchemy import text
     from app import models  # noqa: F401
     from app.api.v1.journals import validate
@@ -364,6 +364,7 @@ def run_db(args, drafts, control, source, *, start=date(2026, 1, 1), end=date(20
             "SELECT current_database(), current_schema(), CAST(inet_server_addr() AS text), inet_server_port()"
         )).one())
         unit = db.query(BusinessUnit).filter_by(name="Project Catering", is_active=True).one()
+        coverage = existing_coverage(db, unit.id) if existing_coverage else None
         active = db.query(Location).filter_by(business_unit_id=unit.id, is_active=True).all()
         locations = {item.name: item.id for item in active}
         fallback = locations.get("Pekanbaru")
@@ -412,8 +413,11 @@ def run_db(args, drafts, control, source, *, start=date(2026, 1, 1), end=date(20
                 matches.update(by_movement[(stamp, bank, debit, sum(splits.values()))])
             if matches:
                 candidates[str(row)] = sorted(matches)
-        token = fingerprint((target, unit.id, {str(k): v for k, v in assignments.items()},
-                             drafts, control, candidates))
+        token_data = (target, unit.id, {str(k): v for k, v in assignments.items()},
+                      drafts, control, candidates)
+        if coverage is not None:
+            token_data += (coverage,)
+        token = fingerprint(token_data)
         location_counts = Counter(assignments.values())
         report = {"database": target[0], "schema": target[1], "business_unit_id": unit.id,
                   "drafts": len(drafts), "fallback_location_id": fallback,
@@ -427,6 +431,8 @@ def run_db(args, drafts, control, source, *, start=date(2026, 1, 1), end=date(20
                   "missing_counterpart_references": [reference(row[0]) for row in drafts if row[6] is None],
                   "bank_control": control, "possible_existing_journals_by_source_row": candidates,
                   "plan": token}
+        if coverage is not None:
+            report["existing_source_coverage"] = coverage
         print(json.dumps(report, indent=2, default=str))
         if not args.apply:
             return
