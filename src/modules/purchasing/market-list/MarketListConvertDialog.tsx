@@ -112,9 +112,8 @@ export default function MarketListConvertDialog({ open, marketList, onClose, onC
             />
           </div>
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-            The backend converts every remaining Market List quantity. The order is created as a Draft
-            Purchase Order and still needs its normal approval before receiving.
-            {alreadyConverted && " Items already converted to another Purchase Order are excluded automatically."}
+            Remaining quantities become a Draft Purchase Order and require approval before receiving.
+            {alreadyConverted && " Items already converted to another Purchase Order are excluded."}
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full min-w-[620px] text-sm">

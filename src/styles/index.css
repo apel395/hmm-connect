@@ -674,3 +674,77 @@ h6 {
 @media (max-width: 640px) {
   .report-drilldown-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); height: 92dvh; }
 }
+
+/* Purchasing document view dimensions */
+.purchasing-document-table {
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.purchasing-document-table thead {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.purchasing-document-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+}
+
+.purchasing-document-table th,
+.purchasing-document-table td {
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+
+.purchasing-document-table th:first-child,
+.purchasing-document-table td:first-child {
+  padding-left: 20px;
+}
+
+.purchasing-document-table th:last-child,
+.purchasing-document-table td:last-child {
+  padding-right: 20px;
+}
+
+.purchasing-document-table tbody tr:not(:last-child) {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.purchasing-document-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.purchasing-document-table .pd-primary-cell {
+  min-width: 220px;
+  white-space: normal;
+}
+
+.purchasing-document-table .pd-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.purchasing-document-table .pd-strong {
+  font-weight: 600;
+}
+
+.purchasing-document-table .pd-subtext {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+@media (max-width: 640px) {
+  .purchasing-document-table th,
+  .purchasing-document-table td {
+    padding: 8px 10px;
+  }
+}

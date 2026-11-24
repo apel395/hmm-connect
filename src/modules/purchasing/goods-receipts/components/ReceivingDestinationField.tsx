@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { destinationFor, destinationLabel, masterDestination, type LineRouting, type ReceivingDestination } from "../destination";
+import { PURCHASING_LINE_INPUT } from "../../components/purchasingFields";
 
 type Props = { name: string; line: LineRouting; onChange: (value: Partial<LineRouting>) => void };
 export default function ReceivingDestinationField({ name, line, onChange }: Props) {
@@ -15,12 +16,12 @@ export default function ReceivingDestinationField({ name, line, onChange }: Prop
       {canOverride && <button type="button" className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-emerald-700" aria-label={`Destination options for ${name}`} title="Special case" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}><SlidersHorizontal size={14}/></button>}
     </div>
     {expanded && canOverride && <div className="space-y-1">
-      <select aria-label={`Destination for ${name}`} className="h-8 w-full rounded border px-2 text-xs" value={line.destination_type ?? ""} onChange={event => onChange({ destination_type: (event.target.value || null) as ReceivingDestination | null, destination_override_reason: null })}>
+      <select aria-label={`Destination for ${name}`} className={PURCHASING_LINE_INPUT} value={line.destination_type ?? ""} onChange={event => onChange({ destination_type: (event.target.value || null) as ReceivingDestination | null, destination_override_reason: null })}>
         <option value="">Item Master ({destinationLabel(baseline)})</option>
         <option value="WAREHOUSE">Warehouse</option>
         <option value="DIRECT_USE">Direct Use</option>
       </select>
-      {exceptional && <input aria-label={`Destination reason for ${name}`} className="h-8 w-full rounded border px-2 text-xs" maxLength={500} placeholder="Reason for special case" value={line.destination_override_reason ?? ""} onChange={event => onChange({destination_override_reason: event.target.value})}/>}
+      {exceptional && <input aria-label={`Destination reason for ${name}`} className={PURCHASING_LINE_INPUT} maxLength={500} placeholder="Reason (at least 3 characters)" value={line.destination_override_reason ?? ""} onChange={event => onChange({destination_override_reason: event.target.value})}/>}
     </div>}
     {!expanded && line.destination_override_reason && <span className="block max-w-56 truncate text-[11px] text-slate-500" title={line.destination_override_reason}>{line.destination_override_reason}</span>}
   </div>;

@@ -26,13 +26,14 @@ import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import useAuthorization from "@/hooks/useAuthorization";
-import { nowLocal } from "@/utils/dateConstraints";
+import { isBeforeToday, nowLocal } from "@/utils/dateConstraints";
 import { useReceiveGoods } from "../hooks/useGoodsReceipts";
 import ReceivingDestinationField from "./ReceivingDestinationField";
 import ReceivingBillingFields from "./ReceivingBillingFields";
 import { emptyReceivingBilling, receivingBillingPayload, validateReceivingBilling } from "../billing";
 import { destinationFor, destinationError, type LineRouting } from "../destination";
 import { mapPurchasingFieldPaths, readPurchasingError, usePurchasingFieldErrors } from "../../fieldErrors";
+import { PURCHASING_FIELD, PURCHASING_SMALL_INPUT, PURCHASING_TEXTAREA } from "../../components/purchasingFields";
 
 type Line = LineRouting & { market_list_item_id?: number; product_id: number; quantity: number; unit_cost: number; tax_rate?:number; expense_account_id?: number | null };
 const money = (value: unknown) =>
@@ -138,6 +139,7 @@ export default function DirectReceiveDialog({
     if (!locationId) return fail("location_id", "Location is required.");
     if (hasWarehouse && !warehouseId) return fail("warehouse_id", "Warehouse is required.");
     if (!receivedAt) return fail("received_at", "Receipt Date/Time is required.");
+    if (historical && !isBeforeToday(receivedAt)) return fail("received_at", "Historical entry requires a past business date.");
     const billingIssue = validateReceivingBilling(billing, subtotal);
     if (billingIssue) return fail("billing", billingIssue);
     const routingIndex = lines.findIndex(line => line.product_id && line.quantity > 0 && Boolean(destinationError(routingFor(line))));
@@ -201,6 +203,7 @@ export default function DirectReceiveDialog({
         <DialogBody className="space-y-4">
           {fieldErrors.message && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{fieldErrors.message}</div>}
           {hasPermission("receiving.post") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={historical} onChange={event => setHistorical(event.target.checked)}/> Historical entry (Draft → Post)</label>}
+          {historical && <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">Choose the exact past business date. The period must be open and allow backdated entries; normal receiving approval is skipped.</div>}
           {!historical && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
             Use this only when goods/services are received without a Purchase
             Order. Saving creates a <strong>Draft RR</strong>; it must follow
@@ -262,15 +265,16 @@ export default function DirectReceiveDialog({
                 data-min-date="2026-01-01"
                 data-field="received_at"
                 min="2026-01-01T00:00"
-                className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
+                className={`mt-1 ${PURCHASING_FIELD}`}
                 value={receivedAt}
                 onChange={(e) => setReceivedAt(e.target.value)}
               />{fieldErrors.fieldError("received_at")}
+              {!historical && <span className="mt-1 block text-[11px] text-slate-500">Current receipts use today’s business date.</span>}
             </label>
             <label className="text-xs font-medium text-slate-700">
               Delivery Note / Reference
               <input
-                className="mt-1 h-9 w-full rounded-md border px-3 text-[13px]"
+                className={`mt-1 ${PURCHASING_FIELD}`}
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
               />
@@ -351,7 +355,7 @@ export default function DirectReceiveDialog({
                         {destinationFor(routingFor(line)) === "DIRECT_USE" && product?.inventory_treatment !== "FIXED_ASSET" && <label className="block text-xs">Expense destination<select aria-label="Department expense destination" data-field={`items[${index}].expense_account_id`} className={`w-full rounded border p-1 ${fieldErrors.errors[`items[${index}].expense_account_id`] ? "border-red-500 ring-2 ring-red-200" : ""}`} value={line.expense_account_id ?? ""} onChange={e=>patch(index,{expense_account_id:Number(e.target.value)||null})}><option value="">{catalogType === "HOTEL" ? "Choose department expense" : "Item expense mapping"}</option>{expenseAccounts.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select>{fieldErrors.fieldError(`items[${index}].expense_account_id`)}</label>}
                       </td>
                       <td>
-                        <input aria-label={`PPN rate for item ${index+1}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={line.tax_rate??0} onChange={event=>patch(index,{tax_rate:Number(event.target.value)})}/>
+                        <input aria-label={`PPN rate for item ${index+1}`} type="number" min="0" max="100" step="0.01" className={PURCHASING_SMALL_INPUT} value={line.tax_rate??0} onChange={event=>patch(index,{tax_rate:Number(event.target.value)})}/>
 
                       </td>
                       <td className="text-right">{money(lineTax)}</td>
@@ -411,7 +415,7 @@ export default function DirectReceiveDialog({
           <label className="block text-xs font-medium text-slate-700">
             Notes
             <textarea
-              className="mt-1 min-h-20 w-full rounded-md border p-2 text-[13px]"
+              className={`mt-1 ${PURCHASING_TEXTAREA}`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
@@ -422,7 +426,7 @@ export default function DirectReceiveDialog({
             Cancel
           </Button>
           <Button loading={receive.isPending} onClick={submit}>
-            Save RR Draft
+            {historical ? "Save Historical Entry" : "Save RR Draft"}
           </Button>
         </DialogFooter>
       </DialogContent>

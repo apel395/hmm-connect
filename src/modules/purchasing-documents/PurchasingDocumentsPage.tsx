@@ -186,7 +186,6 @@ export default function PurchasingDocumentsPage() {
           {[
             [documents.data?.total ?? 0, "Documents Uploaded"],
             [summary.data?.missing_attachment_count ?? 0, "Missing Attachments"],
-            ["—", "Expiring Contracts", "Future capability"],
             [documents.data?.items.length ?? 0, "Recent Activity", "Documents on this page"],
           ].map(([value, label, note]) => <Card key={label} className="p-5"><p className="text-sm font-medium text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold">{summary.isLoading ? "…" : value}</p>{note && <p className="mt-1 text-xs text-slate-500">{note}</p>}</Card>)}
         </div>

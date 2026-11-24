@@ -7,7 +7,7 @@ import {
   TD,
 } from "@/components/ui/Table";
 
-import Badge from "@/components/ui/Badge";
+import { PurchasingStatusBadge } from "../../components/PurchasingDocumentUI";
 import Button from "@/components/ui/Button";
 
 interface Props {
@@ -38,39 +38,6 @@ function formatDate(
   } catch {
 
     return value;
-
-  }
-
-}
-
-function statusVariant(
-  status: string,
-) {
-
-  switch (
-    (
-      status ?? ""
-    ).toUpperCase()
-  ) {
-
-    case "APPROVED":
-      return "success";
-
-    case "PENDING":
-    case "PENDING_APPROVAL":
-      return "warning";
-
-    case "REJECTED":
-      return "danger";
-
-    case "CONVERTED":
-      return "info";
-
-    case "CANCELLED":
-      return "secondary";
-
-    default:
-      return "outline";
 
   }
 
@@ -167,15 +134,7 @@ export default function PurchaseRequisitionTable({
 
                     <TD>
 
-                      <Badge
-                        variant={statusVariant(
-                          row.status,
-                        )}
-                      >
-
-                        {row.status}
-
-                      </Badge>
+                      <PurchasingStatusBadge value={row.status} />
 
                     </TD>
 

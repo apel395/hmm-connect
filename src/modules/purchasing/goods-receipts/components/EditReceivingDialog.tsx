@@ -20,6 +20,7 @@ import ReceivingBillingFields from "./ReceivingBillingFields";
 import { emptyReceivingBilling, fromReceiptBilling, receivingBillingPayload, validateReceivingBilling, type ReceivingBilling } from "../billing";
 import { destinationFor, destinationError } from "../destination";
 import { mapPurchasingFieldPaths, readPurchasingError, usePurchasingFieldErrors } from "../../fieldErrors";
+import { PURCHASING_FIELD, PURCHASING_SMALL_INPUT, PURCHASING_TEXTAREA } from "../../components/purchasingFields";
 
 function localDateTime(value: string) {
   const date = new Date(value);
@@ -256,8 +257,8 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
             :directReceipt?"Direct Receiving location can be corrected before posting; warehouse must belong to the selected location. Business Unit and Department stay locked. Remove or reselect items below.":"Source organization dimensions and item identity follow the PO / Market List. Lines may be removed before posting."}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-sm">Receipt Date *<input type="datetime-local" disabled={receipt.source_type === "LIVE"} data-accounting-date="true" data-min-date="2026-01-01" data-field="received_at" min="2026-01-01T00:00" className="mt-1 h-10 w-full rounded border px-3" value={receivedAt} onChange={e=>setReceivedAt(e.target.value)}/></label>
-          <label className="text-sm">Delivery Note / Reference<input className="mt-1 h-10 w-full rounded border px-3" value={reference} onChange={e=>setReference(e.target.value)}/></label>
+          <label className="text-sm">Receipt Date *<input type="datetime-local" disabled={receipt.source_type === "LIVE"} data-accounting-date="true" data-min-date="2026-01-01" data-field="received_at" min="2026-01-01T00:00" className={`mt-1 ${PURCHASING_FIELD}`} value={receivedAt} onChange={e=>setReceivedAt(e.target.value)}/></label>
+          <label className="text-sm">Delivery Note / Reference<input className={`mt-1 ${PURCHASING_FIELD}`} value={reference} onChange={e=>setReference(e.target.value)}/></label>
 
           {historical&&<SearchableSelect label="Supplier" required dataField="supplier_id" invalid={Boolean(fieldErrors.errors.supplier_id)} value={supplierId??undefined} placeholder="Choose supplier..." options={(supplierQuery.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code??"",row.name]}))} onChange={value=>setSupplierId(value??null)}/>}
           {historical&&<SearchableSelect label="Business Unit" required dataField="business_unit_id" invalid={Boolean(fieldErrors.errors.business_unit_id)} value={businessUnitId??undefined} options={(businessUnits.data??[]).map(row=>({id:row.id,label:row.name,keywords:[row.code,row.name]}))} onChange={value=>{setBusinessUnitId(value??null);setLocationId(null);setDepartmentId(null);if(!historical)setWarehouseId(null);}}/>}
@@ -287,7 +288,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
               <td className="text-center">{item.uom??"—"}</td>
               <td className="p-2"><QuantityInput value={item.quantity} dataField={`items[${items.indexOf(item)}].quantity`} invalid={Boolean(fieldErrors.errors[`items[${items.indexOf(item)}].quantity`])} onValueChange={value=>patch(item.row_key,{quantity:value})}/></td>
               <td className="p-2"><CurrencyInput value={item.unit_cost} dataField={`items[${items.indexOf(item)}].unit_cost`} invalid={Boolean(fieldErrors.errors[`items[${items.indexOf(item)}].unit_cost`])} onValueChange={value=>patch(item.row_key,{unit_cost:value})}/>{destinationFor(item)==="DIRECT_USE" && item.inventory_treatment!=="FIXED_ASSET" && <label className="block text-xs">Expense destination<select aria-label={`Expense destination for ${item.product_name??"new item"}`} className="w-full rounded border p-1" value={item.expense_account_id??""} onChange={e=>patch(item.row_key,{expense_account_id:Number(e.target.value)||null})}><option value="">{item.catalog_type==="HOTEL"?"Choose department expense":"Item expense mapping"}</option>{expenses.data?.map(account=><option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>)}</select></label>}</td>
-              <td className="p-2"><input aria-label={`PPN rate for ${item.product_name??"new item"}`} type="number" min="0" max="100" step="0.01" className="h-8 w-20 rounded border px-2 text-right" value={item.is_taxable?item.tax_rate:0} onChange={e=>patch(item.row_key,{tax_rate:Number(e.target.value),is_taxable:Number(e.target.value)>0})}/></td>
+              <td className="p-2"><input aria-label={`PPN rate for ${item.product_name??"new item"}`} type="number" min="0" max="100" step="0.01" className={PURCHASING_SMALL_INPUT} value={item.is_taxable?item.tax_rate:0} onChange={e=>patch(item.row_key,{tax_rate:Number(e.target.value),is_taxable:Number(e.target.value)>0})}/></td>
               <td className="text-right">{money(Number(item.quantity||0)*Number(item.unit_cost||0)*(item.is_taxable?Number(item.tax_rate||0):0)/100)}</td>
               <td className="text-right font-medium">{money(Number(item.quantity||0)*Number(item.unit_cost||0)*(1+(item.is_taxable?Number(item.tax_rate||0):0)/100))}</td>
               <td className="p-2"><Button size="sm" variant="ghost" disabled={items.length<=1||update.isPending} aria-label={`Remove item ${item.product_name??"new line"}`} title="Remove item" onClick={()=>setItems(current=>current.filter(row=>row.row_key!==item.row_key))}><Trash2 size={14}/></Button></td>
@@ -306,7 +307,7 @@ export default function EditReceivingDialog({ open, receipt, onClose }:{ open:bo
          {historical&&<label className="block text-xs font-medium text-slate-700">Correction reason *
            <textarea data-field="correction_reason" className={`mt-1 min-h-16 w-full rounded-md border p-2 text-[13px] ${fieldErrors.errors.correction_reason?"border-red-500 ring-2 ring-red-200":""}`} maxLength={500} value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)}/>
          </label>}
-         <label className="block text-xs font-medium text-slate-700">Notes<textarea className="mt-1 min-h-20 w-full rounded-md border p-2 text-[13px]" value={notes} onChange={e=>setNotes(e.target.value)}/></label>
+         <label className="block text-xs font-medium text-slate-700">Notes<textarea className={`mt-1 ${PURCHASING_TEXTAREA}`} value={notes} onChange={e=>setNotes(e.target.value)}/></label>
       </DialogBody>
       <DialogFooter><Button variant="outline" disabled={update.isPending||historicalCorrection.isPending} onClick={onClose}>Cancel</Button><Button loading={update.isPending||historicalCorrection.isPending} onClick={save}>{historical?"Save Historical Correction":receipt.approval_status==="APPROVED"?"Save & Restart Approval":"Save Changes"}</Button></DialogFooter>
     </DialogContent>

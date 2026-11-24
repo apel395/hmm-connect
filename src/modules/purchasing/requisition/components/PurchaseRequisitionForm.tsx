@@ -9,6 +9,7 @@ import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/a
 import { isBeforeDate, todayLocal } from "@/utils/dateConstraints";
 import { useAuthStore } from "@/store/auth";
 import { readPurchasingError, usePurchasingFieldErrors } from "../../fieldErrors";
+import { PURCHASING_FIELD, PURCHASING_TEXTAREA } from "../../components/purchasingFields";
 
 import PurchaseRequisitionItems, { PurchaseRequisitionItemRow, Product } from "./PurchaseRequisitionItems";
 
@@ -141,7 +142,7 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
   const lockedBusinessUnit = !editing && Boolean(user?.business_unit_id ?? user?.default_business_unit_id);
   const lockedDepartment = !editing && Boolean(user?.department_id ?? user?.default_department_id);
   const lockedLocation = !editing && Boolean(user?.location_id ?? user?.default_location_id);
-  const fieldClass = "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
+  const fieldClass = `mt-1 ${PURCHASING_FIELD}`;
 
   return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden p-0">
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
@@ -149,13 +150,13 @@ export default function PurchaseRequisitionForm({ onClose, onSubmit, initialData
       <div className="max-h-[70vh] space-y-6 overflow-y-auto p-6">
         {formError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{formError}</div>}
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          <label data-pr-field="business-unit" className="text-sm font-medium">Business Unit<SearchableSelect className="mt-1" dataField="business_unit_id" invalid={Boolean(fieldErrors.errors.business_unit_id)} value={businessUnitId} options={businessUnits.data ?? []} disabled={lockedBusinessUnit} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} />{fieldErrors.fieldError("business_unit_id")}</label>
-          <label data-pr-field="location" className="text-sm font-medium">Location<SearchableSelect className="mt-1" dataField="location_id" invalid={Boolean(fieldErrors.errors.location_id)} value={locationId} options={activeLocations} disabled={lockedLocation || !businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => changeLocation(id || undefined)} />{fieldErrors.fieldError("location_id")}</label>
-          <label data-pr-field="department" className="text-sm font-medium">Department<SearchableSelect className="mt-1" dataField="department_id" invalid={Boolean(fieldErrors.errors.department_id)} value={departmentId} options={activeDepartments} disabled={lockedDepartment || !locationId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} />{fieldErrors.fieldError("department_id")}</label>
+          <label data-pr-field="business-unit" className="text-sm font-medium">Business Unit<SearchableSelect className={`mt-1 ${PURCHASING_FIELD}`} dataField="business_unit_id" invalid={Boolean(fieldErrors.errors.business_unit_id)} value={businessUnitId} options={businessUnits.data ?? []} disabled={lockedBusinessUnit} placeholder="Type business unit..." onChange={(id) => changeBusinessUnit(id || undefined)} />{fieldErrors.fieldError("business_unit_id")}</label>
+          <label data-pr-field="location" className="text-sm font-medium">Location<SearchableSelect className={`mt-1 ${PURCHASING_FIELD}`} dataField="location_id" invalid={Boolean(fieldErrors.errors.location_id)} value={locationId} options={activeLocations} disabled={lockedLocation || !businessUnitId || locations.isLoading} placeholder="Type location..." onChange={(id) => changeLocation(id || undefined)} />{fieldErrors.fieldError("location_id")}</label>
+          <label data-pr-field="department" className="text-sm font-medium">Department<SearchableSelect className={`mt-1 ${PURCHASING_FIELD}`} dataField="department_id" invalid={Boolean(fieldErrors.errors.department_id)} value={departmentId} options={activeDepartments} disabled={lockedDepartment || !locationId || departments.isLoading} placeholder="Type department..." onChange={(id) => setDepartmentId(id || undefined)} />{fieldErrors.fieldError("department_id")}</label>
           <label data-pr-field="request-date" className="text-sm font-medium">Request Date<input data-field="request_date" type="date" data-accounting-date="true" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className={fieldClass}/>{fieldErrors.fieldError("request_date")}</label>
           <label data-pr-field="expiry-date" className="text-sm font-medium">Valid Until<input data-field="expiry_date" type="date" min={requestDate || undefined} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={fieldClass}/>{fieldErrors.fieldError("expiry_date")}</label>
         </div>
-        <div><label className="mb-2 block text-sm font-medium">Purpose / Notes</label><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}/></div>
+        <div><label className="mb-2 block text-sm font-medium">Purpose / Notes</label><Textarea rows={3} className={PURCHASING_TEXTAREA} value={notes} onChange={(e) => setNotes(e.target.value)}/></div>
         <div data-pr-field="items" data-field="items"><PurchaseRequisitionItems items={items} products={products} onChange={setItems} onProductLoaded={rememberProduct}/>{fieldErrors.fieldError("items")}</div>
       </div>
       <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 px-6 py-4"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" loading={saving}>{editing ? "Save Changes" : "Create Purchase Requisition"}</Button></div>

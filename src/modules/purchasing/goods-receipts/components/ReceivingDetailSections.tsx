@@ -156,11 +156,11 @@ export default function ReceivingDetailSections({ receipt }: { receipt: GoodsRec
         {section === "billing" && (
           <div className="space-y-6 p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><h2 className="font-semibold">Supplier Billing</h2><p className="text-xs text-slate-500">Recorded supplier document details and additional charges</p></div>
+              <div><h2 className="font-semibold">Supplier Billing</h2><p className="text-xs text-slate-500">Supplier invoice and charges</p></div>
               {receipt.supplier_invoice_status && <Badge variant={receipt.supplier_invoice_status === "DRAFT" ? "warning" : "success"}>{receipt.supplier_invoice_status}</Badge>}
             </div>
             <dl className="grid gap-x-8 gap-y-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <Detail label="Supplier Invoice Number">{receipt.supplier_invoice_number || "Not yet provided"}</Detail>
+              <Detail label="Supplier Invoice Number">{receipt.supplier_invoice_number || "—"}</Detail>
               <Detail label="Supplier Invoice Date">{receipt.supplier_invoice_date || "—"}</Detail>
               <Detail label="Supplier Document Total">{receipt.supplier_document_total == null ? "—" : money(receipt.supplier_document_total)}</Detail>
               <Detail label="Invoice Discount">{money(receipt.discount_amount)}</Detail>
@@ -168,21 +168,23 @@ export default function ReceivingDetailSections({ receipt }: { receipt: GoodsRec
               <Detail label="Administration Fee">{money(receipt.admin_fee_amount)}</Detail>
               <Detail label="Other Fee">{money(receipt.other_fee_amount)}</Detail>
               <Detail label="Other Fee Description">{receipt.other_fee_description || "—"}</Detail>
-              <Detail label="Supplier Invoice Status">{receipt.supplier_invoice_status || "Not generated yet"}</Detail>
+              <Detail label="Supplier Invoice Status">{receipt.supplier_invoice_status || "—"}</Detail>
             </dl>
             {receipt.supplier_invoice_id && <Link className="inline-flex text-sm font-semibold text-emerald-700 hover:underline"
               to={"/supplier-invoices/" + receipt.supplier_invoice_id}>Open linked supplier invoice</Link>}
             {receipt.supplier_document_url && <a className="block text-sm font-medium text-emerald-700 underline"
               href={receipt.supplier_document_url} target="_blank" rel="noopener noreferrer">Open supplier document</a>}
-            <div className="border-t border-slate-200 pt-4">
-              <h3 className="mb-2 text-sm font-semibold">Receiving Notes</h3>
-              <p className="whitespace-pre-wrap text-sm text-slate-600">{receipt.notes || "No notes provided."}</p>
-            </div>
+            {receipt.notes?.trim() && (
+              <div className="border-t border-slate-200 pt-4">
+                <h3 className="mb-2 text-sm font-semibold">Receiving Notes</h3>
+                <p className="whitespace-pre-wrap text-sm text-slate-600">{receipt.notes}</p>
+              </div>
+            )}
           </div>
         )}
         {section === "approval" && !historical && (
           <div className="space-y-4 p-4 sm:p-6">
-            <div><h2 className="font-semibold">Approval Timeline</h2><p className="text-xs text-slate-500">Review stages and decisions for this Receiving</p></div>
+            <div><h2 className="font-semibold">Approval Timeline</h2><p className="text-xs text-slate-500">Approval stages and decisions</p></div>
             {approvalHistory.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Not submitted for approval yet.</p> :
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {approvalHistory.map((step, index) => (

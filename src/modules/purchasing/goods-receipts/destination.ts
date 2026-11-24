@@ -20,5 +20,5 @@ export function destinationLabel(destination?: string, treatment?: string): stri
 export function destinationError(line: LineRouting): string | undefined {
   const current = destinationFor(line), original = line.original_destination;
   if (!current) return "Complete the item's inventory treatment in Item Master.";
-  if (current !== masterDestination(line.inventory_treatment) && current !== original && (line.destination_override_reason ?? "").trim().length < 3) return "Enter a reason for the item destination exception.";
+  if (current !== masterDestination(line.inventory_treatment) && current !== original && (line.destination_override_reason ?? "").trim().length < 3) return "Enter a reason (at least 3 characters) for this destination exception.";
 }

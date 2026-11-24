@@ -4,7 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
-import Badge from "@/components/ui/Badge";
+import { PurchasingStatusBadge } from "../../components/PurchasingDocumentUI";
+import { purchasingStatusLabel } from "../../components/purchasingStatus";
 import Button from "@/components/ui/Button";
 import CurrencyInput from "@/components/form/CurrencyInput";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
@@ -241,11 +242,14 @@ export default function ReceivingDetailPage() {
             <p className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">Receiving Report</p>
             <h1 className="break-words text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{data.receipt_number}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge variant={data.status === "POSTED" ? "success" : data.status === "RETURNED" ? "danger" : "warning"}>{data.status}</Badge>
-              {data.approval_status && <Badge variant={data.approval_status === "APPROVED" ? "success" : data.approval_status === "REJECTED" ? "danger" : "warning"}>{data.approval_status}</Badge>}
-              <Badge variant="secondary">{data.source_mode === "ML" ? "Market List" :
-                data.source_mode === "DIRECT" ? "Direct Receiving" : "Purchase Order"}</Badge>
-              {data.supplier_invoice_status && <Badge variant={data.supplier_invoice_status === "DRAFT" ? "warning" : "secondary"}>Invoice {data.supplier_invoice_status}</Badge>}
+              <PurchasingStatusBadge value={data.status} />
+              {data.approval_status && <PurchasingStatusBadge value={data.approval_status} />}
+              {data.supplier_invoice_status && (
+                <PurchasingStatusBadge
+                  value={data.supplier_invoice_status}
+                  label={`Invoice ${purchasingStatusLabel(data.supplier_invoice_status)}`}
+                />
+              )}
             </div>
           </div>
           <ReceivingDetailActions
@@ -305,7 +309,7 @@ export default function ReceivingDetailPage() {
 
       {!historical && data.status === "DRAFT" && data.approval_status !== "APPROVED" &&
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          Receiving is not posted yet. It must complete Store → Chef → PM/Camp Boss approval before posting.
+          Receiving is not posted yet. It must complete Store → PM/Camp Boss approval by two different people before posting.
         </div>}
 
       <ReceivingDetailSections receipt={data} />
@@ -386,7 +390,7 @@ export default function ReceivingDetailPage() {
           <DialogHeader><DialogTitle>Correct Receiving Cost</DialogTitle></DialogHeader>
           <DialogBody className="space-y-4">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              Cost corrections are audited. The backend blocks unsafe historical revaluation when downstream documents depend on this receipt.
+              Cost corrections are audited. Corrections are blocked when later documents depend on this receipt.
             </div>
             {costError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{costError}</p>}
             <div className="overflow-x-auto rounded-lg border border-slate-200">
