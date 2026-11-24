@@ -1,4 +1,5 @@
 import api from "@/api/interceptor";
+import type { FinancePage } from "@/modules/finance/types";
 
 export type APStatus = "PAID" | "PARTIALLY_PAID" | "UNPAID";
 
@@ -34,17 +35,7 @@ export type APDetailRow = {
   aging_bucket: "current" | "1_30" | "31_60" | "61_90" | "over_90";
 };
 
-type Page<T> = {
-  items: T[];
-  page: number;
-  page_size: number;
-  total_items: number;
-  total_pages: number;
-  has_next: boolean;
-  has_previous: boolean;
-};
-
-export type APSummaryResponse = Page<APSupplierSummary> & {
+export type APSummaryResponse = FinancePage<APSupplierSummary> & {
   metrics: {
     gross_payables: number;
     total_payments: number;
@@ -76,5 +67,5 @@ export const apReportingApi = {
   summary: async (query: APReportingQuery = {}) =>
     (await api.get<APSummaryResponse>("/ap-reporting/summary", { params: params(query) })).data,
   detail: async (query: APReportingQuery = {}) =>
-    (await api.get<Page<APDetailRow>>("/ap-reporting/detail", { params: params(query) })).data,
+    (await api.get<FinancePage<APDetailRow>>("/ap-reporting/detail", { params: params(query) })).data,
 };

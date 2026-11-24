@@ -46,7 +46,9 @@ app/
 alembic/
 infra/
 samples/
-scripts/
+scripts/*
+!scripts/test-*.cjs
+!scripts/test-*.mjs
 tests/
 docs/
 .github/workflows/

@@ -1,4 +1,11 @@
 import api from "@/api/client";
+import type {
+  FinanceActivityEvent,
+  FinanceAllowedActions,
+  FinancePage,
+  FinancePageParams,
+  RawPaymentStatus,
+} from "@/modules/finance/types";
 
 export type InvoiceLine = {
   id?: number;
@@ -68,6 +75,8 @@ export type ThreeWayMatch = {
   lines: ThreeWayMatchLine[];
 };
 
+export type SupplierInvoiceStatus = "DRAFT" | "VERIFIED" | "REJECTED" | "POSTED" | "VOID";
+
 export type SupplierInvoice = {
   id: number;
   internal_invoice_number: string;
@@ -105,19 +114,19 @@ export type SupplierInvoice = {
   total_amount: number;
   paid_amount?: number;
   balance_amount?: number;
-  payment_status?: string;
+  payment_status?: RawPaymentStatus;
   tax_invoice_number?: string | null;
   tax_invoice_date?: string | null;
   supplier_is_pkp?: boolean;
-  status: string;
+  status: SupplierInvoiceStatus;
   notes?: string | null;
   source_type: string;
   lines: InvoiceLine[];
   three_way_match?: ThreeWayMatch;
   accounting_readiness?: { is_ready: boolean; blockers: Array<{ code: string; message: string }> };
   related_journal?: { id: number; journal_number: string; status: string } | null;
-  allowed_actions?: Record<string, boolean>;
-  activity_history?: any[];
+  allowed_actions?: FinanceAllowedActions;
+  activity_history?: FinanceActivityEvent[];
 };
 
 export type InvoicePayload = {
@@ -163,14 +172,23 @@ export type EligibleReceiptSource = {
   received_at?: string | null;
 };
 
-export const listInvoices = async (params: any = {}) => (await api.get("/supplier-invoices", { params })).data;
+export type SupplierInvoiceQuery = FinancePageParams & {
+  supplier_id?: number;
+  location_id?: number;
+  payment_status?: RawPaymentStatus;
+};
+
+export type InvoiceAction = "verify" | "reject" | "generate-journal" | "void";
+
+export const listInvoices = async (params: SupplierInvoiceQuery = {}) =>
+  (await api.get<FinancePage<SupplierInvoice>>("/supplier-invoices", { params })).data;
 export const listEligibleReceiptSources = async () => (await api.get<EligibleReceiptSource[]>("/supplier-invoice-sources/eligible-receipts")).data;
 export const getInvoice = async (id: number) => (await api.get<SupplierInvoice>(`/supplier-invoices/${id}`)).data;
 export const prepareInvoiceFromReceipt = async (receiptId: number) =>
   (await api.post<SupplierInvoice>(`/supplier-invoices/prepare-from-receipt/${receiptId}`)).data;
 export const createInvoice = async (payload: InvoicePayload) => (await api.post<SupplierInvoice>("/supplier-invoices", payload)).data;
 export const updateInvoice = async (id: number, payload: InvoicePayload) => (await api.patch<SupplierInvoice>(`/supplier-invoices/${id}`, payload)).data;
-export const invoiceAction = async (id: number, action: string) => (await api.post(`/supplier-invoices/${id}/${action}`)).data;
+export const invoiceAction = async (id: number, action: InvoiceAction) => (await api.post(`/supplier-invoices/${id}/${action}`)).data;
 export const adminUnpostInvoice = async (id: number) => (await api.post(`/supplier-invoices/${id}/unpost`)).data;
 export const adminReopenInvoice = async (id: number, reason?: string) => (await api.post(`/supplier-invoices/${id}/reopen`, {reason})).data;
 

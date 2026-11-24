@@ -13,9 +13,10 @@ import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Ca
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
+import { useFinanceList } from "@/modules/finance/hooks/useFinanceList";
 import ARImportStagingDialog from "./ARImportStagingDialog";
 import ARWorkspaceHeader from "./ARWorkspaceHeader";
-import { arReportingApi, type ARStatus, type AgingBucket } from "./reportingApi";
+import { arReportingApi, type ARDetail, type ARStatus, type AgingBucket } from "./reportingApi";
 
 const money = (value: unknown) =>
   `Rp ${Number(value || 0).toLocaleString("id-ID", {
@@ -46,8 +47,6 @@ export default function ARReportingPage() {
   const location = useLocation();
   const canManage = useAuthStore((store) => store.hasPermission("finance.manage"));
   const [importOpen, setImportOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<ARStatus | "ALL">("ALL");
@@ -63,18 +62,33 @@ export default function ARReportingPage() {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
-  useEffect(() => setPage(1), [section, search, status, pageSize]);
+  const filters = useMemo(
+    () => ({
+      section,
+      search,
+      status: status === "ALL" ? undefined : status,
+    }),
+    [section, search, status],
+  );
+
+  const detail = useFinanceList<ARDetail>({
+    queryKey: ["ar-reporting", "detail"],
+    filters,
+    enabled: section === "detail",
+    queryFn: ({ page, page_size, search: activeSearch, status: activeStatus }) =>
+      arReportingApi.detail(
+        page,
+        page_size,
+        String(activeSearch ?? ""),
+        activeStatus as ARStatus | undefined,
+      ),
+  });
+  const { page, pageSize, setPage, setPageSize } = detail;
 
   const summary = useQuery({
     queryKey: ["ar-reporting", "summary", page, pageSize, search],
     queryFn: () => arReportingApi.summary(page, pageSize, search),
     enabled: section === "summary",
-  });
-  const detail = useQuery({
-    queryKey: ["ar-reporting", "detail", page, pageSize, search, status],
-    queryFn: () =>
-      arReportingApi.detail(page, pageSize, search, status === "ALL" ? undefined : status),
-    enabled: section === "detail",
   });
   const aging = useQuery({
     queryKey: ["ar-reporting", "aging", page, pageSize, search],

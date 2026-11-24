@@ -1,17 +1,8 @@
 import api from "@/api/interceptor";
+import type { AgingBucket, FinancePage, PaymentStatus } from "@/modules/finance/types";
 
-export type ARStatus = "PAID" | "PARTIALLY_PAID" | "UNPAID";
-export type AgingBucket = "current" | "1_30" | "31_60" | "61_90" | "over_90";
-
-export type Page<T> = {
-  items: T[];
-  page: number;
-  page_size: number;
-  total_items: number;
-  total_pages: number;
-  has_next: boolean;
-  has_previous: boolean;
-};
+export type ARStatus = PaymentStatus;
+export type { AgingBucket };
 
 export type CustomerSummary = {
   customer_id: number;
@@ -42,7 +33,7 @@ export type ARDetail = {
   aging_bucket: AgingBucket;
 };
 
-export type ARSummary = Page<CustomerSummary> & {
+export type ARSummary = FinancePage<CustomerSummary> & {
   metrics: {
     gross_receivables: number;
     total_receipts: number;
@@ -60,7 +51,7 @@ export type ARAgingRow = {
   outstanding_amount: number;
 } & Record<AgingBucket, number>;
 
-export type ARAging = Page<ARAgingRow> & {
+export type ARAging = FinancePage<ARAgingRow> & {
   as_of_date: string;
   total_outstanding: number;
   buckets: Record<AgingBucket, {
@@ -89,7 +80,7 @@ export const arReportingApi = {
     (await api.get<ARSummary>("/ar-reporting/summary", { params: params({ page, pageSize, search }) })).data,
   detail: async (page = 1, pageSize = 50, search = "", status?: ARStatus) =>
     (
-      await api.get<Page<ARDetail>>("/ar-reporting/detail", {
+      await api.get<FinancePage<ARDetail>>("/ar-reporting/detail", {
         params: params({ page, pageSize, search, status }),
       })
     ).data,

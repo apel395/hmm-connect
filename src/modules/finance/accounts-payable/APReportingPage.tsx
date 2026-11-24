@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
@@ -12,9 +12,10 @@ import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Ca
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
+import { useFinanceList } from "@/modules/finance/hooks/useFinanceList";
 import { exportCsv } from "@/utils/exportCsv";
 import APWorkspaceHeader from "./APWorkspaceHeader";
-import { apReportingApi, type APStatus } from "./reportingApi";
+import { apReportingApi, type APDetailRow, type APStatus } from "./reportingApi";
 
 const money = (value: unknown) =>
   `Rp ${Number(value || 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -31,8 +32,6 @@ const statusLabel: Record<APStatus, string> = {
 export default function APReportingPage() {
   const location = useLocation();
   const isDetail = location.pathname.endsWith("/detail");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
   const [unit, setUnit] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -43,25 +42,36 @@ export default function APReportingPage() {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
-  useEffect(() => setPage(1), [isDetail, unit, search, status, pageSize]);
-
   const businessUnitId = Number(unit) || undefined;
+  const filters = useMemo(
+    () => ({
+      view: isDetail ? "detail" : "summary",
+      unit,
+      search,
+      status: status === "ALL" ? undefined : status,
+    }),
+    [isDetail, unit, search, status],
+  );
+
+  const detail = useFinanceList<APDetailRow>({
+    queryKey: ["ap-reporting", "detail"],
+    filters,
+    enabled: isDetail,
+    queryFn: ({ page, page_size, search: activeSearch, status: activeStatus }) =>
+      apReportingApi.detail({
+        page,
+        pageSize: page_size,
+        businessUnitId,
+        search: String(activeSearch ?? ""),
+        status: activeStatus as APStatus | undefined,
+      }),
+  });
+  const { page, pageSize, setPage, setPageSize } = detail;
+
   const summary = useQuery({
     queryKey: ["ap-reporting", "summary", page, pageSize, unit, search],
     queryFn: () => apReportingApi.summary({ page, pageSize, businessUnitId, search }),
     enabled: !isDetail,
-  });
-  const detail = useQuery({
-    queryKey: ["ap-reporting", "detail", page, pageSize, unit, search, status],
-    queryFn: () =>
-      apReportingApi.detail({
-        page,
-        pageSize,
-        businessUnitId,
-        search,
-        status: status === "ALL" ? undefined : status,
-      }),
-    enabled: isDetail,
   });
 
   const activeQuery = isDetail ? detail : summary;

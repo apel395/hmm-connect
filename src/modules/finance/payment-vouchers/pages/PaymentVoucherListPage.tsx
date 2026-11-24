@@ -18,7 +18,8 @@ import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { FORM_UI } from "@/config/formUi";
 import { listLocations } from "@/modules/admin/organization/api";
 import { todayLocal } from "@/utils/dateConstraints";
-import { createVoucher, listEligibleInvoices, listVouchers } from "../api";
+import { useFinanceList } from "@/modules/finance/hooks/useFinanceList";
+import { createVoucher, listEligibleInvoices, listVouchers, type Voucher } from "../api";
 
 const money = (value: unknown) =>
   Number(value || 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -38,7 +39,6 @@ export default function PaymentVoucherListPage() {
   const [locationId, setLocationId] = useState<number | undefined>(undefined);
   const [voucherDate, setVoucherDate] = useState(todayLocal());
   const [selected, setSelected] = useState<Record<number, boolean>>({});
-  const [page, setPage] = useState(1);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [appliedFromDate, setAppliedFromDate] = useState("");
@@ -55,26 +55,33 @@ export default function PaymentVoucherListPage() {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
-  useEffect(() => setPage(1), [appliedFromDate, appliedToDate, filterLocationId, status, search]);
-
-  const vouchers = useQuery({
-    queryKey: ["payment-vouchers", page, appliedFromDate, appliedToDate, filterLocationId, status, search],
+  const vouchers = useFinanceList<Voucher>({
+    queryKey: ["payment-vouchers"],
+    initialPageSize: 20,
     enabled: !invalidPeriod,
-    queryFn: async () =>
-      (await listVouchers({
+    filters: {
+      date_from: appliedFromDate,
+      date_to: appliedToDate,
+      location_id: filterLocationId,
+      status,
+      search,
+    },
+    queryFn: ({ page, page_size, date_from, date_to, location_id, status: activeStatus, search: activeSearch }) =>
+      listVouchers({
         page,
-        page_size: 20,
-        date_from: appliedFromDate || undefined,
-        date_to: appliedToDate || undefined,
-        location_id: filterLocationId || undefined,
-        status: status || undefined,
-        search: search || undefined,
-      })).data,
+        page_size,
+        date_from: date_from ? String(date_from) : undefined,
+        date_to: date_to ? String(date_to) : undefined,
+        location_id: location_id as number | undefined,
+        status: activeStatus ? String(activeStatus) : undefined,
+        search: activeSearch ? String(activeSearch) : undefined,
+      }),
   });
+  const { page, setPage } = vouchers;
   const locations = useQuery({ queryKey: ["pv-locations"], queryFn: () => listLocations({ is_active: true }) });
   const eligible = useQuery({
     queryKey: ["pv-eligible", locationId],
-    queryFn: async () => (await listEligibleInvoices(locationId!)).data,
+    queryFn: () => listEligibleInvoices(locationId!),
     enabled: !!locationId,
   });
 
@@ -107,7 +114,7 @@ export default function PaymentVoucherListPage() {
         supplier_invoice_id: row.id,
         allocated_amount: Number(row.available_balance),
       }));
-      return (await createVoucher({ location_id: locationId, voucher_date: voucherDate, allocations })).data;
+      return createVoucher({ location_id: locationId, voucher_date: voucherDate, allocations });
     },
     onSuccess: (data: any) => {
       toast.success(`Voucher ${data.voucher_number} created`);

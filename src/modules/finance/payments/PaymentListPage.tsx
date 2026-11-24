@@ -21,7 +21,8 @@ import { todayLocal } from "@/utils/dateConstraints";
 import useAuthorization from "@/hooks/useAuthorization";
 import useFormRecovery from "@/hooks/useFormRecovery";
 import FormRecoveryActions from "@/components/form/FormRecoveryActions";
-import { createPayment, eligibleInvoices, eligibleSuppliers, eligibleVouchers, getPayment, listPayments, listReadyToPay, paymentAction, updatePayment, type Payment, type ReadyToPayInvoice } from "./api";
+import { createPayment, eligibleInvoices, eligibleSuppliers, eligibleVouchers, getPayment, listPayments, listReadyToPay, paymentAction, updatePayment, type Payment, type PaymentListPage as PaymentListResponse, type ReadyToPayInvoice } from "./api";
+import { useFinanceList } from "@/modules/finance/hooks/useFinanceList";
 import { normalizePaymentForSave, paymentSaveError, sumPaymentAmounts } from "./paymentSave";
 
 const methods = ["BANK_TRANSFER", "CASH", "CHEQUE", "CREDIT_CARD", "PETTY_CASH", "OTHER"];
@@ -40,17 +41,28 @@ export default function PaymentListPage() {
   const { hasPermission, isSuperuser } = useAuthorization();
   const canManage = hasPermission("payment.manage");
   const admin = isSuperuser();
-  const [pageSize,setPageSize]=useState(() => Number(window.localStorage.getItem("payments-page-size")) === 100 ? 100 : 50);
   const [showFilters,setShowFilters]=useState(false);
-  useEffect(() => window.localStorage.setItem("payments-page-size", String(pageSize)), [pageSize]);
-  const [page,setPage]=useState(1),[search,setSearch]=useState(""),[status,setStatus]=useState(""),[filterLocationId,setFilterLocationId]=useState<number>(),[open,setOpen]=useState(false),[form,setForm]=useState<any>(emptyForm()),[editingId,setEditingId]=useState<number>();
+  const [search,setSearch]=useState(""),[status,setStatus]=useState(""),[filterLocationId,setFilterLocationId]=useState<number>(),[open,setOpen]=useState(false),[form,setForm]=useState<any>(emptyForm()),[editingId,setEditingId]=useState<number>();
+  const payments=useFinanceList<Payment>({
+    queryKey:["payments"],
+    storageKey:"payments-page-size",
+    filters:{search,status,location_id:filterLocationId},
+    queryFn:({page,page_size,search:activeSearch,status:activeStatus,location_id})=>
+      listPayments({
+        page,
+        page_size,
+        search:activeSearch?String(activeSearch):undefined,
+        status:activeStatus?String(activeStatus):undefined,
+        location_id:location_id as number|undefined,
+      }),
+  });
+  const {page,pageSize,setPage,setPageSize}=payments;
   const [readyPage,setReadyPage]=useState(1),[readySearch,setReadySearch]=useState(""),[readyCurrency,setReadyCurrency]=useState("");
   const recovery=useFormRecovery<PaymentInput>(`payment:${editingId ? `edit:${editingId}` : "create"}`,form,open,validPaymentInput);
   const [editingInvoices,setEditingInvoices]=useState<any[]>([]);
   const returnTo=location.pathname.startsWith("/accounts-payable")?`${location.pathname}${location.search}`:"/payments";
   const editId=Number(new URLSearchParams(location.search).get("edit"))||0;
   const editPayment=useQuery({queryKey:["payment-edit",editId],queryFn:()=>getPayment(editId),enabled:editId>0,refetchOnMount:"always"});
-  const payments=useQuery({queryKey:["payments",page,pageSize,search,status,filterLocationId],queryFn:()=>listPayments({page,page_size:pageSize,search:search||undefined,status:status||undefined,location_id:filterLocationId??undefined})});
   const readyPay=useQuery({queryKey:["payments-ready-to-pay",readyPage,readySearch,readyCurrency],queryFn:()=>listReadyToPay({page:readyPage,page_size:50,search:readySearch||undefined,currency:readyCurrency||undefined}),enabled:canManage});
   const suppliers=useQuery({queryKey:["eligible-payment-suppliers",form.currency,editingId,editingId?form.supplier_id:0],queryFn:()=>eligibleSuppliers(form.currency,editingId?form.supplier_id:undefined),enabled:open});
   const bankAccounts=useQuery({queryKey:["active-payment-bank-accounts"],queryFn:()=>listBankAccounts(true,true)});
@@ -141,7 +153,7 @@ export default function PaymentListPage() {
     : [];
   const paymentRows:any[]=useMemo(()=>payments.data?.items??[],[payments.data?.items]);
   const paymentPageTotal=useMemo(()=>paymentRows.reduce((sum:number,row:any)=>sum+Number(row.total_amount||0),0),[paymentRows]);
-  const paymentFilteredTotal=Number(payments.data?.summary?.total_amount??paymentPageTotal);
+  const paymentFilteredTotal=Number((payments.data as PaymentListResponse|undefined)?.summary?.total_amount??paymentPageTotal);
   const chargeAccounts=useQuery({queryKey:["payment-charge-accounts"],queryFn:()=>getAllAccountLookup({is_active:true,is_posting:true}),enabled:open});
   const chargeOptions=(chargeAccounts.data??[]).filter(a=>a.account_type==="EXPENSE"&&a.normal_balance==="DEBIT").map(a=>({id:a.id,label:a.account_name,keywords:[a.account_code,a.account_name]}));
   const allocated=useMemo(()=>sumPaymentAmounts(form.allocations.map((row:any)=>row.allocated_amount)),[form.allocations]);

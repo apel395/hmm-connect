@@ -84,6 +84,8 @@ AP-role biasa hanya melihat payment yang dibuatnya sendiri; scope lain tetap men
 
 Ringkasan, detail, aging, movement, supplier invoice, payment voucher, payment, dan credit/debit note berbagi satu tab workspace data-first dengan satu judul halaman. Ringkasan dan detail memakai endpoint `ap-reporting`; filter status hanya tersedia pada detail karena endpoint ringkasan tidak menyediakannya. AP aging dan movement mengikuti data backend, termasuk manual opening AP yang tidak dapat dialokasikan ke supplier/user AP. Supplier invoice tetap mempertahankan konfirmasi PPN, status PKP, faktur pajak, document total, dan three-way match. Payment voucher mengikuti `allowed_actions` dari backend, mewajibkan alasan penolakan yang dikirim sebagai `{ reason }`, dan tidak pernah membuat jurnal GL. Tombol approval payment menyatakan bahwa persetujuan juga membuat draft journal; posting akhir tetap dari Journal. Route print, format cetak, dan permission backend tidak diubah oleh tampilan.
 
+Kontrak respons finance memakai tipe bersama di `src/modules/finance/types.ts` dan hook `useFinanceList` untuk pagination, filter, dan metadata halaman. Status `PARTIAL` dari backend dinormalisasi menjadi `PARTIALLY_PAID` saat ditampilkan, bukan mengubah payload backend. Pemeriksaan tipe dan kontrak dijalankan oleh `npm test` melalui `typecheck` dan `test-finance-contracts`.
+
 ## Journal Entry manual
 
 Satu jurnal adalah **satu header dengan beberapa baris akun**, bukan satu pasangan dua baris yang harus bersebelahan. Nomor jurnal resmi dihasilkan sistem; nomor dokumen adalah referensi sumber/pengelompokan.

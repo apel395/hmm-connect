@@ -20,10 +20,11 @@ import { getAccounts } from "@/modules/master/chart-of-accounts/api";
 import { filterBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import purchaseOrderApi from "@/modules/purchasing/purchase-order/api/purchaseOrderApi";
 import goodsReceiptApi from "@/modules/purchasing/goods-receipts/api/goodsReceiptApi";
-import { createInvoice, getInvoice, InvoiceLine, listEligibleReceiptSources, listInvoices, updateInvoice } from "./api";
+import { createInvoice, getInvoice, InvoiceLine, listEligibleReceiptSources, listInvoices, updateInvoice, type SupplierInvoice } from "./api";
 import { buildInvoicePayload, computeInvoiceTotals, withSyncedDocumentTotal } from "./totals";
 import { invoiceErrorMessage, parseInvoiceError } from "./errors";
 import { createVoucher, listEligibleInvoices } from "@/modules/finance/payment-vouchers/api";
+import { useFinanceList } from "@/modules/finance/hooks/useFinanceList";
 import useAuthorization from "@/hooks/useAuthorization";
 import useFormRecovery from "@/hooks/useFormRecovery";
 import FormRecoveryActions from "@/components/form/FormRecoveryActions";
@@ -162,14 +163,26 @@ export default function SupplierInvoiceListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(() => Number(window.localStorage.getItem("invoices-page-size")) === 100 ? 100 : 50);
   const [showFilters, setShowFilters] = useState(false);
-  useEffect(() => window.localStorage.setItem("invoices-page-size", String(pageSize)), [pageSize]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [filterSupplierId, setFilterSupplierId] = useState<number>();
   const [filterLocationId, setFilterLocationId] = useState<number>();
+  const invoices = useFinanceList<SupplierInvoice>({
+    queryKey: ["supplier-invoices"],
+    storageKey: "invoices-page-size",
+    filters: { search, status, supplier_id: filterSupplierId, location_id: filterLocationId },
+    queryFn: ({ page, page_size, search: activeSearch, status: activeStatus, supplier_id, location_id }) =>
+      listInvoices({
+        page,
+        page_size,
+        search: activeSearch ? String(activeSearch) : undefined,
+        status: activeStatus ? String(activeStatus) : undefined,
+        supplier_id: supplier_id as number | undefined,
+        location_id: location_id as number | undefined,
+      }),
+  });
+  const { page, pageSize, setPage, setPageSize } = invoices;
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
   const [submitError, setSubmitError] = useState("");
@@ -197,7 +210,6 @@ export default function SupplierInvoiceListPage() {
     target.focus?.();
   }, [fieldErrors, open]);
 
-  const invoices = useQuery({ queryKey: ["supplier-invoices", page, pageSize, search, status, filterSupplierId, filterLocationId], queryFn: () => listInvoices({ page, page_size: pageSize, search: search || undefined, status: status || undefined, supplier_id: filterSupplierId ?? undefined, location_id: filterLocationId ?? undefined }) });
   const paymentOverview = useQuery({
     queryKey: ["supplier-invoice-payment-overview"],
     queryFn: async () => (await api.get("/ap-aging")).data as any,
@@ -364,14 +376,14 @@ export default function SupplierInvoiceListPage() {
       const nonPosted = rows.find((r: any) => r.status !== "POSTED");
       if (nonPosted) throw new Error(`Invoice ${nonPosted.internal_invoice_number} must be posted before creating a voucher`);
       const locationId = Number(locationIds[0]);
-      const eligibleRows = (await listEligibleInvoices(locationId)).data as any[];
+      const eligibleRows = await listEligibleInvoices(locationId);
       const eligibleIds = new Set(eligibleRows.map((r: any) => r.id));
       const missing = ids.filter((id) => !eligibleIds.has(id));
       if (missing.length) throw new Error(`Invoice(s) ${missing.join(", ")} are not payable or already allocated to a voucher`);
       const allocations = eligibleRows
         .filter((r: any) => ids.includes(r.id))
         .map((r: any) => ({ supplier_invoice_id: r.id, allocated_amount: Number(r.available_balance) }));
-      return (await createVoucher({ location_id: locationId, voucher_date: today(), allocations })).data;
+      return createVoucher({ location_id: locationId, voucher_date: today(), allocations });
     },
     onSuccess: (data: any) => {
       toast.success(`Voucher ${data.voucher_number} created`);

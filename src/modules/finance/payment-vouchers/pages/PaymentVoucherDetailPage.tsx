@@ -27,7 +27,7 @@ export default function PaymentVoucherDetailPage() {
 
   const query = useQuery({
     queryKey: ["payment-voucher", voucherId],
-    queryFn: async () => (await getVoucher(voucherId)).data,
+    queryFn: () => getVoucher(voucherId),
   });
 
   const invalidator = () => {

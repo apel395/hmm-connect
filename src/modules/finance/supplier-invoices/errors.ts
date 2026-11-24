@@ -1,9 +1,6 @@
-export type InvoiceFieldIssue = {
-  path: string;
-  message: string;
-  actual?: string;
-  expected?: string;
-};
+import type { FinanceFieldIssue } from "@/modules/finance/types";
+
+export type InvoiceFieldIssue = FinanceFieldIssue;
 
 export type InvoiceErrorInfo = {
   message: string;
@@ -42,9 +39,13 @@ export function parseInvoiceErrorDetail(detail: unknown): InvoiceErrorInfo {
 
   if (Array.isArray(detail)) {
     const fields = detail.map(toFieldIssue).filter((issue): issue is InvoiceFieldIssue => issue !== null);
-    const message = detail
-      .map((item: any) => item?.msg ?? item?.message ?? String(item))
-      .join("; ") || FALLBACK_MESSAGE;
+    const message =
+      detail
+        .map((item: unknown) => {
+          const row = item as { msg?: unknown; message?: unknown } | null;
+          return row?.msg ?? row?.message ?? String(item);
+        })
+        .join("; ") || FALLBACK_MESSAGE;
     return { message, fields };
   }
 
@@ -66,7 +67,11 @@ export function parseInvoiceErrorDetail(detail: unknown): InvoiceErrorInfo {
 
 export function parseInvoiceError(error: unknown): InvoiceErrorInfo {
   if (error && typeof error === "object") {
-    const candidate = error as Record<string, any>;
+    const candidate = error as {
+      response?: { data?: { detail?: unknown } };
+      detail?: unknown;
+      message?: unknown;
+    };
     if (candidate.response?.data?.detail !== undefined) return parseInvoiceErrorDetail(candidate.response.data.detail);
     if (candidate.detail !== undefined) return parseInvoiceErrorDetail(candidate.detail);
     if (candidate.message !== undefined) return parseInvoiceErrorDetail(candidate.message);
