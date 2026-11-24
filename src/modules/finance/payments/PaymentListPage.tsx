@@ -1,9 +1,12 @@
-import { Printer, SlidersHorizontal } from "lucide-react";
+import { Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import ListToolbar from "@/components/common/ListToolbar";
+import ModuleSummary from "@/components/common/ModuleSummary";
 import PageHeader from "@/components/common/PageHeader";
+import Pagination from "@/components/datatable/Pagination";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
@@ -252,7 +255,7 @@ export default function PaymentListPage() {
   const submit=()=>{if(!form.supplier_id)return toast.error("Select a supplier");if(!form.payment_date)return toast.error("Payment Date is required");if(!form.allocations.length||allocated<=0)return toast.error("Select at least one supplier invoice");if(invoices.isFetching)return toast.error("Invoice balances are still refreshing");if(invoices.isError)return toast.error("Invoice balances could not be loaded. Retry before saving.");if(unavailableAllocations.length)return toast.error("Remove unavailable invoice selections before saving.");if(form.allocations.some((row:any)=>Number(row.allocated_amount)>availableBalance(invoiceRows.find((invoice:any)=>invoice.id===row.supplier_invoice_id))))return toast.error("An allocated invoice is no longer available. Clear or correct it before saving.");if(bankAccounts.isLoading)return toast.error("Funding accounts are still loading");if(bankAccounts.isError)return toast.error("Funding accounts could not be loaded");if(!eligibleBankAccounts.length)return toast.error("No active payment account with a linked COA is available for this currency");if(Math.abs(funded-expectedFunding)>0.005)return toast.error("Funding must equal allocations + bank charge + signed short/over");if((Math.abs(allocated-selectedBalance)>0.005||form.bank_charge_amount||form.short_over_amount)&&!form.difference_reason.trim())return toast.error("Enter a reason for the payment difference");if(form.bank_charge_amount&&!form.bank_charge_account_id)return toast.error("Select bank charge expense account");if(form.short_over_amount&&!form.short_over_account_id)return toast.error("Select short/over expense account");if(form.funding_lines.some((row:any)=>!row.bank_account_id||row.amount<=0))return toast.error("Complete every funding line");if(form.funding_lines.some((row:any)=>!eligibleBankAccountIds.has(row.bank_account_id)))return toast.error("Select only payment accounts with a valid linked COA");save.mutate()};
 
   return <>
-    <PageHeader title="AP Payments" description="Select accounted supplier invoices ready for payment. Finance manages the accounting journals." actions={<>
+    <PageHeader title="AP Payments" description="Select accounted supplier invoices ready for payment. Approval also creates a draft journal; finalize it from Journal." actions={<>
 <Button onClick={()=>{if(editId)navigate("/payments",{replace:true,state:null});setEditingId(undefined);setEditingInvoices([]);const saved=recovery.load("payment:create");setForm({...emptyForm(), ...(saved??{})});if(saved)recovery.notifyRestored();setOpen(true)}}>Create Payment</Button>
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>}/>
@@ -266,10 +269,48 @@ export default function PaymentListPage() {
       <Table className="min-w-[840px]" containerClassName="border-0 shadow-none"><THead><TR><TH>Supplier</TH><TH>Invoice</TH><TH>Due Date</TH><TH numeric>Invoice Total</TH><TH numeric>Available</TH><TH numeric>Action</TH></TR></THead><TBody>{readyPay.data.items.map(row=><TR key={row.id}><TD className="font-medium">{row.supplier_name??`Supplier ${row.supplier_id}`}</TD><TD><TableCellStack primary={<Link className={TABLE_UI.documentLink} to={`/supplier-invoices/${row.id}`}>{row.invoice_number}</Link>} secondary={row.supplier_invoice_number||"Supplier reference pending"}/></TD><TD><TableCellStack primary={row.due_date??"Not set"} secondary={row.due_date&&row.due_date<today()?"Overdue":row.due_date===today()?"Due today":""}/></TD><TD numeric>{row.currency} {money(row.total_amount)}</TD><TD numeric className="font-semibold text-emerald-800">{row.currency} {money(row.available_balance)}</TD><TD numeric><Button size="sm" onClick={()=>startInvoicePayment(row)}>Pay</Button></TD></TR>)}</TBody></Table>}
       {(readyPay.data?.total_pages??0)>1 && <div className="mt-2 flex items-center justify-end gap-2 text-xs"><span>Page {readyPage} of {readyPay.data?.total_pages}</span><Button variant="outline" size="sm" disabled={!readyPay.data?.has_previous} onClick={()=>setReadyPage(page=>page-1)}>Previous</Button><Button variant="outline" size="sm" disabled={!readyPay.data?.has_next} onClick={()=>setReadyPage(page=>page+1)}>Next</Button></div>}
     </Card>}
-    <div className="grid gap-3 sm:grid-cols-3"><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Filtered Payments</div><div className="mt-1 text-xl font-semibold">{payments.data?.total_items??0}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Payment Total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(paymentFilteredTotal)}</div></Card><Card><div className="text-xs font-medium uppercase tracking-wide text-slate-500">Visible Page Total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(paymentPageTotal)}</div></Card></div>
-    <Card className="p-3"><div className="mb-2 flex flex-wrap items-end gap-2"><input aria-label="Search payments" className={`${input} min-w-[260px] flex-1`} placeholder="Search payment, supplier, invoice, cheque or reference" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/><select aria-label="Payment status" className={`${input} w-auto min-w-[150px]`} value={status} onChange={e=>{setStatus(e.target.value);setPage(1)}}><option value="">All statuses</option>{["DRAFT","APPROVED","POSTED","VOID"].map(value=><option key={value}>{value}</option>)}</select><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value=>!value)}><SlidersHorizontal size={15}/> Filters{filterLocationId?" (1)":""}</Button></div>{showFilters && <div className="mb-2 max-w-sm border-t border-slate-100 pt-2"><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading?"Loading locations...":"Type location code or name..."} options={(filterLocations.data??[]).map((item:any)=>({id:item.id,label:`${item.code} — ${item.name}`,keywords:[item.code??"",item.name??""]}))} onChange={id=>{setFilterLocationId(id);setPage(1)}}/></div>}<Table className="min-w-[820px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Payment</TH><TH>Supplier</TH><TH numeric>Amount</TH><TH numeric>Allocation / Funding</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{payments.data?.items.map((row:any)=><TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={<Link className={TABLE_UI.documentLink} to={`/payments/${row.id}`} state={{returnTo}}>{row.payment_number}</Link>} secondary={`${row.payment_date} · ${row.payment_method.replaceAll("_"," ")}`}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD numeric><TableCellStack primary={`Allocated ${money(row.allocated_amount)}`} secondary={`Funded ${money(row.funded_amount)}`}/></TD><TD>{row.status}</TD><TD><div className="flex items-center justify-end gap-1" role="group" aria-label={`Actions for ${row.payment_number}`}>
+    <ModuleSummary metrics={[
+      { label: "Filtered payments", value: payments.data?.total_items ?? 0 },
+      { label: "Payment total", value: money(paymentFilteredTotal), note: "Current filters" },
+      { label: "Visible page total", value: money(paymentPageTotal) },
+      { label: "Ready to pay", value: readyPay.data?.total_items ?? 0, note: "Posted invoices with an unpaid balance" },
+    ]} />
+    <Card className="overflow-hidden p-0">
+      <div className="p-3 print:hidden">
+        <ListToolbar
+          search={search}
+          searchPlaceholder="Search payment, supplier, invoice, cheque or reference"
+          onSearch={(value) => { setSearch(value); setPage(1); }}
+          filters={
+            <select aria-label="Payment status" className={`${input} w-auto min-w-[150px]`} value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}>
+              <option value="">All statuses</option>
+              {["DRAFT", "APPROVED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}
+            </select>
+          }
+          advancedOpen={showFilters}
+          onAdvancedToggle={() => setShowFilters((value) => !value)}
+          advancedFilters={
+            <div className="max-w-sm">
+              <SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(filterLocations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => { setFilterLocationId(id); setPage(1); }} />
+            </div>
+          }
+          onRefresh={() => payments.refetch()}
+          footer={
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+              <span>{payments.data?.total_items ?? 0} payments match current filters</span>
+              <label>Rows per page
+                <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </label>
+            </div>
+          }
+        />
+      </div>
+      <Table className="min-w-[820px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH>Payment</TH><TH>Supplier</TH><TH numeric>Amount</TH><TH numeric>Allocation / Funding</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{payments.data?.items.map((row:any)=><TR key={row.id} className="whitespace-nowrap"><TD><TableCellStack primary={<Link className={TABLE_UI.documentLink} to={`/payments/${row.id}`} state={{returnTo}}>{row.payment_number}</Link>} secondary={`${row.payment_date} · ${row.payment_method.replaceAll("_"," ")}`}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD numeric><TableCellStack primary={`Allocated ${money(row.allocated_amount)}`} secondary={`Funded ${money(row.funded_amount)}`}/></TD><TD>{row.status}</TD><TD><div className="flex items-center justify-end gap-1" role="group" aria-label={`Actions for ${row.payment_number}`}>
   <Button size="xs" variant="outline" onClick={() => navigate(`/payments/${row.id}`, { state: { returnTo } })}>View</Button>
-  {canManage && row.status === "DRAFT" && <Button size="xs" disabled={rowAction.isPending} loading={rowAction.isPending && rowAction.variables?.id === row.id && rowAction.variables?.name === "approve"} onClick={() => runRowAction(row.id, "approve")}>Approve</Button>}
+  {canManage && row.status === "DRAFT" && <Button size="xs" title="Approve the payment and create its draft journal" disabled={rowAction.isPending} loading={rowAction.isPending && rowAction.variables?.id === row.id && rowAction.variables?.name === "approve"} onClick={() => runRowAction(row.id, "approve")}>Approve + Draft Journal</Button>}
   {(canManage || admin || hasPermission("journal.manage")) && <select className="h-7 rounded border border-slate-300 bg-white px-1 text-xs" aria-label={`More actions for ${row.payment_number}`} value="" disabled={rowAction.isPending} onChange={event => {const action=event.target.value; if(action==="edit") navigate(`/payments?edit=${row.id}`); else if(action==="open-journal") navigate(`/journal-entries/${row.journal_entry_id}`); else if(action) runRowAction(row.id, action as ListAction);}}>
     <option value="">More actions</option>
     {canManage && row.status === "DRAFT" && <option value="edit">Edit</option>}
@@ -280,7 +321,22 @@ export default function PaymentListPage() {
     {admin && row.status === "POSTED" && <option value="unpost">Unpost</option>}
     {admin && row.status === "POSTED" && <option value="cancel-posted">Cancel posted payment</option>}
   </select>}
-</div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1)}}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{payments.data?.total_items??0} payments · Page {page} of {Math.max(payments.data?.total_pages??0,1)}</span><Button size="sm" variant="outline" disabled={!payments.data?.has_previous} onClick={()=>setPage(page-1)}>Previous</Button><Button size="sm" variant="outline" disabled={!payments.data?.has_next} onClick={()=>setPage(page+1)}>Next</Button></div></div></Card>
+</div></TD></TR>)}
+        {payments.isPending && <TR><TD colSpan={6} className="p-10 text-center text-slate-500">Loading payments…</TD></TR>}
+        {payments.isError && <TR><TD colSpan={6} className="p-10 text-center text-red-700">Payments could not be loaded.</TD></TR>}
+        {!payments.isPending && !payments.isError && !payments.data?.items?.length && <TR><TD colSpan={6} className="p-10 text-center text-slate-500">No payments match these filters.</TD></TR>}
+      </TBody></Table>
+      <div className="px-3 pb-2">
+        <Pagination
+          page={page}
+          pages={payments.data?.total_pages ?? 1}
+          total={payments.data?.total_items ?? 0}
+          pageSize={pageSize}
+          noun="payments"
+          onChange={setPage}
+        />
+      </div>
+    </Card>
 
     <Dialog open={open} onOpenChange={next=>{if(save.isPending)return;if(!next)closeEditor();else setOpen(true)}}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId?"Edit Draft Supplier Payment":"Create Supplier Payment"}</DialogTitle></DialogHeader><DialogBody className="space-y-6">
       <div className="grid gap-3 md:grid-cols-4"><SearchableSelect label="Supplier" required value={form.supplier_id||undefined} disabled={suppliers.isLoading} placeholder={suppliers.isLoading?"Loading suppliers...":"Type supplier code or name..."} options={supplierOptions} onChange={value=>setForm({...form,supplier_id:value??0,allocations:[]})}/><label className="text-sm">Payment Date<input type="date" data-allow-past-date="true" className={input} value={form.payment_date} onChange={e=>setForm({...form,payment_date:e.target.value})}/></label><label className="text-sm">Payment Method<select className={input} value={form.payment_method} onChange={e=>setForm({...form,payment_method:e.target.value})}>{methods.map(value=><option key={value}>{value}</option>)}</select></label><label className="text-sm">Currency<select className={input} value={form.currency} onChange={e=>setForm({...form,currency:e.target.value,supplier_id:editingId?form.supplier_id:0,allocations:[]})}>{currencies.map(value=><option key={value}>{value}</option>)}</select></label><label className="text-sm md:col-span-2">Reference Number<input className={input} value={form.reference_number} onChange={e=>setForm({...form,reference_number:e.target.value})}/></label>{form.payment_method==="CHEQUE"&&<label className="text-sm">Cheque Number<input className={input} value={form.cheque_number} onChange={e=>setForm({...form,cheque_number:e.target.value})}/></label>}</div>

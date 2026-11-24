@@ -56,9 +56,25 @@ export type APSummaryResponse = Page<APSupplierSummary> & {
   status_counts: Record<APStatus, number>;
 };
 
+export type APReportingQuery = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: APStatus;
+  businessUnitId?: number;
+};
+
+const params = ({ page = 1, pageSize = 50, search = "", status, businessUnitId }: APReportingQuery) => ({
+  page,
+  page_size: pageSize,
+  business_unit_id: businessUnitId || undefined,
+  search: search.trim() || undefined,
+  status: status || undefined,
+});
+
 export const apReportingApi = {
-  summary: async (page = 1, pageSize = 20, business_unit_id?:number) =>
-    (await api.get<APSummaryResponse>("/ap-reporting/summary", { params: { page, page_size: pageSize,business_unit_id } })).data,
-  detail: async (page = 1, pageSize = 20, business_unit_id?:number) =>
-    (await api.get<Page<APDetailRow>>("/ap-reporting/detail", { params: { page, page_size: pageSize,business_unit_id } })).data,
+  summary: async (query: APReportingQuery = {}) =>
+    (await api.get<APSummaryResponse>("/ap-reporting/summary", { params: params(query) })).data,
+  detail: async (query: APReportingQuery = {}) =>
+    (await api.get<Page<APDetailRow>>("/ap-reporting/detail", { params: params(query) })).data,
 };

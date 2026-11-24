@@ -48,7 +48,6 @@ export const navigationGroups: NavigationGroup[] = [
     { title: "Finance Dashboard", url: "/finance-dashboard", permission: "finance.view" },
     { title: "Accounts Payable", url: "/accounts-payable", permission: "ap.view", roles: ["SYSTEM_ADMINISTRATOR", "FINANCE", "AP", "GENERAL_MANAGER", "AUDITOR"] },
     { title: "Accounts Receivable", url: "/accounts-receivable", permission: "finance.view" },
-    { title: "General Cashier", url: "/cash-bank/cashier", permission: "finance.view" },
     { title: "Petty Cash", url: "/cash-bank/petty-cash", permission: "finance.view" },
     { title: "Cash & Bank", url: "/cash-bank", permission: "finance.view" },
     { title: "Journal", url: "/journal", permission: "journal.view" },
@@ -91,7 +90,13 @@ export function visibleNavigation(user: NavigationUser): NavigationGroup[] {
 
 const aliases: Record<string, string[]> = {
   "/journal": ["/journal-entries", "/general-ledger", "/trial-balance"],
-  "/accounts-payable": ["/supplier-invoices", "/payments", "/supplier-adjustments"],
+  "/accounts-payable": [
+    "/supplier-invoices",
+    "/payments",
+    "/supplier-adjustments",
+    "/finance/payment-vouchers",
+    "/payment-vouchers",
+  ],
   "/accounts-receivable": ["/customer-invoices", "/customer-payments"],
   "/cash-bank": ["/cash-accounts", "/bank-transfers", "/bank-reconciliations", "/cash-flow"],
   "/finance-setup": ["/chart-of-accounts", "/opening-balances", "/posting-rules"],
@@ -106,7 +111,7 @@ export function navigationMatches(item: NavigationChild, pathname: string, searc
   return matches && (!query || [...new URLSearchParams(query)].every(([key, value]) => actual.get(key) === value));
 }
 export function activeNavigation(groups: NavigationGroup[], pathname: string, search: string) {
-  // Prefer specific children (cashier, accounting periods) over their parent URL.
+  // Prefer specific children over their parent URL.
   const matches = groups.flatMap(group => (group.url ? [group] : group.children ?? []).filter(child => navigationMatches(child, pathname, search)).map(child => ({ group, child })));
   return matches.sort((a,b) => (b.child.url?.length ?? 0) - (a.child.url?.length ?? 0))[0];
 }
@@ -117,7 +122,7 @@ const childIcons: Record<string, LucideIcon> = {
   "/purchase-requisitions": ClipboardList, "/market-lists": ListChecks, "/purchase-orders": FileText, "/receiving": PackageCheck,
   "/inventory": Boxes, "/inventory/movements": ArrowLeftRight, "/store-requests": ClipboardList, "/stock-opnames": ClipboardCheck, "/stock-adjustments": SlidersHorizontal,
   "/statistics": BarChart3, "/budgets": Calculator, "/finance-dashboard": ChartNoAxesCombined, "/accounts-payable": Wallet, "/accounts-receivable": Receipt,
-  "/cash-bank/cashier": Wallet, "/cash-bank/petty-cash": Wallet, "/cash-bank": Landmark, "/journal": BookOpen, "/finance-setup/accounting-periods": CalendarDays,
+  "/cash-bank/petty-cash": Wallet, "/cash-bank": Landmark, "/journal": BookOpen, "/finance-setup/accounting-periods": CalendarDays,
   "/financial-reconciliation": GitCompareArrows, "/fixed-assets": Armchair, "/users": Users, "/roles": ShieldCheck,
 };
 export const navigationIcon = (item: NavigationChild): LucideIcon => childIcons[item.url ?? ""] ?? FileBarChart;

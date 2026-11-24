@@ -2,13 +2,21 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import api from "@/api/client";
-import APWorkspaceHeader from "./APWorkspaceHeader";
-import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
+import ListToolbar from "@/components/common/ListToolbar";
+import ModuleSummary from "@/components/common/ModuleSummary";
+import PageHeader from "@/components/common/PageHeader";
+import Pagination from "@/components/datatable/Pagination";
 import SearchableSelect from "@/components/form/SearchableSelect";
+import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
-import { supplierApi } from "@/modules/master/suppliers/api/supplierApi";
+import DataWorkspace from "@/components/workspace/DataWorkspace";
+import { FORM_UI } from "@/config/formUi";
 import { listLocations } from "@/modules/admin/organization/api";
+import { supplierApi } from "@/modules/master/suppliers/api/supplierApi";
+import { todayLocal } from "@/utils/dateConstraints";
+import { exportCsv } from "@/utils/exportCsv";
+import APWorkspaceHeader from "./APWorkspaceHeader";
 
 type MovementRow = {
   id: string | number;
@@ -40,12 +48,14 @@ type MovementResponse = {
   page: number;
   page_size: number;
   total_items: number;
+  total_pages: number;
   has_next: boolean;
   has_previous: boolean;
 };
 
-const today = new Date().toISOString().slice(0, 10);
+const today = todayLocal();
 const yearStart = `${today.slice(0, 4)}-01-01`;
+const PAGE_SIZE = 50;
 const money = (value: unknown) =>
   Number(value || 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -56,6 +66,9 @@ const movementLink = (row: MovementRow) => {
   if (row.document_type === "SUPPLIER_ADJUSTMENT") return `/supplier-adjustments`;
   return null;
 };
+
+const movementLabel = (type: string) =>
+  ({ OPENING: "Opening", INVOICE: "Supplier Invoice", PAYMENT: "Payment", ADJUSTMENT: "Credit / Debit Note" }[type] ?? type.replaceAll("_", " "));
 
 export default function APMovementPage() {
   const [page, setPage] = useState(1);
@@ -68,17 +81,16 @@ export default function APMovementPage() {
     search: "",
   });
   const [filters, setFilters] = useState(draft);
+  const invalidPeriod = draft.date_from > draft.date_to;
 
-  const suppliers = useQuery({
-    queryKey: ["ap-movement-suppliers"],
-    queryFn: () => supplierApi.lookup("", 100),
-  });
+  const suppliers = useQuery({ queryKey: ["ap-movement-suppliers"], queryFn: () => supplierApi.lookup("", 100) });
   const locations = useQuery({
     queryKey: ["ap-movement-locations"],
     queryFn: () => listLocations({ is_active: true }),
   });
   const movement = useQuery({
     queryKey: ["ap-movement", filters, page],
+    enabled: !invalidPeriod,
     queryFn: async () =>
       (
         await api.get<MovementResponse>("/ap-movement", {
@@ -89,7 +101,7 @@ export default function APMovementPage() {
             movement_type: filters.movement_type || undefined,
             search: filters.search || undefined,
             page,
-            page_size: 50,
+            page_size: PAGE_SIZE,
           },
         })
       ).data,
@@ -119,138 +131,231 @@ export default function APMovementPage() {
     keywords: [row.code ?? "", row.name ?? ""],
   }));
 
+  const apply = () => {
+    setPage(1);
+    setFilters({ ...draft, search: draft.search.trim() });
+  };
+
+  const exportPage = () =>
+    exportCsv(
+      "ap-movement.csv",
+      ["Date", "Supplier", "Document", "Movement", "Increase", "Decrease", "Running AP", "Status"],
+      rows.map((row) => [
+        row.movement_date,
+        row.supplier_name,
+        row.document_number,
+        movementLabel(row.movement_type),
+        row.increase,
+        row.decrease,
+        row.running_balance,
+        row.status,
+      ]),
+    );
+
+  const inputClass = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`;
+
   return (
-    <div className="space-y-5">
-      <APWorkspaceHeader />
-
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">AP Movement</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Follow posted invoices, payments, and adjustments through the AP balance. Open a document to review its details.
-        </p>
-      </div>
-
-      <Card>
-        <form
-          className="grid gap-3 md:grid-cols-3 xl:grid-cols-6"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setPage(1);
-            setFilters({ ...draft });
-          }}
+    <DataWorkspace area="Accounting" className="data-first">
+      <div className="space-y-2">
+        <PageHeader
+          title="AP Movement"
+          description="Follow posted invoices, payments, and adjustments through the AP balance. Open a document to review its details."
+          actions={
+            <Button size="sm" variant="outline" onClick={() => movement.refetch()}>
+              Refresh
+            </Button>
+          }
         >
-          <label className="text-sm">
-            From
-            <input className="mt-1 h-10 w-full rounded-md border px-3" type="date" value={draft.date_from} onChange={(e) => setDraft({ ...draft, date_from: e.target.value })} />
-          </label>
-          <label className="text-sm">
-            To
-            <input className="mt-1 h-10 w-full rounded-md border px-3" type="date" value={draft.date_to} onChange={(e) => setDraft({ ...draft, date_to: e.target.value })} />
-          </label>
-          <SearchableSelect label="Supplier" value={draft.supplier_id} placeholder="All suppliers" options={supplierOptions} onChange={(supplier_id) => setDraft({ ...draft, supplier_id })} />
-          <SearchableSelect label="Location" value={draft.location_id} placeholder="All locations" options={locationOptions} onChange={(location_id) => setDraft({ ...draft, location_id })} />
-          <label className="text-sm">
-            Movement
-            <select className="mt-1 h-10 w-full rounded-md border px-3" value={draft.movement_type} onChange={(e) => setDraft({ ...draft, movement_type: e.target.value })}>
-              <option value="">All movements</option>
-              <option value="OPENING">Opening</option>
-              <option value="INVOICE">Supplier Invoice</option>
-              <option value="PAYMENT">Payment</option>
-              <option value="ADJUSTMENT">Credit / Debit Note</option>
-            </select>
-          </label>
-          <div className="flex items-end">
-            <Button type="submit" className="w-full">Apply</Button>
-          </div>
-          <label className="text-sm md:col-span-3 xl:col-span-6">
-            Search
-            <input className="mt-1 h-10 w-full rounded-md border px-3" placeholder="Document number, supplier reference, or supplier name..." value={draft.search} onChange={(e) => setDraft({ ...draft, search: e.target.value })} />
-          </label>
-        </form>
-      </Card>
+          <div className="mt-0.5 text-[11px] text-slate-500">Posted document activity · {filters.date_from} → {filters.date_to}</div>
+        </PageHeader>
+        <APWorkspaceHeader />
 
-      {movement.data?.summary?.opening_unassigned && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          The manual opening AP is recorded by account and cannot be assigned to this supplier or AP user. These balances show document activity only.
-        </div>
-      )}
-      {movement.data && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label={movement.data.summary.opening_unassigned ? "Brought forward activity" : "Opening AP"} value={money(movement.data.summary.opening_balance)} />
-        <Metric label="Invoices +" value={money(movement.data?.summary?.invoice_total)} />
-        <Metric label="Payments −" value={money(movement.data?.summary?.payment_total)} />
-        <Metric label="Adjustments" value={money(movement.data?.summary?.adjustment_total)} />
-        <Metric label={movement.data.summary.opening_unassigned ? "Closing activity" : "Closing AP"} value={money(movement.data.summary.closing_balance)} strong />
-      </div>}
-
-      <Card className="p-0">
-        {movement.isLoading ? (
-          <div className="p-10 text-center text-sm text-slate-500">Loading AP movement…</div>
-        ) : movement.isError ? (
-          <div className="p-10 text-center text-sm text-amber-700">
-            AP Movement could not be loaded. <button type="button" className="font-semibold underline" onClick={() => movement.refetch()}>Retry</button>
+        {invalidPeriod && (
+          <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            From date must be on or before To date.
           </div>
-        ) : (
-          <>
-            <Table variant="grid" className="min-w-[1120px]">
-              <THead>
-                <TR>
-                  <TH>Date</TH>
-                  <TH>Supplier</TH>
-                  <TH>Document</TH>
-                  <TH>Movement</TH>
-                  <TH numeric>Increase</TH>
-                  <TH numeric>Decrease</TH>
-                  <TH numeric>Running AP</TH>
-                  <TH>Status</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {rows.length === 0 && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No AP movements match these filters.</TD></TR>}
-                {rows.map((row) => {
-                  const link = movementLink(row);
-                  return (
-                    <TR key={row.id}>
-                      <TD className="whitespace-nowrap">{row.movement_date}</TD>
-                      <TD>{row.supplier_name || "—"}</TD>
-                      <TD>
-                        <TableCellStack
-                          primary={link ? <Link className="font-medium text-emerald-700 hover:underline" to={link}>{row.document_number || "—"}</Link> : row.document_number || "—"}
-                          secondary={row.unallocated_amount && Number(row.unallocated_amount) > 0
-                            ? `Unallocated payment: Rp ${money(row.unallocated_amount)}`
-                            : row.supplier_reference || undefined}
-                        />
-                      </TD>
-                      <TD>{row.movement_type.replaceAll("_", " ")}</TD>
-                      <TD numeric>{money(row.increase)}</TD>
-                      <TD numeric>{money(row.decrease)}</TD>
-                      <TD numeric className="font-semibold">{money(row.running_balance)}</TD>
-                      <TD>{row.status || "—"}</TD>
-                    </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-              <div>
-                Page increase <b>{money(pageTotals.increase)}</b> · Page decrease <b>{money(pageTotals.decrease)}</b>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" disabled={!movement.data?.has_previous} onClick={() => setPage(Math.max(1, page - 1))}>Previous</Button>
-                <Button variant="outline" disabled={!movement.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button>
-              </div>
-            </div>
-          </>
         )}
-      </Card>
-    </div>
-  );
-}
 
-function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <Card className="p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={`mt-1 text-xl tabular-nums ${strong ? "font-bold text-slate-950" : "font-semibold"}`}>{value}</div>
-    </Card>
+        <Card className="overflow-hidden p-0">
+          <div className="p-3 print:hidden">
+            <ListToolbar
+              search={draft.search}
+              searchPlaceholder="Document number, supplier reference, or supplier name..."
+              onSearch={(value) => setDraft({ ...draft, search: value })}
+              onExport={exportPage}
+              onRefresh={() => movement.refetch()}
+              filters={
+                <>
+                  <label className="inline-flex items-center gap-1 text-xs text-slate-600">
+                    From
+                    <input
+                      aria-label="From date"
+                      type="date"
+                      className={`${inputClass} w-36`}
+                      value={draft.date_from}
+                      onChange={(event) => setDraft({ ...draft, date_from: event.target.value })}
+                    />
+                  </label>
+                  <label className="inline-flex items-center gap-1 text-xs text-slate-600">
+                    To
+                    <input
+                      aria-label="To date"
+                      type="date"
+                      className={`${inputClass} w-36`}
+                      value={draft.date_to}
+                      onChange={(event) => setDraft({ ...draft, date_to: event.target.value })}
+                    />
+                  </label>
+                  <div className="w-48">
+                    <SearchableSelect
+                      label="Supplier"
+                      value={draft.supplier_id}
+                      placeholder="All suppliers"
+                      options={supplierOptions}
+                      onChange={(value) => setDraft({ ...draft, supplier_id: value })}
+                    />
+                  </div>
+                  <div className="w-48">
+                    <SearchableSelect
+                      label="Location"
+                      value={draft.location_id}
+                      placeholder="All locations"
+                      options={locationOptions}
+                      onChange={(value) => setDraft({ ...draft, location_id: value })}
+                    />
+                  </div>
+                  <label className="inline-flex items-center gap-1 text-xs text-slate-600">
+                    Movement
+                    <select
+                      aria-label="Movement type"
+                      className={`${inputClass} w-40`}
+                      value={draft.movement_type}
+                      onChange={(event) => setDraft({ ...draft, movement_type: event.target.value })}
+                    >
+                      <option value="">All movements</option>
+                      <option value="OPENING">Opening</option>
+                      <option value="INVOICE">Supplier Invoice</option>
+                      <option value="PAYMENT">Payment</option>
+                      <option value="ADJUSTMENT">Credit / Debit Note</option>
+                    </select>
+                  </label>
+                  <Button size="sm" disabled={invalidPeriod} onClick={apply}>Apply</Button>
+                </>
+              }
+            />
+          </div>
+
+          {movement.data?.summary?.opening_unassigned && (
+            <div role="status" className="mx-3 mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              The manual opening AP is recorded by account and cannot be assigned to this supplier or AP user. These balances show document activity only.
+            </div>
+          )}
+
+          {!!movement.data && (
+            <div className="px-3 pb-2">
+              <ModuleSummary
+                metrics={[
+                  {
+                    label: movement.data.summary.opening_unassigned ? "Brought forward activity" : "Opening AP",
+                    value: money(movement.data.summary.opening_balance),
+                  },
+                  { label: "Invoices +", value: money(movement.data.summary.invoice_total) },
+                  { label: "Payments −", value: money(movement.data.summary.payment_total) },
+                  { label: "Adjustments", value: money(movement.data.summary.adjustment_total) },
+                  {
+                    label: movement.data.summary.opening_unassigned ? "Closing activity" : "Closing AP",
+                    value: money(movement.data.summary.closing_balance),
+                    note: "Includes the complete filtered period",
+                  },
+                ]}
+              />
+            </div>
+          )}
+
+          {invalidPeriod ? (
+            <div className="m-3 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Set a valid date range to load AP movement.
+            </div>
+          ) : movement.isPending ? (
+            <div className="p-10 text-center text-sm text-slate-500">Loading AP movement…</div>
+          ) : movement.isError ? (
+            <div role="alert" className="m-3 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <div className="font-semibold">AP Movement could not be loaded.</div>
+              <Button className="mt-3" size="sm" variant="outline" onClick={() => movement.refetch()}>Try again</Button>
+            </div>
+          ) : (
+            <>
+              <CardHeader>
+                <div>
+                  <CardTitle className="text-sm">Document Activity</CardTitle>
+                  <CardDescription>Page increase {money(pageTotals.increase)} · page decrease {money(pageTotals.decrease)}</CardDescription>
+                </div>
+              </CardHeader>
+              <Table className="min-w-[1120px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+                <THead>
+                  <TR>
+                    <TH>Date</TH>
+                    <TH>Supplier</TH>
+                    <TH>Document</TH>
+                    <TH>Movement</TH>
+                    <TH numeric>Increase</TH>
+                    <TH numeric>Decrease</TH>
+                    <TH numeric>Running AP</TH>
+                    <TH>Status</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {rows.map((row) => {
+                    const link = movementLink(row);
+                    return (
+                      <TR key={row.id}>
+                        <TD className="whitespace-nowrap">{row.movement_date}</TD>
+                        <TD>{row.supplier_name || "—"}</TD>
+                        <TD>
+                          <TableCellStack
+                            primary={
+                              link ? (
+                                <Link className="font-medium text-emerald-700 hover:underline" to={link}>
+                                  {row.document_number || "—"}
+                                </Link>
+                              ) : (
+                                row.document_number || "—"
+                              )
+                            }
+                            secondary={
+                              row.unallocated_amount && Number(row.unallocated_amount) > 0
+                                ? `Unallocated payment: Rp ${money(row.unallocated_amount)}`
+                                : row.supplier_reference || undefined
+                            }
+                          />
+                        </TD>
+                        <TD>{movementLabel(row.movement_type)}</TD>
+                        <TD numeric>{money(row.increase)}</TD>
+                        <TD numeric>{money(row.decrease)}</TD>
+                        <TD numeric className="font-semibold tabular-nums">{money(row.running_balance)}</TD>
+                        <TD>{row.status || "—"}</TD>
+                      </TR>
+                    );
+                  })}
+                  {!rows.length && (
+                    <TR><TD colSpan={8} className="p-10 text-center text-slate-500">No AP movements match these filters.</TD></TR>
+                  )}
+                </TBody>
+              </Table>
+              <div className="px-3 pb-2">
+                <Pagination
+                  page={page}
+                  pages={movement.data?.total_pages ?? 1}
+                  total={movement.data?.total_items ?? 0}
+                  pageSize={PAGE_SIZE}
+                  noun="movements"
+                  onChange={setPage}
+                />
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+    </DataWorkspace>
   );
 }

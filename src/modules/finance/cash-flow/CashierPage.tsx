@@ -1,71 +1,792 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Pencil, Plus, RefreshCw } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import api from "@/api/client";
 import InventoryPrintButton from "@/components/print/InventoryPrintButton";
-import { collectReportPages, type ReportPage, type InventoryPrintReport } from "@/utils/inventoryPrint";
+import {
+  collectReportPages,
+  type InventoryPrintReport,
+  type ReportPage,
+} from "@/utils/inventoryPrint";
 import PageHeader from "@/components/common/PageHeader";
+import ModuleSummary from "@/components/common/ModuleSummary";
+import Pagination from "@/components/datatable/Pagination";
+import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
-import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
-import SearchableSelect from "@/components/form/SearchableSelect";
+import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import Input from "@/components/ui/Input";
+import Loading from "@/components/ui/Loading";
+import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
+import Dialog, {
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/Dialog";
 import CurrencyInput from "@/components/form/CurrencyInput";
-import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
-import { listLocations, listDepartments } from "@/modules/admin/organization/api";
-import useAuthStore from "@/store/auth";
-import useFormRecovery from "@/hooks/useFormRecovery";
 import FormRecoveryActions from "@/components/form/FormRecoveryActions";
+import SearchableSelect from "@/components/form/SearchableSelect";
+import DataWorkspace from "@/components/workspace/DataWorkspace";
+import { FORM_UI } from "@/config/formUi";
+import { listDepartments, listLocations } from "@/modules/admin/organization/api";
+import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
+import type { AccountLookup } from "@/modules/master/chart-of-accounts/types";
+import useFormRecovery from "@/hooks/useFormRecovery";
+import useAuthStore from "@/store/auth";
 import { todayLocal } from "@/utils/dateConstraints";
 
-type Journal = { id: number; journal_number: string; document_type: string; posting_date: string; description: string; total_debit: string; status: string };
-type CashSummary = { account_id: number; account_name: string; account_subtype: string; opening_balance: string; total_inflow: string; total_outflow: string; closing_balance: string };
-const cashTypes = ["BANK", "CASH", "PETTY_CASH"];
-const blank = () => ({ posting_date: todayLocal(), operation: "PAYMENT", cash_account_id: 0, counterpart_account_id: 0, amount: 0, location_id: 0, department_id: null as number | null, business_unit_id: null as number | null, reference_number: "", description: "" });
-type Entry = ReturnType<typeof blank>;
-const valid = (v: unknown): v is Entry => !!v && typeof v === "object" && typeof (v as Entry).posting_date === "string" && typeof (v as Entry).amount === "number";
-const money = (v: unknown) => Number(v || 0).toLocaleString("id-ID", { maximumFractionDigits: 2 });
-const input = "h-8 w-full rounded border px-2 text-xs";
+type Journal = {
+  id: number;
+  journal_number: string;
+  document_type: string;
+  posting_date: string;
+  description: string;
+  total_debit: string;
+  status: string;
+};
 
-export default function CashierPage({ petty = false }: { petty?: boolean }) {
-  const canManage = useAuthStore(s => s.hasPermission("finance.manage"));
-  const qc = useQueryClient();
-  const [dateFrom, setDateFrom] = useState(todayLocal);
-  const [dateTo, setDateTo] = useState(todayLocal);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const period = `${dateFrom} → ${dateTo}`;
+type CashSummary = {
+  account_id: number;
+  account_name: string;
+  account_subtype: string;
+  opening_balance: string;
+  total_inflow: string;
+  total_outflow: string;
+  closing_balance: string;
+};
+
+type Entry = {
+  posting_date: string;
+  operation: string;
+  cash_account_id: number;
+  counterpart_account_id: number;
+  amount: number;
+  location_id: number;
+  department_id: number | null;
+  business_unit_id: number | null;
+  reference_number: string;
+  description: string;
+};
+
+type FormErrors = Partial<Record<keyof Entry, string>>;
+
+const PAGE_SIZE = 50;
+const CASH_TYPES = ["BANK", "CASH", "PETTY_CASH"];
+
+const EVENT_LABELS: Record<string, string> = {
+  PAYMENT: "Expense payment",
+  REPLENISHMENT: "Replenishment",
+  TRANSFER: "Transfer out",
+  RECEIPT: "Cash receipt",
+};
+
+const OPERATION_HELP: Record<string, string> = {
+  PAYMENT: "Petty cash → expense. Use this for small costs paid from the float.",
+  REPLENISHMENT: "Bank or cash → petty cash. Use this to top up the float.",
+  TRANSFER: "Petty cash → cash or bank. Use this to return or move funds out.",
+  RECEIPT:
+    "Legacy cash receipt. New petty cash entries use replenishment, expense payment, or transfer out.",
+};
+
+const blank = (): Entry => ({
+  posting_date: todayLocal(),
+  operation: "PAYMENT",
+  cash_account_id: 0,
+  counterpart_account_id: 0,
+  amount: 0,
+  location_id: 0,
+  department_id: null,
+  business_unit_id: null,
+  reference_number: "",
+  description: "",
+});
+
+const isValidEntry = (value: unknown): value is Entry =>
+  !!value &&
+  typeof value === "object" &&
+  typeof (value as Entry).posting_date === "string" &&
+  typeof (value as Entry).amount === "number";
+
+const money = (value: unknown) =>
+  Number(value || 0).toLocaleString("id-ID", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const titleCase = (value: string) =>
+  value
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const eventLabel = (documentType: string) => {
+  const operation = documentType.replace("CASHIER_", "");
+  return EVENT_LABELS[operation] ?? titleCase(operation);
+};
+
+const statusLabel = (status: string) =>
+  ({ POSTED: "Posted", DRAFT: "Draft", VOID: "Voided", VOIDED: "Voided" }[status] ?? titleCase(status));
+
+const statusVariant = (status: string): BadgeVariant => {
+  if (status === "POSTED") return "success";
+  if (status === "DRAFT") return "warning";
+  if (status === "VOID" || status === "VOIDED") return "danger";
+  return "default";
+};
+
+const currentMonth = () => {
+  const today = todayLocal();
+  return { from: `${today.slice(0, 7)}-01`, to: today };
+};
+
+export default function CashierPage() {
+  const canManage = useAuthStore((state) => state.hasPermission("finance.manage"));
+  const queryClient = useQueryClient();
+  const initialPeriod = useMemo(currentMonth, []);
+  const [dateFrom, setDateFrom] = useState(initialPeriod.from);
+  const [dateTo, setDateTo] = useState(initialPeriod.to);
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(blank);
-  const createRecovery = useFormRecovery(petty ? "petty-cash:create" : "cashier:create", form, open && editingId === null, valid);
-  const editRecovery = useFormRecovery(`cashier:edit:${editingId ?? "none"}`, form, open && editingId !== null, valid);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<Entry>(blank);
+  const [errors, setErrors] = useState<FormErrors>({});
+
+  const period = `${dateFrom} → ${dateTo}`;
+  const invalidPeriod = dateFrom > dateTo;
+
+  const createRecovery = useFormRecovery("petty-cash:create", form, open && editingId === null, isValidEntry);
+  const editRecovery = useFormRecovery(
+    `petty-cash:edit:${editingId ?? "none"}`,
+    form,
+    open && editingId !== null,
+    isValidEntry,
+  );
   const recovery = editingId === null ? createRecovery : editRecovery;
-  const entries = useQuery({ queryKey: ["cashier", dateFrom, dateTo, page, petty], queryFn: async () => (await api.get<{ items: Journal[]; total_pages: number }>("/cashier", { params: { date_from: dateFrom, date_to: dateTo, page, petty_cash: petty } })).data });
-  const balances = useQuery({ queryKey: ["cashier-balances", dateFrom, dateTo], queryFn: async () => (await api.get<CashSummary[]>("/cash-flow/accounts", { params: { date_from: dateFrom, date_to: dateTo } })).data });
-  const accounts = useQuery({ queryKey: ["cashier-accounts"], queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }), enabled: open });
-  const locations = useQuery({ queryKey: ["cashier-locations"], queryFn: () => listLocations({ is_active: true }), enabled: open });
-  const departments = useQuery({ queryKey: ["cashier-departments", form.location_id], queryFn: () => listDepartments({ location_id: form.location_id, is_active: true }), enabled: open && !!form.location_id });
-  const cashAccounts = (accounts.data ?? []).filter(a => a.account_type === "ASSET" && cashTypes.includes(a.account_subtype || "") && (!petty || a.account_subtype === "PETTY_CASH"));
-  const counterpart = (accounts.data ?? []).filter(a => a.id !== form.cash_account_id && (["TRANSFER", "REPLENISHMENT"].includes(form.operation) ? a.account_type === "ASSET" && cashTypes.includes(a.account_subtype || "") : form.operation === "PAYMENT" ? a.account_type === "EXPENSE" : ["REVENUE", "INCOME"].includes(a.account_type)));
-  const options = (values: typeof cashAccounts) => values.map(a => ({ id: a.id, label: a.account_name, keywords: [a.account_code, a.account_name] }));
-  const refresh = () => { ["cashier", "cashier-balances", "journal-entries", "general-ledger", "management-dashboard", "financial-report-comparison"].forEach(key => qc.invalidateQueries({ queryKey: [key] })); };
-  const save = useMutation({ mutationFn: async () => (editingId === null ? await api.post("/cashier", form) : await api.patch(`/cashier/${editingId}`, form)).data, onSuccess: () => { recovery.clear(); setOpen(false); setForm(blank()); setEditingId(null); refresh(); toast.success("Cashier draft saved"); }, onError: (e: { response?: { data?: { detail?: string } } }) => toast.error(e.response?.data?.detail || "Entry could not be saved") });
-  const action = useMutation({ mutationFn: ({ id, name }: { id: number; name: string }) => api.post(`/cashier/${id}/${name}`), onSuccess: () => { refresh(); toast.success("Cashier entry updated"); }, onError: (e: { response?: { data?: { detail?: string } } }) => toast.error(e.response?.data?.detail || "Action failed") });
-  const loadReport = async (): Promise<InventoryPrintReport> => {
-    const [book, cash] = await Promise.all([collectReportPages<Journal>(async p => (await api.get<ReportPage<Journal>>("/cashier", {params: {date_from: dateFrom, date_to: dateTo, petty_cash: petty, page: p, page_size: 100}})).data), api.get<CashSummary[]>("/cash-flow/accounts", {params: {date_from: dateFrom, date_to: dateTo}})]);
-    return {title: petty ? "Petty Cash Book" : "General Cashier Book", context: period, rowCount: book.items.length, columns: [{label: "Number"}, {label: "Date"}, {label: "Event"}, {label: "Description"}, {label: "Amount", numeric: true}, {label: "Status"}], groups: [{title: "Cashier entries", rows: book.items.map(j => [j.journal_number, j.posting_date, j.document_type.replace("CASHIER_", ""), j.description, money(j.total_debit), j.status])}, ...cash.data.filter(a => !petty || a.account_subtype === "PETTY_CASH").map(a => ({title: a.account_name, rows: [["Opening", null, null, null, money(a.opening_balance), null], ["In", null, null, null, money(a.total_inflow), null], ["Out", null, null, null, money(a.total_outflow), null], ["Closing", null, null, null, money(a.closing_balance), null]]}))]};
+
+  const entries = useQuery({
+    queryKey: ["cashier", dateFrom, dateTo, page],
+    enabled: !invalidPeriod,
+    queryFn: async () =>
+      (
+        await api.get<{
+          items: Journal[];
+          total_items: number;
+          total_pages: number;
+          page: number;
+          page_size: number;
+        }>("/cashier", {
+          params: {
+            date_from: dateFrom,
+            date_to: dateTo,
+            page,
+            page_size: PAGE_SIZE,
+            petty_cash: true,
+          },
+        })
+      ).data,
+  });
+
+  const balances = useQuery({
+    queryKey: ["cashier-balances", dateFrom, dateTo],
+    enabled: !invalidPeriod,
+    queryFn: async () =>
+      (await api.get<CashSummary[]>("/cash-flow/accounts", { params: { date_from: dateFrom, date_to: dateTo } })).data,
+  });
+
+  const accounts = useQuery({
+    queryKey: ["cashier-accounts"],
+    enabled: open,
+    queryFn: () => getAllAccountLookup({ is_active: true, is_posting: true }),
+  });
+  const locations = useQuery({
+    queryKey: ["cashier-locations"],
+    enabled: open,
+    queryFn: () => listLocations({ is_active: true }),
+  });
+  const departments = useQuery({
+    queryKey: ["cashier-departments", form.location_id],
+    enabled: open && !!form.location_id,
+    queryFn: () => listDepartments({ location_id: form.location_id, is_active: true }),
+  });
+
+  const refresh = () => {
+    ["cashier", "cashier-balances", "journal-entries", "general-ledger", "management-dashboard", "financial-report-comparison"].forEach(
+      (key) => queryClient.invalidateQueries({ queryKey: [key] }),
+    );
   };
-  const summary = (balances.data ?? []).filter(a => !petty || a.account_subtype === "PETTY_CASH");
-  return <div className="print-document space-y-2"><PageHeader title={petty ? "Petty Cash Usage" : "General Cashier"} description={period} actions={<><input aria-label="From date" title="From date" type="date" className={input} value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} /><input aria-label="To date" title="To date" type="date" className={input} value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} /><Button size="sm" variant="outline" title="Refresh" aria-label="Refresh" onClick={refresh}><RefreshCw size={15}/></Button><InventoryPrintButton loadReport={loadReport} reportLabel={petty ? "Petty cash" : "Cashier"} />{canManage && <Button size="sm" aria-label="Create cashier draft" onClick={() => { setEditingId(null); const saved = createRecovery.load(); setForm(saved || blank()); if (saved) createRecovery.notifyRestored(); setOpen(true); }}><Plus size={15} /></Button>}</>} />
-    {balances.isError && <p role="alert" className="text-red-700">Cash balances could not load.</p>}
-    <div className="overflow-x-auto rounded border bg-white"><table className="w-full whitespace-nowrap text-xs"><thead><tr className="bg-slate-50">{["Cash account", "Opening", "In", "Out", "Closing"].map(label => <th key={label} className="px-2 py-1 text-left">{label}</th>)}</tr></thead><tbody>{summary.map(a => <tr key={a.account_id} className="border-t"><td className="px-2 py-1"><Link className="text-blue-700" to={`/cash-accounts/${a.account_id}?date_from=${dateFrom}&date_to=${dateTo}`}>{a.account_name}</Link></td>{[a.opening_balance, a.total_inflow, a.total_outflow, a.closing_balance].map((v, i) => <td key={i} className="px-2 py-1 text-right tabular-nums">{money(v)}</td>)}</tr>)}</tbody></table></div>
-    {entries.isError ? <p role="alert">Cashier entries could not load.</p> : <div className="overflow-x-auto rounded border bg-white"><table className="w-full whitespace-nowrap text-xs"><thead><tr className="bg-slate-50">{["Number", "Date", "Event", "Reference / description", "Amount", "Status", "Actions"].map(label => <th key={label} className="px-2 py-1 text-left">{label}</th>)}</tr></thead><tbody>{entries.data?.items.map(j => <tr key={j.id} className="border-t"><td className="px-2 py-1"><Link className="text-blue-700" to={`/journal-entries/${j.id}`}>{j.journal_number}</Link></td><td>{j.posting_date}</td><td>{j.document_type.replace("CASHIER_", "")}</td><td>{j.description}</td><td className="text-right">{money(j.total_debit)}</td><td>{j.status}</td><td className="flex gap-1 p-1 print:hidden">{canManage && j.status === "DRAFT" && <Button size="xs" variant="outline" title="Edit draft" aria-label={`Edit ${j.journal_number}`} onClick={async () => { if (editingId === j.id) { setOpen(true); return; } try { const response = await api.get<{entry: Entry}>(`/cashier/${j.id}`); setForm({ ...blank(), ...response.data.entry, amount: Number(response.data.entry.amount) }); setEditingId(j.id); setOpen(true); } catch { toast.error("Could not load cashier draft"); } }}><Pencil size={13}/></Button>}{canManage && j.status === "DRAFT" && ["post", "void"].map(name => <Button key={name} size="xs" variant="outline" disabled={action.isPending} onClick={() => { if (window.confirm(`${name === "post" ? "Post" : "Void"} ${j.journal_number}?`)) action.mutate({ id: j.id, name }); }}>{name}</Button>)}<Link className="rounded border px-2 py-1" to={`/journal-entries/${j.id}/print`}>Print</Link></td></tr>)}</tbody></table>{entries.isPending && <p className="p-2">Loading entries…</p>}</div>}
-    <div className="flex gap-2 text-xs print:hidden"><Button size="xs" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button><span>{page} / {entries.data?.total_pages || 1}</span><Button size="xs" disabled={page >= (entries.data?.total_pages || 1)} onClick={() => setPage(page + 1)}>Next</Button></div>
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent><DialogHeader><DialogTitle>{editingId ? "Edit cashier draft" : petty ? "Petty cash usage" : "Cashier entry"}</DialogTitle></DialogHeader><DialogBody><div className="grid gap-2 md:grid-cols-2">
-      <label className="text-xs">Date<input className={input} type="date" value={form.posting_date} onChange={e => setForm({ ...form, posting_date: e.target.value })} /></label><label className="text-xs">Event<select className={input} value={form.operation} onChange={e => setForm({ ...form, operation: e.target.value, counterpart_account_id: 0 })}><option value="PAYMENT">Expense / payment</option>{!petty && <option value="RECEIPT">Direct revenue receipt</option>}<option value="REPLENISHMENT">Replenishment / transfer in</option><option value="TRANSFER">Cash / bank transfer out</option></select></label>
-      <SearchableSelect label={form.operation === "REPLENISHMENT" ? "Cash account receiving funds" : "Cash account"} options={options(cashAccounts)} value={form.cash_account_id || undefined} onChange={v => setForm({ ...form, cash_account_id: v || 0 })} /><SearchableSelect label={form.operation === "PAYMENT" ? "Expense account" : form.operation === "REPLENISHMENT" ? "Funding cash / bank account" : form.operation === "TRANSFER" ? "Destination cash / bank account" : "Revenue account"} options={options(counterpart)} value={form.counterpart_account_id || undefined} onChange={v => setForm({ ...form, counterpart_account_id: v || 0 })} />
-      <SearchableSelect label="Location" value={form.location_id || undefined} options={(locations.data ?? []).map(l => ({ id: l.id, label: l.name }))} onChange={v => setForm({ ...form, location_id: v || 0, department_id: null, business_unit_id: locations.data?.find(l => l.id === v)?.business_unit_id ?? null })} /><SearchableSelect label="Department" options={(departments.data ?? []).map(d => ({ id: d.id, label: d.name }))} value={form.department_id || undefined} onChange={v => setForm({ ...form, department_id: v ?? null })} />
-      <label className="text-xs">Amount<CurrencyInput value={form.amount} onValueChange={v => setForm({ ...form, amount: v })} /></label><label className="text-xs">Supporting document reference<input className={input} maxLength={100} value={form.reference_number} onChange={e => setForm({ ...form, reference_number: e.target.value })} /></label><label className="text-xs md:col-span-2">Description<input className={input} maxLength={500} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></label>
-    </div></DialogBody><DialogFooter><FormRecoveryActions failed={recovery.failed} onDiscard={() => { recovery.clear(); setForm(blank()); setEditingId(null); setOpen(false); }} /><Button variant="outline" onClick={() => setOpen(false)}>Close</Button><Button disabled={!form.location_id || !form.cash_account_id || !form.counterpart_account_id || form.amount <= 0 || !form.reference_number.trim() || !form.description.trim()} loading={save.isPending} onClick={() => save.mutate()}>Save draft</Button></DialogFooter></DialogContent></Dialog>
-  </div>;
+
+  const save = useMutation({
+    mutationFn: async () =>
+      editingId === null
+        ? (await api.post("/cashier", form)).data
+        : (await api.patch(`/cashier/${editingId}`, form)).data,
+    onSuccess: () => {
+      recovery.clear();
+      setErrors({});
+      setOpen(false);
+      setForm(blank());
+      setEditingId(null);
+      refresh();
+      toast.success(editingId === null ? "Petty cash draft saved" : "Petty cash draft updated");
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) =>
+      toast.error(error.response?.data?.detail || "Petty cash entry could not be saved"),
+  });
+
+  const action = useMutation({
+    mutationFn: ({ id, name }: { id: number; name: "post" | "void" }) => api.post(`/cashier/${id}/${name}`),
+    onSuccess: (_data, variables) => {
+      refresh();
+      toast.success(variables.name === "post" ? "Petty cash entry posted" : "Petty cash draft voided");
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) =>
+      toast.error(error.response?.data?.detail || "Petty cash action failed"),
+  });
+
+  const loadReport = async (): Promise<InventoryPrintReport> => {
+    const [book, cash] = await Promise.all([
+      collectReportPages<Journal>(async (pageNumber) =>
+        (
+          await api.get<ReportPage<Journal>>("/cashier", {
+            params: {
+              date_from: dateFrom,
+              date_to: dateTo,
+              page: pageNumber,
+              page_size: 100,
+              petty_cash: true,
+            },
+          })
+        ).data,
+      ),
+      api.get<CashSummary[]>("/cash-flow/accounts", { params: { date_from: dateFrom, date_to: dateTo } }),
+    ]);
+    return {
+      title: "Petty Cash Book",
+      context: period,
+      rowCount: book.items.length,
+      columns: [
+        { label: "Number" },
+        { label: "Date" },
+        { label: "Event" },
+        { label: "Reference / description" },
+        { label: "Amount", numeric: true },
+        { label: "Status" },
+      ],
+      groups: [
+        {
+          title: "Petty cash entries",
+          rows: book.items.map((item) => [
+            item.journal_number,
+            item.posting_date,
+            eventLabel(item.document_type),
+            item.description,
+            money(item.total_debit),
+            statusLabel(item.status),
+          ]),
+        },
+        ...cash.data
+          .filter((account) => account.account_subtype === "PETTY_CASH")
+          .map((account) => ({
+            title: account.account_name,
+            rows: [
+              ["Opening", null, null, null, money(account.opening_balance), null],
+              ["In", null, null, null, money(account.total_inflow), null],
+              ["Out", null, null, null, money(account.total_outflow), null],
+              ["Closing", null, null, null, money(account.closing_balance), null],
+            ],
+          })),
+      ],
+    };
+  };
+
+  const allAccounts = accounts.data ?? [];
+  const cashAccounts = allAccounts.filter(
+    (account) => account.account_type === "ASSET" && account.account_subtype === "PETTY_CASH",
+  );
+  const counterpartAccounts = allAccounts.filter((account) => {
+    if (account.id === form.cash_account_id) return false;
+    if (form.operation === "PAYMENT") {
+      return account.account_type === "EXPENSE" && account.normal_balance === "DEBIT";
+    }
+    if (form.operation === "RECEIPT") {
+      return ["REVENUE", "INCOME"].includes(account.account_type) && account.normal_balance === "CREDIT";
+    }
+    return account.account_type === "ASSET" && CASH_TYPES.includes(account.account_subtype);
+  });
+
+  const accountOptions = (values: AccountLookup[]) =>
+    values.map((account) => ({
+      id: account.id,
+      label: `${account.account_code} — ${account.account_name}`,
+      keywords: [account.account_code, account.account_name],
+    }));
+
+  const summary = useMemo(
+    () => (balances.data ?? []).filter((account) => account.account_subtype === "PETTY_CASH"),
+    [balances.data],
+  );
+  const totals = summary.reduce(
+    (result, account) => ({
+      opening: result.opening + Number(account.opening_balance || 0),
+      inflow: result.inflow + Number(account.total_inflow || 0),
+      outflow: result.outflow + Number(account.total_outflow || 0),
+      closing: result.closing + Number(account.closing_balance || 0),
+    }),
+    { opening: 0, inflow: 0, outflow: 0, closing: 0 },
+  );
+  const entryCount = entries.data?.total_items ?? 0;
+  const rows = entries.data?.items ?? [];
+
+  const setField = <K extends keyof Entry>(field: K, value: Entry[K]) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
+  };
+
+  const setOperation = (operation: string) => {
+    setForm((current) => ({ ...current, operation, counterpart_account_id: 0 }));
+    setErrors((current) => ({ ...current, operation: undefined, counterpart_account_id: undefined }));
+  };
+
+  const openCreate = () => {
+    setEditingId(null);
+    setErrors({});
+    const saved = createRecovery.load();
+    setForm(saved && isValidEntry(saved) ? saved : blank());
+    if (saved) createRecovery.notifyRestored();
+    setOpen(true);
+  };
+
+  const openEdit = async (id: number) => {
+    if (editingId === id) {
+      setOpen(true);
+      return;
+    }
+    try {
+      const response = await api.get<{ entry: Entry }>(`/cashier/${id}`);
+      setErrors({});
+      setForm({ ...blank(), ...response.data.entry, amount: Number(response.data.entry.amount) });
+      setEditingId(id);
+      setOpen(true);
+    } catch {
+      toast.error("Could not load the petty cash draft");
+    }
+  };
+
+  const submit = () => {
+    const nextErrors: FormErrors = {};
+    if (!form.posting_date) nextErrors.posting_date = "Choose the business date.";
+    if (!form.location_id) nextErrors.location_id = "Choose a location.";
+    if (!form.cash_account_id) nextErrors.cash_account_id = "Choose the petty cash account.";
+    if (!form.counterpart_account_id) nextErrors.counterpart_account_id = "Choose the counterpart account.";
+    if (!(form.amount > 0)) nextErrors.amount = "Enter an amount greater than zero.";
+    if (!form.reference_number.trim()) nextErrors.reference_number = "Enter the supporting document reference.";
+    if (!form.description.trim()) nextErrors.description = "Enter a short description.";
+    setErrors(nextErrors);
+    if (Object.values(nextErrors).some(Boolean)) return;
+    save.mutate();
+  };
+
+  const inputClass = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`;
+
+  return (
+    <DataWorkspace area="Accounting" className="data-first">
+      <div className="print-document space-y-2">
+        <PageHeader
+          title="Petty Cash"
+          description="Record petty cash movements and review the float by period."
+          actions={
+            <>
+              <Input
+                aria-label="From date"
+                type="date"
+                value={dateFrom}
+                onChange={(event) => {
+                  setDateFrom(event.target.value);
+                  setPage(1);
+                }}
+              />
+              <Input
+                aria-label="To date"
+                type="date"
+                value={dateTo}
+                onChange={(event) => {
+                  setDateTo(event.target.value);
+                  setPage(1);
+                }}
+              />
+              <InventoryPrintButton loadReport={loadReport} reportLabel="Petty cash" disabled={invalidPeriod} />
+              {canManage && (
+                <Button size="sm" aria-label="Create petty cash entry" onClick={openCreate}>
+                  <Plus size={15} /> New entry
+                </Button>
+              )}
+            </>
+          }
+        >
+          <div className="mt-0.5 text-[11px] text-slate-500">{period}</div>
+        </PageHeader>
+
+        {invalidPeriod && (
+          <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            From date must be on or before To date.
+          </div>
+        )}
+
+        <ModuleSummary
+          metrics={[
+            { label: "Petty accounts", value: summary.length },
+            { label: "Opening", value: money(totals.opening) },
+            { label: "In", value: money(totals.inflow) },
+            { label: "Out", value: money(totals.outflow) },
+            { label: "Closing", value: money(totals.closing), note: "Across petty cash accounts in this period" },
+            { label: "Entries", value: entryCount },
+          ]}
+        />
+
+        <Card className="overflow-hidden p-0">
+          <CardHeader>
+            <div>
+              <CardTitle className="text-sm">Petty cash accounts</CardTitle>
+              <CardDescription>Balances include posted entries and complete drafts in open periods.</CardDescription>
+            </div>
+          </CardHeader>
+          {invalidPeriod ? (
+            <div className="m-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              Set a valid date range to load petty cash balances.
+            </div>
+          ) : balances.isError ? (
+            <div role="alert" className="m-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="font-semibold">Petty cash balances could not be loaded.</div>
+              <Button className="mt-2" size="sm" variant="outline" onClick={() => balances.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <Table containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+              <THead>
+                <TR>
+                  <TH>Cash account</TH>
+                  <TH numeric>Opening</TH>
+                  <TH numeric>In</TH>
+                  <TH numeric>Out</TH>
+                  <TH numeric>Closing</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {summary.map((account) => (
+                  <TR key={account.account_id}>
+                    <TD>
+                      <Link
+                        className="font-medium text-emerald-700 hover:underline"
+                        to={`/cash-accounts/${account.account_id}?date_from=${dateFrom}&date_to=${dateTo}`}
+                      >
+                        {account.account_name}
+                      </Link>
+                    </TD>
+                    <TD numeric>{money(account.opening_balance)}</TD>
+                    <TD numeric>{money(account.total_inflow)}</TD>
+                    <TD numeric>{money(account.total_outflow)}</TD>
+                    <TD numeric className="font-semibold tabular-nums">
+                      {money(account.closing_balance)}
+                    </TD>
+                  </TR>
+                ))}
+                {!summary.length && (
+                  <TR>
+                    <TD colSpan={5} className="p-6 text-center text-slate-500">
+                      No active petty cash account is available for this period.
+                    </TD>
+                  </TR>
+                )}
+              </TBody>
+            </Table>
+          )}
+        </Card>
+
+        <Card className="overflow-hidden p-0">
+          <CardHeader>
+            <div>
+              <CardTitle className="text-sm">Petty cash entries</CardTitle>
+              <CardDescription>Replenishments, expense payments, and transfers in the selected period.</CardDescription>
+            </div>
+            <Badge variant="outline">{entryCount} total</Badge>
+          </CardHeader>
+          {invalidPeriod ? (
+            <div className="m-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              Set a valid date range to load petty cash entries.
+            </div>
+          ) : entries.isError ? (
+            <div role="alert" className="m-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="font-semibold">Petty cash entries could not be loaded.</div>
+              <Button className="mt-2" size="sm" variant="outline" onClick={() => entries.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : entries.isPending ? (
+            <Loading message="Loading petty cash entries..." />
+          ) : (
+            <>
+              <Table containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+                <THead>
+                  <TR>
+                    <TH>Number</TH>
+                    <TH>Date</TH>
+                    <TH>Event</TH>
+                    <TH>Reference / description</TH>
+                    <TH numeric>Amount</TH>
+                    <TH>Status</TH>
+                    <TH numeric>Actions</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {rows.map((entry) => (
+                    <TR key={entry.id}>
+                      <TD>
+                        <TableCellStack
+                          primary={
+                            <Link className="font-medium text-emerald-700 hover:underline" to={`/journal-entries/${entry.id}`}>
+                              {entry.journal_number}
+                            </Link>
+                          }
+                        />
+                      </TD>
+                      <TD>{entry.posting_date}</TD>
+                      <TD>
+                        <Badge variant="outline">{eventLabel(entry.document_type)}</Badge>
+                      </TD>
+                      <TD className="max-w-md truncate" title={entry.description}>
+                        {entry.description}
+                      </TD>
+                      <TD numeric className="font-semibold tabular-nums">
+                        {money(entry.total_debit)}
+                      </TD>
+                      <TD>
+                        <Badge variant={statusVariant(entry.status)}>{statusLabel(entry.status)}</Badge>
+                      </TD>
+                      <TD>
+                        <div className="flex justify-end gap-1 print:hidden">
+                          {canManage && entry.status === "DRAFT" && (
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              title="Edit draft"
+                              aria-label={`Edit ${entry.journal_number}`}
+                              onClick={() => openEdit(entry.id)}
+                            >
+                              <Pencil size={13} />
+                            </Button>
+                          )}
+                          {canManage &&
+                            entry.status === "DRAFT" &&
+                            (["post", "void"] as const).map((name) => (
+                              <Button
+                                key={name}
+                                size="xs"
+                                variant="outline"
+                                disabled={action.isPending}
+                                onClick={() => {
+                                  const message = name === "post" ? "Post this petty cash entry?" : "Void this draft?";
+                                  if (window.confirm(message)) action.mutate({ id: entry.id, name });
+                                }}
+                              >
+                                {name === "post" ? "Post" : "Void"}
+                              </Button>
+                            ))}
+                          <Link
+                            className="inline-flex h-7 items-center rounded border border-slate-200 px-2 text-xs text-slate-700 hover:bg-slate-50"
+                            to={`/journal-entries/${entry.id}/print`}
+                          >
+                            Print
+                          </Link>
+                        </div>
+                      </TD>
+                    </TR>
+                  ))}
+                  {!rows.length && (
+                    <TR>
+                      <TD colSpan={7} className="p-10 text-center text-slate-500">
+                        <div className="font-medium">No petty cash entries in this period.</div>
+                        <div className="mt-1 text-xs">Choose another date range or record a new entry.</div>
+                      </TD>
+                    </TR>
+                  )}
+                </TBody>
+              </Table>
+              <div className="px-3">
+                <Pagination
+                  page={page}
+                  pages={entries.data?.total_pages ?? 1}
+                  total={entryCount}
+                  pageSize={PAGE_SIZE}
+                  noun="entries"
+                  onChange={setPage}
+                />
+              </div>
+            </>
+          )}
+        </Card>
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingId === null ? "Record petty cash" : "Edit petty cash entry"}</DialogTitle>
+            </DialogHeader>
+            <DialogBody>
+              <div className={FORM_UI.section}>
+                <div className="space-y-3">
+                  <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">
+                    {OPERATION_HELP[form.operation] ?? "Choose a transaction type."}
+                  </div>
+                  <div className={FORM_UI.grid}>
+                    <label className="text-xs font-medium text-slate-700">
+                      Business date
+                      <Input
+                        className="mt-1"
+                        type="date"
+                        error={!!errors.posting_date}
+                        value={form.posting_date}
+                        onChange={(event) => setField("posting_date", event.target.value)}
+                      />
+                      {errors.posting_date && <span className={FORM_UI.errorText}>{errors.posting_date}</span>}
+                      <span className={FORM_UI.helpText}>Closed periods are rejected when saving.</span>
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Transaction type
+                      <select
+                        className={`${inputClass} mt-1`}
+                        value={form.operation}
+                        onChange={(event) => setOperation(event.target.value)}
+                      >
+                        <option value="PAYMENT">Expense payment</option>
+                        <option value="REPLENISHMENT">Replenishment / transfer in</option>
+                        <option value="TRANSFER">Cash / bank transfer out</option>
+                        {form.operation === "RECEIPT" && <option value="RECEIPT">Legacy cash receipt</option>}
+                      </select>
+                    </label>
+
+                    <div>
+                      <SearchableSelect
+                        label="Petty cash account"
+                        required
+                        dataField="cash_account_id"
+                        invalid={!!errors.cash_account_id}
+                        options={accountOptions(cashAccounts)}
+                        value={form.cash_account_id || undefined}
+                        onChange={(value) => setField("cash_account_id", value ?? 0)}
+                      />
+                      {errors.cash_account_id && <span className={FORM_UI.errorText}>{errors.cash_account_id}</span>}
+                    </div>
+                    <div>
+                      <SearchableSelect
+                        label={
+                          form.operation === "PAYMENT"
+                            ? "Expense account"
+                            : form.operation === "REPLENISHMENT"
+                              ? "Funding cash / bank account"
+                              : form.operation === "TRANSFER"
+                                ? "Destination cash / bank account"
+                                : "Revenue account"
+                        }
+                        required
+                        dataField="counterpart_account_id"
+                        invalid={!!errors.counterpart_account_id}
+                        options={accountOptions(counterpartAccounts)}
+                        value={form.counterpart_account_id || undefined}
+                        onChange={(value) => setField("counterpart_account_id", value ?? 0)}
+                      />
+                      {errors.counterpart_account_id && (
+                        <span className={FORM_UI.errorText}>{errors.counterpart_account_id}</span>
+                      )}
+                    </div>
+
+                    <div>
+                      <SearchableSelect
+                        label="Location"
+                        required
+                        dataField="location_id"
+                        invalid={!!errors.location_id}
+                        options={(locations.data ?? []).map((location) => ({ id: location.id, label: location.name }))}
+                        value={form.location_id || undefined}
+                        onChange={(value) => {
+                          setField("location_id", value ?? 0);
+                          setField("department_id", null);
+                          setField(
+                            "business_unit_id",
+                            locations.data?.find((location) => location.id === value)?.business_unit_id ?? null,
+                          );
+                        }}
+                      />
+                      {errors.location_id && <span className={FORM_UI.errorText}>{errors.location_id}</span>}
+                    </div>
+                    <div>
+                      <SearchableSelect
+                        label="Department"
+                        options={(departments.data ?? []).map((department) => ({ id: department.id, label: department.name }))}
+                        value={form.department_id || undefined}
+                        onChange={(value) => setField("department_id", value ?? null)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-slate-700">Amount</label>
+                      <CurrencyInput
+                        value={form.amount}
+                        invalid={!!errors.amount}
+                        dataField="amount"
+                        onValueChange={(value) => setField("amount", value)}
+                      />
+                      {errors.amount && <span className={FORM_UI.errorText}>{errors.amount}</span>}
+                    </div>
+                    <label className="text-xs font-medium text-slate-700">
+                      Supporting document reference
+                      <Input
+                        className="mt-1"
+                        maxLength={100}
+                        error={!!errors.reference_number}
+                        value={form.reference_number}
+                        onChange={(event) => setField("reference_number", event.target.value)}
+                      />
+                      {errors.reference_number && <span className={FORM_UI.errorText}>{errors.reference_number}</span>}
+                    </label>
+                    <label className="text-xs font-medium text-slate-700 md:col-span-2">
+                      Description
+                      <Input
+                        className="mt-1"
+                        maxLength={500}
+                        error={!!errors.description}
+                        value={form.description}
+                        onChange={(event) => setField("description", event.target.value)}
+                      />
+                      {errors.description && <span className={FORM_UI.errorText}>{errors.description}</span>}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <FormRecoveryActions
+                failed={recovery.failed}
+                onDiscard={() => {
+                  recovery.clear();
+                  setErrors({});
+                  setForm(blank());
+                  setEditingId(null);
+                  setOpen(false);
+                }}
+              />
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button loading={save.isPending} onClick={submit}>
+                Save draft
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </DataWorkspace>
+  );
 }

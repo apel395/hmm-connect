@@ -1,14 +1,19 @@
-import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
 import useAuthStore from "@/store/auth";
-import ARImportStagingDialog from "./ARImportStagingDialog";
-
-import Badge from "@/components/ui/Badge";
+import { exportCsv } from "@/utils/exportCsv";
+import ListToolbar from "@/components/common/ListToolbar";
+import ModuleSummary, { type SummaryMetric } from "@/components/common/ModuleSummary";
+import PageHeader from "@/components/common/PageHeader";
+import Pagination from "@/components/datatable/Pagination";
+import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
+import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import Loading from "@/components/ui/Loading";
+import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
+import DataWorkspace from "@/components/workspace/DataWorkspace";
+import ARImportStagingDialog from "./ARImportStagingDialog";
 import ARWorkspaceHeader from "./ARWorkspaceHeader";
 import { arReportingApi, type ARStatus, type AgingBucket } from "./reportingApi";
 
@@ -18,7 +23,7 @@ const money = (value: unknown) =>
     maximumFractionDigits: 2,
   })}`;
 
-const statusVariant = (status: ARStatus) =>
+const statusVariant = (status: ARStatus): BadgeVariant =>
   status === "PAID" ? "success" : status === "PARTIALLY_PAID" ? "warning" : "danger";
 
 const statusLabel: Record<ARStatus, string> = {
@@ -35,203 +40,369 @@ const bucketLabels: Record<AgingBucket, string> = {
   over_90: "Over 90 Days",
 };
 
+const bucketKeys = Object.keys(bucketLabels) as AgingBucket[];
+
 export default function ARReportingPage() {
   const location = useLocation();
   const canManage = useAuthStore((store) => store.hasPermission("finance.manage"));
   const [importOpen, setImportOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<ARStatus | "ALL">("ALL");
+
   const section = location.pathname.endsWith("/detail")
     ? "detail"
     : location.pathname.endsWith("/aging")
       ? "aging"
       : "summary";
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const pageSize = 20;
 
-  useEffect(() => setPage(1), [section, search]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => setPage(1), [section, search, status, pageSize]);
 
   const summary = useQuery({
-    queryKey: ["ar-reporting", "summary", page, search],
+    queryKey: ["ar-reporting", "summary", page, pageSize, search],
     queryFn: () => arReportingApi.summary(page, pageSize, search),
     enabled: section === "summary",
   });
   const detail = useQuery({
-    queryKey: ["ar-reporting", "detail", page, search],
-    queryFn: () => arReportingApi.detail(page, pageSize, search),
+    queryKey: ["ar-reporting", "detail", page, pageSize, search, status],
+    queryFn: () =>
+      arReportingApi.detail(page, pageSize, search, status === "ALL" ? undefined : status),
     enabled: section === "detail",
   });
   const aging = useQuery({
-    queryKey: ["ar-reporting", "aging", page, search],
+    queryKey: ["ar-reporting", "aging", page, pageSize, search],
     queryFn: () => arReportingApi.aging(page, pageSize, search),
     enabled: section === "aging",
   });
+
   const activeQuery = section === "detail" ? detail : section === "aging" ? aging : summary;
-  const data = activeQuery.data;
+  const activeData = activeQuery.data;
+  const total = activeData?.total_items ?? 0;
+
+  const metrics = useMemo<SummaryMetric[]>(() => {
+    if (section === "summary" && summary.data) {
+      const { metrics: values } = summary.data;
+      return [
+        { label: "Gross", value: money(values.gross_receivables) },
+        { label: "Receipts", value: money(values.total_receipts) },
+        { label: "Outstanding", value: money(values.outstanding_receivables) },
+        { label: "Overdue", value: money(values.overdue_receivables) },
+        { label: "Customers", value: values.customer_count },
+        { label: "Invoices", value: values.invoice_count },
+      ];
+    }
+    if (section === "detail" && detail.data) {
+      const rows = detail.data.items;
+      return [
+        { label: "Invoices on page", value: rows.length },
+        {
+          label: "Outstanding on page",
+          value: money(rows.reduce((sum, row) => sum + Number(row.outstanding_amount || 0), 0)),
+        },
+        { label: "Paid", value: rows.filter((row) => row.status === "PAID").length },
+        { label: "Partially paid", value: rows.filter((row) => row.status === "PARTIALLY_PAID").length },
+        { label: "Unpaid", value: rows.filter((row) => row.status === "UNPAID").length },
+      ];
+    }
+    if (section === "aging" && aging.data) {
+      return [
+        { label: "Total outstanding", value: money(aging.data.total_outstanding) },
+        { label: "As of", value: aging.data.as_of_date },
+        { label: "Customers", value: aging.data.items.length },
+        { label: "Over 90 days", value: money(aging.data.buckets.over_90.amount) },
+      ];
+    }
+    return [];
+  }, [section, summary.data, detail.data, aging.data]);
+
+  const exportPage = () => {
+    if (section === "summary" && summary.data) {
+      exportCsv(
+        "ar-summary.csv",
+        ["Customer", "Code", "Gross", "Receipts", "Outstanding", "Invoices", "Overdue Invoices", "Status"],
+        summary.data.items.map((row) => [
+          row.customer_name ?? `Customer #${row.customer_id}`,
+          row.customer_code,
+          row.gross_amount,
+          row.received_amount,
+          row.outstanding_amount,
+          row.invoice_count,
+          row.overdue_invoice_count,
+          statusLabel[row.status],
+        ]),
+      );
+      return;
+    }
+    if (section === "detail" && detail.data) {
+      exportCsv(
+        "ar-detail.csv",
+        ["Invoice", "Date", "Customer", "Due Date", "Gross", "Receipts", "Outstanding", "Status"],
+        detail.data.items.map((row) => [
+          row.invoice_number,
+          row.invoice_date,
+          row.customer_name ?? `Customer #${row.customer_id}`,
+          row.due_date,
+          row.gross_amount,
+          row.received_amount,
+          row.outstanding_amount,
+          statusLabel[row.status],
+        ]),
+      );
+      return;
+    }
+    if (section === "aging" && aging.data) {
+      exportCsv(
+        "ar-aging.csv",
+        ["Customer", "Code", ...bucketKeys.map((bucket) => bucketLabels[bucket]), "Outstanding"],
+        aging.data.items.map((row) => [
+          row.customer_name ?? `Customer #${row.customer_id}`,
+          row.customer_code,
+          ...bucketKeys.map((bucket) => row[bucket]),
+          row.outstanding_amount,
+        ]),
+      );
+    }
+  };
+
+  const statusSelect = (
+    <select
+      aria-label="Collection status"
+      className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+      value={status}
+      onChange={(event) => setStatus(event.target.value as ARStatus | "ALL")}
+    >
+      <option value="ALL">All statuses</option>
+      {(Object.keys(statusLabel) as ARStatus[]).map((value) => (
+        <option key={value} value={value}>
+          {statusLabel[value]}
+        </option>
+      ))}
+    </select>
+  );
+
+  const sectionTitle =
+    section === "detail" ? "Receivables Detail" : section === "aging" ? "AR Aging" : "Receivables Summary";
+  const sectionDescription =
+    section === "detail"
+      ? "Invoice-level balances and collection status."
+      : section === "aging"
+        ? `Outstanding customer balances as of ${aging.data?.as_of_date ?? "today"}.`
+        : "Customer balances from the Accounts Receivable subledger.";
 
   return (
-    <div className="space-y-5">
-      <ARWorkspaceHeader />
-      {canManage && (
-        <div className="flex justify-end">
-          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>Stage AR Excel</Button>
-        </div>
-      )}
-      {canManage && <ARImportStagingDialog open={importOpen} onOpenChange={setImportOpen} />}
-
-      <Card className="p-4">
-        <form
-          className="flex flex-col gap-2 sm:flex-row"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setSearch(searchInput);
-          }}
+    <DataWorkspace area="Accounting" className="data-first">
+      <div className="space-y-2">
+        <PageHeader
+          title={sectionTitle}
+          description={sectionDescription}
+          actions={
+            canManage ? (
+              <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+                Stage AR Excel
+              </Button>
+            ) : undefined
+          }
         >
-          <input
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search customer or invoice"
-            className="h-9 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-emerald-600"
-          />
-          <Button type="submit" size="sm">Search</Button>
-          {search && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setSearchInput("");
-                setSearch("");
-              }}
-            >
-              Clear
-            </Button>
-          )}
-        </form>
-      </Card>
+          <div className="mt-0.5 text-[11px] text-slate-500">
+            Read-only AR reporting · current-page export available
+          </div>
+        </PageHeader>
+        <ARWorkspaceHeader />
+        {canManage && <ARImportStagingDialog open={importOpen} onOpenChange={setImportOpen} />}
+        {!!metrics.length && <ModuleSummary metrics={metrics} />}
 
-      {section === "summary" && summary.data && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Gross Receivables" value={money(summary.data.metrics.gross_receivables)} />
-          <Metric label="Total Receipts" value={money(summary.data.metrics.total_receipts)} />
-          <Metric label="Outstanding Receivables" value={money(summary.data.metrics.outstanding_receivables)} emphasis />
-          <Metric label="Overdue Receivables" value={money(summary.data.metrics.overdue_receivables)} emphasis />
-        </div>
-      )}
-
-      {section === "aging" && aging.data && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {(Object.keys(bucketLabels) as AgingBucket[]).map((bucket) => (
-            <Metric
-              key={bucket}
-              label={bucketLabels[bucket]}
-              value={money(aging.data.buckets[bucket].amount)}
-              emphasis={bucket !== "current"}
+        <Card className="overflow-hidden p-0">
+          <div className="p-3 print:hidden">
+            <ListToolbar
+              search={searchInput}
+              searchPlaceholder={section === "detail" ? "Search invoice or customer..." : "Search customer..."}
+              onSearch={setSearchInput}
+              filters={section === "detail" ? statusSelect : undefined}
+              onExport={exportPage}
+              onRefresh={() => activeQuery.refetch()}
+              footer={
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                  <span>{total} {section === "detail" ? "invoices" : "customers"} match current filters</span>
+                  <label className="inline-flex items-center gap-1">
+                    Rows per page
+                    <select
+                      aria-label="Rows per page"
+                      className="ml-1 rounded border border-slate-300 bg-white px-2 py-1"
+                      value={pageSize}
+                      onChange={(event) => setPageSize(Number(event.target.value))}
+                    >
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </label>
+                </div>
+              }
             />
-          ))}
-        </div>
-      )}
-
-      {activeQuery.isError && (
-        <Card className="p-5 text-center">
-          <p className="text-sm text-red-600">Accounts Receivable reporting could not be loaded.</p>
-          <Button className="mt-3" variant="outline" size="sm" onClick={() => activeQuery.refetch()}>
-            Try Again
-          </Button>
-        </Card>
-      )}
-      {activeQuery.isLoading && (
-        <Card className="p-8 text-center text-sm text-slate-500">
-          Loading Accounts Receivable report…
-        </Card>
-      )}
-
-      {!activeQuery.isLoading && !activeQuery.isError && section === "summary" && summary.data && (
-        <Card className="p-0">
-          <Title title="Receivables by Customer" subtitle="Customer balances from the Accounts Receivable subledger." />
-          <div className="overflow-x-auto">
-            <Table variant="standard">
-              <THead><TR><TH>Customer</TH><TH className="text-right">Gross</TH><TH className="text-right">Receipts</TH><TH className="text-right">Outstanding</TH><TH className="text-right">Overdue Invoices</TH><TH>Status</TH></TR></THead>
-              <TBody>
-                {summary.data.items.map((row) => (
-                  <TR key={row.customer_id}>
-                    <TD><div className="font-medium">{row.customer_name || `Customer #${row.customer_id}`}</div><div className="text-[10px] text-slate-500">{row.customer_code || "—"} · {row.invoice_count} invoices</div></TD>
-                    <TD className="text-right">{money(row.gross_amount)}</TD>
-                    <TD className="text-right">{money(row.received_amount)}</TD>
-                    <TD className="text-right font-semibold">{money(row.outstanding_amount)}</TD>
-                    <TD className="text-right">{row.overdue_invoice_count}</TD>
-                    <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
-                  </TR>
-                ))}
-                {!summary.data.items.length && <TR><TD colSpan={6} className="py-10 text-center text-slate-500">No receivables found.</TD></TR>}
-              </TBody>
-            </Table>
           </div>
-        </Card>
-      )}
 
-      {!activeQuery.isLoading && !activeQuery.isError && section === "detail" && detail.data && (
-        <Card className="p-0">
-          <Title title="Receivables Detail" subtitle="Invoice-level customer balances and collection status." />
-          <div className="overflow-x-auto">
-            <Table variant="standard">
-              <THead><TR><TH>Date</TH><TH>Invoice</TH><TH>Customer</TH><TH>Due Date</TH><TH className="text-right">Gross</TH><TH className="text-right">Receipts</TH><TH className="text-right">Outstanding</TH><TH>Status</TH></TR></THead>
-              <TBody>
-                {detail.data.items.map((row) => (
-                  <TR key={row.invoice_id}>
-                    <TD>{row.invoice_date}</TD>
-                    <TD className="font-medium"><Link className="text-blue-700 hover:underline" to={`/accounts-receivable/invoices/${row.invoice_id}`}>{row.invoice_number}</Link></TD>
-                    <TD>{row.customer_name || `Customer #${row.customer_id}`}</TD>
-                    <TD>{row.due_date || "—"}</TD>
-                    <TD className="text-right">{money(row.gross_amount)}</TD>
-                    <TD className="text-right">{money(row.received_amount)}</TD>
-                    <TD className="text-right font-semibold">{money(row.outstanding_amount)}</TD>
-                    <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
-                  </TR>
-                ))}
-                {!detail.data.items.length && <TR><TD colSpan={8} className="py-10 text-center text-slate-500">No receivable invoices found.</TD></TR>}
-              </TBody>
-            </Table>
-          </div>
-        </Card>
-      )}
+          {activeQuery.isPending ? (
+            <Loading message="Loading Accounts Receivable report..." />
+          ) : activeQuery.isError ? (
+            <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <div className="font-semibold">Accounts Receivable reporting could not be loaded.</div>
+              <Button className="mt-3" size="sm" variant="outline" onClick={() => activeQuery.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <>
+              {section === "summary" && summary.data && (
+                <>
+                  <CardHeader>
+                    <div>
+                      <CardTitle className="text-sm">Receivables by Customer</CardTitle>
+                      <CardDescription>Customer balances from the AR subledger.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <Table className="min-w-[900px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+                    <THead>
+                      <TR>
+                        <TH>Customer</TH>
+                        <TH numeric>Gross</TH>
+                        <TH numeric>Receipts</TH>
+                        <TH numeric>Outstanding</TH>
+                        <TH numeric>Overdue Invoices</TH>
+                        <TH>Status</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {summary.data.items.map((row) => (
+                        <TR key={row.customer_id}>
+                          <TD>
+                            <TableCellStack
+                              primary={row.customer_name || `Customer #${row.customer_id}`}
+                              secondary={`${row.customer_code || "—"} · ${row.invoice_count} invoices`}
+                            />
+                          </TD>
+                          <TD numeric>{money(row.gross_amount)}</TD>
+                          <TD numeric>{money(row.received_amount)}</TD>
+                          <TD numeric className="font-semibold tabular-nums">{money(row.outstanding_amount)}</TD>
+                          <TD numeric>{row.overdue_invoice_count}</TD>
+                          <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
+                        </TR>
+                      ))}
+                      {!summary.data.items.length && (
+                        <TR><TD colSpan={6} className="p-10 text-center text-slate-500">No receivables found.</TD></TR>
+                      )}
+                    </TBody>
+                  </Table>
+                </>
+              )}
 
-      {!activeQuery.isLoading && !activeQuery.isError && section === "aging" && aging.data && (
-        <Card className="p-0">
-          <Title title="AR Aging" subtitle={`Outstanding customer balances as of ${aging.data.as_of_date}.`} />
-          <div className="overflow-x-auto">
-            <Table variant="standard">
-              <THead><TR><TH>Customer</TH>{(Object.keys(bucketLabels) as AgingBucket[]).map((bucket) => <TH key={bucket} className="text-right">{bucketLabels[bucket]}</TH>)}<TH className="text-right">Outstanding</TH></TR></THead>
-              <TBody>
-                {aging.data.items.map((row) => (
-                  <TR key={row.customer_id}>
-                    <TD><div className="font-medium">{row.customer_name || `Customer #${row.customer_id}`}</div><div className="text-[10px] text-slate-500">{row.customer_code || "—"}</div></TD>
-                    {(Object.keys(bucketLabels) as AgingBucket[]).map((bucket) => <TD key={bucket} className="text-right">{money(row[bucket])}</TD>)}
-                    <TD className="text-right font-semibold">{money(row.outstanding_amount)}</TD>
-                  </TR>
-                ))}
-                {!aging.data.items.length && <TR><TD colSpan={7} className="py-10 text-center text-slate-500">No outstanding receivables.</TD></TR>}
-              </TBody>
-            </Table>
-          </div>
-        </Card>
-      )}
+              {section === "detail" && detail.data && (
+                <>
+                  <CardHeader>
+                    <div>
+                      <CardTitle className="text-sm">Receivables Detail</CardTitle>
+                      <CardDescription>Invoice-level customer balances and collection status.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <Table className="min-w-[1000px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+                    <THead>
+                      <TR>
+                        <TH>Date</TH>
+                        <TH>Invoice</TH>
+                        <TH>Customer</TH>
+                        <TH>Due Date</TH>
+                        <TH numeric>Gross</TH>
+                        <TH numeric>Receipts</TH>
+                        <TH numeric>Outstanding</TH>
+                        <TH>Status</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {detail.data.items.map((row) => (
+                        <TR key={row.invoice_id}>
+                          <TD>{row.invoice_date}</TD>
+                          <TD>
+                            <Link className="font-medium text-emerald-700 hover:underline" to={`/accounts-receivable/invoices/${row.invoice_id}`}>
+                              {row.invoice_number}
+                            </Link>
+                          </TD>
+                          <TD>
+                            <TableCellStack
+                              primary={row.customer_name || `Customer #${row.customer_id}`}
+                              secondary={row.customer_code || undefined}
+                            />
+                          </TD>
+                          <TD>{row.due_date || "—"}</TD>
+                          <TD numeric>{money(row.gross_amount)}</TD>
+                          <TD numeric>{money(row.received_amount)}</TD>
+                          <TD numeric className="font-semibold tabular-nums">{money(row.outstanding_amount)}</TD>
+                          <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
+                        </TR>
+                      ))}
+                      {!detail.data.items.length && (
+                        <TR><TD colSpan={8} className="p-10 text-center text-slate-500">No receivable invoices found.</TD></TR>
+                      )}
+                    </TBody>
+                  </Table>
+                </>
+              )}
 
-      {data && data.total_pages > 1 && (
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm" disabled={!data.has_previous} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button>
-          <span className="text-xs text-slate-500">Page {data.page} of {data.total_pages}</span>
-          <Button variant="outline" size="sm" disabled={!data.has_next} onClick={() => setPage((value) => value + 1)}>Next</Button>
-        </div>
-      )}
-    </div>
+              {section === "aging" && aging.data && (
+                <>
+                  <CardHeader>
+                    <div>
+                      <CardTitle className="text-sm">AR Aging</CardTitle>
+                      <CardDescription>Outstanding customer balances as of {aging.data.as_of_date}.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <Table className="min-w-[1000px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+                    <THead>
+                      <TR>
+                        <TH>Customer</TH>
+                        {bucketKeys.map((bucket) => <TH key={bucket} numeric>{bucketLabels[bucket]}</TH>)}
+                        <TH numeric>Outstanding</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {aging.data.items.map((row) => (
+                        <TR key={row.customer_id}>
+                          <TD>
+                            <TableCellStack
+                              primary={row.customer_name || `Customer #${row.customer_id}`}
+                              secondary={row.customer_code || undefined}
+                            />
+                          </TD>
+                          {bucketKeys.map((bucket) => <TD key={bucket} numeric>{money(row[bucket])}</TD>)}
+                          <TD numeric className="font-semibold tabular-nums">{money(row.outstanding_amount)}</TD>
+                        </TR>
+                      ))}
+                      {!aging.data.items.length && (
+                        <TR><TD colSpan={bucketKeys.length + 2} className="p-10 text-center text-slate-500">No outstanding receivables.</TD></TR>
+                      )}
+                    </TBody>
+                  </Table>
+                </>
+              )}
+
+              <div className="px-3 pb-2">
+                <Pagination
+                  page={page}
+                  pages={activeData?.total_pages ?? 1}
+                  total={total}
+                  pageSize={pageSize}
+                  noun={section === "detail" ? "invoices" : "customers"}
+                  onChange={setPage}
+                />
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+    </DataWorkspace>
   );
-}
-
-function Metric({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
-  return <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div><div className={`mt-2 text-xl font-semibold ${emphasis ? "text-red-700" : ""}`}>{value}</div></Card>;
-}
-
-function Title({ title, subtitle }: { title: string; subtitle: string }) {
-  return <div className="border-b px-4 py-3"><h2 className="font-semibold">{title}</h2><p className="text-xs text-slate-500">{subtitle}</p></div>;
 }

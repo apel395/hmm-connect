@@ -80,6 +80,10 @@ Jangan hanya mengubah status jurnal lewat SQL. Pembatalan payment harus menangan
 
 AP-role biasa hanya melihat payment yang dibuatnya sendiri; scope lain tetap mengikuti hak akses server.
 
+### AP workspace
+
+Ringkasan, detail, aging, movement, supplier invoice, payment voucher, payment, dan credit/debit note berbagi satu tab workspace data-first dengan satu judul halaman. Ringkasan dan detail memakai endpoint `ap-reporting`; filter status hanya tersedia pada detail karena endpoint ringkasan tidak menyediakannya. AP aging dan movement mengikuti data backend, termasuk manual opening AP yang tidak dapat dialokasikan ke supplier/user AP. Supplier invoice tetap mempertahankan konfirmasi PPN, status PKP, faktur pajak, document total, dan three-way match. Payment voucher mengikuti `allowed_actions` dari backend, mewajibkan alasan penolakan yang dikirim sebagai `{ reason }`, dan tidak pernah membuat jurnal GL. Tombol approval payment menyatakan bahwa persetujuan juga membuat draft journal; posting akhir tetap dari Journal. Route print, format cetak, dan permission backend tidak diubah oleh tampilan.
+
 ## Journal Entry manual
 
 Satu jurnal adalah **satu header dengan beberapa baris akun**, bukan satu pasangan dua baris yang harus bersebelahan. Nomor jurnal resmi dihasilkan sistem; nomor dokumen adalah referensi sumber/pengelompokan.
@@ -131,9 +135,9 @@ Bandingkan tanggal, unit, lokasi, department, dan status posting yang sama. Tida
 
 ## AR, cashier, dan petty cash
 
-AR mencakup customer invoice, penerimaan pembayaran, dan saldo piutang. Template client seperti PHR dipilih sesuai konfigurasi customer; periksa hasil preview dan export.
+AR mencakup customer invoice, penerimaan pembayaran, dan saldo piutang. Ringkasan, detail invoice, dan aging memakai satu workspace data-first; filter status hanya tersedia pada detail invoice karena didukung endpoint backend. Export CSV mengambil halaman yang sedang ditampilkan. Penerimaan pembayaran divalidasi terhadap saldo outstanding dan kunci idempotensi dipertahankan saat retry. Template client seperti PHR dipilih sesuai konfigurasi customer; periksa hasil preview dan export.
 
-General Cashier dan Petty Cash tersedia pada Finance. Gunakan jenis transaksi, account, dimensi, dan sumber yang tepat. Jangan mencatat sumber yang sama lagi sebagai jurnal manual jika sudah diposting oleh modul asal.
+Petty Cash tersedia pada Finance; General Cashier tidak ditampilkan lagi karena alur kas kecil menggunakan buku petty cash yang sama. Gunakan jenis transaksi, akun, dimensi, dan sumber yang tepat. Jangan mencatat sumber yang sama lagi sebagai jurnal manual jika sudah diposting oleh modul asal.
 
 SELL service charge disimpan sebagai snapshot rate/amount transaksi dan dipisahkan dari pajak. Mengubah master tidak menulis ulang snapshot penjualan lama.
 

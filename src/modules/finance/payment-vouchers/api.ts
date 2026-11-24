@@ -8,6 +8,14 @@ export type Voucher = {
   location_name?: string;
   status: string;
   total_amount: number;
+  payment_id?: number | null;
+  allowed_actions?: {
+    can_submit?: boolean;
+    can_approve?: boolean;
+    can_reject?: boolean;
+    can_void?: boolean;
+    can_print?: boolean;
+  };
   period_from?: string;
   period_to?: string;
   groups?: Array<{

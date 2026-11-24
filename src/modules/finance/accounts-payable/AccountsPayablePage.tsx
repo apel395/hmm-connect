@@ -2,61 +2,346 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
-import Card from "@/components/ui/Card";
-import Badge from "@/components/ui/Badge";
-import Button from "@/components/ui/Button";
-import PrintPreviewButton from "@/components/print/PrintPreviewButton";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import api from "@/api/interceptor";
+import ModuleSummary, { type SummaryMetric } from "@/components/common/ModuleSummary";
+import PageHeader from "@/components/common/PageHeader";
+import PrintPreviewButton from "@/components/print/PrintPreviewButton";
+import Badge, { type BadgeVariant } from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import Loading from "@/components/ui/Loading";
+import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import APWorkspaceHeader from "./APWorkspaceHeader";
 
-type PayableRow={id:number;supplier_invoice_id?:number;invoice_number:string|null;supplier_invoice_number?:string|null;supplier_id:number;supplier_name?:string|null;invoice_date?:string|null;due_date:string|null;amount:number|string;paid_amount:number|string;outstanding:number|string;payment_status?:string;last_payment_date?:string|null;days_overdue?:number;aging_bucket?:string;current?:number|string;"1_30"?:number|string;"31_60"?:number|string;"61_90"?:number|string;over_90?:number|string};
-type BucketSummary={amount:number|string;invoice_count:number;supplier_count:number;percentage:number};
-type AgingResponse={summary:{current:number|string;"1_30":number|string;"31_60":number|string;"61_90":number|string;over_90:number|string};metrics:{total_outstanding:number|string;due_today:number|string;overdue_total:number|string;overdue_invoice_count:number;open_invoice_count:number;supplier_count:number;average_overdue_days:number};buckets:Record<string,BucketSummary>;top_suppliers:Array<{supplier_id:number;supplier_name?:string|null;outstanding:number|string;invoice_count:number;overdue:number|string}>;details:PayableRow[];paid:PayableRow[]};
-const money=(value:unknown)=>`Rp ${Number(value||0).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-const bucketLabel:Record<string,string>={current:"Current","1_30":"1–30 Days","31_60":"31–60 Days","61_90":"61–90 Days",over_90:"Over 90 Days"};
+type PayableRow = {
+  id: number;
+  supplier_invoice_id?: number;
+  invoice_number: string | null;
+  supplier_invoice_number?: string | null;
+  supplier_id: number;
+  supplier_name?: string | null;
+  invoice_date?: string | null;
+  due_date: string | null;
+  amount: number | string;
+  paid_amount: number | string;
+  outstanding: number | string;
+  payment_status?: string;
+  last_payment_date?: string | null;
+  days_overdue?: number;
+  aging_bucket?: string;
+  current?: number | string;
+  "1_30"?: number | string;
+  "31_60"?: number | string;
+  "61_90"?: number | string;
+  over_90?: number | string;
+};
+type BucketSummary = { amount: number | string; invoice_count: number; supplier_count: number; percentage: number };
+type AgingResponse = {
+  summary: Record<"current" | "1_30" | "31_60" | "61_90" | "over_90", number | string>;
+  metrics: {
+    total_outstanding: number | string;
+    due_today: number | string;
+    overdue_total: number | string;
+    overdue_invoice_count: number;
+    open_invoice_count: number;
+    supplier_count: number;
+    average_overdue_days: number;
+  };
+  buckets: Record<string, BucketSummary>;
+  top_suppliers: Array<{
+    supplier_id: number;
+    supplier_name?: string | null;
+    outstanding: number | string;
+    invoice_count: number;
+    overdue: number | string;
+  }>;
+  details: PayableRow[];
+  paid: PayableRow[];
+  opening_unassigned?: boolean;
+};
 
-export default function AccountsPayablePage(){
-  const location=useLocation();
-  const isAging=location.pathname.endsWith("/aging");
-  const [agingTab,setAgingTab]=useState<"OPEN"|"PAID">("OPEN");
-  const aging=useQuery({queryKey:["accounts-payable-aging"],queryFn:async()=>(await api.get<AgingResponse>("/ap-aging")).data});
-  const paidTotal=useMemo(()=>(aging.data?.paid??[]).reduce((sum,row)=>sum+Number(row.paid_amount||0),0),[aging.data]);
-  const metrics=aging.data?.metrics;
+const money = (value: unknown) =>
+  `Rp ${Number(value || 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  return <div className="space-y-5">
-    <APWorkspaceHeader />
-    {!isAging ? <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label="Outstanding AP" value={money(metrics?.total_outstanding)}/>
-        <Metric label="Due Today" value={money(metrics?.due_today)}/>
-        <Metric label="Overdue" value={money(metrics?.overdue_total)} warning/>
-        <Metric label="Open Invoices" value={String(metrics?.open_invoice_count??0)}/>
-        <Metric label="Average Overdue Age" value={`${Number(metrics?.average_overdue_days??0).toFixed(1)} days`}/>
+const bucketLabel: Record<string, string> = {
+  current: "Current",
+  "1_30": "1–30 Days",
+  "31_60": "31–60 Days",
+  "61_90": "61–90 Days",
+  over_90: "Over 90 Days",
+};
+const bucketKeys = Object.keys(bucketLabel);
+
+const bucketVariant = (bucket: string): BadgeVariant =>
+  bucket === "current" ? "success" : bucket === "over_90" ? "danger" : "warning";
+
+const InvoiceLink = ({ row }: { row: PayableRow }) => {
+  const id = row.supplier_invoice_id ?? row.id;
+  return (
+    <Link className="font-medium text-emerald-700 hover:underline" to={`/supplier-invoices/${id}`}>
+      {row.invoice_number || "—"}
+    </Link>
+  );
+};
+
+export default function AccountsPayablePage() {
+  const location = useLocation();
+  const isAging = location.pathname.endsWith("/aging");
+  const [agingTab, setAgingTab] = useState<"OPEN" | "PAID">("OPEN");
+  const aging = useQuery({ queryKey: ["accounts-payable-aging"], queryFn: async () => (await api.get<AgingResponse>("/ap-aging")).data });
+
+  const paidTotal = useMemo(
+    () => (aging.data?.paid ?? []).reduce((sum, row) => sum + Number(row.paid_amount || 0), 0),
+    [aging.data],
+  );
+  const metrics = aging.data?.metrics;
+
+  const summaryMetrics: SummaryMetric[] = isAging
+    ? [
+        { label: "Total outstanding", value: money(metrics?.total_outstanding) },
+        { label: "Due today", value: money(metrics?.due_today) },
+        { label: "Overdue", value: money(metrics?.overdue_total) },
+        { label: "Overdue invoices", value: metrics?.overdue_invoice_count ?? 0 },
+        { label: "Open invoices", value: metrics?.open_invoice_count ?? 0 },
+        { label: "Suppliers", value: metrics?.supplier_count ?? 0 },
+      ]
+    : [
+        { label: "Outstanding AP", value: money(metrics?.total_outstanding) },
+        { label: "Due today", value: money(metrics?.due_today) },
+        { label: "Overdue", value: money(metrics?.overdue_total) },
+        { label: "Open invoices", value: metrics?.open_invoice_count ?? 0 },
+        { label: "Average overdue age", value: `${Number(metrics?.average_overdue_days ?? 0).toFixed(1)} days` },
+        { label: "Suppliers", value: metrics?.supplier_count ?? 0 },
+      ];
+
+  return (
+    <DataWorkspace area="Accounting" className="data-first">
+      <div className="space-y-2">
+        <PageHeader
+          title={isAging ? "AP Aging" : "Accounts Payable"}
+          description={
+            isAging
+              ? "Outstanding supplier invoices grouped by how long they have been overdue."
+              : "Current supplier liability, due dates, and exceptions from the AP subledger."
+          }
+          actions={
+            isAging && agingTab === "OPEN" ? (
+              <PrintPreviewButton src="/accounts-payable/aging/print" title="Account Payable Aging" ariaLabel="Print AP aging" />
+            ) : undefined
+          }
+        >
+          <div className="mt-0.5 text-[11px] text-slate-500">Read-only AP subledger · aging as of today</div>
+        </PageHeader>
+        <APWorkspaceHeader />
+
+        {aging.data?.opening_unassigned && (
+          <div role="status" className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            The manual opening AP is recorded by account and cannot be assigned to this supplier or AP user. These balances show document activity only.
+          </div>
+        )}
+
+        {!!summaryMetrics.length && <ModuleSummary metrics={summaryMetrics} />}
+
+        {aging.isPending ? (
+          <Card className="p-0"><Loading message="Loading accounts payable..." /></Card>
+        ) : aging.isError ? (
+          <Card className="p-0">
+            <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <div className="font-semibold">Accounts payable data could not be loaded.</div>
+              <Button className="mt-3" size="sm" variant="outline" onClick={() => aging.refetch()}>Try again</Button>
+            </div>
+          </Card>
+        ) : !isAging ? (
+          <>
+            <Card className="overflow-hidden p-0">
+              <CardHeader>
+                <div>
+                  <CardTitle className="text-sm">Payables Snapshot</CardTitle>
+                  <CardDescription>Current supplier liability by aging bucket.</CardDescription>
+                </div>
+                <Link className="text-xs font-medium text-emerald-700 hover:underline" to="/accounts-payable/aging">
+                  View Aging
+                </Link>
+              </CardHeader>
+              <Table containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+                <THead>
+                  <TR><TH>Bucket</TH><TH numeric>Amount</TH><TH numeric>Invoices</TH><TH numeric>Suppliers</TH></TR>
+                </THead>
+                <TBody>
+                  {bucketKeys.map((key) => (
+                    <TR key={key}>
+                      <TD><Badge variant={bucketVariant(key)}>{bucketLabel[key]}</Badge></TD>
+                      <TD numeric>{money(aging.data?.buckets?.[key]?.amount)}</TD>
+                      <TD numeric>{aging.data?.buckets?.[key]?.invoice_count ?? 0}</TD>
+                      <TD numeric>{aging.data?.buckets?.[key]?.supplier_count ?? 0}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </Card>
+
+            <Card className="overflow-hidden p-0">
+              <CardHeader>
+                <div>
+                  <CardTitle className="text-sm">Top Outstanding Suppliers</CardTitle>
+                  <CardDescription>Suppliers with the largest open AP balance.</CardDescription>
+                </div>
+              </CardHeader>
+              <Table containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+                <THead><TR><TH>Supplier</TH><TH numeric>Open Invoices</TH><TH numeric>Overdue</TH><TH numeric>Outstanding</TH></TR></THead>
+                <TBody>
+                  {(aging.data?.top_suppliers ?? []).map((row, index) => (
+                    <TR key={row.supplier_id}>
+                      <TD><TableCellStack primary={row.supplier_name || `Supplier #${row.supplier_id}`} secondary={`#${index + 1}`} /></TD>
+                      <TD numeric>{row.invoice_count}</TD>
+                      <TD numeric>{money(row.overdue)}</TD>
+                      <TD numeric className="font-semibold tabular-nums">{money(row.outstanding)}</TD>
+                    </TR>
+                  ))}
+                  {!aging.data?.top_suppliers?.length && (
+                    <TR><TD colSpan={4} className="p-8 text-center text-slate-500">No outstanding suppliers.</TD></TR>
+                  )}
+                </TBody>
+              </Table>
+            </Card>
+
+            <PayableTable title="Open Supplier Payables" rows={(aging.data?.details ?? []).slice(0, 8)} limitNote="Showing the 8 most recent open invoices." />
+          </>
+        ) : (
+          <>
+            <div className="flex gap-5 border-b border-slate-200" role="tablist" aria-label="AP aging view">
+              {(["OPEN", "PAID"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={agingTab === tab}
+                  className={`pb-2 text-sm font-medium ${
+                    agingTab === tab ? "border-b-2 border-[#086B5A] text-[#086B5A]" : "text-slate-500 hover:text-slate-900"
+                  }`}
+                  onClick={() => setAgingTab(tab)}
+                >
+                  {tab === "OPEN" ? "Open / Aging" : "Paid History"}
+                </button>
+              ))}
+            </div>
+
+            {agingTab === "OPEN" ? (
+              <>
+                <Card className="overflow-hidden p-0">
+                  <CardHeader>
+                    <div>
+                      <CardTitle className="text-sm">Aging Buckets</CardTitle>
+                      <CardDescription>Outstanding AP grouped by days overdue.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <Table containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+                    <THead><TR><TH>Bucket</TH><TH numeric>Amount</TH><TH numeric>Invoices</TH><TH numeric>Suppliers</TH><TH numeric>Share</TH></TR></THead>
+                    <TBody>
+                      {bucketKeys.map((key) => (
+                        <TR key={key}>
+                          <TD><Badge variant={bucketVariant(key)}>{bucketLabel[key]}</Badge></TD>
+                          <TD numeric>{money(aging.data?.buckets?.[key]?.amount)}</TD>
+                          <TD numeric>{aging.data?.buckets?.[key]?.invoice_count ?? 0}</TD>
+                          <TD numeric>{aging.data?.buckets?.[key]?.supplier_count ?? 0}</TD>
+                          <TD numeric>{Number(aging.data?.buckets?.[key]?.percentage ?? 0).toFixed(1)}%</TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                </Card>
+                <PayableTable title="Open Supplier Payables" rows={aging.data?.details ?? []} />
+              </>
+            ) : (
+              <>
+                <ModuleSummary
+                  metrics={[
+                    { label: "Total payments allocated", value: money(paidTotal) },
+                    { label: "Invoices with payment", value: aging.data?.paid?.length ?? 0 },
+                  ]}
+                />
+                <PaidTable rows={aging.data?.paid ?? []} />
+              </>
+            )}
+          </>
+        )}
       </div>
-      <div className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
-        <Card className="p-4">
-          <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="font-semibold">Payables Snapshot</h2><p className="text-sm text-slate-500">Current supplier liability by aging bucket.</p></div><Link to="/accounts-payable/aging" className="text-sm font-medium text-[#086B5A] hover:underline">View Aging</Link></div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{Object.entries(bucketLabel).map(([key,label])=>{const item=aging.data?.buckets?.[key];return <div key={key} className="rounded-lg border bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{label}</div><div className="mt-1 font-semibold">{money(item?.amount)}</div><div className="mt-2 text-xs text-slate-500">{item?.invoice_count??0} invoices</div></div>})}</div>
-        </Card>
-        <TopSupplierTable rows={aging.data?.top_suppliers??[]}/>
-      </div>
-      <PayableTable title="Open Supplier Payables" rows={(aging.data?.details??[]).slice(0,8)} loading={aging.isLoading} error={aging.isError} onRetry={()=>aging.refetch()}/>
-    </> : <>
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200">
-        <div className="flex gap-5"><button className={`pb-2 text-sm font-medium ${agingTab==="OPEN"?"border-b-2 border-[#086B5A] text-[#086B5A]":"text-slate-500"}`} onClick={()=>setAgingTab("OPEN")}>Open / Aging</button><button className={`pb-2 text-sm font-medium ${agingTab==="PAID"?"border-b-2 border-[#086B5A] text-[#086B5A]":"text-slate-500"}`} onClick={()=>setAgingTab("PAID")}>Paid History</button></div>
-        {agingTab==="OPEN"&&<div className="pb-2"><PrintPreviewButton src="/accounts-payable/aging/print" title="Account Payable Aging" ariaLabel="Print AP aging"/></div>}
-      </div>
-      {agingTab==="OPEN"?<>
-        <Card className="p-4"><h2 className="mb-3 text-base font-semibold">Aging Buckets</h2><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{Object.entries(bucketLabel).map(([key,label])=>{const item=aging.data?.buckets?.[key];return <div key={key} className="rounded-lg border bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{label}</div><div className="mt-1 font-semibold">{money(item?.amount)}</div><div className="mt-2 text-xs text-slate-500">{item?.invoice_count??0} invoices · {item?.supplier_count??0} suppliers · {Number(item?.percentage??0).toFixed(1)}%</div></div>})}</div></Card>
-        <PayableTable title="Open Supplier Payables" rows={aging.data?.details??[]} loading={aging.isLoading} error={aging.isError} onRetry={()=>aging.refetch()}/>
-      </>:<><div className="grid gap-3 md:grid-cols-2"><Metric label="Total Payments Allocated" value={money(paidTotal)}/><Metric label="Invoices With Payment" value={String(aging.data?.paid?.length??0)}/></div><PaidTable rows={aging.data?.paid??[]} loading={aging.isLoading}/></>}
-    </>}
-  </div>
+    </DataWorkspace>
+  );
 }
 
-function InvoiceLink({row}:{row:PayableRow}){const id=row.supplier_invoice_id??row.id;return <Link className="font-medium text-emerald-700 hover:underline" to={`/supplier-invoices/${id}`}>{row.invoice_number||"—"}</Link>}
-function Metric({label,value,warning=false}:{label:string;value:string;warning?:boolean}){return <Card className="p-4"><div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">{warning&&<AlertCircle className="h-4 w-4 text-amber-600"/>}{label}</div><div className={`mt-2 text-xl font-semibold ${warning?"text-amber-700":""}`}>{value}</div></Card>}
-function PayableTable({title,rows,loading,error,onRetry}:{title:string;rows:PayableRow[];loading:boolean;error:boolean;onRetry:()=>void}){return <Card className="p-0"><div className="border-b px-4 py-3"><h2 className="font-semibold">{title}</h2></div>{loading?<p className="py-10 text-center text-sm text-slate-500">Loading accounts payable…</p>:error?<div className="p-6 text-center"><p className="text-sm text-red-600">Accounts payable data could not be loaded.</p><Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>Try Again</Button></div>:!rows.length?<p className="py-10 text-center text-sm text-slate-500">No outstanding supplier invoices.</p>:<div className="overflow-x-auto"><Table variant="standard"><THead><TR><TH>Invoice</TH><TH>Supplier</TH><TH>Due Date</TH><TH className="text-right">Outstanding</TH><TH>Aging</TH></TR></THead><TBody>{rows.map((row)=>{const bucket=row.aging_bucket??(Number(row.over_90)>0?"over_90":Number(row["61_90"])>0?"61_90":Number(row["31_60"])>0?"31_60":Number(row["1_30"])>0?"1_30":"current");return <TR key={row.id}><TD><InvoiceLink row={row}/>{row.supplier_invoice_number&&<div className="text-[10px] text-slate-500">Supplier ref: {row.supplier_invoice_number}</div>}</TD><TD>{row.supplier_name||`Supplier #${row.supplier_id}`}</TD><TD>{row.due_date||"—"}</TD><TD className="text-right">{money(row.outstanding)}</TD><TD><Badge variant={bucket==="current"?"success":bucket==="over_90"?"danger":"warning"}>{bucketLabel[bucket]??bucket}</Badge>{Number(row.days_overdue)>0&&<div className="mt-1 text-[10px] text-slate-500">{row.days_overdue} days overdue</div>}</TD></TR>})}</TBody></Table></div>}</Card>}
-function TopSupplierTable({rows}:{rows:AgingResponse["top_suppliers"]}){return <Card className="p-0"><div className="border-b px-4 py-3"><h2 className="font-semibold">Top Outstanding Suppliers</h2></div>{!rows.length?<p className="py-10 text-center text-sm text-slate-500">No outstanding suppliers.</p>:<div className="divide-y">{rows.map((row,index)=><div key={row.supplier_id} className="p-4"><div className="flex justify-between gap-3"><div><div className="text-xs text-slate-500">#{index+1}</div><div className="font-medium">{row.supplier_name||`Supplier #${row.supplier_id}`}</div><div className="text-xs text-slate-500">{row.invoice_count} open invoices · overdue {money(row.overdue)}</div></div><div className="text-right font-semibold">{money(row.outstanding)}</div></div></div>)}</div>}</Card>}
-function PaidTable({rows,loading}:{rows:PayableRow[];loading:boolean}){return <Card className="p-0"><div className="border-b px-4 py-3"><h2 className="font-semibold">Invoice Payment History</h2></div>{loading?<p className="py-10 text-center text-sm text-slate-500">Loading…</p>:!rows.length?<p className="py-10 text-center text-sm text-slate-500">No supplier invoice payments yet.</p>:<div className="overflow-x-auto"><Table variant="standard"><THead><TR><TH>Invoice</TH><TH>Supplier</TH><TH>Last Payment</TH><TH className="text-right">Invoice Amount</TH><TH className="text-right">Paid</TH><TH className="text-right">Remaining</TH></TR></THead><TBody>{rows.map(row=><TR key={row.id}><TD><InvoiceLink row={row}/></TD><TD>{row.supplier_name||`Supplier #${row.supplier_id}`}</TD><TD>{row.last_payment_date||"—"}</TD><TD className="text-right">{money(row.amount)}</TD><TD className="text-right">{money(row.paid_amount)}</TD><TD className="text-right">{money(row.outstanding)}</TD></TR>)}</TBody></Table></div>}</Card>}
+function PayableTable({ title, rows, limitNote }: { title: string; rows: PayableRow[]; limitNote?: string }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <CardHeader>
+        <div>
+          <CardTitle className="text-sm">{title}</CardTitle>
+          <CardDescription>{limitNote ?? "Outstanding invoice balances and their current aging bucket."}</CardDescription>
+        </div>
+        <Badge variant="outline">{rows.length} invoices</Badge>
+      </CardHeader>
+      <Table className="min-w-[800px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+        <THead>
+          <TR><TH>Invoice</TH><TH>Supplier</TH><TH>Due Date</TH><TH numeric>Outstanding</TH><TH>Aging</TH></TR>
+        </THead>
+        <TBody>
+          {rows.map((row) => {
+            const bucket = row.aging_bucket ?? (Number(row.over_90) > 0 ? "over_90" : Number(row["61_90"]) > 0 ? "61_90" : Number(row["31_60"]) > 0 ? "31_60" : Number(row["1_30"]) > 0 ? "1_30" : "current");
+            return (
+              <TR key={row.id}>
+                <TD>
+                  <TableCellStack
+                    primary={<InvoiceLink row={row} />}
+                    secondary={row.supplier_invoice_number ? `Supplier ref: ${row.supplier_invoice_number}` : undefined}
+                  />
+                </TD>
+                <TD>{row.supplier_name || `Supplier #${row.supplier_id}`}</TD>
+                <TD>{row.due_date || "—"}</TD>
+                <TD numeric className="font-semibold tabular-nums">{money(row.outstanding)}</TD>
+                <TD>
+                  <Badge variant={bucketVariant(bucket)}>{bucketLabel[bucket] ?? bucket}</Badge>
+                  {Number(row.days_overdue) > 0 && <div className="mt-1 text-[10px] text-slate-500">{row.days_overdue} days overdue</div>}
+                </TD>
+              </TR>
+            );
+          })}
+          {!rows.length && <TR><TD colSpan={5} className="p-10 text-center text-slate-500">No outstanding supplier invoices.</TD></TR>}
+        </TBody>
+      </Table>
+    </Card>
+  );
+}
+
+function PaidTable({ rows }: { rows: PayableRow[] }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <CardHeader>
+        <div>
+          <CardTitle className="text-sm">Invoice Payment History</CardTitle>
+          <CardDescription>Payments already allocated to supplier invoices.</CardDescription>
+        </div>
+        <Badge variant="outline">{rows.length} invoices</Badge>
+      </CardHeader>
+      <Table className="min-w-[900px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+        <THead>
+          <TR><TH>Invoice</TH><TH>Supplier</TH><TH>Last Payment</TH><TH numeric>Invoice Amount</TH><TH numeric>Paid</TH><TH numeric>Remaining</TH></TR>
+        </THead>
+        <TBody>
+          {rows.map((row) => (
+            <TR key={row.id}>
+              <TD><InvoiceLink row={row} /></TD>
+              <TD>{row.supplier_name || `Supplier #${row.supplier_id}`}</TD>
+              <TD>{row.last_payment_date || "—"}</TD>
+              <TD numeric>{money(row.amount)}</TD>
+              <TD numeric>{money(row.paid_amount)}</TD>
+              <TD numeric className="font-semibold tabular-nums">{money(row.outstanding)}</TD>
+            </TR>
+          ))}
+          {!rows.length && <TR><TD colSpan={6} className="p-10 text-center text-slate-500">No supplier invoice payments yet.</TD></TR>}
+        </TBody>
+      </Table>
+    </Card>
+  );
+}

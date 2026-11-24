@@ -70,17 +70,29 @@ export type ARAging = Page<ARAgingRow> & {
   }>;
 };
 
-const params = (page: number, pageSize: number, search: string) => ({
+type ReportingParams = {
+  page: number;
+  pageSize: number;
+  search: string;
+  status?: ARStatus;
+};
+
+const params = ({ page, pageSize, search, status }: ReportingParams) => ({
   page,
   page_size: pageSize,
   search: search.trim() || undefined,
+  status: status || undefined,
 });
 
 export const arReportingApi = {
-  summary: async (page = 1, pageSize = 20, search = "") =>
-    (await api.get<ARSummary>("/ar-reporting/summary", { params: params(page, pageSize, search) })).data,
-  detail: async (page = 1, pageSize = 20, search = "") =>
-    (await api.get<Page<ARDetail>>("/ar-reporting/detail", { params: params(page, pageSize, search) })).data,
-  aging: async (page = 1, pageSize = 20, search = "") =>
-    (await api.get<ARAging>("/ar-reporting/aging", { params: params(page, pageSize, search) })).data,
+  summary: async (page = 1, pageSize = 50, search = "") =>
+    (await api.get<ARSummary>("/ar-reporting/summary", { params: params({ page, pageSize, search }) })).data,
+  detail: async (page = 1, pageSize = 50, search = "", status?: ARStatus) =>
+    (
+      await api.get<Page<ARDetail>>("/ar-reporting/detail", {
+        params: params({ page, pageSize, search, status }),
+      })
+    ).data,
+  aging: async (page = 1, pageSize = 50, search = "") =>
+    (await api.get<ARAging>("/ar-reporting/aging", { params: params({ page, pageSize, search }) })).data,
 };

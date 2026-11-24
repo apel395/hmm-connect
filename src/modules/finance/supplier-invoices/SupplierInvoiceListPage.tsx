@@ -1,9 +1,12 @@
-import { Printer, SlidersHorizontal } from "lucide-react";
+import { Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import ListToolbar from "@/components/common/ListToolbar";
+import ModuleSummary from "@/components/common/ModuleSummary";
 import PageHeader from "@/components/common/PageHeader";
+import Pagination from "@/components/datatable/Pagination";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -423,35 +426,90 @@ export default function SupplierInvoiceListPage() {
 {hasPermission("payment.manage") && <Button variant="outline" disabled={!Object.values(selectedInvoices).some(Boolean) || makeVoucher.isPending} loading={makeVoucher.isPending} onClick={() => makeVoucher.mutate()}>Payment Voucher</Button>}
 <Button variant="outline" onClick={() => window.print()}><Printer size={16}/> Print</Button>
 </>} />
-    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      <Card className="p-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Total Invoices</div>
-        <div className="mt-1 text-xl font-semibold">{paymentOverview.isLoading ? "…" : paymentSummary.totalCount}</div>
-        <div className="mt-1 text-xs text-slate-500">{money(paymentSummary.totalValue)}</div>
-      </Card>
-      <Card className="p-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Unpaid</div>
-        <div className="mt-1 text-xl font-semibold text-red-700">{paymentOverview.isLoading ? "…" : paymentSummary.unpaidCount}</div>
-        <div className="mt-1 text-xs text-slate-500">{money(paymentSummary.unpaidValue)}</div>
-      </Card>
-      <Card className="p-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Partially Paid</div>
-        <div className="mt-1 text-xl font-semibold text-amber-700">{paymentOverview.isLoading ? "…" : paymentSummary.partialCount}</div>
-        <div className="mt-1 text-xs text-slate-500">{money(paymentSummary.partialValue)} invoice value</div>
-        {paymentSummary.partialCount > 0 && <div className="mt-0.5 text-[11px] text-slate-400">{money(paymentSummary.partialOutstanding)} remaining</div>}
-      </Card>
-      <Card className="p-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Paid</div>
-        <div className="mt-1 text-xl font-semibold text-emerald-700">{paymentOverview.isLoading ? "…" : paymentSummary.paidCount}</div>
-        <div className="mt-1 text-xs text-slate-500">{money(paymentSummary.paidValue)}</div>
-      </Card>
-      <Card className="p-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Outstanding</div>
-        <div className="mt-1 text-xl font-semibold">{money(paymentSummary.outstandingValue)}</div>
-        <div className="mt-1 text-xs text-slate-500">Unpaid balance</div>
-      </Card>
-    </div>
-    <Card className="mt-3 p-3"><div className="mb-2 flex flex-wrap items-end gap-2"><input aria-label="Search invoices" className={`${input} min-w-[260px] flex-1`} placeholder="Search invoices" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><label className="text-xs font-medium text-slate-600">Status<select className={input} value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option>{["DRAFT", "VERIFIED", "REJECTED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}</select></label><Button type="button" size="sm" variant="outline" aria-expanded={showFilters} onClick={() => setShowFilters(value=>!value)}><SlidersHorizontal size={15}/> Filters{[filterSupplierId,filterLocationId].filter(Boolean).length ? ` (${[filterSupplierId,filterLocationId].filter(Boolean).length})` : ""}</Button></div>{showFilters && <div className="mb-2 grid gap-2 border-t border-slate-100 pt-2 md:grid-cols-2"><SearchableSelect label="Supplier" value={filterSupplierId} placeholder="Type supplier name..." options={suppliers.map((supplier: any) => ({ id: supplier.id, label: supplier.name, keywords: [supplier.name ?? "", supplier.code ?? ""] }))} onChange={(id) => { setFilterSupplierId(id); setPage(1); }} /><SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(filterLocations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => { setFilterLocationId(id); setPage(1); }} /></div>}<Table className="min-w-[900px]" containerClassName="border-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH className="w-12"><input type="checkbox" checked={(invoices.data?.items?.length ?? 0) > 0 && (invoices.data?.items ?? []).every((row: any) => !!selectedInvoices[row.id])} onChange={(event) => { const next: Record<number, boolean> = {}; (invoices.data?.items ?? []).forEach((row: any) => { if (row.status === "POSTED") next[row.id] = event.target.checked; }); setSelectedInvoices(next); }} /></TH><TH>Invoice</TH><TH>Supplier</TH><TH>Dates</TH><TH>Source Document</TH><TH numeric>PPN</TH><TH numeric>Total</TH><TH>Payment</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{invoices.data?.items.map((row: any) => <TR key={row.id} className="whitespace-nowrap"><TD className="w-12"><input type="checkbox" checked={!!selectedInvoices[row.id]} disabled={row.status !== "POSTED"} onChange={(event) => setSelectedInvoices((current) => ({ ...current, [row.id]: event.target.checked }))} /></TD><TD><TableCellStack primary={row.internal_invoice_number} secondary={row.supplier_invoice_number}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD><TableCellStack primary={row.invoice_date} secondary={row.due_date ? `Due ${row.due_date}` : undefined}/></TD><TD>{row.receipt_number || "—"}</TD><TD numeric>{money(row.tax_amount)}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD>{(() => { const paymentStatus = String(row.payment_status || (Number(row.balance_amount ?? row.total_amount) <= 0 ? "PAID" : Number(row.paid_amount || 0) > 0 ? "PARTIALLY_PAID" : "UNPAID")).toUpperCase(); const paid = Number(row.paid_amount || 0); const outstanding = Number(row.balance_amount ?? row.total_amount ?? 0); return <TableCellStack primary={<Badge variant={paymentStatus === "PAID" ? "success" : paymentStatus === "PARTIALLY_PAID" ? "warning" : "danger"}>{paymentStatus === "PARTIALLY_PAID" ? "Partially Paid" : paymentStatus === "PAID" ? "Paid" : "Unpaid"}</Badge>} secondary={paymentStatus === "PAID" ? `Paid ${money(paid || row.total_amount)}` : paid > 0 ? `Paid ${money(paid)} · Due ${money(outstanding)}` : `Due ${money(outstanding)}`} />; })()}</TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => navigate(`/supplier-invoices/${row.id}`)}>View</Button></div></TD></TR>)}</TBody></Table><div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs"><label>Rows per page <select className="ml-1 rounded border border-slate-300 px-2 py-1" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1)}}><option value={50}>50</option><option value={100}>100</option></select></label><div className="flex items-center gap-2"><span>{invoices.data?.total_items ?? 0} invoices · Page {page} of {Math.max(invoices.data?.total_pages ?? 0,1)}</span><Button size="sm" variant="outline" disabled={!invoices.data?.has_previous} onClick={() => setPage(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={!invoices.data?.has_next} onClick={() => setPage(page + 1)}>Next</Button></div></div></Card>
+    <ModuleSummary
+      metrics={[
+        {
+          label: "Invoices",
+          value: paymentOverview.isLoading ? "…" : paymentSummary.totalCount,
+          note: money(paymentSummary.totalValue),
+        },
+        {
+          label: "Unpaid",
+          value: paymentOverview.isLoading ? "…" : paymentSummary.unpaidCount,
+          note: money(paymentSummary.unpaidValue),
+        },
+        {
+          label: "Partially paid",
+          value: paymentOverview.isLoading ? "…" : paymentSummary.partialCount,
+          note: `${money(paymentSummary.partialValue)} value · ${money(paymentSummary.partialOutstanding)} remaining`,
+        },
+        {
+          label: "Paid",
+          value: paymentOverview.isLoading ? "…" : paymentSummary.paidCount,
+          note: money(paymentSummary.paidValue),
+        },
+        {
+          label: "Outstanding",
+          value: money(paymentSummary.outstandingValue),
+          note: "Unpaid balance",
+        },
+      ]}
+    />
+    <Card className="mt-3 overflow-hidden p-0">
+      <div className="p-3 print:hidden">
+        <ListToolbar
+          search={search}
+          searchPlaceholder="Search invoice, supplier reference, or number..."
+          onSearch={(value) => { setSearch(value); setPage(1); }}
+          filters={
+            <select
+              aria-label="Invoice status"
+              className={`${input} w-auto min-w-[150px]`}
+              value={status}
+              onChange={(event) => { setStatus(event.target.value); setPage(1); }}
+            >
+              <option value="">All statuses</option>
+              {["DRAFT", "VERIFIED", "REJECTED", "POSTED", "VOID"].map((value) => <option key={value}>{value}</option>)}
+            </select>
+          }
+          advancedOpen={showFilters}
+          onAdvancedToggle={() => setShowFilters((value) => !value)}
+          advancedFilters={
+            <div className="grid gap-2 md:grid-cols-2">
+              <SearchableSelect label="Supplier" value={filterSupplierId} placeholder="Type supplier name..." options={suppliers.map((supplier: any) => ({ id: supplier.id, label: supplier.name, keywords: [supplier.name ?? "", supplier.code ?? ""] }))} onChange={(id) => { setFilterSupplierId(id); setPage(1); }} />
+              <SearchableSelect label="Location" value={filterLocationId} disabled={filterLocations.isLoading} placeholder={filterLocations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(filterLocations.data ?? []).map((item: any) => ({ id: item.id, label: `${item.code} — ${item.name}`, keywords: [item.code ?? "", item.name ?? ""] }))} onChange={(id) => { setFilterLocationId(id); setPage(1); }} />
+            </div>
+          }
+          onRefresh={() => invoices.refetch()}
+          footer={
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+              <span>{invoices.data?.total_items ?? 0} invoices match current filters</span>
+              <label>Rows per page
+                <select className="ml-1 rounded border border-slate-300 bg-white px-2 py-1" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </label>
+            </div>
+          }
+        />
+      </div>
+      <Table className="min-w-[900px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none"><THead><TR className="whitespace-nowrap"><TH className="w-12"><input type="checkbox" checked={(invoices.data?.items?.length ?? 0) > 0 && (invoices.data?.items ?? []).every((row: any) => !!selectedInvoices[row.id])} onChange={(event) => { const next: Record<number, boolean> = {}; (invoices.data?.items ?? []).forEach((row: any) => { if (row.status === "POSTED") next[row.id] = event.target.checked; }); setSelectedInvoices(next); }} /></TH><TH>Invoice</TH><TH>Supplier</TH><TH>Dates</TH><TH>Source Document</TH><TH numeric>PPN</TH><TH numeric>Total</TH><TH>Payment</TH><TH>Status</TH><TH numeric>Action</TH></TR></THead><TBody>{invoices.data?.items.map((row: any) => <TR key={row.id} className="whitespace-nowrap"><TD className="w-12"><input type="checkbox" checked={!!selectedInvoices[row.id]} disabled={row.status !== "POSTED"} onChange={(event) => setSelectedInvoices((current) => ({ ...current, [row.id]: event.target.checked }))} /></TD><TD><TableCellStack primary={row.internal_invoice_number} secondary={row.supplier_invoice_number}/></TD><TD className="font-medium">{row.supplier_name}</TD><TD><TableCellStack primary={row.invoice_date} secondary={row.due_date ? `Due ${row.due_date}` : undefined}/></TD><TD>{row.receipt_number || "—"}</TD><TD numeric>{money(row.tax_amount)}</TD><TD numeric className="font-semibold">{money(row.total_amount)}</TD><TD>{(() => { const paymentStatus = String(row.payment_status || (Number(row.balance_amount ?? row.total_amount) <= 0 ? "PAID" : Number(row.paid_amount || 0) > 0 ? "PARTIALLY_PAID" : "UNPAID")).toUpperCase(); const paid = Number(row.paid_amount || 0); const outstanding = Number(row.balance_amount ?? row.total_amount ?? 0); return <TableCellStack primary={<Badge variant={paymentStatus === "PAID" ? "success" : paymentStatus === "PARTIALLY_PAID" ? "warning" : "danger"}>{paymentStatus === "PARTIALLY_PAID" ? "Partially Paid" : paymentStatus === "PAID" ? "Paid" : "Unpaid"}</Badge>} secondary={paymentStatus === "PAID" ? `Paid ${money(paid || row.total_amount)}` : paid > 0 ? `Paid ${money(paid)} · Due ${money(outstanding)}` : `Due ${money(outstanding)}`} />; })()}</TD><TD>{row.status}</TD><TD><div className="flex justify-end"><Button size="xs" variant="outline" onClick={() => navigate(`/supplier-invoices/${row.id}`)}>View</Button></div></TD></TR>)}
+        {invoices.isPending && <TR><TD colSpan={10} className="p-10 text-center text-slate-500">Loading supplier invoices…</TD></TR>}
+        {invoices.isError && <TR><TD colSpan={10} className="p-10 text-center text-red-700">Supplier invoices could not be loaded.</TD></TR>}
+        {!invoices.isPending && !invoices.isError && !invoices.data?.items?.length && <TR><TD colSpan={10} className="p-10 text-center text-slate-500">No supplier invoices match these filters.</TD></TR>}
+      </TBody></Table>
+      <div className="px-3 pb-2">
+        <Pagination
+          page={page}
+          pages={invoices.data?.total_pages ?? 1}
+          total={invoices.data?.total_items ?? 0}
+          pageSize={pageSize}
+          noun="invoices"
+          onChange={setPage}
+        />
+      </div>
+    </Card>
 
     <Dialog open={open} onOpenChange={next => { if (!save.isPending) setOpen(next); }}><DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>{editingId ? "Edit Draft Supplier Invoice" : "Create Supplier Invoice"}</DialogTitle></DialogHeader><DialogBody className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
