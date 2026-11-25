@@ -1,18 +1,41 @@
-import ReturnCompletion, { type ReturnEvent } from "./ReturnCompletion";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "@/api/client";
+import ModuleSummary from "@/components/common/ModuleSummary";
 import PageHeader from "@/components/common/PageHeader";
+import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import Empty from "@/components/ui/Empty";
+import Loading from "@/components/ui/Loading";
+import DataWorkspace, {
+  WorkspaceFilters,
+} from "@/components/workspace/DataWorkspace";
+import { FORM_UI } from "@/config/formUi";
 import useAuthorization from "@/hooks/useAuthorization";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { todayLocal } from "@/utils/dateConstraints";
+import { warehouseErrorMessage } from "../errors";
+import ReturnCompletion from "./ReturnCompletion";
+import type {
+  ReturnDocument,
+  ReturnListResponse,
+  ReturnSource,
+  ReturnSourceListResponse,
+} from "./types";
 
-const input =
-  "h-9 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm";
+const input = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control} min-w-0`;
 const label = "flex min-w-0 flex-col gap-1 text-xs text-slate-600";
+const statusVariant: Record<string, BadgeVariant> = {
+  DRAFT: "warning",
+  POSTED: "success",
+  VOID: "outline",
+  REVERSED: "secondary",
+};
+const statusBadge = (status: string) => (
+  <Badge variant={statusVariant[status] ?? "default"}>{status}</Badge>
+);
 const money = (value: unknown) =>
   Number(value ?? 0).toLocaleString("id-ID", {
     minimumFractionDigits: 2,
@@ -20,63 +43,6 @@ const money = (value: unknown) =>
   });
 const quantity = (value: unknown) =>
   Number(value ?? 0).toLocaleString("id-ID", { maximumFractionDigits: 4 });
-type SourceLine = {
-  id: number;
-  code: string;
-  name: string;
-  uom: string;
-  received: number;
-  returned: number;
-  remaining: number;
-  available: number;
-};
-type ReturnLine = {
-  id: number;
-  product_id: number;
-  code: string;
-  name: string;
-  uom: string;
-  quantity: number;
-  replaced_quantity: number;
-  line_cost: number;
-};
-type ReturnDocument = {
-  id: number;
-  number: string;
-  goods_receipt_id: number;
-  warehouse_id: number;
-  receipt_number: string;
-  supplier_name: string;
-  purpose: string;
-  status: string;
-  reason: string;
-  return_date: string;
-  total_cost: number;
-  clearing_balance: number;
-  journal_entry_id: number | null;
-  credit_journal_id: number | null;
-  credit_reference: string | null;
-  credit_applied: number | null;
-  supplier_credit: number | null;
-  items: ReturnLine[];
-  remaining_supplier_credit: number;
-  events: ReturnEvent[];
-  replacement_receipts: Array<{ id: number; number: string }>;
-};
-type Source = {
-  id: number;
-  warehouse_id: number;
-  number: string;
-  supplier: string;
-  items: SourceLine[];
-  invoices: Array<{
-    id: number;
-    number: string;
-    status: string;
-    balance: number;
-    total: number;
-  }>;
-};
 
 export default function InventoryReturnsPage() {
   const auth = useAuthorization();
@@ -113,10 +79,9 @@ export default function InventoryReturnsPage() {
     queryKey: ["inventory-returns", search, page],
     queryFn: async () =>
       (
-        await api.get<{ items: ReturnDocument[]; total_pages: number }>(
-          "/inventory/returns",
-          { params: { search, page } },
-        )
+        await api.get<ReturnListResponse>("/inventory/returns", {
+          params: { search, page },
+        })
       ).data,
   });
   const detail = useQuery({
@@ -129,10 +94,7 @@ export default function InventoryReturnsPage() {
     queryKey: ["inventory-return-sources", sourceSearch, sourcePage],
     queryFn: async () =>
       (
-        await api.get<{
-          items: Array<{ id: number; number: string; supplier: string }>;
-          total_pages: number;
-        }>("/inventory/returns/sources", {
+        await api.get<ReturnSourceListResponse>("/inventory/returns/sources", {
           params: { search: sourceSearch, page: sourcePage },
         })
       ).data,
@@ -142,7 +104,8 @@ export default function InventoryReturnsPage() {
   const source = useQuery({
     queryKey: ["inventory-return-source", sourceId],
     queryFn: async () =>
-      (await api.get<Source>(`/inventory/returns/sources/${sourceId}`)).data,
+      (await api.get<ReturnSource>(`/inventory/returns/sources/${sourceId}`))
+        .data,
     enabled: !!sourceId,
   });
   const accounts = useQuery({
@@ -217,12 +180,30 @@ export default function InventoryReturnsPage() {
     </select>
   );
   const row = detail.data;
-  const error = action.error as {
-    response?: { data?: { detail?: unknown } };
-    message?: string;
-  } | null;
+  const returns = listing.data?.items ?? [];
+  const summary = [
+    { label: "Returns", value: returns.length },
+    {
+      label: "Drafts",
+      value: returns.filter((item) => item.status === "DRAFT").length,
+    },
+    {
+      label: "Posted",
+      value: returns.filter((item) => item.status === "POSTED").length,
+    },
+    {
+      label: "Listed value",
+      value: money(
+        returns.reduce((total, item) => total + Number(item.total_cost ?? 0), 0),
+      ),
+    },
+    ...(row
+      ? [{ label: "Open clearing balance", value: money(row.clearing_balance) }]
+      : []),
+  ];
+  const loadError = listing.error ?? detail.error ?? source.error;
   return (
-    <div className="space-y-3">
+    <DataWorkspace area="Inventory" className="space-y-3">
       <PageHeader
         title="Supplier Returns"
         description="Partial warehouse returns linked to Receiving."
@@ -243,16 +224,44 @@ export default function InventoryReturnsPage() {
           ) : undefined
         }
       />
-      {(error || listing.isError || detail.isError || source.isError) && (
+      <WorkspaceFilters
+        label="Return filters"
+        context={search ? `Search: ${search}` : "All supplier returns"}
+      >
+        <input
+          aria-label="Search returns"
+          className={input}
+          placeholder="Return or Receiving number"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+        />
+      </WorkspaceFilters>
+      {action.error && (
         <p
           role="alert"
           className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800"
         >
-          {error
-            ? String(error.response?.data?.detail ?? error.message)
-            : "Unable to load return/source data. Refresh and retry."}
+          {warehouseErrorMessage(
+            action.error,
+            "Unable to complete return action.",
+          )}
         </p>
       )}
+      {(listing.isError || detail.isError || source.isError) && (
+        <p
+          role="alert"
+          className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
+          {warehouseErrorMessage(
+            loadError,
+            "Unable to load return/source data. Refresh and retry.",
+          )}
+        </p>
+      )}
+      <ModuleSummary metrics={summary} />
       {creating && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
@@ -261,6 +270,9 @@ export default function InventoryReturnsPage() {
               Cancel
             </Button>
           </div>
+          {(sources.isLoading || source.isLoading) && (
+            <Loading message="Loading receiving data…" />
+          )}
           <div className="grid gap-3 md:grid-cols-3">
             <label className={label}>
               Find Receiving
@@ -363,6 +375,16 @@ export default function InventoryReturnsPage() {
                 </tr>
               </thead>
               <tbody>
+                {source.data?.items.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="p-3">
+                      <Empty
+                        title="No returnable items"
+                        description="Choose a receiving document with stock available to return."
+                      />
+                    </td>
+                  </tr>
+                )}
                 {source.data?.items.map((line) => (
                   <tr className="border-b" key={line.id}>
                     <td className="p-2">
@@ -437,12 +459,17 @@ export default function InventoryReturnsPage() {
           </div>
         </Card>
       )}
+      {!creating && !!id && detail.isLoading && (
+        <Card className="p-4">
+          <Loading message="Loading return…" />
+        </Card>
+      )}
       {!creating && row && (
         <Card className="space-y-3 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">
-                {row.number} · {row.status}
+                {row.number} · {statusBadge(row.status)}
               </h2>
               <p className="text-xs text-slate-500">
                 {row.supplier_name} · {row.return_date} ·{" "}
@@ -648,6 +675,9 @@ export default function InventoryReturnsPage() {
                 <h3 className="text-sm font-semibold">
                   Supplier credit — Finance
                 </h3>
+                {source.isLoading && (
+                  <Loading message="Loading supplier invoices…" />
+                )}
                 <div className="grid gap-3 md:grid-cols-3">
                   <label className={label}>
                     Original supplier invoice
@@ -775,83 +805,82 @@ export default function InventoryReturnsPage() {
         </Card>
       )}
       <Card className="overflow-hidden">
-        <div className="border-b p-3">
-          <input
-            aria-label="Search returns"
-            className={input}
-            placeholder="Return or Receiving number"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+        {listing.isLoading ? (
+          <Loading message="Loading supplier returns…" />
+        ) : listing.data && returns.length === 0 ? (
+          <Empty
+            title="No supplier returns"
+            description="Create a return from a receiving document, or change the search filter."
           />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="p-3">Return</th>
-                <th>Date</th>
-                <th>Supplier</th>
-                <th>Receiving</th>
-                <th>Purpose</th>
-                <th>Value</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listing.data?.items.map((r) => (
-                <tr key={r.id} className="border-b">
-                  <td className="p-3">
-                    <button
-                      className="font-medium text-emerald-700 underline"
-                      onClick={() => {
-                        setCreating(false);
-                        setParams({ id: String(r.id) });
-                        action.reset();
-                      }}
-                    >
-                      {r.number}
-                    </button>
-                  </td>
-                  <td>{r.return_date}</td>
-                  <td>{r.supplier_name}</td>
-                  <td>{r.receipt_number}</td>
-                  <td>
-                    {r.purpose === "REPLACEMENT"
-                      ? "Replacement"
-                      : "Supplier credit"}
-                  </td>
-                  <td>{money(r.total_cost)}</td>
-                  <td>{r.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-end gap-3 p-3 text-xs">
-          <Button
-            variant="outline"
-            disabled={page === 1 || listing.isFetching}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            Previous
-          </Button>
-          <span>
-            {page} / {Math.max(1, listing.data?.total_pages ?? 1)}
-          </span>
-          <Button
-            variant="outline"
-            disabled={
-              page >= (listing.data?.total_pages ?? 1) || listing.isFetching
-            }
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="p-3">Return</th>
+                    <th>Date</th>
+                    <th>Supplier</th>
+                    <th>Receiving</th>
+                    <th>Purpose</th>
+                    <th>Value</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {returns.map((r) => (
+                    <tr key={r.id} className="border-b">
+                      <td className="p-3">
+                        <button
+                          className="font-medium text-emerald-700 underline"
+                          onClick={() => {
+                            setCreating(false);
+                            setParams({ id: String(r.id) });
+                            action.reset();
+                          }}
+                        >
+                          {r.number}
+                        </button>
+                      </td>
+                      <td>{r.return_date}</td>
+                      <td>{r.supplier_name}</td>
+                      <td>{r.receipt_number}</td>
+                      <td>
+                        {r.purpose === "REPLACEMENT"
+                          ? "Replacement"
+                          : "Supplier credit"}
+                      </td>
+                      <td>{money(r.total_cost)}</td>
+                      <td>{statusBadge(r.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-3 text-xs">
+              <Button
+                variant="outline"
+                disabled={page === 1 || listing.isFetching}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                Previous
+              </Button>
+              <span>
+                {page} / {Math.max(1, listing.data?.total_pages ?? 1)}
+              </span>
+              <Button
+                variant="outline"
+                disabled={
+                  page >= (listing.data?.total_pages ?? 1) || listing.isFetching
+                }
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </>
+        )}
       </Card>
-    </div>
+    </DataWorkspace>
   );
 }

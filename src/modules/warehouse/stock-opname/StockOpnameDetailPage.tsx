@@ -1,14 +1,32 @@
 import { approvalPrintSignatures } from "@/components/print/approvalSignatures";
 import PageHeader from "@/components/common/PageHeader";
+import ModuleSummary from "@/components/common/ModuleSummary";
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import Button from "@/components/ui/Button";
+import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
+import Empty from "@/components/ui/Empty";
+import Loading from "@/components/ui/Loading";
 import WorkspaceBackButton from "@/components/workspace/WorkspaceBackButton";
 import useAuthorization from "@/hooks/useAuthorization";
+import { FORM_UI } from "@/config/formUi";
+import { warehouseErrorMessage } from "@/modules/warehouse/errors";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import { useEffect,useRef,useState } from "react";
 import { useNavigate,useParams } from "react-router-dom";
 import { stockOpnameApi } from "./api";
+import type { StockOpnameItem, StockOpnameStatus } from "./types";
+
+const input = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`;
+const statusVariant: Record<StockOpnameStatus, BadgeVariant> = {
+  DRAFT: "warning",
+  PENDING_APPROVAL: "info",
+  APPROVED: "primary",
+  POSTED: "success",
+  REJECTED: "danger",
+  VOID: "outline",
+};
 
 export default function StockOpnameDetailPage() {
   const id = Number(useParams().id);
@@ -101,6 +119,7 @@ export default function StockOpnameDetailPage() {
       navigate("/stock-opnames");
     },
   });
+  const actionError = save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error || voidIt.error;
   const askVoid = () => {
     const reason = window.prompt(
       "Void this Stock Opname? This cancels the count and lets you create a new one. Reason (required):",
@@ -111,7 +130,29 @@ export default function StockOpnameDetailPage() {
     voidIt.mutate(reason);
   };
   const d = query.data;
-  if (!d) return <div>Loading...</div>;
+  if (query.isLoading || (!d && !query.isError)) {
+    return (
+      <DataWorkspace area="Inventory">
+        <div className="space-y-6">
+          <PageHeader title="Stock Opname" description="Physical inventory count document" actions={<WorkspaceBackButton />} />
+          <Loading message="Loading stock opname…" />
+        </div>
+      </DataWorkspace>
+    );
+  }
+  if (!d) {
+    return (
+      <DataWorkspace area="Inventory">
+        <div className="space-y-6">
+          <PageHeader title="Stock Opname" description="Physical inventory count document" actions={<WorkspaceBackButton />} />
+          <p role="alert" className="text-sm text-red-700">
+            Stock opname could not load. {warehouseErrorMessage(query.error, "Unable to load stock opname")}
+          </p>
+          <Button variant="outline" onClick={() => void query.refetch()}>Retry</Button>
+        </div>
+      </DataWorkspace>
+    );
+  }
   const editable = d.status !== "POSTED";
   const canCount = editable && d.allowed_actions?.can_edit === true;
 
@@ -129,7 +170,7 @@ export default function StockOpnameDetailPage() {
     quickQty.trim() !== "" &&
     Number.isFinite(Number(quickQty)) &&
     Number(quickQty) >= 0;
-  const selectItem = (item: any) => {
+  const selectItem = (item: StockOpnameItem) => {
     setQuickItemId(item.id);
     setQuickQty((counts[item.id] ?? "").trim() === "" ? "" : String(counts[item.id] ?? ""));
     setQuickQuery(`${item.product_code ?? ""} — ${item.product_name ?? ""}`);
@@ -140,322 +181,335 @@ export default function StockOpnameDetailPage() {
     if (!canSaveQuick || quickItemId == null) return;
     saveItem.mutate({ item_id: quickItemId, physical_quantity: Number(quickQty) });
   };
+  const summaryMetrics = [
+    { label: "Items", value: d.items.length },
+    { label: "Counted", value: counted },
+    { label: "Progress", value: `${progressPct}%` },
+    ...(!d.blind_count ? [{ label: "Variance value", value: varianceTotal.toLocaleString("id-ID") }] : []),
+  ];
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={d.opname_number}
-        description={`${d.warehouse_name ?? "Warehouse"} • ${d.count_date}`}
-        actions={
-          <div className="flex gap-2">
-            {canCount && d.items.length > 0 && (
-              <>
+    <DataWorkspace area="Inventory">
+      <div className="space-y-6">
+        <PageHeader
+          title={d.opname_number}
+          description={`${d.warehouse_name ?? "Warehouse"} • ${d.count_date}`}
+          actions={
+            <div className="flex gap-2">
+              {canCount && d.items.length > 0 && (
+                <>
+                  <Button
+                    variant="secondary"
+                    disabled={save.isPending}
+                    onClick={() => save.mutate()}
+                  >
+                    Save Count
+                  </Button>
+                </>
+              )}
+              {d.status === "DRAFT" && d.items.length > 0 && d.allowed_actions?.can_submit === true && (
                 <Button
-                  variant="secondary"
-                  disabled={save.isPending}
-                  onClick={() => save.mutate()}
+                  disabled={submit.isPending}
+                  onClick={() => submit.mutate()}
                 >
-                  Save Count
+                  Submit
                 </Button>
-              </>
-            )}
-            {d.status === "DRAFT" && d.items.length > 0 && d.allowed_actions?.can_submit === true && (
-              <Button
-                disabled={submit.isPending}
-                onClick={() => submit.mutate()}
-              >
-                Submit
-              </Button>
-            )}
-            {d.status === "REJECTED" && d.items.length > 0 && d.allowed_actions?.can_submit === true && (
-              <Button
-                disabled={submit.isPending}
-                onClick={() => submit.mutate()}
-              >
-                Resubmit
-              </Button>
-            )}
-            {d.status === "APPROVED" && d.items.length > 0 && d.allowed_actions?.can_post === true && (
-              <Button disabled={post.isPending} onClick={() => post.mutate()}>
-                Post Adjustment
-              </Button>
-            )}
-            {d.status === "POSTED" && d.allowed_actions?.can_unpost === true && (
-              <Button
-                variant="danger"
-                disabled={unpost.isPending}
-                onClick={() => {
-                  if (window.confirm(`Unpost ${d.opname_number} and restore system quantities?`))
-                    unpost.mutate();
-                }}
-              >
-                Unpost
-              </Button>
-            )}
-            {!["POSTED", "VOID"].includes(d.status) && hasPermission("stock_opname.manage") && (
-              <Button
-                variant="danger"
-                disabled={voidIt.isPending}
-                onClick={askVoid}
-              >
-                Void
-              </Button>
-            )}
-            <WorkspaceBackButton />
-            <Button variant="outline" onClick={() => navigate(`/stock-opnames/${id}/print`)}><Printer size={16}/> Print</Button>
-</div>
-        }
-      />
-      <Card className="p-4">
-        <div className="grid gap-3 text-xs md:grid-cols-4">
-          <div>
-            <span className="text-slate-500">Status</span>
-            <div className="font-semibold">{d.status.replaceAll("_", " ")}</div>
-          </div>
-          <div>
-            <span className="text-slate-500">Warehouse</span>
-            <div>{d.warehouse_name}</div>
-          </div>
-          <div>
-            <span className="text-slate-500">Location</span>
-            <div>{d.location_name ?? "—"}</div>
-          </div>
-          <div>
-            <span className="text-slate-500">Department</span>
-            <div>{d.department_name ?? "—"}</div>
-          </div>
-        </div>
-      </Card>
-      {canCount && d.items.length > 0 && (
+              )}
+              {d.status === "REJECTED" && d.items.length > 0 && d.allowed_actions?.can_submit === true && (
+                <Button
+                  disabled={submit.isPending}
+                  onClick={() => submit.mutate()}
+                >
+                  Resubmit
+                </Button>
+              )}
+              {d.status === "APPROVED" && d.items.length > 0 && d.allowed_actions?.can_post === true && (
+                <Button disabled={post.isPending} onClick={() => post.mutate()}>
+                  Post Adjustment
+                </Button>
+              )}
+              {d.status === "POSTED" && d.allowed_actions?.can_unpost === true && (
+                <Button
+                  variant="danger"
+                  disabled={unpost.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Unpost ${d.opname_number} and restore system quantities?`))
+                      unpost.mutate();
+                  }}
+                >
+                  Unpost
+                </Button>
+              )}
+              {!["POSTED", "VOID"].includes(d.status) && hasPermission("stock_opname.manage") && (
+                <Button
+                  variant="danger"
+                  disabled={voidIt.isPending}
+                  onClick={askVoid}
+                >
+                  Void
+                </Button>
+              )}
+              <WorkspaceBackButton />
+              <Button variant="outline" onClick={() => navigate(`/stock-opnames/${id}/print`)}><Printer size={16}/> Print</Button>
+            </div>
+          }
+        />
+        {query.isError && (
+          <p role="alert" className="text-sm text-red-700">
+            Stock opname could not refresh. {warehouseErrorMessage(query.error, "Unable to load stock opname")}
+          </p>
+        )}
+        <ModuleSummary metrics={summaryMetrics} />
         <Card className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="grid gap-3 text-xs md:grid-cols-4">
             <div>
-              <div className="font-semibold">Quick Count Entry</div>
-              <div className="text-xs text-slate-500">
-                Scan or type an item code / name, enter the counted quantity, then press
-                Enter to save that item immediately.
+              <span className="text-slate-500">Status</span>
+              <div className="font-semibold"><Badge variant={statusVariant[d.status] ?? "default"}>{d.status.replaceAll("_", " ")}</Badge></div>
+            </div>
+            <div>
+              <span className="text-slate-500">Warehouse</span>
+              <div>{d.warehouse_name}</div>
+            </div>
+            <div>
+              <span className="text-slate-500">Location</span>
+              <div>{d.location_name ?? "—"}</div>
+            </div>
+            <div>
+              <span className="text-slate-500">Department</span>
+              <div>{d.department_name ?? "—"}</div>
+            </div>
+          </div>
+        </Card>
+        {canCount && d.items.length > 0 && (
+          <Card className="p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-semibold">Quick Count Entry</div>
+                <div className="text-xs text-slate-500">
+                  Scan or type an item code / name, enter the counted quantity, then press
+                  Enter to save that item immediately.
+                </div>
+              </div>
+              {!d.blind_count && <Button
+                size="sm"
+                variant="outline"
+                disabled={setAllUncountedSystem.isPending}
+                onClick={() => setAllUncountedSystem.mutate()}
+              >
+                Set All Uncounted = System
+              </Button>}
+            </div>
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>
+                  {counted} of {d.items.length} items counted
+                </span>
+                {!d.blind_count && <span>Variance {varianceTotal.toLocaleString("id-ID")}</span>}
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all"
+                  style={{ width: `${progressPct}%` }}
+                />
               </div>
             </div>
-            {!d.blind_count && <Button
-              size="sm"
-              variant="outline"
-              disabled={setAllUncountedSystem.isPending}
-              onClick={() => setAllUncountedSystem.mutate()}
-            >
-              Set All Uncounted = System
-            </Button>}
-          </div>
-          <div className="mt-3">
-            <div className="flex justify-between text-xs text-slate-500">
-              <span>
-                {counted} of {d.items.length} items counted
-              </span>
-              {!d.blind_count && <span>Variance {varianceTotal.toLocaleString("id-ID")}</span>}
-            </div>
-            <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-all"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-          </div>
-          <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto_auto]">
-            <div className="relative">
-              <input
-                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
-                placeholder="Scan or type item code / name..."
-                autoComplete="off"
-                autoFocus
-                value={quickQuery}
-                onChange={(event) => {
-                  setQuickQuery(event.target.value);
-                  setQuickOpen(true);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && matches.length) {
-                    event.preventDefault();
-                    selectItem(matches[0].i);
-                  } else if (event.key === "Escape") {
-                    setQuickOpen(false);
-                    if (quickItemId != null) {
-                      const item = d.items.find((i) => i.id === quickItemId);
-                      if (item) setQuickQuery(`${item.product_code ?? ""} — ${item.product_name ?? ""}`);
+            <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto_auto]">
+              <div className="relative">
+                <input
+                  className={input}
+                  placeholder="Scan or type item code / name..."
+                  aria-label="Scan or type item code / name"
+                  autoComplete="off"
+                  autoFocus
+                  value={quickQuery}
+                  onChange={(event) => {
+                    setQuickQuery(event.target.value);
+                    setQuickOpen(true);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && matches.length) {
+                      event.preventDefault();
+                      selectItem(matches[0].i);
+                    } else if (event.key === "Escape") {
+                      setQuickOpen(false);
+                      if (quickItemId != null) {
+                        const item = d.items.find((i) => i.id === quickItemId);
+                        if (item) setQuickQuery(`${item.product_code ?? ""} — ${item.product_name ?? ""}`);
+                      }
                     }
+                  }}
+                />
+                {quickOpen && matches.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close item options"
+                      className="fixed inset-0 z-[9998] cursor-default"
+                      onMouseDown={() => setQuickOpen(false)}
+                    />
+                    <div className="absolute left-0 top-full z-[9999] mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl">
+                      {matches.map(({ i }) => (
+                        <button
+                          key={i.id}
+                          type="button"
+                          className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-emerald-50"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => selectItem(i)}
+                        >
+                          <div className="font-medium text-slate-800">
+                            {i.product_code} — {i.product_name}
+                          </div>
+                          <div className="mt-0.5 text-xs text-slate-500">
+                            {!d.blind_count && <>System {Number(i.system_quantity).toLocaleString("id-ID")} </>}{i.uom}
+                            {i.physical_quantity != null ? ` • Counted ${Number(i.physical_quantity).toLocaleString("id-ID")}` : ""}
+                          </div>
+                        </button>
+                      ))}
+                      {quickQuery.trim() && matches.length === 50 && (
+                        <div className="px-3 py-2 text-xs text-slate-500">
+                          Showing first 50 matches. Keep typing to narrow down.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              <input
+                ref={quickQtyRef}
+                className={input}
+                type="number"
+                min="0"
+                step="0.0001"
+                placeholder="Counted qty"
+                aria-label="Counted qty"
+                value={quickQty}
+                onChange={(event) => setQuickQty(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    if (canSaveQuick) saveQuick();
                   }
                 }}
               />
-              {quickOpen && matches.length > 0 && (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Close item options"
-                    className="fixed inset-0 z-[9998] cursor-default"
-                    onMouseDown={() => setQuickOpen(false)}
-                  />
-                  <div className="absolute left-0 top-full z-[9999] mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl">
-                    {matches.map(({ i }) => (
-                      <button
-                        key={i.id}
-                        type="button"
-                        className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-emerald-50"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => selectItem(i)}
-                      >
-                        <div className="font-medium text-slate-800">
-                          {i.product_code} — {i.product_name}
-                        </div>
-                        <div className="mt-0.5 text-xs text-slate-500">
-                          {!d.blind_count && <>System {Number(i.system_quantity).toLocaleString("id-ID")} </>}{i.uom}
-                          {i.physical_quantity != null ? ` • Counted ${Number(i.physical_quantity).toLocaleString("id-ID")}` : ""}
-                        </div>
-                      </button>
-                    ))}
-                    {quickQuery.trim() && matches.length === 50 && (
-                      <div className="px-3 py-2 text-xs text-slate-500">
-                        Showing first 50 matches. Keep typing to narrow down.
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
+              {!d.blind_count && <Button
+                variant="outline"
+                disabled={quickItemId == null}
+                onClick={() => {
+                  if (quickItemId == null) return;
+                  const item = d.items.find((i) => i.id === quickItemId);
+                  if (item) setQuickQty(String(item.system_quantity));
+                }}
+              >
+                Count = System
+              </Button>}
+              <Button loading={saveItem.isPending} disabled={!canSaveQuick} onClick={saveQuick}>
+                Save This Item
+              </Button>
             </div>
-            <input
-              ref={quickQtyRef}
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
-              type="number"
-              min="0"
-              step="0.0001"
-              placeholder="Counted qty"
-              value={quickQty}
-              onChange={(event) => setQuickQty(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  if (canSaveQuick) saveQuick();
-                }
-              }}
-            />
-            {!d.blind_count && <Button
-              variant="outline"
-              disabled={quickItemId == null}
-              onClick={() => {
-                if (quickItemId == null) return;
-                const item = d.items.find((i) => i.id === quickItemId);
-                if (item) setQuickQty(String(item.system_quantity));
-              }}
-            >
-              Count = System
-            </Button>}
-            <Button loading={saveItem.isPending} disabled={!canSaveQuick} onClick={saveQuick}>
-              Save This Item
-            </Button>
+          </Card>
+        )}
+        {d.items.length === 0 && (
+          <Empty
+            title="No inventory snapshot"
+            description="This Stock Opname has no inventory snapshot. It cannot be counted, submitted, approved, or posted. Create a new Stock Opname after the warehouse contains inventory."
+          />
+        )}
+        <Card className="hidden print:block p-6">
+          <h2 className="mb-4 border-b border-black pb-2 text-sm font-bold uppercase tracking-wide">
+            Approval Signatures
+          </h2>
+          <div className="grid grid-cols-3 gap-10 text-center">
+            {approvalPrintSignatures(d.approval_history).map((signature, index) => (
+              <div key={`${signature.label}-${index}`}>
+                <div className="flex h-14 items-end justify-center" aria-label="Signature space">
+                  {signature.imageSrc && <img src={signature.imageSrc} alt="" className="max-h-14 max-w-full object-contain" />}
+                </div>
+                <div className="border-t border-black pt-1 font-semibold">{signature.label}</div>
+                <div className="mt-1 text-[11px]">{signature.name}</div>
+                {signature.signedAt && <div className="mt-1 text-[10px]">{new Date(signature.signedAt).toLocaleString("id-ID", {timeZone:"Asia/Jakarta",hour12:false})} WIB</div>}
+              </div>
+            ))}
           </div>
         </Card>
-      )}
-      {d.items.length === 0 && (
-        <Card className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          This Stock Opname has no inventory snapshot. It cannot be counted,
-          submitted, approved, or posted. Create a new Stock Opname after the
-          warehouse contains inventory.
-        </Card>
-      )}
-      <Card className="hidden print:block p-6">
-        <h2 className="mb-4 border-b border-black pb-2 text-sm font-bold uppercase tracking-wide">
-          Approval Signatures
-        </h2>
-        <div className="grid grid-cols-3 gap-10 text-center">
-          {approvalPrintSignatures(d.approval_history).map((signature, index) => (
-            <div key={`${signature.label}-${index}`}>
-              <div className="flex h-14 items-end justify-center" aria-label="Signature space">
-                {signature.imageSrc && <img src={signature.imageSrc} alt="" className="max-h-14 max-w-full object-contain" />}
-              </div>
-              <div className="border-t border-black pt-1 font-semibold">{signature.label}</div>
-              <div className="mt-1 text-[11px]">{signature.name}</div>
-              {signature.signedAt && <div className="mt-1 text-[10px]">{new Date(signature.signedAt).toLocaleString("id-ID", {timeZone:"Asia/Jakarta",hour12:false})} WIB</div>}
-            </div>
-          ))}
-        </div>
-      </Card>
-      <Card className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-xs">
-            <thead>
-              <tr>
-                <th className="px-4 py-3 text-left">Code</th>
-                <th className="px-4 py-3 text-left">Description</th>
-                <th className="px-4 py-3 text-left">UOM</th>
-                {!d.blind_count && <th className="px-4 py-3 text-right">System</th>}
-                <th className="px-4 py-3 text-right">Physical</th>
-                {!d.blind_count && <th className="px-4 py-3 text-right">Variance</th>}
-                {!d.blind_count && <th className="px-4 py-3 text-right">Unit Cost</th>}
-                {!d.blind_count && <th className="px-4 py-3 text-right">Variance Value</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {d.items.map((i) => {
-                const physical =
-                  (counts[i.id] ?? "").trim() === ""
-                    ? null
-                    : Number(counts[i.id]);
-                const variance =
-                  physical == null
-                    ? null
-                    : physical - Number(i.system_quantity);
-                return (
-                  <tr key={i.id} className="border-t whitespace-nowrap">
-                    <td className="px-4 py-2">{i.product_code}</td>
-                    <td className="px-4 py-2">{i.product_name}</td>
-                    <td className="px-4 py-2">{i.uom}</td>
-                    {!d.blind_count && <td className="px-4 py-2 text-right">
-                      {Number(i.system_quantity).toLocaleString("id-ID")}
-                    </td>}
-                    <td className="px-4 py-2 text-right">
-                      {canCount ? (
-                        <input
-                          className="h-8 w-28 rounded border px-2 text-right"
-                          type="number"
-                          min="0"
-                          step="0.0001"
-                          value={counts[i.id] ?? ""}
-                          onChange={(e) =>
-                            setCounts((old) => ({
-                              ...old,
-                              [i.id]: e.target.value,
-                            }))
-                          }
-                        />
-                      ) : (
-                        i.physical_quantity == null
-                          ? "—"
-                          : Number(i.physical_quantity).toLocaleString("id-ID")
-                      )}
-                    </td>
+        <Card className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-xs">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 text-left">Code</th>
+                  <th className="px-4 py-3 text-left">Description</th>
+                  <th className="px-4 py-3 text-left">UOM</th>
+                  {!d.blind_count && <th className="px-4 py-3 text-right">System</th>}
+                  <th className="px-4 py-3 text-right">Physical</th>
+                  {!d.blind_count && <th className="px-4 py-3 text-right">Variance</th>}
+                  {!d.blind_count && <th className="px-4 py-3 text-right">Unit Cost</th>}
+                  {!d.blind_count && <th className="px-4 py-3 text-right">Variance Value</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {d.items.map((i) => {
+                  const physical =
+                    (counts[i.id] ?? "").trim() === ""
+                      ? null
+                      : Number(counts[i.id]);
+                  const variance =
+                    physical == null
+                      ? null
+                      : physical - Number(i.system_quantity);
+                  return (
+                    <tr key={i.id} className="border-t whitespace-nowrap">
+                      <td className="px-4 py-2">{i.product_code}</td>
+                      <td className="px-4 py-2">{i.product_name}</td>
+                      <td className="px-4 py-2">{i.uom}</td>
+                      {!d.blind_count && <td className="px-4 py-2 text-right">
+                        {Number(i.system_quantity).toLocaleString("id-ID")}
+                      </td>}
+                      <td className="px-4 py-2 text-right">
+                        {canCount ? (
+                          <input
+                            className={`${input} w-28 text-right`}
+                            type="number"
+                            min="0"
+                            step="0.0001"
+                            value={counts[i.id] ?? ""}
+                            onChange={(e) =>
+                              setCounts((old) => ({
+                                ...old,
+                                [i.id]: e.target.value,
+                              }))
+                            }
+                          />
+                        ) : (
+                          i.physical_quantity == null
+                            ? "—"
+                            : Number(i.physical_quantity).toLocaleString("id-ID")
+                        )}
+                      </td>
 {!d.blind_count &&                     <td className="px-4 py-2 text-right">
-                      {variance == null
-                        ? i.variance_quantity == null
-                          ? "—"
-                          : Number(i.variance_quantity).toLocaleString("id-ID")
-                        : variance.toLocaleString("id-ID")}
-                    </td>}
-                    {!d.blind_count && <td className="px-4 py-2 text-right">
-                      {Number(i.unit_cost).toLocaleString("id-ID")}
-                    </td>}
-                    {!d.blind_count && <td className="px-4 py-2 text-right">
-                      {Number(i.variance_value ?? 0).toLocaleString("id-ID")}
-                    </td>}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      {(save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error || voidIt.error) && (
-        <p className="text-sm text-red-600">
-          {(save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error || voidIt.error) instanceof Error
-            ? (save.error || saveItem.error || setAllUncountedSystem.error || submit.error || post.error || unpost.error || voidIt.error)?.message
-            : "Action failed. Refresh and verify the Stock Opname status."}
-        </p>
-      )}
-    </div>
+                        {variance == null
+                          ? i.variance_quantity == null
+                            ? "—"
+                            : Number(i.variance_quantity).toLocaleString("id-ID")
+                          : variance.toLocaleString("id-ID")}
+                      </td>}
+                      {!d.blind_count && <td className="px-4 py-2 text-right">
+                        {Number(i.unit_cost).toLocaleString("id-ID")}
+                      </td>}
+                      {!d.blind_count && <td className="px-4 py-2 text-right">
+                        {Number(i.variance_value ?? 0).toLocaleString("id-ID")}
+                      </td>}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+        {actionError && (
+          <p role="alert" className="text-sm text-red-600">
+            {warehouseErrorMessage(actionError, "Action failed. Refresh and verify the Stock Opname status.")}
+          </p>
+        )}
+      </div>
+    </DataWorkspace>
   );
 }

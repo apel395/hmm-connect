@@ -414,8 +414,7 @@ export async function stockCardReport(
   };
 }
 
-export type InventoryDocumentKind =
-  "adjustments" | "opnames" | "requests" | "putaway";
+export type InventoryDocumentKind = "adjustments" | "opnames" | "requests";
 export async function inventoryDocumentReport(
   kind: InventoryDocumentKind,
   params: Params,
@@ -488,18 +487,9 @@ export async function inventoryDocumentReport(
         "status",
       ],
     },
-    putaway: {
-      path: "/put-away",
-      title: "Put Away",
-      columns: ["Number", "Receipt", "Warehouse", "Status"],
-      keys: ["putaway_number", "receipt_number", "warehouse_name", "status"],
-    },
   };
   const config = configs[kind];
-  const items =
-    kind === "putaway"
-      ? (await api.get<Row[]>(config.path)).data
-      : (await allInventoryRows(config.path, params)).items;
+  const items = (await allInventoryRows(config.path, params)).items;
   const numericKeys = new Set([
     "total_items",
     "total_variance_quantity",

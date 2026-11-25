@@ -49,9 +49,9 @@ Already verified and deployed:
 
 ### Wave 2 — Operational input flows
 
-- [ ] U-20 Smoke test and polish Stock Opname create/detail, Inventory Returns, Store Request, and Put Away using the demo token.
-- [ ] U-21 Verify every upgraded form has usable demo option data: business units, locations, departments, warehouses, products, suppliers, COA, tax, UOM, and categories.
-- [ ] U-22 Add regression scripts to `scripts/` for each newly standardized workflow, then include them in the relevant `package.json` test script.
+- [x] U-20 Smoke test and polish Stock Opname create/detail, Inventory Returns, Store Request, and Put Away using the demo token. Put Away has no deployed backend endpoint, so its route now fails closed with an explicit message instead of calling a missing API.
+- [x] U-21 Verify every upgraded form has usable demo option data: business units, locations, departments, warehouses, products, suppliers, COA, tax, UOM, and categories. Tax and UOM come from source product/receipt rows rather than standalone option endpoints.
+- [x] U-22 Add regression scripts to `scripts/` for each newly standardized workflow, then include them in the relevant `package.json` test script (`scripts/test-operational-flows.cjs` is registered under `test:store-request`, which is part of `npm test` and Frontend CI).
 - [ ] U-23 Confirm print/export buttons state their source, scope, and whether they print live filtered data or an authenticated report artifact.
 
 ### Wave 3 — Demo data readiness
@@ -71,7 +71,7 @@ Already verified and deployed:
 
 ## Recommended next task
 
-Start with **U-12/U-13: Admin and Finance setup screens**, because the remaining ad-hoc list/detail screens still lack shared filter context and explicit loading/empty/error states. POS operations, sales and settings now use the shared workspace shell, typed contracts, hooks and `scripts/test-pos-contracts.cjs`.
+Start with **U-12/U-13: Admin and Finance setup screens**, because the remaining ad-hoc list/detail screens still lack shared filter context and explicit loading/empty/error states. POS operations, sales and settings use the shared workspace shell, typed contracts, hooks and `scripts/test-pos-contracts.cjs`; the four operational flows now use the same shell with `scripts/test-operational-flows.cjs`.
 
 ## Definition of done for a wave
 

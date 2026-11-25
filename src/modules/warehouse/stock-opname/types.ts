@@ -1,3 +1,11 @@
+export type StockOpnameStatus =
+  | "DRAFT"
+  | "PENDING_APPROVAL"
+  | "APPROVED"
+  | "POSTED"
+  | "REJECTED"
+  | "VOID";
+
 export type StockOpnameItem = {
   id: number;
   product_id: number;
@@ -14,7 +22,7 @@ export type StockOpnameItem = {
 export type StockOpname = {
   id: number;
   opname_number: string;
-  status: string;
+  status: StockOpnameStatus;
   count_date: string;
   warehouse_id: number;
   warehouse_name?: string;
@@ -46,6 +54,27 @@ export type StockOpname = {
     signature_label?: string | null;
     signature_image?: string | null;
   }>;
+};
+
+export type StockOpnameListParams = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: StockOpnameStatus;
+};
+
+export type StockOpnameCreatePayload = {
+  warehouse_id: number;
+  count_date?: string;
+  business_unit_id?: number;
+  location_id?: number;
+  department_id?: number;
+  notes?: string;
+};
+
+export type StockOpnameCountItem = {
+  item_id: number;
+  physical_quantity: number;
 };
 
 export type StockOpnameList = {

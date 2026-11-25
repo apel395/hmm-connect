@@ -1,25 +1,40 @@
-import DataWorkspace from "@/components/workspace/DataWorkspace";
+import DataWorkspace, { WorkspaceFilters } from "@/components/workspace/DataWorkspace";
 import InventoryPrintButton from "@/components/print/InventoryPrintButton";
 import { inventoryDocumentReport } from "@/modules/warehouse/inventory/print/reports";
 import InventoryReportHeading from "@/components/print/InventoryReportHeading";
-import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import PageHeader from "@/components/common/PageHeader";
+import ModuleSummary from "@/components/common/ModuleSummary";
 import Pagination from "@/components/datatable/Pagination";
 import Card from "@/components/ui/Card";
+import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import Empty from "@/components/ui/Empty";
+import Loading from "@/components/ui/Loading";
+import SearchableSelect from "@/components/form/SearchableSelect";
+import { FORM_UI } from "@/config/formUi";
 import useAuthorization from "@/hooks/useAuthorization";
 import ProductCombobox, { type ProductComboboxOption } from "@/components/form/ProductCombobox";
-import SearchableSelect from "@/components/form/SearchableSelect";
 import { listBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { useWarehouses } from "@/modules/master/warehouses/hooks/useWarehouses";
+import { warehouseErrorMessage } from "../errors";
 import { storeRequestApi } from "./api";
-import type { StoreRequest } from "./types";
+import type { StoreRequestList, StoreRequestStatus } from "./types";
 
 const PAGE_SIZE = 50;
-const input = "h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs";
+const input = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`;
+const statusOptions: Array<StoreRequestStatus | "ALL"> = ["ALL", "DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_ISSUED", "ISSUED", "REJECTED"];
+const statusChoices = statusOptions.map((value) => ({ id: value, name: value === "ALL" ? "All" : value.replaceAll("_", " ") }));
+const statusVariant: Record<StoreRequestStatus, BadgeVariant> = {
+  DRAFT: "warning",
+  PENDING_APPROVAL: "info",
+  APPROVED: "success",
+  PARTIALLY_ISSUED: "primary",
+  ISSUED: "success",
+  REJECTED: "danger",
+};
 
 export default function StoreRequestPage() {
   const { isSuperuser, hasPermission } = useAuthorization();
@@ -28,9 +43,8 @@ export default function StoreRequestPage() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
   const [requestDate, setRequestDate] = useState(() => new Date().toLocaleDateString("en-CA", {timeZone:"Asia/Jakarta"}));
-  const [status, setStatus] = useState("ALL");
+  const [status, setStatus] = useState<StoreRequestStatus | "ALL">("ALL");
   const [showCreate, setShowCreate] = useState(false);
   const [businessUnitId, setBusinessUnitId] = useState<number | undefined>();
   const [departmentId, setDepartmentId] = useState<number | undefined>();
@@ -72,15 +86,15 @@ export default function StoreRequestPage() {
     onSuccess: async (response) => { await qc.invalidateQueries({ queryKey: ["store-requests"] }); setShowCreate(false); navigate(`/store-requests/${response.data.id}`); },
   });
 
-  const payload: any = listQuery.data ?? {};
-  const rows: StoreRequest[] = payload.items ?? [];
+  const payload: StoreRequestList = listQuery.data ?? { items: [], total_items: 0, total_pages: 0 };
+  const rows = payload.items ?? [];
   const pages = Math.max(payload.total_pages ?? 0, 1);
   const total = payload.total_items ?? 0;
-  const statusOptions = useMemo(() => ["ALL", "DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_ISSUED", "ISSUED", "REJECTED"], []);
-  const businessUnitOptions=(businessUnits.data??[]).filter((row:any)=>row.is_active).map((row:any)=>({id:row.id,label:`${row.code ?? ""}${row.code ? " — " : ""}${row.name}`,keywords:[row.code??"",row.name??""]}));
-  const locationOptions=(locations.data??[]).filter((row:any)=>row.is_active).map((row:any)=>({id:row.id,label:`${row.code ?? ""}${row.code ? " — " : ""}${row.name}`,keywords:[row.code??"",row.name??""]}));
-  const departmentOptions=(departments.data??[]).filter((row:any)=>row.is_active).map((row:any)=>({id:row.id,label:`${row.code ?? ""}${row.code ? " — " : ""}${row.name}`,keywords:[row.code??"",row.name??""]}));
-  const warehouseOptions=locationWarehouses.map((row:any)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const statusLabel = status === "ALL" ? "All" : status.replaceAll("_", " ");
+  const businessUnitOptions=(businessUnits.data??[]).filter((row)=>row.is_active).map((row)=>({id:row.id,label:`${row.code ?? ""}${row.code ? " — " : ""}${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const locationOptions=(locations.data??[]).filter((row)=>row.is_active).map((row)=>({id:row.id,label:`${row.code ?? ""}${row.code ? " — " : ""}${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const departmentOptions=(departments.data??[]).filter((row)=>row.is_active).map((row)=>({id:row.id,label:`${row.code ?? ""}${row.code ? " — " : ""}${row.name}`,keywords:[row.code??"",row.name??""]}));
+  const warehouseOptions=locationWarehouses.map((row)=>({id:row.id,label:`${row.code} — ${row.name}`,keywords:[row.code??"",row.name??""]}));
 
   return <DataWorkspace area="Inventory" className="inventory-print-report ">
 <InventoryReportHeading title="Store Request" context={`Search: ${search || "All"} · Status: ${status}`} rows={rows.length} total={total}/>
@@ -88,17 +102,45 @@ export default function StoreRequestPage() {
 {canCreate && <Button onClick={() => {setShowCreate(true);setBusinessUnitId(undefined);setLocationId(undefined);setDepartmentId(undefined);chooseWarehouse(undefined);setItems([{quantity:0}]);setNotes("");setRequestDate(new Date().toLocaleDateString("en-CA", {timeZone:"Asia/Jakarta"}))}}>Create Store Request</Button>}
 <InventoryPrintButton loadReport={() => inventoryDocumentReport("requests",{status:status === "ALL" ? undefined : status,search:search.trim() || undefined}, `Search: ${search || "All"} · Status: ${status}`)}/>
 </>} />
-    <Card className="p-2 print:hidden"><div className="flex gap-2"><input className={input} placeholder="Search SR number or requester" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} /><Button variant="outline" title="Filters" aria-label="Filters" aria-expanded={showFilters} onClick={() => setShowFilters(v => !v)}><SlidersHorizontal size={15}/></Button></div>{showFilters && <div className="mt-2 max-w-xs"><select aria-label="Status" className={input} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>{statusOptions.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>}</Card>
-    <Card className="workspace-data p-0"><div className="workspace-table-scroll overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead><tr><th className="px-2 py-1.5 text-left">SR Number</th><th className="px-2 py-1.5 text-left">Date</th><th className="px-2 py-1.5 text-left">Last Issue Date</th><th className="px-2 py-1.5 text-left">Requester</th><th className="px-2 py-1.5 text-left">Warehouse</th><th className="px-2 py-1.5 text-left">Department</th><th className="px-2 py-1.5 text-right">Remaining</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className="border-t whitespace-nowrap"><td className="px-2 py-1.5 font-medium"><Link className="text-emerald-700 hover:underline" to={`/store-requests/${row.id}`}>{row.sr_number}</Link></td><td className="px-2 py-1.5">{row.request_date}</td><td className="px-2 py-1.5">{row.last_issue_date ?? "—"}</td><td className="px-2 py-1.5">{row.requester_name ?? "—"}</td><td className="px-2 py-1.5">{row.warehouse_name ?? "—"}</td><td className="px-2 py-1.5">{row.department_name ?? "—"}</td><td className="px-2 py-1.5 text-right tabular-nums">{Number(row.total_remaining_quantity ?? 0).toLocaleString("id-ID")}</td><td className="px-2 py-1.5">{row.status.replaceAll("_", " ")}</td></tr>)}</tbody></table></div><div className="p-4 print:hidden"><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="store requests" onChange={setPage} /></div></Card>
+    <ModuleSummary metrics={[
+      { label: "Store requests", value: total.toLocaleString("id-ID") },
+      { label: "On this page", value: rows.length.toLocaleString("id-ID") },
+      { label: "Status", value: statusLabel },
+    ]} />
+    <WorkspaceFilters label="Filters" context={`Search: ${search || "All"} · Status: ${statusLabel}`}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input aria-label="Search store requests" className={input} placeholder="Search SR number or requester" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        <SearchableSelect<StoreRequestStatus | "ALL"> label="Status" value={status} options={statusChoices} onChange={(value) => { setStatus(value ?? "ALL"); setPage(1); }} />
+      </div>
+    </WorkspaceFilters>
+    {(listQuery.isError || businessUnits.isError || departments.isError || locations.isError) && <p role="alert" className="text-sm text-red-700">Store request data could not be loaded. {warehouseErrorMessage(listQuery.error ?? businessUnits.error ?? departments.error ?? locations.error, "Retry the failed request.")}</p>}
+    <Card className="workspace-data p-0">
+      {listQuery.isLoading ? (
+        <Loading message="Loading store requests..." />
+      ) : (
+        <>
+          <div className="workspace-table-scroll overflow-x-auto">
+            <table className="w-full min-w-[900px] text-xs">
+              <thead><tr><th className="px-2 py-1.5 text-left">SR Number</th><th className="px-2 py-1.5 text-left">Date</th><th className="px-2 py-1.5 text-left">Last Issue Date</th><th className="px-2 py-1.5 text-left">Requester</th><th className="px-2 py-1.5 text-left">Warehouse</th><th className="px-2 py-1.5 text-left">Department</th><th className="px-2 py-1.5 text-right">Remaining</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={8} className="px-2 py-10"><Empty title="No store requests found" description="Adjust the filters or create a new store request." /></td></tr>}
+                {rows.map((row) => <tr key={row.id} className="border-t whitespace-nowrap"><td className="px-2 py-1.5 font-medium"><Link className="text-emerald-700 hover:underline" to={`/store-requests/${row.id}`}>{row.sr_number}</Link></td><td className="px-2 py-1.5">{row.request_date}</td><td className="px-2 py-1.5">{row.last_issue_date ?? "—"}</td><td className="px-2 py-1.5">{row.requester_name ?? "—"}</td><td className="px-2 py-1.5">{row.warehouse_name ?? "—"}</td><td className="px-2 py-1.5">{row.department_name ?? "—"}</td><td className="px-2 py-1.5 text-right tabular-nums">{Number(row.total_remaining_quantity ?? 0).toLocaleString("id-ID")}</td><td className="px-2 py-1.5"><Badge variant={statusVariant[row.status] ?? "default"}>{row.status.replaceAll("_", " ")}</Badge></td></tr>)}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-4 print:hidden"><Pagination page={page} pages={pages} total={total} pageSize={PAGE_SIZE} noun="store requests" onChange={setPage} /></div>
+        </>
+      )}
+    </Card>
 
     {showCreate && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-semibold">Create Store Request</h2><p className="text-xs text-slate-500">Request stock from a warehouse for internal use.</p></div><Button variant="secondary" onClick={() => setShowCreate(false)}>Close</Button></div>
       <label className="mb-3 block max-w-xs text-xs font-medium">Request date<input required type="date" data-accounting-date="true" className={input} value={requestDate} onChange={e => setRequestDate(e.target.value)}/></label><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><SearchableSelect label="Business Unit" required value={businessUnitId} placeholder="Type business unit..." options={businessUnitOptions} onChange={(id)=>{setBusinessUnitId(id);setLocationId(undefined);setDepartmentId(undefined);chooseWarehouse(undefined)}}/><SearchableSelect label="Location" required value={locationId} disabled={!businessUnitId} placeholder="Type location..." options={locationOptions} onChange={(id)=>{setLocationId(id);setDepartmentId(undefined);chooseWarehouse(undefined)}}/><SearchableSelect label="Department" required value={departmentId} disabled={!locationId} placeholder="Type department..." options={departmentOptions} onChange={setDepartmentId}/><SearchableSelect label="Warehouse" required value={warehouseId} disabled={!locationId} placeholder="Type warehouse code or name..." options={warehouseOptions} onChange={chooseWarehouse}/></div>
-      <div className="mt-5 space-y-3">{items.map((row, index) => { const available=row.product_id?stockByProduct.get(row.product_id):undefined; const cost=availability.isFetching || availability.isError ? null : row.product_id?costByProduct.get(row.product_id):null; const shortage=availabilityReady&&available!==undefined&&row.quantity>available; return <div key={index} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_110px_90px_110px_120px_70px]"><ProductCombobox key={warehouseId ?? "no-warehouse"} remote disabled={!warehouseId} placeholder={warehouseId ? "Search available stock..." : "Select warehouse first"} loadOptions={loadStockedItems} value={row.product_id} onChange={(productId) => setItems((old) => old.map((item, i) => i === index ? { ...item, product_id: productId } : item))} onSelect={(product) => setItems((old) => old.map((item, i) => i === index ? { ...item, product } : item))} /><div className={`flex h-10 items-center rounded-md border px-2 text-xs ${shortage?"border-red-300 bg-red-50 text-red-700":"border-slate-200 bg-slate-50 text-slate-600"}`}>Available: {!warehouseId?"Select warehouse":!row.product_id?"Select item":availability.isFetching?"…":availability.isError||available===undefined?"Unavailable":available.toLocaleString("id-ID")}</div><input className={`${input} ${shortage?"border-red-400":""}`} type="number" min="0" max={availabilityReady?available:undefined} step="0.01" placeholder="Quantity" value={row.quantity || ""} onChange={(e) => setItems((old) => old.map((item, i) => i === index ? { ...item, quantity: Number(e.target.value) } : item))} /><div className="text-right text-xs"><span className="block text-slate-500">Ref. price</span><span className="tabular-nums">{referenceMoney(cost)}</span></div><div className="text-right text-xs"><span className="block text-slate-500">Est. value</span><span className="tabular-nums">{referenceMoney(cost == null ? null : cost * row.quantity)}</span></div><Button variant="secondary" onClick={() => setItems((old) => old.length === 1 ? old : old.filter((_, i) => i !== index))}>Remove</Button></div>})}</div>
-      {availability.isError && <div role="alert" className="mt-3 flex items-center gap-2 text-xs text-red-700">Warehouse stock could not be loaded.<Button variant="secondary" onClick={() => availability.refetch()} disabled={availability.isFetching}>Retry</Button></div>}
+      <div className="mt-5 space-y-3">{items.map((row, index) => { const available=row.product_id?stockByProduct.get(row.product_id):undefined; const cost=availability.isFetching || availability.isError ? null : row.product_id?costByProduct.get(row.product_id):null; const shortage=availabilityReady&&available!==undefined&&row.quantity>available; return <div key={index} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_110px_90px_110px_120px_70px]"><ProductCombobox key={warehouseId ?? "no-warehouse"} remote disabled={!warehouseId} placeholder={warehouseId ? "Search available stock..." : "Select warehouse first"} loadOptions={loadStockedItems} value={row.product_id} onChange={(productId) => setItems((old) => old.map((item, i) => i === index ? { ...item, product_id: productId } : item))} onSelect={(product) => setItems((old) => old.map((item, i) => i === index ? { ...item, product } : item))} /><div className={`flex h-10 items-center rounded-md border px-2 text-xs ${shortage?"border-red-300 bg-red-50 text-red-700":"border-slate-200 bg-slate-50 text-slate-600"}`}>Available: {!warehouseId?"Select warehouse":!row.product_id?"Select item":availability.isFetching?"…":availability.isError||available===undefined?"Unavailable":available.toLocaleString("id-ID")}</div><input className={`${input} ${shortage?FORM_UI.error:""}`} type="number" min="0" max={availabilityReady?available:undefined} step="0.01" placeholder="Quantity" value={row.quantity || ""} onChange={(e) => setItems((old) => old.map((item, i) => i === index ? { ...item, quantity: Number(e.target.value) } : item))} /><div className="text-right text-xs"><span className="block text-slate-500">Ref. price</span><span className="tabular-nums">{referenceMoney(cost)}</span></div><div className="text-right text-xs"><span className="block text-slate-500">Est. value</span><span className="tabular-nums">{referenceMoney(cost == null ? null : cost * row.quantity)}</span></div><Button variant="secondary" onClick={() => setItems((old) => old.length === 1 ? old : old.filter((_, i) => i !== index))}>Remove</Button></div>})}</div>
+      {availability.isError && <div role="alert" className="mt-3 flex items-center gap-2 text-xs text-red-700">Warehouse stock could not be loaded. {warehouseErrorMessage(availability.error, "Retry the stock check.")}<Button variant="secondary" onClick={() => availability.refetch()} disabled={availability.isFetching}>Retry</Button></div>}
       <p className="mt-2 text-xs text-slate-500">Reference: current warehouse average cost.</p>
       <button className="mt-3 text-sm font-medium text-emerald-700" onClick={() => setItems((old) => [...old, { quantity: 0 }])}>+ Add Item</button>
-      <textarea className="mt-5 min-h-20 w-full rounded-md border border-slate-300 p-3 text-sm" placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
-      {createMutation.error && <div className="mt-3 text-sm text-red-600">{createMutation.error instanceof Error ? createMutation.error.message : "Unable to create Store Request"}</div>}
+      <textarea className={`${FORM_UI.controlBase} ${FORM_UI.density.compact.textarea} mt-5 w-full`} placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      {createMutation.isError && <p role="alert" className="mt-3 text-sm text-red-600">{warehouseErrorMessage(createMutation.error, "Unable to create Store Request")}</p>}
       <div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={() => setShowCreate(false)}>Cancel</Button><Button disabled={createMutation.isPending || (productIds.length > 0 && !availabilityReady) || hasShortage} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Saving..." : "Create"}</Button></div>
     </div></div>}
   </DataWorkspace>;

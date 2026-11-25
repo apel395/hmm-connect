@@ -2,19 +2,24 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import api from "@/api/client";
+import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import Empty from "@/components/ui/Empty";
+import Loading from "@/components/ui/Loading";
+import { FORM_UI } from "@/config/formUi";
 import { todayLocal } from "@/utils/dateConstraints";
+import { warehouseErrorMessage } from "../errors";
+import type { CreditInvoiceListResponse, ReturnEvent } from "./types";
 
-export type ReturnEvent = {
-  id: number;
-  kind: string;
-  date: string;
-  amount: number;
-  reference: string;
-  reason: string;
-  journal_entry_id: number;
-  reversed: boolean;
+export type { ReturnEvent } from "./types";
+
+const eventVariant: Record<string, BadgeVariant> = {
+  APPLY: "success",
+  REFUND: "warning",
+  REVERSE: "secondary",
+  CREDIT: "primary",
 };
+
 type Props = {
   id: number;
   status: string;
@@ -31,8 +36,7 @@ type Props = {
   }>;
   submit: (value: { path: string; data: unknown }) => void;
 };
-const input =
-  "h-9 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm";
+const input = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control} min-w-0`;
 const label = "flex min-w-0 flex-col gap-1 text-xs text-slate-600";
 const money = (v: number) =>
   Number(v).toLocaleString("id-ID", {
@@ -69,12 +73,10 @@ export default function ReturnCompletion({
     queryKey: ["inventory-credit-invoices", id, search, page],
     queryFn: async () =>
       (
-        await api.get<{
-          items: Array<{ id: number; number: string; balance: number }>;
-          total_pages: number;
-        }>(`/inventory/returns/${id}/credit-invoices`, {
-          params: { search, page },
-        })
+        await api.get<CreditInvoiceListResponse>(
+          `/inventory/returns/${id}/credit-invoices`,
+          { params: { search, page } },
+        )
       ).data,
     enabled:
       canManage && status === "POSTED" && balance > 0 && kind === "APPLY",
@@ -170,16 +172,22 @@ export default function ReturnCompletion({
                     ))}
                   </select>
                 </label>
+                {invoices.isLoading && (
+                  <Loading message="Loading eligible invoices…" />
+                )}
                 {invoices.isError && (
                   <p role="alert" className="text-xs text-red-700">
-                    Unable to load eligible invoices. Retry using Refresh.
+                    {warehouseErrorMessage(
+                      invoices.error,
+                      "Unable to load eligible invoices. Retry using Refresh.",
+                    )}
                   </p>
                 )}
                 {invoices.data && invoices.data.items.length === 0 && (
-                  <p className="text-xs text-slate-500">
-                    No eligible outstanding invoices for this supplier and
-                    location.
-                  </p>
+                  <Empty
+                    title="No eligible invoices"
+                    description="No eligible outstanding invoices for this supplier and location."
+                  />
                 )}
                 {(invoices.data?.total_pages ?? 0) > 1 && (
                   <div className="flex justify-end gap-2">
@@ -286,8 +294,16 @@ export default function ReturnCompletion({
                 <tr className="border-b" key={e.id}>
                   <td className="py-2">{e.date}</td>
                   <td>
-                    {e.kind.replaceAll("_", " ")}
-                    {e.reversed ? " · reversed" : ""}
+                    <Badge
+                      variant={
+                        e.reversed
+                          ? "secondary"
+                          : (eventVariant[e.kind] ?? "default")
+                      }
+                    >
+                      {e.kind.replaceAll("_", " ")}
+                      {e.reversed ? " · reversed" : ""}
+                    </Badge>
                   </td>
                   <td>
                     {e.reference}

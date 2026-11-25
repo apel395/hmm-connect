@@ -79,6 +79,17 @@ export interface StoreRequest {
   }>;
 }
 
+/** Paginated response returned by GET /store-requests. */
+export interface StoreRequestList {
+  items: StoreRequest[];
+  total_items: number;
+  total_pages: number;
+  page?: number;
+  page_size?: number;
+  has_next?: boolean;
+  has_previous?: boolean;
+}
+
 export interface StoreRequestPayload {
   request_date?: string;
   business_unit_id?: number;

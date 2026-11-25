@@ -1,8 +1,8 @@
 import api from "@/api/client";
-import type { StoreIssue, StoreIssuePayload, StoreRequest, StoreRequestPayload } from "./types";
+import type { StoreIssue, StoreIssuePayload, StoreRequest, StoreRequestList, StoreRequestPayload } from "./types";
 
 export const storeRequestApi = {
-  list: (params: { page?: number; page_size?: number; status?: string; search?: string } = {}) => api.get("/store-requests", { params }),
+  list: (params: { page?: number; page_size?: number; status?: string; search?: string } = {}) => api.get<StoreRequestList>("/store-requests", { params }),
   detail: (id: number) => api.get<StoreRequest>(`/store-requests/${id}`),
   stockedItems: async (warehouseId: number, search = "") => {
     const items: Array<{ id: number; code: string; name: string; uom: string }> = [];
