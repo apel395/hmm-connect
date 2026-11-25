@@ -75,10 +75,12 @@ EXPORT_S3_BUCKET=<private-export-bucket>
 EXPORT_S3_PREFIX=exports
 EXPORT_TMP_DIR=/tmp/hmm-connect-exports
 DATABASE_URL=<existing-postgresql-url>
+DEMO_DATABASE_URL=<separate-demo-postgresql-url>
+DEMO_USERNAMES=<exact-demo-login-username>
 SECRET_KEY=<existing-backend-secret>
 ```
 
-Keep these in the existing protected backend environment configuration used on EC2; do not commit production secrets.
+Keep these in the existing protected backend environment configuration used on EC2; do not commit production secrets. `DEMO_DATABASE_URL` must never equal `DATABASE_URL`; the worker uses the signed job scope to choose between them.
 
 ## S3 bucket
 
@@ -110,6 +112,6 @@ After deployment:
 4. Confirm the first API response is HTTP 202 and contains a `job_id`.
 5. Confirm an SSM command is created without Lambda waiting for XLS generation.
 6. Confirm the database transitions `PENDING -> PROCESSING -> READY`.
-7. Confirm the object is private in S3 under `exports/<user_id>/<job_id>/...xlsx`.
+7. Confirm the object is private in S3 under `exports/<database_key>/<user_id>/<job_id>/...xlsx`, where `database_key` is `primary` or `demo`.
 8. Confirm the browser downloads via the returned presigned URL.
 9. Confirm failed worker executions transition the job to `FAILED` and expose the worker error through the job status endpoint.

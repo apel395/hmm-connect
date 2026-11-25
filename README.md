@@ -128,6 +128,10 @@ writing data, run:
 - AR invoice printing supports per-client title, billing details, description, payment instructions, footer and optional settlement display. Legacy AR has no location dimension, so these invoice reads/settings require consolidated finance access. Exact client stationery requires the client's approved sample; the app does not invent invoice line items or tax.
 - The workspace Back control closes the current tab and returns to the last active tab. Unsaved journal/payment/invoice/cashier inputs remain recoverable in the user's browser.
 
+## Demo environment
+
+The same frontend and API URL can serve a separate demo database. Configure `DEMO_DATABASE_URL` and exact `DEMO_USERNAMES` on both Lambda and the EC2 export worker. A demo username in that allowlist authenticates only against `DEMO_DATABASE_URL`, receives a signed `db=demo` session claim, and all of that session's requests stay on the demo DB. Other accounts continue to use the primary DB. Missing demo config fails closed with HTTP 503. See `docs/aws-lambda-deployment.md` for account creation and `docs/AWS_ASYNC_EXPORT_WIRING.md` for worker setup. Bulk journal import intentionally remains unavailable to demo sessions.
+
 Backend is deployed to Lambda by pushing/merging `backend`. EC2 handles PostgreSQL migrations and heavy export workers, not the API server. Required migration: `20261007_finance_delivery` (additive columns and AR print settings; no balance changes).
 
 ```bash

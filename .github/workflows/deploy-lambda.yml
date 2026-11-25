@@ -111,13 +111,15 @@ jobs:
       - name: Verify deployed function
         run: |
           set -euo pipefail
-          CONFIG=$(aws lambda get-function-configuration --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Architectures:Architectures,CodeSize:CodeSize,LastModified:LastModified,State:State,LastUpdateStatus:LastUpdateStatus,ExportInstance:Environment.Variables.EXPORT_EC2_INSTANCE_ID,ExportBucket:Environment.Variables.EXPORT_S3_BUCKET}' --output json)
+          CONFIG=$(aws lambda get-function-configuration --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Architectures:Architectures,CodeSize:CodeSize,LastModified:LastModified,State:State,LastUpdateStatus:LastUpdateStatus,ExportInstance:Environment.Variables.EXPORT_EC2_INSTANCE_ID,ExportBucket:Environment.Variables.EXPORT_S3_BUCKET,DemoUser:Environment.Variables.DEMO_USERNAMES,DemoDbConfigured:contains(keys(Environment.Variables), `DEMO_DATABASE_URL`)}' --output json)
           echo "$CONFIG"
           test "$(echo "$CONFIG" | jq -r '.Handler')" = "lambda_handler.handler"
           test "$(echo "$CONFIG" | jq -r '.State')" = "Active"
           test "$(echo "$CONFIG" | jq -r '.LastUpdateStatus')" = "Successful"
           test -n "$(echo "$CONFIG" | jq -r '.ExportInstance // empty')"
           test -n "$(echo "$CONFIG" | jq -r '.ExportBucket // empty')"
+          test -n "$(echo "$CONFIG" | jq -r '.DemoUser // empty')"
+          test "$(echo "$CONFIG" | jq -r '.DemoDbConfigured')" = "true"
 
       - name: Smoke test health endpoint
         if: ${{ vars.AWS_LAMBDA_FUNCTION_URL != '' }}

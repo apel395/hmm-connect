@@ -11,7 +11,25 @@ The normal FastAPI API is deployed as a ZIP package to AWS Lambda. Database migr
 - Timeout: 30 seconds initially
 - Reserved concurrency: 10 initially
 - Environment variables: use the same names consumed by `app.core.config`
-- Network: attach Lambda to the VPC subnets that can reach the PostgreSQL EC2 security group
+- Network: attach Lambda to the VPC subnets that can reach both the primary and demo PostgreSQL databases on EC2
+
+## Demo database routing
+
+The public URL does not change. Configure `DEMO_DATABASE_URL` with the separate demo DB URL and `DEMO_USERNAMES` with the exact demo username(s), for example `demo`. At `POST /api/v1/auth/login`, an exact allowlisted username authenticates against the demo DB and receives a signed `db=demo` claim. Every subsequent request uses that claim to select the database; all other accounts use the primary DB.
+
+Never point `DEMO_DATABASE_URL` at `DATABASE_URL`. If a demo username is configured but its database URL is missing, demo login fails closed with HTTP 503 instead of falling back to production data.
+
+Create or rotate the demo account only on EC2, after confirming the demo DB is migrated:
+
+```bash
+source .venv/bin/activate
+export DEMO_DATABASE_URL='postgresql://.../erp_demo'
+export DEMO_USERNAMES='demo'
+export DEMO_PASSWORD='<strong-password>'
+python -m scripts.seed_demo_account --username demo --confirm-demo-database
+```
+
+The script refuses a target database with the same name as the primary DB and clears any active demo session when rotating the password. Short demo-only passwords require the additional `--allow-weak-password` flag; never apply that flag to primary accounts.
 
 ## GitHub environment configuration
 

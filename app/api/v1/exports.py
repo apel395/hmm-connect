@@ -4,7 +4,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import get_database_key, get_db
+from app.core.db_scope import DATABASE_PARAM
 from app.dependencies.auth import get_current_user
 from app.models.export_job import ExportJob
 from app.models.user import User
@@ -20,10 +21,12 @@ class ExportRequest(BaseModel):
 
 
 def _serialize(job: ExportJob) -> dict:
+    params = dict(job.params or {})
+    params.pop(DATABASE_PARAM, None)
     payload = {
         "job_id": job.id,
         "export_type": job.export_type,
-        "params": job.params,
+        "params": params,
         "status": job.status,
         "filename": job.filename,
         "error_message": job.error_message,
@@ -53,6 +56,7 @@ def create_export(
     data: ExportRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    database_key: str = Depends(get_database_key),
 ):
     """Queue an export and return immediately.
 
@@ -70,7 +74,10 @@ def create_export(
     if export_type == "products" and (data.params or {}).get("item_type") not in {None, "BUY", "SELL"}:
         raise HTTPException(422, "Choose Buy or Sell Items")
 
-    job = ExportJob(user_id=current_user.id, export_type=export_type, params=data.params, status="PENDING")
+    params = dict(data.params or {})
+    # The database scope comes only from the signed token, never the request body.
+    params[DATABASE_PARAM] = database_key
+    job = ExportJob(user_id=current_user.id, export_type=export_type, params=params, status="PENDING")
     db.add(job)
     db.commit()
     db.refresh(job)

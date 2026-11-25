@@ -7,7 +7,9 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.config import settings
+from app.core.database import get_database_key, get_db, session_factory_for, session_for
+from app.core.db_scope import DEMO_DB_KEY, PRIMARY_DB_KEY
 from app.core.security import create_access_token, decode_access_token_claims, hash_password, verify_password
 from app.dependencies.auth import get_current_user, oauth2_scheme
 from app.dependencies.authorization import is_superuser
@@ -130,12 +132,21 @@ def register(
     )
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(
-    form: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
-    replace_session: Annotated[bool, Form()] = False,
-):
+def _login_database_key(username: str) -> str:
+    if username not in settings.demo_usernames:
+        return PRIMARY_DB_KEY
+    # Fail closed: a configured demo account must never authenticate against
+    # the primary database when the demo database is missing.
+    session_factory_for(DEMO_DB_KEY)
+    return DEMO_DB_KEY
+
+
+def _login(
+    form: OAuth2PasswordRequestForm,
+    db: Session,
+    database_key: str,
+    replace_session: bool,
+) -> TokenResponse:
     user = (
         db.query(User)
         .filter(User.username == form.username)
@@ -167,13 +178,33 @@ def login(
     session_id = str(uuid4())
     # Prepare the response before persisting a session the client cannot use.
     response = TokenResponse(
-        access_token=create_access_token(user.username, session_id=session_id),
+        access_token=create_access_token(
+            user.username,
+            session_id=session_id,
+            database_key=database_key,
+        ),
         user=_user_summary(db, user),
     )
     user.active_session_id = session_id
     user.session_last_activity_at = now
     db.commit()
     return response
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(
+    form: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+    replace_session: Annotated[bool, Form()] = False,
+):
+    database_key = _login_database_key(form.username)
+    if database_key == PRIMARY_DB_KEY:
+        return _login(form, db, database_key, replace_session)
+
+    # The primary `get_db` dependency keeps existing test overrides working;
+    # demo accounts authenticate only against the allowlisted demo database.
+    with session_for(database_key) as demo_db:
+        return _login(form, demo_db, database_key, replace_session)
 
 
 @router.post("/activity", status_code=204)
@@ -185,6 +216,7 @@ def activity(_: User = Depends(get_current_user)):
 def logout(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
+    _: str = Depends(get_database_key),
 ):
     claims = decode_access_token_claims(token) or {}
     username = claims.get("sub")

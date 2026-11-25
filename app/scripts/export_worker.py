@@ -7,7 +7,8 @@ import boto3
 from openpyxl import Workbook
 
 from app.core.config import settings
-from app.core.database import SessionLocal
+from app.core.database import known_database_keys, session_for
+from app.core.db_scope import DATABASE_PARAM, normalize_db_key
 from app.models.export_job import ExportJob
 from app.models.product import Product
 from app.models.user import User
@@ -163,13 +164,31 @@ def _generate_general_ledger_xlsx(db, output_path: Path, params: dict | None) ->
     wb.save(output_path)
 
 
-def run_job(job_id: str) -> None:
-    db = SessionLocal()
+def _job_database_key(job) -> str:
+    return normalize_db_key((job.params or {}).get(DATABASE_PARAM))
+
+
+def _find_job_database(job_id: str) -> str | None:
+    for key in known_database_keys():
+        with session_for(key) as db:
+            if db.get(ExportJob, job_id):
+                return key
+    return None
+
+
+def run_job(job_id: str, database_key: str | None = None) -> None:
+    db_key = normalize_db_key(database_key) if database_key else _find_job_database(job_id)
+    if db_key is None:
+        return
+
+    db = session_for(db_key)
     output_path: Path | None = None
     try:
         job = db.get(ExportJob, job_id)
         if not job or job.status not in {"PENDING", "PROCESSING"}:
             return
+        if _job_database_key(job) != db_key:
+            raise ValueError("Export job database scope mismatch")
 
         job.status = "PROCESSING"
         job.started_at = datetime.now(timezone.utc)
@@ -203,18 +222,18 @@ def run_job(job_id: str) -> None:
         if not bucket:
             raise RuntimeError("EXPORT_S3_BUCKET or S3_BUCKET must be configured")
 
-        key = f"{settings.EXPORT_S3_PREFIX.strip('/')}/{job.user_id}/{job.id}/{filename}"
+        object_key = f"{settings.EXPORT_S3_PREFIX.strip('/')}/{db_key}/{job.user_id}/{job.id}/{filename}"
         boto3.client("s3", region_name=settings.AWS_REGION or None).upload_file(
             str(output_path),
             bucket,
-            key,
+            object_key,
             ExtraArgs={
                 "ContentType": MIME_XLSX,
                 "ContentDisposition": f'attachment; filename="{filename}"',
             },
         )
 
-        job.file_key = key
+        job.file_key = object_key
         job.filename = filename
         job.status = "READY"
         job.completed_at = datetime.now(timezone.utc)
@@ -234,20 +253,28 @@ def run_job(job_id: str) -> None:
         db.close()
 
 
-def next_pending_job_id() -> str | None:
-    """Return the oldest pending job.
+def next_pending_job() -> tuple[str, str] | None:
+    """Return the oldest pending job and its allowlisted database key.
 
     HMM currently runs one export-worker service on the EC2 host, so one consumer
     is sufficient and keeps the queue semantics intentionally simple.
     """
-    with SessionLocal() as db:
-        job = (
-            db.query(ExportJob)
-            .filter(ExportJob.status == "PENDING")
-            .order_by(ExportJob.created_at.asc(), ExportJob.id.asc())
-            .first()
-        )
-        return job.id if job else None
+    candidates: list[tuple[datetime, str, str]] = []
+    for db_key in known_database_keys():
+        with session_for(db_key) as db:
+            job = (
+                db.query(ExportJob)
+                .filter(ExportJob.status == "PENDING")
+                .order_by(ExportJob.created_at.asc(), ExportJob.id.asc())
+                .first()
+            )
+            if job:
+                candidates.append((job.created_at, job.id, db_key))
+
+    if not candidates:
+        return None
+    created_at, job_id, db_key = min(candidates)
+    return job_id, db_key
 
 
 def poll(interval: float) -> None:
@@ -278,13 +305,14 @@ def poll(interval: float) -> None:
             except Exception as exc:
                 print(f"Journal import queue check/job failed: {exc}", flush=True)
 
-        job_id = next_pending_job_id()
-        if not job_id:
+        pending = next_pending_job()
+        if not pending:
             time.sleep(interval)
             continue
+        job_id, db_key = pending
         try:
-            print(f"Processing export job {job_id}", flush=True)
-            run_job(job_id)
+            print(f"Processing export job {job_id} ({db_key})", flush=True)
+            run_job(job_id, db_key)
             print(f"Export job {job_id} ready", flush=True)
         except Exception as exc:
             print(f"Export job {job_id} failed: {exc}", flush=True)

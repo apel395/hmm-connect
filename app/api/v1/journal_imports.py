@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import get_database_key, get_db
+from app.core.db_scope import DEMO_DB_KEY
 from app.dependencies.authorization import require_permission
 from app.models.business_unit import BusinessUnit
 from app.models.chart_of_account import ChartOfAccount
@@ -30,6 +31,19 @@ from app.services.location_access import assigned_location_id
 
 router = APIRouter(prefix="/journal-imports", tags=["Journal Imports"])
 journal_import_user = require_permission("journal.manage")
+
+
+def journal_import_access(
+    user: User = Depends(journal_import_user),
+    database_key: str = Depends(get_database_key),
+) -> User:
+    """The EC2 bulk-import worker is primary-DB only; fail closed for demo."""
+    if database_key == DEMO_DB_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Bulk journal import is not available in the demo database",
+        )
+    return user
 
 ALLOWED_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -327,7 +341,7 @@ def _build_template(db: Session, user: User) -> bytes:
 @router.get("/template")
 def template(
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     payload = _build_template(db, user)
     return {
@@ -342,7 +356,7 @@ def template(
 def create_job(
     data: JournalImportCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     from uuid import uuid4
 
@@ -370,7 +384,7 @@ def upload_url(
     job_id: int,
     data: JournalImportUploadUrl,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     batch = _get_batch(db, job_id, user)
     if batch.status not in {"DRAFT", "UPLOADED"}:
@@ -403,7 +417,7 @@ def upload_url(
 def complete_upload(
     job_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     batch = _get_batch(db, job_id, user)
     if batch.status not in {"DRAFT", "UPLOADED"}:
@@ -431,7 +445,7 @@ def complete_upload(
 def start_validation(
     job_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     batch = _get_batch(db, job_id, user)
     # Polling on EC2 owns dispatch.  Never call SSM inside the VPC API request.
@@ -462,7 +476,7 @@ def confirm_import(
     job_id: int,
     data: JournalImportConfirm,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     batch = _get_batch(db, job_id, user)
     requested_mode = "POST" if data.post_valid else "DRAFT"
@@ -504,7 +518,7 @@ def confirm_import(
 def get_preview(
     job_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     batch = _get_batch(db, job_id, user)
     rows = db.query(ImportRow).filter(ImportRow.import_batch_id == batch.id).order_by(ImportRow.id).all()
@@ -540,7 +554,7 @@ def get_preview(
 def get_errors(
     job_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     batch = _get_batch(db, job_id, user)
     rows = db.query(ImportRow).filter(
@@ -566,7 +580,7 @@ def get_errors(
 def correction_file(
     job_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     batch = _get_batch(db, job_id, user)
     rows = db.query(ImportRow).filter(
@@ -604,6 +618,6 @@ def correction_file(
 def get_job(
     job_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(journal_import_user),
+    user: User = Depends(journal_import_access),
 ):
     return _serialize(_get_batch(db, job_id, user))

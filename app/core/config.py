@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     DB_NAME: str = "erp_db"
     DB_USER: str = "postgres"
     DB_PASSWORD: str = "postgres"
+    DEMO_DATABASE_URL: str | None = None
+    DEMO_USERNAMES: str = ""
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     DOCUMENT_STORAGE_PATH: Path = Path("./uploads")
@@ -58,6 +60,14 @@ class Settings(BaseSettings):
         return {
             item.strip().lower()
             for item in self.ALLOWED_DOCUMENT_MIME_TYPES.split(",")
+            if item.strip()
+        }
+
+    @property
+    def demo_usernames(self) -> set[str]:
+        return {
+            item.strip()
+            for item in self.DEMO_USERNAMES.split(",")
             if item.strip()
         }
 

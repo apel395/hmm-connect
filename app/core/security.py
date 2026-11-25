@@ -4,6 +4,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
+from app.core.db_scope import DATABASE_CLAIM, PRIMARY_DB_KEY, normalize_db_key
 
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -17,7 +18,11 @@ def hash_password(password: str) -> str:
     return password_context.hash(password)
 
 
-def create_access_token(subject: str, session_id: str | None = None) -> str:
+def create_access_token(
+    subject: str,
+    session_id: str | None = None,
+    database_key: str | None = PRIMARY_DB_KEY,
+) -> str:
     expiry_minutes = (
         settings.SESSION_ACCESS_TOKEN_EXPIRE_MINUTES
         if session_id
@@ -27,6 +32,9 @@ def create_access_token(subject: str, session_id: str | None = None) -> str:
     payload = {"sub": subject, "exp": expires_at}
     if session_id:
         payload["sid"] = session_id
+    key = normalize_db_key(database_key)
+    if key != PRIMARY_DB_KEY:
+        payload[DATABASE_CLAIM] = key
     return jwt.encode(
         payload,
         settings.SECRET_KEY,

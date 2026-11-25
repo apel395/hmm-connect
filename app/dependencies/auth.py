@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import database_key_from_claims, get_database_key, get_db
 from app.core.security import decode_access_token_claims
 from app.models.user import User
 
@@ -25,8 +25,15 @@ def _utc(value: datetime | None) -> datetime | None:
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
+    current_db_key: str = Depends(get_database_key),
 ) -> User:
     claims = decode_access_token_claims(token)
+    if database_key_from_claims(claims) != current_db_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session database scope mismatch",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     username = claims.get("sub") if claims else None
     session_id = claims.get("sid") if claims else None
     if not username or not session_id:
