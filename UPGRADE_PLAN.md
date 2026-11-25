@@ -44,8 +44,9 @@ Already verified and deployed:
 
 - [x] U-10 Convert remaining ad-hoc POS screens (`PosOperationsPage`, `PosSalesPage`, `PosSettingsPage`) to the shared `DataWorkspace`, `PageHeader`, `WorkspaceFilters`, form shell, and `SearchableSelect` patterns.
 - [x] U-11 Add typed API contracts and list/detail hooks for POS operations so those screens stop relying on untyped `any` responses.
-- [ ] U-12 Standardize empty, loading, and error states in Admin pages: Users, Roles, Active Sessions, Approval Configuration, Audit Log, and Traceability.
-- [ ] U-13 Standardize Bank Reconciliation list/detail and Finance setup pages (Report Setup, Statistics, Posting Rules) with explicit filter context and action states.
+- [x] U-12 Standardize empty, loading, and error states in Admin pages: Users, Roles, Active Sessions, Approval Configuration, Audit Log, and Traceability.
+- [ ] U-13 Standardize Bank Reconciliation list/detail with explicit filter context and action states.
+- [x] U-14 Standardize Finance setup pages (Report Setup, Statistics, Posting Rules) with explicit filter context and action states.
 
 ### Wave 2 — Operational input flows
 
@@ -64,7 +65,7 @@ Already verified and deployed:
 
 ### Wave 4 — Release
 
-- [ ] U-40 Frontend checks: `npm run lint`, `npm run build`, `npm run test:finance`, `npm run test:workspace`, `npm run test:inventory-print`, `npm run test:inventory-module`, `npm run test:store-request`, `npm run test:pos-operations`.
+- [ ] U-40 Frontend checks: `npm run lint`, `npm run build`, `npm run test:finance`, `npm run test:workspace`, `npm run test:inventory-print`, `npm run test:inventory-module`, `npm run test:admin-setup`, `npm run test:store-request`, `npm run test:pos-operations`.
 - [ ] U-41 Backend checks: full `pytest`, `compileall`, `git diff --check`, and migration-chain validation.
 - [ ] U-42 Push frontend to `origin/main` only; push backend to `origin/backend` only when backend code changed.
 - [ ] U-43 Watch the GitHub Actions deploy to completion, including `Verify deployed function` and `Smoke test health endpoint`.
@@ -78,7 +79,7 @@ Already verified and deployed:
 
 ## Recommended next task
 
-Start with **U-12/U-13: Admin and Finance setup screens**, because the remaining ad-hoc list/detail screens still lack shared filter context and explicit loading/empty/error states. After Waves 0–4 are done, move to **Wave 5: Reports module**, starting with Balance Sheet and Profit & Loss (U-50/U-51). POS operations use `scripts/test-pos-contracts.cjs`; the operational flows use `scripts/test-operational-flows.cjs`; the Inventory module uses `scripts/test-inventory-module.cjs`.
+U-12 and U-14 are done: Admin and Finance setup screens now use the shared shell, explicit states and `apiErrorMessage` (regression: `scripts/test-admin-finance-setup.cjs`). Next, close out the remaining guardrails and demo-data items (U-13, U-23, U-30–U-33, release items), then move to **Wave 5: Reports module**, starting with Balance Sheet and Profit & Loss (U-50/U-51). Earlier waves use `scripts/test-pos-contracts.cjs`, `scripts/test-operational-flows.cjs`, `scripts/test-inventory-module.cjs` and `scripts/test-admin-finance-setup.cjs`.
 
 ## Definition of done for a wave
 

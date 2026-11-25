@@ -2,7 +2,7 @@ import UsageGuide from "./UsageGuide";
 import { DataWorkspaceContext } from "@/components/workspace/dataWorkspaceContext";
 import { useContext, ReactNode } from "react";
 import clsx from "clsx";
-import { Info, RefreshCw, Building2, Boxes, BookOpen, ChartNoAxesCombined, Rows3 } from "lucide-react";
+import { Info, RefreshCw, Building2, Boxes, BookOpen, ChartNoAxesCombined, Rows3, Users, ShieldCheck, Landmark } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ export default function PageHeader({
   className,
 }: PageHeaderProps) {
   const workspace = useContext(DataWorkspaceContext);
-  const ModuleIcon = workspace ? ({ "Master data": Building2, Inventory: Boxes, Accounting: BookOpen, Reports: ChartNoAxesCombined }[workspace.area]) : null;
+  const ModuleIcon = workspace ? ({ "Master data": Building2, Inventory: Boxes, Accounting: BookOpen, Reports: ChartNoAxesCombined, Admin: Users, Audit: ShieldCheck, Finance: Landmark }[workspace.area]) : null;
   const client = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const refresh = async () => {
