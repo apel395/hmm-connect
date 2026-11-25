@@ -16,6 +16,9 @@ async function run(){
  else if(a.path==='lucide-react')contents='export const Printer=()=>null;';
  else if(a.path==='@tanstack/react-query')contents="export const useQueryClient=()=>({invalidateQueries:async()=>{}});export const useMutation=()=>({isPending:false});export const useQuery=o=>{globalThis.__queries.push(o);if(o.queryKey[0]==='pos-options')return {data:globalThis.__loading?undefined:globalThis.__options,isLoading:globalThis.__loading};return {data:o.enabled&&!globalThis.__failed?globalThis.__context:undefined,isLoading:false,isError:Boolean(o.enabled&&globalThis.__failed),error:{response:{data:{detail:'Outlet is unavailable'}}}};};";
  else if(a.path.includes('SearchableSelect'))contents="import React from 'react';export default p=>React.createElement('select',{'aria-label':p.label,value:p.value??'',onChange:e=>p.onChange(e.target.value?Number(e.target.value):undefined)},p.options.map(o=>React.createElement('option',{key:o.id,value:o.id},o.name)));";
+ else if(a.path.includes('DataWorkspace'))contents="import React from 'react';export default p=>React.createElement('div',null,p.children);export const WorkspaceFilters=p=>React.createElement('div',null,p.children);";
+ else if(a.path.includes('/ui/Loading'))contents="import React from 'react';export default p=>React.createElement('div',null,p.message);";
+ else if(a.path.includes('/ui/Empty')||a.path.includes('/ui/Badge')||a.path.includes('/common/ModuleSummary'))contents="import React from 'react';export default p=>React.createElement('div',null,p.children);";
  else contents="import React from 'react';export default p=>React.createElement('div',null,p.children);";
  return {contents,loader:'js'};});}}]});
  const m={exports:{}};new Function('module','exports','require',bundled.outputFiles[0].text)(m,m.exports,n=>req(n));const Page=m.exports.default;
