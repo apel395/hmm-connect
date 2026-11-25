@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.database import database_key_for_session
+from app.core.db_scope import DEMO_DB_KEY
 from app.dependencies.authorization import is_superuser, role_names
 from app.models.approval_request import ApprovalRequest, ApprovalRequestStep
 from app.models.approval_workflow import ApprovalWorkflow, ApprovalWorkflowStep
@@ -343,7 +345,7 @@ def has_receiving_approval(request, user) -> bool:
 def approve_current_step(db: Session, *, request, user, comment=None) -> None:
     request = _lock_request(db, request)
     step = _select_current_step(request, user)
-    if has_receiving_approval(request, user):
+    if database_key_for_session(db) != DEMO_DB_KEY and has_receiving_approval(request, user):
         raise HTTPException(409, "Receiving requires approvals by two different people")
     step.status = "APPROVED"
     step.approved_by_id = user.id

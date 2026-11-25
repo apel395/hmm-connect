@@ -85,6 +85,21 @@ def known_database_keys() -> tuple[str, ...]:
     return tuple(key for key in (PRIMARY_DB_KEY, DEMO_DB_KEY) if key in SessionFactories)
 
 
+def database_key_for_session(db: Session) -> str:
+    """Resolve which registered database a SQLAlchemy session is bound to."""
+    get_bind = getattr(db, "get_bind", None)
+    if get_bind is None:
+        return PRIMARY_DB_KEY
+    bind = get_bind()
+    for key, engine in Engines.items():
+        if bind is engine:
+            return key
+    matches = [key for key, engine in Engines.items() if bind.url == engine.url]
+    if len(matches) == 1:
+        return matches[0]
+    return PRIMARY_DB_KEY
+
+
 def database_key_from_claims(claims: dict | None) -> str:
     raw_key = claims.get(DATABASE_CLAIM) if claims else None
     try:

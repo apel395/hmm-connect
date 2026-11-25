@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from jose import jwt
 from sqlalchemy import create_engine
@@ -191,3 +192,58 @@ def test_export_job_carries_signed_database_scope(demo_environment):
     from app.scripts.export_worker import _find_job_database
 
     assert _find_job_database(response.json()["job_id"]) == DEMO_DB_KEY
+
+
+def test_database_key_for_session_resolves_registered_engines(demo_environment):
+    _, engines = demo_environment
+
+    with Session(engines[DEMO_DB_KEY]) as db:
+        assert database_module.database_key_for_session(db) == DEMO_DB_KEY
+    with Session(engines[PRIMARY_DB_KEY]) as db:
+        assert database_module.database_key_for_session(db) == PRIMARY_DB_KEY
+
+
+def _approval_actors():
+    step = SimpleNamespace(
+        status="PENDING",
+        approved_by_id=None,
+        decided_at=None,
+        decision_comment=None,
+    )
+    request = SimpleNamespace(status="PENDING", current_step_order=1)
+    user = SimpleNamespace(id=99)
+    return step, request, user
+
+
+def test_demo_scope_allows_single_login_to_complete_receiving_approval(monkeypatch):
+    from app.services import approval as approval_service
+
+    step, request, user = _approval_actors()
+    monkeypatch.setattr(approval_service, "_lock_request", lambda db, request: request)
+    monkeypatch.setattr(approval_service, "_select_current_step", lambda request, user: step)
+    monkeypatch.setattr(approval_service, "has_receiving_approval", lambda request, user: True)
+    monkeypatch.setattr(approval_service, "_advance_stage", lambda db, request: None)
+    monkeypatch.setattr(approval_service, "database_key_for_session", lambda db: DEMO_DB_KEY)
+
+    db = SimpleNamespace(flush=lambda: None)
+    approval_service.approve_current_step(db, request=request, user=user, comment="demo")
+
+    assert step.status == "APPROVED"
+    assert step.approved_by_id == user.id
+
+
+def test_primary_scope_still_requires_two_receiving_approvers(monkeypatch):
+    from app.services import approval as approval_service
+
+    step, request, user = _approval_actors()
+    monkeypatch.setattr(approval_service, "_lock_request", lambda db, request: request)
+    monkeypatch.setattr(approval_service, "_select_current_step", lambda request, user: step)
+    monkeypatch.setattr(approval_service, "has_receiving_approval", lambda request, user: True)
+    monkeypatch.setattr(approval_service, "_advance_stage", lambda db, request: None)
+    monkeypatch.setattr(approval_service, "database_key_for_session", lambda db: PRIMARY_DB_KEY)
+
+    with pytest.raises(HTTPException) as exc:
+        approval_service.approve_current_step(object(), request=request, user=user)
+
+    assert exc.value.status_code == 409
+    assert step.status == "PENDING"
