@@ -1,6 +1,7 @@
 import { ExportButton } from "@/components/common/ReportActions";
 import BalanceStatus from "./BalanceStatus";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
+import ModuleSummary from "@/components/common/ModuleSummary";
 import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import { normalizeReportUnit, reportUnitKind } from "@/components/reports/unitScope";
 import { useEffect, useState } from "react";
@@ -18,6 +19,10 @@ import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import PageHeader from "@/components/common/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import Empty from "@/components/ui/Empty";
+import Loading from "@/components/ui/Loading";
+import { FORM_UI } from "@/config/formUi";
+import { apiErrorMessage } from "@/utils/apiError";
 import { listBusinessUnits, listLocations, listDepartments } from "@/modules/admin/organization/api";
 import useAuthStore from "@/store/auth";
 
@@ -28,7 +33,7 @@ export type Row = { account_code: string; account_name: string; account_ids: num
 export type EarningsEvidence = { account_id: number | null; account_name: string | null; opening_balance: string; posted_movement: string; unclosed_profit_loss: string; displayed_balance: string };
 export type Report = { statistics?: ReportStatistics; executive_rows?: Row[]; summary?: Record<Period, Record<string, { earnings_reconciliation?: EarningsEvidence }>>; related_accounts?: RelatedAccount[]; presentation_rows?: PresentationRow[]; report_scope?: string; balance_control?: {difference: string; is_balanced: boolean}; department_reports?: DepartmentStatement[]; departments?: DepartmentPerformance[]; rows: Row[]; header_only: boolean; section_totals: Record<string, Record<Period, Amounts>>; budget_available: Record<Period, boolean>; comparison_available?: Record<Period, Partial<Record<keyof Amounts, boolean>>>; scope_labels?: Record<string, string>; scope: { location_id: number | null; business_unit_id: number | null; department_id: number | null }; periods: Record<Period, Record<string, string[]>> };
 const money = (value: string | number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("id-ID", { maximumFractionDigits: 2 });
-const input = "h-8 rounded border border-slate-300 bg-white px-2 text-xs";
+const input = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`;
 const labels: Record<string, string> = { REVENUE: "Pendapatan", COST_OF_REVENUE: "HPP", GOI: "GOI", GOP: "GOP / GOL", NOP: "NOP", EXPENSES: "Beban", ASSETS: "Aset", LIABILITIES: "Liabilitas", EQUITY: "Ekuitas" };
 const metrics = ["current", "budget", "last_month", "last_year", "variance"] as const;
 const metricNames = ["Current", "Budget", "Last month", "Last year", "Variance"];
@@ -58,7 +63,6 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
   const title = kind === "PROFIT_LOSS" ? "Profit & Loss" : "Balance Sheet";
   const data = report.data;
   const scopeNames = data ? Object.entries(data.scope).filter(([, value]) => value != null).map(([key]) => data.scope_labels?.[key]).filter(Boolean) : [];
-  const error = report.error as { response?: { data?: { detail?: string } } } | null;
   const exportReport = async () => {
     try {
       const response = await api.get("/financial-reports/comparison/export", { params, responseType: "blob" });
@@ -107,9 +111,10 @@ export default function FinancialReportPage({ kind }: { kind: Kind }) {
     <div className="workspace-report-controls"><ReportUnitButtons value={applied.business_unit_id} onChange={id=>{const next={...filters,business_unit_id:id,report_scope:reportUnitKind(units.data?.find(unit=>String(unit.id)===id)),location_id:"",department_id:""};setFilters(next);setDraft(next);}}/>
     <div className="flex items-center gap-1 print:hidden">{(["MTD", "YTD"] as const).map(value => <Button key={value} size="sm" variant={period === value ? "primary" : "outline"} onClick={() => setPeriod(value)}>{value}</Button>)}</div>
     <span className="workspace-scope-label">{filters.as_of_date} · {scopeNames.join(" · ") || "Consolidated"}</span></div>
-    {report.isLoading ? <div className="p-4 text-sm">Loading report…</div> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{error?.response?.data?.detail || "Report could not be loaded"}</div> : data && <>
+    {report.isLoading ? <Loading message="Loading report…" /> : report.isError ? <div role="alert" className="rounded border border-red-200 p-3 text-sm text-red-700">{apiErrorMessage(report.error, "Report could not be loaded")}</div> : !data ? <Empty title="Report unavailable" description="Adjust the filters or run the report again." /> : <>
+      <ModuleSummary metrics={(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => ({ label: labels[section], value: money(totals(section)?.current) }))} />
       <div className="workspace-report-totals flex flex-wrap divide-x rounded border bg-white text-xs">{(kind === "PROFIT_LOSS" ? ["REVENUE", "COST_OF_REVENUE", "GOI", "GOP", "NOP"] : ["ASSETS", "LIABILITIES", "EQUITY"]).map(section => <div key={section} className="px-3 py-2"><span className="mr-2 text-slate-500">{labels[section]}</span><b className="tabular-nums">{money(totals(section)?.current)}</b></div>)}{kind === "BALANCE_SHEET" && <div className="flex items-center px-2"><BalanceStatus control={data.balance_control} /></div>}</div>
-      {kind === "BALANCE_SHEET" ? <div className="workspace-report-grid">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : <ProfitLossTable data={data} periods={[period]} asOf={filters.as_of_date} />}
+      {(data.rows?.length ?? 0) === 0 && (data.presentation_rows?.length ?? 0) === 0 ? <Empty title="No report lines" description="No posted balances match these filters." /> : kind === "BALANCE_SHEET" ? <div className="workspace-report-grid">{table(["ASSETS"])}{table(["LIABILITIES", "EQUITY"])}</div> : <ProfitLossTable data={data} periods={[period]} asOf={filters.as_of_date} />}
       <div className="hidden print:block text-xs">{user?.full_name || user?.username} · {new Date().toLocaleString()}</div>
     </>}
   </DataWorkspace>;

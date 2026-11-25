@@ -32,6 +32,19 @@ function run() {
   has("src/modules/finance/posting-rules/PostingRulesPage.tsx", ["DataWorkspace", "ModuleSummary", "Loading", "Empty", "apiErrorMessage", "PrintPreviewButton"], "Posting Rules");
   has("src/modules/finance/posting-rules/PostingRulesPage.tsx", ["/accounting/direct-coa-settings", "/finance-setup/posting-rules/print"], "Posting Rules endpoints preserved");
 
+  const bank = "src/modules/finance/bank-reconciliation/";
+  has(`${bank}BankReconciliationListPage.tsx`, ["DataWorkspace", "WorkspaceFilters", "ModuleSummary", "Loading", "Empty", "apiErrorMessage", "Badge", "FORM_UI", "Pagination"], "Bank Reconciliation list");
+  has(`${bank}BankReconciliationDetailPage.tsx`, ["DataWorkspace", "ModuleSummary", "Loading", "Empty", "apiErrorMessage", "FORM_UI"], "Bank Reconciliation detail");
+  has(`${bank}api.ts`, ["ReconciliationListParams", "CreateReconciliationPayload", "StatementUploadPreview", "AutoMatchSuggestion", "MatchAllocation"], "Bank Reconciliation typed contracts");
+  const bankApi = read(`${bank}api.ts`);
+  for (const token of ["/bank-reconciliations", "/upload-statement", "/auto-match", "/matches", "/create-adjustment", "/complete", "/void"]) {
+    assert.ok(bankApi.includes(token), `Bank Reconciliation endpoint preserved: ${token}`);
+  }
+  for (const token of ["file", "mapping_json", "preview", "date_tolerance_days", "confirm_suggested", "allocations"]) {
+    assert.ok(bankApi.includes(token), `Bank Reconciliation payload field preserved: ${token}`);
+  }
+  assert.ok(!bankApi.includes(": any"), "Bank Reconciliation API has no untyped values");
+
   console.log("Admin and Finance setup PASS: shared workspace shell, explicit states, preserved behavior.");
 }
 

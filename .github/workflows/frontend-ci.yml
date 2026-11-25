@@ -13,6 +13,7 @@ on:
       - "scripts/test-compact-data-1015.mjs"
       - "scripts/test-inventory-module.cjs"
       - "scripts/test-admin-finance-setup.cjs"
+      - "scripts/test-report-workspace.cjs"
       - "scripts/test-report-statistics.mjs"
       - "package.json"
       - "package-lock.json"
@@ -38,6 +39,7 @@ jobs:
       - run: npm run test:store-request
       - run: npm run test:inventory-module
       - run: npm run test:admin-setup
+      - run: npm run test:report-workspace
       - run: npm run build
 
   purchasing-pdf-browser:

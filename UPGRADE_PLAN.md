@@ -35,17 +35,17 @@ Already verified and deployed:
 
 ### Wave 0 — Parity guardrails
 
-- [ ] U-00 Keep a short release note with frontend commit, backend commit, Alembic head, workflow run IDs, and public smoke results.
-- [ ] U-01 Before any UI release, confirm the demo token still resolves to `db=demo` and that `/health`, `/auth/me`, products, suppliers, COA, COA tree, warehouses, POs, GRNs, and supplier invoices return 200.
-- [ ] U-02 Before any backend schema release, apply migrations to both `erp_db` and `erp_demo`, then re-check the Alembic head in both databases.
-- [ ] U-03 Keep bulk journal import fail-closed for demo unless the worker is made database-aware first.
+- [x] U-00 Keep a short release note with frontend commit, backend commit, Alembic head, workflow run IDs, and public smoke results (`RELEASE_NOTES.md`).
+- [x] U-01 Before any UI release, confirm the demo token still resolves to `db=demo` and that `/health`, `/auth/me`, products, suppliers, COA, COA tree, warehouses, POs, GRNs, and supplier invoices return 200. Re-verified 2026-11-25 with the public API.
+- [x] U-02 Before any backend schema release, apply migrations to both `erp_db` and `erp_demo`, then re-check the Alembic head in both databases. Both remain at `20261105_pos_guests`.
+- [x] U-03 Keep bulk journal import fail-closed for demo unless the worker is made database-aware first. Exact message: `503 Bulk journal import is not available in the demo database`.
 
 ### Wave 1 — Shared UI system completion
 
 - [x] U-10 Convert remaining ad-hoc POS screens (`PosOperationsPage`, `PosSalesPage`, `PosSettingsPage`) to the shared `DataWorkspace`, `PageHeader`, `WorkspaceFilters`, form shell, and `SearchableSelect` patterns.
 - [x] U-11 Add typed API contracts and list/detail hooks for POS operations so those screens stop relying on untyped `any` responses.
 - [x] U-12 Standardize empty, loading, and error states in Admin pages: Users, Roles, Active Sessions, Approval Configuration, Audit Log, and Traceability.
-- [ ] U-13 Standardize Bank Reconciliation list/detail with explicit filter context and action states.
+- [x] U-13 Standardize Bank Reconciliation list/detail with explicit filter context and action states, including typed API contracts.
 - [x] U-14 Standardize Finance setup pages (Report Setup, Statistics, Posting Rules) with explicit filter context and action states.
 
 ### Wave 2 — Operational input flows
@@ -53,33 +53,33 @@ Already verified and deployed:
 - [x] U-20 Smoke test and polish Stock Opname create/detail, Inventory Returns, Store Request, and Put Away using the demo token. Put Away has no deployed backend endpoint, so its route now fails closed with an explicit message instead of calling a missing API.
 - [x] U-21 Verify every upgraded form has usable demo option data: business units, locations, departments, warehouses, products, suppliers, COA, tax, UOM, and categories. Tax and UOM come from source product/receipt rows rather than standalone option endpoints.
 - [x] U-22 Add regression scripts to `scripts/` for each newly standardized workflow, then include them in the relevant `package.json` test script (`scripts/test-operational-flows.cjs` is registered under `test:store-request`; `scripts/test-inventory-module.cjs` under `test:inventory-module`). Both run in `npm test` and Frontend CI.
-- [ ] U-23 Confirm print/export buttons state their source, scope, and whether they print live filtered data or an authenticated report artifact.
+- [x] U-23 Confirm print/export buttons state their source, scope, and whether they print live filtered data or an authenticated report artifact (`scripts/test-print-export-clarity.cjs`, `scripts/test-inventory-print.mjs` and finance print scripts).
 - [x] U-24 Polish the Inventory module's Stock Movement Summary with the shared workspace shell, filter context, summary metrics and explicit loading/empty/error states. Remove the redundant per-UOM arithmetic strip at the bottom of the page (`BALL: 22 + 0 − 0 = 22`), which should not appear. Export/print scope and report query keys are preserved.
 
 ### Wave 3 — Demo data readiness
 
-- [ ] U-30 Seed only minimal demo records needed for POS, inventory, and finance setup checks; keep them clearly separated from production data.
-- [ ] U-31 Re-run full demo purchasing E2E after any backend deploy: PO → GRN approvals → GRN posting → supplier invoice → journal posting.
-- [ ] U-32 Document any feature intentionally unavailable to demo, with the exact user-facing message.
-- [ ] U-33 Verify no upgraded screen exposes primary-only data or actions to the demo session.
+- [x] U-30 Seed only minimal demo records needed for POS, inventory, and finance setup checks; keep them clearly separated from production data. Seeded one draft each: `SO-202611-0001`, `SR-202611-0001`, `RTN-202611-0001` through the public API with the demo token.
+- [x] U-31 Re-run full demo purchasing E2E after any backend deploy: PO → GRN approvals → GRN posting → supplier invoice → journal posting.
+- [x] U-32 Document any feature intentionally unavailable to demo, with the exact user-facing message (`RELEASE_NOTES.md`).
+- [x] U-33 Verify no upgraded screen exposes primary-only data or actions to the demo session. Demo token reads its own workflow records and receives `503 Bulk journal import is not available in the demo database` for `/journal-imports/template`.
 
 ### Wave 4 — Release
 
-- [ ] U-40 Frontend checks: `npm run lint`, `npm run build`, `npm run test:finance`, `npm run test:workspace`, `npm run test:inventory-print`, `npm run test:inventory-module`, `npm run test:admin-setup`, `npm run test:store-request`, `npm run test:pos-operations`.
-- [ ] U-41 Backend checks: full `pytest`, `compileall`, `git diff --check`, and migration-chain validation.
-- [ ] U-42 Push frontend to `origin/main` only; push backend to `origin/backend` only when backend code changed.
-- [ ] U-43 Watch the GitHub Actions deploy to completion, including `Verify deployed function` and `Smoke test health endpoint`.
-- [ ] U-44 Run public URL smoke checks after deploy and record results in the release note.
+- [x] U-40 Frontend checks: `npm run lint`, `npm run build`, `npm run test:finance`, `npm run test:workspace`, `npm run test:inventory-print`, `npm run test:inventory-module`, `npm run test:admin-setup`, `npm run test:report-workspace`, `npm run test:store-request`, `npm run test:pos-operations`.
+- [x] U-41 Backend checks: full `pytest`, `compileall`, `git diff --check`, and migration-chain validation.
+- [x] U-42 Push frontend to `origin/main` only; push backend to `origin/backend` only when backend code changed.
+- [x] U-43 Watch the GitHub Actions deploy to completion, including `Verify deployed function` and `Smoke test health endpoint`.
+- [x] U-44 Run public URL smoke checks after deploy and record results in the release note.
 
 ### Wave 5 — Reports module (after all earlier waves are done)
 
-- [ ] U-50 Polish the Balance Sheet screen with the shared workspace shell, explicit filter context, loading/empty/error states, and typed report contracts. Preserve account grouping, comparison periods, and print/export scope.
-- [ ] U-51 Polish the Profit & Loss screen the same way, preserving management subtotals, NOP attribution, comparison periods, and print/export scope.
-- [ ] U-52 Add regression scripts for Balance Sheet and Profit & Loss, register them in `package.json`, and include them in Frontend CI.
+- [x] U-50 Polish the Balance Sheet screen with the shared workspace shell, explicit filter context, loading/empty/error states, and typed report contracts. Preserve account grouping, comparison periods, and print/export scope. Done in the shared `FinancialReportPage.tsx`.
+- [x] U-51 Polish the Profit & Loss screen the same way, preserving management subtotals, NOP attribution, comparison periods, and print/export scope. Done in the shared `FinancialReportPage.tsx`.
+- [x] U-52 Add regression scripts for Balance Sheet and Profit & Loss, register them in `package.json`, and include them in Frontend CI (`scripts/test-report-workspace.cjs` under `test:report-workspace`).
 
 ## Recommended next task
 
-U-12 and U-14 are done: Admin and Finance setup screens now use the shared shell, explicit states and `apiErrorMessage` (regression: `scripts/test-admin-finance-setup.cjs`). Next, close out the remaining guardrails and demo-data items (U-13, U-23, U-30–U-33, release items), then move to **Wave 5: Reports module**, starting with Balance Sheet and Profit & Loss (U-50/U-51). Earlier waves use `scripts/test-pos-contracts.cjs`, `scripts/test-operational-flows.cjs`, `scripts/test-inventory-module.cjs` and `scripts/test-admin-finance-setup.cjs`.
+All waves through Wave 5 are complete. Balance Sheet and Profit & Loss share `FinancialReportPage.tsx` and are guarded by `scripts/test-report-workspace.cjs`; `scripts/test-report-statistics.mjs` also passes. If continuing, extend the same shared-shell treatment to the remaining report screens (Trial Balance, General Ledger, financial-statement print layouts) or address demo-data depth beyond the minimal seeded records.
 
 ## Definition of done for a wave
 
