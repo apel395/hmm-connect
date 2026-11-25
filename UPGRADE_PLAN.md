@@ -51,8 +51,9 @@ Already verified and deployed:
 
 - [x] U-20 Smoke test and polish Stock Opname create/detail, Inventory Returns, Store Request, and Put Away using the demo token. Put Away has no deployed backend endpoint, so its route now fails closed with an explicit message instead of calling a missing API.
 - [x] U-21 Verify every upgraded form has usable demo option data: business units, locations, departments, warehouses, products, suppliers, COA, tax, UOM, and categories. Tax and UOM come from source product/receipt rows rather than standalone option endpoints.
-- [x] U-22 Add regression scripts to `scripts/` for each newly standardized workflow, then include them in the relevant `package.json` test script (`scripts/test-operational-flows.cjs` is registered under `test:store-request`, which is part of `npm test` and Frontend CI).
+- [x] U-22 Add regression scripts to `scripts/` for each newly standardized workflow, then include them in the relevant `package.json` test script (`scripts/test-operational-flows.cjs` is registered under `test:store-request`; `scripts/test-inventory-module.cjs` under `test:inventory-module`). Both run in `npm test` and Frontend CI.
 - [ ] U-23 Confirm print/export buttons state their source, scope, and whether they print live filtered data or an authenticated report artifact.
+- [x] U-24 Polish the Inventory module's Stock Movement Summary with the shared workspace shell, filter context, summary metrics and explicit loading/empty/error states. Remove the redundant per-UOM arithmetic strip at the bottom of the page (`BALL: 22 + 0 − 0 = 22`), which should not appear. Export/print scope and report query keys are preserved.
 
 ### Wave 3 — Demo data readiness
 
@@ -63,15 +64,21 @@ Already verified and deployed:
 
 ### Wave 4 — Release
 
-- [ ] U-40 Frontend checks: `npm run lint`, `npm run build`, `npm run test:finance`, `npm run test:workspace`, `npm run test:inventory-print`, `npm run test:store-request`, `npm run test:pos-operations`.
+- [ ] U-40 Frontend checks: `npm run lint`, `npm run build`, `npm run test:finance`, `npm run test:workspace`, `npm run test:inventory-print`, `npm run test:inventory-module`, `npm run test:store-request`, `npm run test:pos-operations`.
 - [ ] U-41 Backend checks: full `pytest`, `compileall`, `git diff --check`, and migration-chain validation.
 - [ ] U-42 Push frontend to `origin/main` only; push backend to `origin/backend` only when backend code changed.
 - [ ] U-43 Watch the GitHub Actions deploy to completion, including `Verify deployed function` and `Smoke test health endpoint`.
 - [ ] U-44 Run public URL smoke checks after deploy and record results in the release note.
 
+### Wave 5 — Reports module (after all earlier waves are done)
+
+- [ ] U-50 Polish the Balance Sheet screen with the shared workspace shell, explicit filter context, loading/empty/error states, and typed report contracts. Preserve account grouping, comparison periods, and print/export scope.
+- [ ] U-51 Polish the Profit & Loss screen the same way, preserving management subtotals, NOP attribution, comparison periods, and print/export scope.
+- [ ] U-52 Add regression scripts for Balance Sheet and Profit & Loss, register them in `package.json`, and include them in Frontend CI.
+
 ## Recommended next task
 
-Start with **U-12/U-13: Admin and Finance setup screens**, because the remaining ad-hoc list/detail screens still lack shared filter context and explicit loading/empty/error states. POS operations, sales and settings use the shared workspace shell, typed contracts, hooks and `scripts/test-pos-contracts.cjs`; the four operational flows now use the same shell with `scripts/test-operational-flows.cjs`.
+Start with **U-12/U-13: Admin and Finance setup screens**, because the remaining ad-hoc list/detail screens still lack shared filter context and explicit loading/empty/error states. After Waves 0–4 are done, move to **Wave 5: Reports module**, starting with Balance Sheet and Profit & Loss (U-50/U-51). POS operations use `scripts/test-pos-contracts.cjs`; the operational flows use `scripts/test-operational-flows.cjs`; the Inventory module uses `scripts/test-inventory-module.cjs`.
 
 ## Definition of done for a wave
 

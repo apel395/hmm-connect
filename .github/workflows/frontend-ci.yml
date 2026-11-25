@@ -11,6 +11,7 @@ on:
       - "scripts/test-inventory-returns.cjs"
       - "scripts/test-inventory-completion.cjs"
       - "scripts/test-compact-data-1015.mjs"
+      - "scripts/test-inventory-module.cjs"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/frontend-ci.yml"
@@ -33,6 +34,7 @@ jobs:
       - run: npm run test:finance
       - run: npm run test:pos-operations
       - run: npm run test:store-request
+      - run: npm run test:inventory-module
       - run: npm run build
 
   purchasing-pdf-browser:

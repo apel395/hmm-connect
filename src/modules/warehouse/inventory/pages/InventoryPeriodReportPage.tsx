@@ -4,12 +4,18 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import api from "@/api/client";
 import { ExportButton } from "@/components/common/ReportActions";
+import ModuleSummary from "@/components/common/ModuleSummary";
 import PageHeader from "@/components/common/PageHeader";
+import DataWorkspace, { WorkspaceFilters } from "@/components/workspace/DataWorkspace";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import Empty from "@/components/ui/Empty";
+import Loading from "@/components/ui/Loading";
 import ReportUnitButtons from "@/components/reports/ReportUnitButtons";
 import InventoryPrintButton from "@/components/print/InventoryPrintButton";
+import { FORM_UI } from "@/config/formUi";
 import { warehouseApi } from "@/modules/master/warehouses/api/warehouseApi";
+import { warehouseErrorMessage } from "@/modules/warehouse/errors";
 import {
   collectReportPages,
   printMoney,
@@ -40,8 +46,7 @@ type Page = {
     closing: number;
   }>;
 };
-const input =
-  "h-9 min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm";
+const input = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`;
 const columns = [
   ["opening_quantity", "Opening"],
   ["receiving_quantity", "Receiving"],
@@ -150,6 +155,7 @@ export default function InventoryPeriodReportPage() {
     }
   };
   return (
+    <DataWorkspace area="Inventory">
     <div className="space-y-3">
       <PageHeader
         title="Stock Movement Summary"
@@ -200,6 +206,7 @@ export default function InventoryPeriodReportPage() {
           </>
         }
       />
+      <WorkspaceFilters context={context}>
       <ReportUnitButtons
         value={unit}
         onChange={(value) => {
@@ -284,6 +291,7 @@ export default function InventoryPeriodReportPage() {
           Refresh
         </Button>
       </Card>
+      </WorkspaceFilters>
       {!valid && (
         <p role="alert" className="text-sm text-red-700">
           Choose a valid date range.
@@ -291,26 +299,22 @@ export default function InventoryPeriodReportPage() {
       )}
       {query.isError && (
         <p role="alert" className="text-sm text-red-700">
-          Unable to load the stock report.
+          Unable to load the stock report. {warehouseErrorMessage(query.error, "Retry the report.")}
         </p>
       )}
-      <Card className="flex flex-wrap gap-6 p-3 text-sm">
-        {[
-          ["opening_value", "Opening value"],
-          ["in_value", "Incoming"],
-          ["out_value", "Outgoing"],
-          ["closing_value", "Closing value"],
-        ].map(([key, title]) => (
-          <div key={key}>
-            <span className="text-xs text-slate-500">{title}</span>
-            <div className="font-semibold tabular-nums">
-              {printMoney(query.data?.summary[key])}
-            </div>
-          </div>
-        ))}
-      </Card>
-      <Card className="overflow-hidden">
+      <ModuleSummary metrics={[
+        { label: "Opening value", value: printMoney(query.data?.summary.opening_value) },
+        { label: "Incoming", value: printMoney(query.data?.summary.in_value) },
+        { label: "Outgoing", value: printMoney(query.data?.summary.out_value) },
+        { label: "Closing value", value: printMoney(query.data?.summary.closing_value) },
+      ]} />
+      <Card className="workspace-data overflow-hidden">
         <div className="overflow-x-auto">
+          {query.isLoading ? (
+            <Loading message="Loading stock movement summary…" />
+          ) : (query.data?.items.length ?? 0) === 0 ? (
+            <Empty title="No stock movements found" description="Adjust the date range, unit, warehouse or item filter." />
+          ) : (
           <table className="w-full whitespace-nowrap text-xs">
             <thead className="bg-slate-50">
               <tr>
@@ -356,6 +360,7 @@ export default function InventoryPeriodReportPage() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
         <div className="flex items-center justify-end gap-3 p-3 text-xs">
           <span>{query.data?.total_items ?? 0} stock lines</span>
@@ -380,15 +385,7 @@ export default function InventoryPeriodReportPage() {
           </Button>
         </div>
       </Card>
-      <div className="flex flex-wrap gap-4 text-xs">
-        {query.data?.quantity_totals_by_uom.map((row) => (
-          <span key={row.uom}>
-            {row.uom}: {printNumber(row.opening)} +{" "}
-            {printNumber(row.in_quantity)} − {printNumber(row.out_quantity)} ={" "}
-            <strong>{printNumber(row.closing)}</strong>
-          </span>
-        ))}
-      </div>
     </div>
+    </DataWorkspace>
   );
 }
