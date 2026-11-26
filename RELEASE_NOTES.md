@@ -1,6 +1,6 @@
 # Release notes
 
-Last verified: 2026-11-25.
+Last verified: 2026-11-26.
 
 ## Deployed revisions
 
@@ -21,7 +21,7 @@ Last verified: 2026-11-25.
 ## Verification performed
 
 - Backend: full `pytest` (`1058 passed, 21 skipped`), `compileall`, `git diff --check`, migration-chain validation.
-- Frontend: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test` (`test:finance`, `test:workspace`, `test:pos-operations`, `test:inventory-print`, `test:inventory-module`, `test:admin-setup`, `test:store-request`) — all passing.
+- Frontend: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test` (`test:finance`, `test:workspace`, `test:pos-operations`, `test:inventory-print`, `test:inventory-module`, `test:admin-setup`, `test:report-workspace`, `test:store-request`) — all passing.
 - Demo purchasing E2E: PO → GRN approvals → GRN posting → supplier invoice → posted journal.
 - Public URL smoke: `/health` 200, demo login 200 with `db=demo`, `/api/v1/auth/me` 200. Operational-flow smoke: stock opnames, inventory returns, return sources, store requests and period report all 200; `/put-away` 404 as documented.
 
@@ -37,5 +37,5 @@ Read-back with the demo token returns 200 and `total_items=1` for all three list
 
 ## Local-only test constraints
 
-- `test-data-workspaces.mjs` could not run locally because the Playwright browser binary is absent; it is not part of `npm test` or Frontend CI.
+- `test-data-workspaces.mjs` is not part of `npm test` or Frontend CI. Scoped Trial Balance and General Ledger views pass locally with synthetic fixtures and preinstalled browser/runtime libraries; the full script still stops at the pre-existing journal-view fixture issue.
 - `test-report-statistics.mjs` passed locally using preinstalled browser/runtime libraries; it is not part of `npm test` or Frontend CI.

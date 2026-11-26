@@ -5,7 +5,10 @@ import { useSearchParams } from "react-router-dom";
 import ReportStatisticsTable from "./ReportStatisticsTable";
 import ProfitLossTable from "./ProfitLossTable";
 import api from "@/api/client";
+import Empty from "@/components/ui/Empty";
+import Loading from "@/components/ui/Loading";
 import useAuthStore from "@/store/auth";
+import { apiErrorMessage } from "@/utils/apiError";
 import type { Kind, Period, Amounts, Row, Report } from "./FinancialReportPage";
 
 const labels: Record<string, string> = { REVENUE: "Pendapatan", COST_OF_REVENUE: "Beban Pokok", EXPENSES: "Beban", ASSETS: "Aset", LIABILITIES: "Liabilitas", EQUITY: "Ekuitas" };
@@ -90,7 +93,10 @@ export default function FinancialReportPrintPage({ kind }: { kind: Kind }) {
   const params = Object.fromEntries(search);
   const asOf = search.get("as_of_date") || new Date().toLocaleDateString("en-CA");
   const query = useQuery({ queryKey: ["financial-report-print", kind, params], queryFn: async () => (await api.get<Report>("/financial-reports/comparison", { params: { ...params, report_type: kind, as_of_date: asOf, department_tables: false, report_scope: kind === "PROFIT_LOSS" ? search.get("report_scope") || "CONSOLIDATED" : undefined } })).data });
-  if (query.isPending) return <p data-print-ready="false">Loading report…</p>;
-  if (query.isError) return <p data-print-ready="false" role="alert">Report could not be loaded. Close this preview and try again.</p>;
+  if (query.isPending) return <div data-print-ready="false"><Loading message="Loading report…" /></div>;
+  if (query.isError) return <div data-print-ready="false" role="alert" className="p-6 text-sm text-red-700">{apiErrorMessage(query.error, "Report could not be loaded. Close this preview and try again.")}</div>;
+  if (!query.data) return <div data-print-ready="false"><Empty title="Report unavailable" description="Close this preview and try again." /></div>;
+  const rows = [...(query.data.rows ?? []), ...(query.data.presentation_rows ?? [])];
+  if (!rows.length) return <div data-print-ready="true"><Empty title="No report lines" description="No posted balances match these filters." /></div>;
   return <FinancialStatementPrint kind={kind} data={query.data} asOf={asOf} printedBy={user?.full_name || user?.username} />;
 }

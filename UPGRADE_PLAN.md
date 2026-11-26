@@ -76,10 +76,12 @@ Already verified and deployed:
 - [x] U-50 Polish the Balance Sheet screen with the shared workspace shell, explicit filter context, loading/empty/error states, and typed report contracts. Preserve account grouping, comparison periods, and print/export scope. Done in the shared `FinancialReportPage.tsx`.
 - [x] U-51 Polish the Profit & Loss screen the same way, preserving management subtotals, NOP attribution, comparison periods, and print/export scope. Done in the shared `FinancialReportPage.tsx`.
 - [x] U-52 Add regression scripts for Balance Sheet and Profit & Loss, register them in `package.json`, and include them in Frontend CI (`scripts/test-report-workspace.cjs` under `test:report-workspace`).
+- [x] U-53 Extend the shared-shell treatment to Trial Balance and General Ledger with page headers, explicit filter context, summary metrics, loading/empty/error states and typed ledger contracts.
+- [x] U-54 Make the Balance Sheet/P&L, Trial Balance and General Ledger print layouts explicit about loading, error and empty states while preserving the authenticated report endpoints and print scopes.
 
 ## Recommended next task
 
-All waves through Wave 5 are complete. Balance Sheet and Profit & Loss share `FinancialReportPage.tsx` and are guarded by `scripts/test-report-workspace.cjs`; `scripts/test-report-statistics.mjs` also passes. If continuing, extend the same shared-shell treatment to the remaining report screens (Trial Balance, General Ledger, financial-statement print layouts) or address demo-data depth beyond the minimal seeded records.
+All waves through Wave 5 are complete, including Trial Balance, General Ledger and the financial-statement print layouts. `scripts/test-report-workspace.cjs` guards the report screens and print contracts; `scripts/test-report-statistics.mjs` also passes. If continuing, deepen demo workflow data or review the remaining fiscal/AR/AP report screens individually.
 
 ## Definition of done for a wave
 

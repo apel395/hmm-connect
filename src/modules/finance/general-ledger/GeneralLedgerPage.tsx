@@ -7,12 +7,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Info, Layers3, List, RotateCw, Rows3, SlidersHorizontal, X } from "lucide-react";
 import { ExportButton } from "@/components/common/ReportActions";
+import ModuleSummary, { type SummaryMetric } from "@/components/common/ModuleSummary";
+import PageHeader from "@/components/common/PageHeader";
+import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import Empty from "@/components/ui/Empty";
+import Loading from "@/components/ui/Loading";
 import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Card from "@/components/ui/Card";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import { TABLE_UI } from "@/config/tableUi";
+import { apiErrorMessage } from "@/utils/apiError";
 import SearchableSelect from "@/components/form/SearchableSelect";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
@@ -234,8 +240,8 @@ export default function GeneralLedgerPage() {
   const filteredTotals = groupByAccount && groupedTotals
     ? { debit: Number(groupedTotals.total_debit), credit: Number(groupedTotals.total_credit) }
     : summaryAvailable ? {
-        debit: Number(ledger.data.summary.total_debit),
-        credit: Number(ledger.data.summary.total_credit),
+        debit: Number(ledger.data?.summary?.total_debit),
+        credit: Number(ledger.data?.summary?.total_credit),
       } : null;
   const activeLoading = groupByAccount ? groupedReport.isLoading : ledger.isLoading;
   const activeError = groupByAccount ? groupedReport.isError : ledger.isError;
@@ -244,6 +250,15 @@ export default function GeneralLedgerPage() {
     ? groupedReport.data.accounts.reduce((count: number, group: any) => count + (group.rows?.length ?? 0), 0)
     : (ledger.data?.total_items ?? 0);
   const groupedPending = groupByAccount && groupedReport.isLoading && !groupedReport.data;
+  const balanced = filteredTotals ? Number(filteredTotals.debit) === Number(filteredTotals.credit) : null;
+  const balanceStatus = balanced === null ? (activeLoading ? "Checking…" : "—") : balanced ? "Balanced" : "Out of balance";
+  const summaryMetrics: SummaryMetric[] = [
+    { label: "Entries", value: activeTotalItems, note: "Matching ledger entries in the selected view" },
+    { label: "Accounts", value: accountGroups.length, note: "Accounts represented in the current view" },
+    { label: "Debit", value: filteredTotals ? amount(filteredTotals.debit) : "—", note: "Total debit across matching entries" },
+    { label: "Credit", value: filteredTotals ? amount(filteredTotals.credit) : "—", note: "Total credit across matching entries" },
+    { label: "Difference", value: filteredTotals ? amount(filteredTotals.debit - filteredTotals.credit) : "—", note: "Debit minus credit across matching entries" },
+  ];
 
   // Windowing keeps the full, correct grouped dataset in memory without mounting
   // ~19,000 table rows at once — that render cost was the main load-time spike.
@@ -365,6 +380,9 @@ export default function GeneralLedgerPage() {
     .gl-data-first .gl-statusbar strong { color: #1f2d38; font-variant-numeric: tabular-nums; }
     .gl-data-first .gl-statusbar select { height: 24px !important; min-height: 24px !important; }
     .gl-data-first .gl-statusbar button { height: 24px !important; min-height: 24px !important; padding: 0 8px !important; }
+    .gl-data-first .workspace-data > .gl-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 2px 8px !important; border-top: 1px solid #e6ebef; background: #fafbfc; font-size: 11px; line-height: 16px; }
+    .gl-data-first .gl-summary section { flex: 1 1 auto; min-width: 0; border: 0; background: transparent; padding: 0; }
+    .gl-data-first .gl-state-alert { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px; border: 1px solid #fecaca; border-radius: 6px; background: #fef2f2; color: #b91c1c; text-align: left; }
     .gl-data-first .workspace-data { flex: 1 1 0 !important; min-height: 0 !important; }
     .gl-data-first .gl-ledger-viewport { min-height: 0 !important; max-height: none !important; }
     .gl-compact-ledger tbody tr td { padding: 3px 8px; font-size: 13px; line-height: 17px; }
@@ -378,7 +396,9 @@ export default function GeneralLedgerPage() {
     .gl-group-toggle { min-height: 30px; }
     .gl-view-toggle button { min-height: 24px; }
     @media print { .gl-compact-ledger tbody tr td { padding: 4px 7px; font-size: 11px; } }
-  `}</style><div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
+  `}</style>
+    <PageHeader className="print:hidden" title="General Ledger" description="Posted journal activity across accounts, with grouped balances and period debit, credit, and closing totals." />
+    <div className="hidden print:block"><h1 className="text-2xl font-bold">MMH-Connect</h1><h2 className="text-xl font-semibold">General Ledger</h2><p className="text-xs text-slate-600">{printHeader}</p><p className="text-xs text-slate-500">Printed {new Date().toLocaleString()}</p></div>
     <div className="gl-toolbar print:hidden">
       <input className="gl-search" aria-label="Search general ledger" placeholder="Search journal, document, description, account..." value={filters.search} onChange={event => change("search", event.target.value)}/>
       <input className="gl-date" aria-label="From date" title="From date" type="date" value={filters.date_from} onChange={event => change("date_from", event.target.value)}/>
@@ -459,10 +479,13 @@ export default function GeneralLedgerPage() {
         <THead><TR className="whitespace-nowrap"><TH>Date</TH><TH>Journal</TH><TH>Account</TH><TH>Description</TH><TH>Document</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH numeric>Balance</TH><TH>Context</TH></TR></THead>
         <TBody>
           {activeLoading && !accountGroups.length && <GlTableSkeleton />}
-          {groupedPending && accountGroups.length > 0 && <TR className="gl-v-notice"><TD colSpan={9}>Loading complete account data… showing this page until all entries are ready.</TD></TR>}
-          {activeError && !accountGroups.length && <TR><TD colSpan={9} className="py-10 text-center text-red-700"><p className="mb-2">Ledger could not be loaded.</p><Button size="sm" variant="outline" onClick={() => activeRefetch()}><RotateCw size={14}/> Retry</Button></TD></TR>}
-          {!activeLoading && !activeError && !groupByAccount && !ledger.data?.items.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
-          {!activeLoading && !activeError && groupByAccount && !accountGroups.length && <TR><TD colSpan={9} className="py-10 text-center text-slate-600"><p className="mb-2">No entries match these filters.</p><Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button></TD></TR>}
+          {groupedPending && accountGroups.length > 0 && <TR className="gl-v-notice"><TD colSpan={9}><Loading size="sm" className="py-0" message="Loading complete account data… showing this page until all entries are ready." /></TD></TR>}
+          {activeError && !accountGroups.length && <TR><TD colSpan={9}><div role="alert" className="gl-state-alert">
+            <div className="font-semibold">Ledger could not be loaded.</div>
+            <p className="text-xs">{apiErrorMessage(groupByAccount ? groupedReport.error : ledger.error, "Unable to load the general ledger.")}</p>
+            <Button size="sm" variant="outline" onClick={() => activeRefetch()}><RotateCw size={14}/> Retry</Button>
+          </div></TD></TR>}
+          {!activeLoading && !activeError && !accountGroups.length && <TR><TD colSpan={9}><Empty className="border-0 bg-transparent py-8" title="No entries match these filters." description="Adjust the date range, accounts, or document filters to see ledger activity." action={<Button size="sm" variant="outline" onClick={() => setShowFilters(true)}>Adjust filters</Button>} /></TD></TR>}
           {!activeLoading && !activeError && !groupByAccount && (ledger.data?.items ?? []).map(renderLedgerRow)}
           {!activeError && groupByAccount && scrollEl && groupedItems.length > 0 && (() => {
             const paddingTop = Math.max(0, (virtualRows[0]?.start ?? 0) - scrollMargin);
@@ -475,6 +498,10 @@ export default function GeneralLedgerPage() {
           })()}
         </TBody>
       </Table>
+      <div className="gl-summary print:hidden" aria-label="Ledger summary">
+        <ModuleSummary metrics={summaryMetrics} />
+        <Badge variant={balanced === null ? "secondary" : balanced ? "success" : "danger"}>{balanceStatus}</Badge>
+      </div>
       <div className="gl-statusbar print:hidden">
         <span><strong>{activeTotalItems}</strong> entries{groupByAccount ? groupedPending ? " · reconciling…" : " · all shown" : ""}</span>
         <span>Debit <strong>{filteredTotals ? amount(filteredTotals.debit) : activeLoading ? "…" : "—"}</strong></span>

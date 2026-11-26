@@ -1,7 +1,9 @@
 import { ledgerPrintParams } from "./printFilters";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import Empty from "@/components/ui/Empty";
 import Loading from "@/components/ui/Loading";
+import { apiErrorMessage } from "@/utils/apiError";
 import { getLedgerPrint } from "./api";
 
 const money = (value: unknown) => Number(value || 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -31,8 +33,9 @@ export default function GeneralLedgerPrintPage() {
     queryFn: () => getLedgerPrint(params),
   });
 
-  if (query.isLoading) return <Loading />;
-  if (!query.data) return <p>General ledger could not be loaded.</p>;
+  if (query.isLoading) return <Loading message="Loading general ledger…" />;
+  if (query.isError) return <div role="alert" className="p-6 text-sm text-red-700">{apiErrorMessage(query.error, "General ledger could not be loaded.")}</div>;
+  if (!query.data) return <div role="alert" className="p-6 text-sm text-red-700">General ledger could not be loaded.</div>;
 
   const data = query.data as any;
   const filters = data.filters ?? {};
@@ -133,7 +136,7 @@ export default function GeneralLedgerPrintPage() {
         </section>
       ))}
 
-      {!accounts.length && <p className="py-6 text-center text-slate-500">No ledger activity for the selected filters.</p>}
+      {!accounts.length && <Empty title="No ledger activity" description="No ledger activity for the selected filters." />}
 
       <section className="mt-4 border-t-2 border-slate-800 pt-2">
         <div className="mb-1 text-center font-bold">FILTERED GENERAL LEDGER CONTROL TOTAL</div>

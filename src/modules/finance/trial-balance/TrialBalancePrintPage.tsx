@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { listLocations, listBusinessUnits, listDepartments } from "@/modules/admin/organization/api";
+import Empty from "@/components/ui/Empty";
 import Loading from "@/components/ui/Loading";
 import FinancialReportPrintTemplate from "@/components/print/FinancialReportPrintTemplate";
+import { apiErrorMessage } from "@/utils/apiError";
 import { getTrialBalance, type TrialBalanceFilters, type TrialBalanceRow } from "./api";
 
 const money = (value: unknown) =>
@@ -51,10 +53,12 @@ export default function TrialBalancePrintPage() {
   const locations = useQuery({ queryKey: ["trial-print-locations"], queryFn: () => listLocations({ is_active: true }), enabled: !!params.location_id });
   const units = useQuery({ queryKey: ["trial-print-units"], queryFn: listBusinessUnits, enabled: !!params.business_unit_id });
   const departments = useQuery({ queryKey: ["trial-print-departments"], queryFn: () => listDepartments({ business_unit_id: params.business_unit_id }), enabled: !!params.department_id });
-  if (query.isLoading) return <Loading />;
-  if (!query.data) return <p>Trial balance could not be loaded.</p>;
+  if (query.isLoading) return <Loading message="Loading trial balance…" />;
+  if (query.isError) return <div role="alert" className="p-6 text-sm text-red-700">{apiErrorMessage(query.error, "Trial balance could not be loaded.")}</div>;
+  if (!query.data) return <div role="alert" className="p-6 text-sm text-red-700">Trial balance could not be loaded.</div>;
 
   const rows = query.data.rows;
+  if (!rows.length) return <Empty title="No accounts match these filters" description="Adjust the date range or report scope, then preview the trial balance again." />;
 
   return (
     <FinancialReportPrintTemplate
