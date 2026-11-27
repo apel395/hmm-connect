@@ -106,6 +106,66 @@ has(ledgerApi, [
 ], "General Ledger typed contracts and endpoints preserved");
 assert.ok(!ledgerApi.includes(": any"), "General Ledger API has no untyped values");
 
+const arReport = read("src/modules/finance/accounts-receivable/ARReportingPage.tsx");
+has(arReport, [
+  "PageHeader",
+  '<DataWorkspace area="Accounting"',
+  "ModuleSummary",
+  "Loading",
+  "Empty",
+  "apiErrorMessage",
+  "Badge",
+  "ListToolbar",
+  "<Pagination",
+  "<ARWorkspaceHeader />",
+], "AR reporting shared workspace shell");
+has(arReport, [
+  'queryKey: ["ar-reporting", "detail"]',
+  "arReportingApi.summary",
+  "arReportingApi.aging",
+  "exportCsv(",
+  "Stage AR Excel",
+  "current-page export available",
+], "AR reporting API and export contracts preserved");
+
+const apReport = read("src/modules/finance/accounts-payable/APReportingPage.tsx");
+has(apReport, [
+  "PageHeader",
+  '<DataWorkspace area="Accounting"',
+  "ModuleSummary",
+  "Loading",
+  "Empty",
+  "apiErrorMessage",
+  "Badge",
+  "ReportUnitButtons",
+  "ListToolbar",
+  "<Pagination",
+  "<APWorkspaceHeader />",
+], "AP reporting shared workspace shell");
+has(apReport, [
+  'queryKey: ["ap-reporting", "summary"',
+  "apReportingApi.detail",
+  "exportCsv(",
+  "View Aging",
+  "current-page export available",
+], "AP reporting API and export contracts preserved");
+
+const apAging = read("src/modules/finance/accounts-payable/AccountsPayablePage.tsx");
+has(apAging, [
+  "PageHeader",
+  '<DataWorkspace area="Accounting"',
+  "ModuleSummary",
+  "Loading",
+  "Empty",
+  "apiErrorMessage",
+  "Badge",
+  '<APWorkspaceHeader />',
+  'src="/accounts-payable/aging/print"',
+  "opening_unassigned",
+  "Aging Buckets",
+  "Invoice Payment History",
+], "AP aging shared workspace shell and preserved views");
+
 const routes = read("src/router/routes.tsx");
 has(routes, [
   'path: "balance-sheet"',
@@ -115,6 +175,13 @@ has(routes, [
   'path: "general-ledger"',
   'path: "general-ledger/print"',
   'path: "journal/trial-balance/print"',
+  'path: "accounts-receivable"',
+  'path: "accounts-receivable/detail"',
+  'path: "accounts-receivable/aging"',
+  'path: "accounts-payable"',
+  'path: "accounts-payable/detail"',
+  'path: "accounts-payable/aging"',
+  'path: "accounts-payable/aging/print"',
 ], "report routes preserved");
 
 const printPages = [
@@ -139,6 +206,17 @@ const printPages = [
     "Loading",
     "Empty",
     "apiErrorMessage",
+  ]],
+  ["src/modules/finance/accounts-payable/APAgingPrintPage.tsx", "AP aging print", [
+    '["accounts-payable-aging", "print"]',
+    'api.get<AgingPrintResponse>("/ap-aging/print")',
+    'data-print-ready="false"',
+    'data-print-ready="true"',
+    "Loading",
+    "Empty",
+    "apiErrorMessage",
+    "ACCOUNT PAYABLE AGING",
+    ">TOTAL<",
   ]],
 ];
 for (const [file, label, tokens] of printPages) has(read(file), tokens, label);

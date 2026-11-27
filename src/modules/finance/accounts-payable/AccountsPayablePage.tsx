@@ -9,9 +9,11 @@ import PrintPreviewButton from "@/components/print/PrintPreviewButton";
 import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import Empty from "@/components/ui/Empty";
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
+import { apiErrorMessage } from "@/utils/apiError";
 import APWorkspaceHeader from "./APWorkspaceHeader";
 
 type PayableRow = {
@@ -150,6 +152,7 @@ export default function AccountsPayablePage() {
           <Card className="p-0">
             <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               <div className="font-semibold">Accounts payable data could not be loaded.</div>
+              <p className="mt-1 text-xs">{apiErrorMessage(aging.error, "The AP subledger did not return a usable response.")}</p>
               <Button className="mt-3" size="sm" variant="outline" onClick={() => aging.refetch()}>Try again</Button>
             </div>
           </Card>
@@ -282,34 +285,37 @@ function PayableTable({ title, rows, limitNote }: { title: string; rows: Payable
         </div>
         <Badge variant="outline">{rows.length} invoices</Badge>
       </CardHeader>
-      <Table className="min-w-[800px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
-        <THead>
-          <TR><TH>Invoice</TH><TH>Supplier</TH><TH>Due Date</TH><TH numeric>Outstanding</TH><TH>Aging</TH></TR>
-        </THead>
-        <TBody>
-          {rows.map((row) => {
-            const bucket = row.aging_bucket ?? (Number(row.over_90) > 0 ? "over_90" : Number(row["61_90"]) > 0 ? "61_90" : Number(row["31_60"]) > 0 ? "31_60" : Number(row["1_30"]) > 0 ? "1_30" : "current");
-            return (
-              <TR key={row.id}>
-                <TD>
-                  <TableCellStack
-                    primary={<InvoiceLink row={row} />}
-                    secondary={row.supplier_invoice_number ? `Supplier ref: ${row.supplier_invoice_number}` : undefined}
-                  />
-                </TD>
-                <TD>{row.supplier_name || `Supplier #${row.supplier_id}`}</TD>
-                <TD>{row.due_date || "—"}</TD>
-                <TD numeric className="font-semibold tabular-nums">{money(row.outstanding)}</TD>
-                <TD>
-                  <Badge variant={bucketVariant(bucket)}>{bucketLabel[bucket] ?? bucket}</Badge>
-                  {Number(row.days_overdue) > 0 && <div className="mt-1 text-[10px] text-slate-500">{row.days_overdue} days overdue</div>}
-                </TD>
-              </TR>
-            );
-          })}
-          {!rows.length && <TR><TD colSpan={5} className="p-10 text-center text-slate-500">No outstanding supplier invoices.</TD></TR>}
-        </TBody>
-      </Table>
+      {rows.length ? (
+        <Table className="min-w-[800px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+          <THead>
+            <TR><TH>Invoice</TH><TH>Supplier</TH><TH>Due Date</TH><TH numeric>Outstanding</TH><TH>Aging</TH></TR>
+          </THead>
+          <TBody>
+            {rows.map((row) => {
+              const bucket = row.aging_bucket ?? (Number(row.over_90) > 0 ? "over_90" : Number(row["61_90"]) > 0 ? "61_90" : Number(row["31_60"]) > 0 ? "31_60" : Number(row["1_30"]) > 0 ? "1_30" : "current");
+              return (
+                <TR key={row.id}>
+                  <TD>
+                    <TableCellStack
+                      primary={<InvoiceLink row={row} />}
+                      secondary={row.supplier_invoice_number ? `Supplier ref: ${row.supplier_invoice_number}` : undefined}
+                    />
+                  </TD>
+                  <TD>{row.supplier_name || `Supplier #${row.supplier_id}`}</TD>
+                  <TD>{row.due_date || "—"}</TD>
+                  <TD numeric className="font-semibold tabular-nums">{money(row.outstanding)}</TD>
+                  <TD>
+                    <Badge variant={bucketVariant(bucket)}>{bucketLabel[bucket] ?? bucket}</Badge>
+                    {Number(row.days_overdue) > 0 && <div className="mt-1 text-[10px] text-slate-500">{row.days_overdue} days overdue</div>}
+                  </TD>
+                </TR>
+              );
+            })}
+          </TBody>
+        </Table>
+      ) : (
+        <Empty className="m-4" title="No outstanding supplier invoices" description="Posted invoices with an open balance will appear here." />
+      )}
     </Card>
   );
 }
@@ -324,24 +330,27 @@ function PaidTable({ rows }: { rows: PayableRow[] }) {
         </div>
         <Badge variant="outline">{rows.length} invoices</Badge>
       </CardHeader>
-      <Table className="min-w-[900px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
-        <THead>
-          <TR><TH>Invoice</TH><TH>Supplier</TH><TH>Last Payment</TH><TH numeric>Invoice Amount</TH><TH numeric>Paid</TH><TH numeric>Remaining</TH></TR>
-        </THead>
-        <TBody>
-          {rows.map((row) => (
-            <TR key={row.id}>
-              <TD><InvoiceLink row={row} /></TD>
-              <TD>{row.supplier_name || `Supplier #${row.supplier_id}`}</TD>
-              <TD>{row.last_payment_date || "—"}</TD>
-              <TD numeric>{money(row.amount)}</TD>
-              <TD numeric>{money(row.paid_amount)}</TD>
-              <TD numeric className="font-semibold tabular-nums">{money(row.outstanding)}</TD>
-            </TR>
-          ))}
-          {!rows.length && <TR><TD colSpan={6} className="p-10 text-center text-slate-500">No supplier invoice payments yet.</TD></TR>}
-        </TBody>
-      </Table>
+      {rows.length ? (
+        <Table className="min-w-[900px]" containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
+          <THead>
+            <TR><TH>Invoice</TH><TH>Supplier</TH><TH>Last Payment</TH><TH numeric>Invoice Amount</TH><TH numeric>Paid</TH><TH numeric>Remaining</TH></TR>
+          </THead>
+          <TBody>
+            {rows.map((row) => (
+              <TR key={row.id}>
+                <TD><InvoiceLink row={row} /></TD>
+                <TD>{row.supplier_name || `Supplier #${row.supplier_id}`}</TD>
+                <TD>{row.last_payment_date || "—"}</TD>
+                <TD numeric>{money(row.amount)}</TD>
+                <TD numeric>{money(row.paid_amount)}</TD>
+                <TD numeric className="font-semibold tabular-nums">{money(row.outstanding)}</TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      ) : (
+        <Empty className="m-4" title="No supplier invoice payments yet" description="Allocated payments will appear here once a supplier invoice is paid." />
+      )}
     </Card>
   );
 }

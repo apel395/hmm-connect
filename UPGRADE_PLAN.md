@@ -78,10 +78,12 @@ Already verified and deployed:
 - [x] U-52 Add regression scripts for Balance Sheet and Profit & Loss, register them in `package.json`, and include them in Frontend CI (`scripts/test-report-workspace.cjs` under `test:report-workspace`).
 - [x] U-53 Extend the shared-shell treatment to Trial Balance and General Ledger with page headers, explicit filter context, summary metrics, loading/empty/error states and typed ledger contracts.
 - [x] U-54 Make the Balance Sheet/P&L, Trial Balance and General Ledger print layouts explicit about loading, error and empty states while preserving the authenticated report endpoints and print scopes.
+- [x] U-55 Extend the shared workspace treatment to AR reporting, AP reporting and AP aging with consistent loading, empty and error states, while keeping current-page CSV wording, workspace tabs, status/unit filters and print actions.
+- [x] U-56 Type the AP aging print payload and add explicit loading, error, empty and print-readiness states without changing the authenticated `/ap-aging/print` contract or table control totals.
 
 ## Recommended next task
 
-All waves through Wave 5 are complete, including Trial Balance, General Ledger and the financial-statement print layouts. `scripts/test-report-workspace.cjs` guards the report screens and print contracts; `scripts/test-report-statistics.mjs` also passes. If continuing, deepen demo workflow data or review the remaining fiscal/AR/AP report screens individually.
+All waves through Wave 5 are complete, including Trial Balance, General Ledger, financial-statement print layouts, AR/AP reporting and AP aging. `scripts/test-report-workspace.cjs` guards the report screens and print contracts; `scripts/test-report-statistics.mjs` also passes. If continuing, deepen demo workflow data or review the fiscal report screens individually.
 
 ## Definition of done for a wave
 

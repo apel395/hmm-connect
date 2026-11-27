@@ -9,9 +9,11 @@ import Pagination from "@/components/datatable/Pagination";
 import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import Empty from "@/components/ui/Empty";
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
+import { apiErrorMessage } from "@/utils/apiError";
 import { useFinanceList } from "@/modules/finance/hooks/useFinanceList";
 import { exportCsv } from "@/utils/exportCsv";
 import APWorkspaceHeader from "./APWorkspaceHeader";
@@ -76,6 +78,11 @@ export default function APReportingPage() {
 
   const activeQuery = isDetail ? detail : summary;
   const data = activeQuery.data;
+  const activeRows = data?.items ?? [];
+  const emptyTitle = isDetail ? "No payable invoices found" : "No posted supplier invoices";
+  const emptyDescription = isDetail
+    ? "Adjust the search, status or business unit to see more invoices."
+    : "Adjust the search or business unit to see more supplier balances.";
 
   const metrics: SummaryMetric[] = [];
   if (!isDetail && summary.data) {
@@ -218,10 +225,18 @@ export default function APReportingPage() {
           ) : activeQuery.isError ? (
             <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               <div className="font-semibold">Accounts Payable reporting could not be loaded.</div>
+              <p className="mt-1 text-xs">{apiErrorMessage(activeQuery.error, "The AP report service did not return a usable response.")}</p>
               <Button className="mt-3" size="sm" variant="outline" onClick={() => activeQuery.refetch()}>
                 Try again
               </Button>
             </div>
+          ) : !activeRows.length ? (
+            <Empty
+              className="m-4"
+              title={emptyTitle}
+              description={emptyDescription}
+              action={<Button size="sm" variant="outline" onClick={() => activeQuery.refetch()}>Refresh</Button>}
+            />
           ) : (
             <>
               {!isDetail && summary.data && (
@@ -259,9 +274,6 @@ export default function APReportingPage() {
                           <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                         </TR>
                       ))}
-                      {!summary.data.items.length && (
-                        <TR><TD colSpan={6} className="p-10 text-center text-slate-500">No posted supplier invoices.</TD></TR>
-                      )}
                     </TBody>
                   </Table>
                 </>
@@ -317,9 +329,6 @@ export default function APReportingPage() {
                           <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                         </TR>
                       ))}
-                      {!detail.data.items.length && (
-                        <TR><TD colSpan={9} className="p-10 text-center text-slate-500">No posted supplier invoices.</TD></TR>
-                      )}
                     </TBody>
                   </Table>
                 </>

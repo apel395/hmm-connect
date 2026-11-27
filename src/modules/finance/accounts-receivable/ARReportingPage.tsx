@@ -10,9 +10,11 @@ import Pagination from "@/components/datatable/Pagination";
 import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card, { CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import Empty from "@/components/ui/Empty";
 import Loading from "@/components/ui/Loading";
 import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui/Table";
 import DataWorkspace from "@/components/workspace/DataWorkspace";
+import { apiErrorMessage } from "@/utils/apiError";
 import { useFinanceList } from "@/modules/finance/hooks/useFinanceList";
 import ARImportStagingDialog from "./ARImportStagingDialog";
 import ARWorkspaceHeader from "./ARWorkspaceHeader";
@@ -99,6 +101,13 @@ export default function ARReportingPage() {
   const activeQuery = section === "detail" ? detail : section === "aging" ? aging : summary;
   const activeData = activeQuery.data;
   const total = activeData?.total_items ?? 0;
+  const activeRows = activeData?.items ?? [];
+  const emptyTitle = section === "detail" ? "No receivable invoices found" : section === "aging" ? "No outstanding receivables" : "No receivables found";
+  const emptyDescription = section === "detail"
+    ? "Adjust the search or status filter, or add a posted AR invoice."
+    : section === "aging"
+      ? "No customer balances fall into the selected aging view."
+      : "Adjust the search to see more customer balances.";
 
   const metrics = useMemo<SummaryMetric[]>(() => {
     if (section === "summary" && summary.data) {
@@ -267,10 +276,18 @@ export default function ARReportingPage() {
           ) : activeQuery.isError ? (
             <div role="alert" className="m-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               <div className="font-semibold">Accounts Receivable reporting could not be loaded.</div>
+              <p className="mt-1 text-xs">{apiErrorMessage(activeQuery.error, "The AR report service did not return a usable response.")}</p>
               <Button className="mt-3" size="sm" variant="outline" onClick={() => activeQuery.refetch()}>
                 Try again
               </Button>
             </div>
+          ) : !activeRows.length ? (
+            <Empty
+              className="m-4"
+              title={emptyTitle}
+              description={emptyDescription}
+              action={<Button size="sm" variant="outline" onClick={() => activeQuery.refetch()}>Refresh</Button>}
+            />
           ) : (
             <>
               {section === "summary" && summary.data && (
@@ -308,9 +325,6 @@ export default function ARReportingPage() {
                           <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                         </TR>
                       ))}
-                      {!summary.data.items.length && (
-                        <TR><TD colSpan={6} className="p-10 text-center text-slate-500">No receivables found.</TD></TR>
-                      )}
                     </TBody>
                   </Table>
                 </>
@@ -359,9 +373,6 @@ export default function ARReportingPage() {
                           <TD><Badge variant={statusVariant(row.status)}>{statusLabel[row.status]}</Badge></TD>
                         </TR>
                       ))}
-                      {!detail.data.items.length && (
-                        <TR><TD colSpan={8} className="p-10 text-center text-slate-500">No receivable invoices found.</TD></TR>
-                      )}
                     </TBody>
                   </Table>
                 </>
@@ -396,9 +407,6 @@ export default function ARReportingPage() {
                           <TD numeric className="font-semibold tabular-nums">{money(row.outstanding_amount)}</TD>
                         </TR>
                       ))}
-                      {!aging.data.items.length && (
-                        <TR><TD colSpan={bucketKeys.length + 2} className="p-10 text-center text-slate-500">No outstanding receivables.</TD></TR>
-                      )}
                     </TBody>
                   </Table>
                 </>
