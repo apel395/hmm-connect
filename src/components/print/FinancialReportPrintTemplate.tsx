@@ -28,6 +28,8 @@ type Props<Row> = {
   rows: Row[];
   rowKey?: (row: Row, index: number) => string | number;
   excelSheetName?: string;
+  /** Replaces the default multi-sheet export with one purpose-built worksheet. */
+  excelTable?: ReactNode;
   excelTotals?: ExcelTotal[];
   footerRows?: ReactNode;
   control?: ReactNode;
@@ -50,6 +52,7 @@ export default function FinancialReportPrintTemplate<Row>({
   rows,
   rowKey,
   excelSheetName,
+  excelTable,
   excelTotals = [],
   footerRows,
   control,
@@ -98,7 +101,7 @@ export default function FinancialReportPrintTemplate<Row>({
         ) : null}
       </header>
 
-      <table data-export-sheet={dataSheetName} className="w-full border-collapse">
+      <table data-export-omit={excelTable ? "" : undefined} data-export-sheet={excelTable ? undefined : dataSheetName} className="w-full border-collapse">
         <thead>
           <tr>
             {columns.map((column, index) => (
@@ -149,7 +152,7 @@ export default function FinancialReportPrintTemplate<Row>({
         <span>{generatedLabel}</span>
       </footer>
 
-      <div data-export-include className="hidden">
+      {excelTable ? <div data-export-include className="hidden">{excelTable}</div> : <div data-export-include className="hidden">
         <table data-export-sheet="Control" data-export-source-sheet={dataSheetName} data-export-autofilter="false">
           <thead><tr><th>Field</th><th>Value</th></tr></thead>
           <tbody>
@@ -179,7 +182,7 @@ export default function FinancialReportPrintTemplate<Row>({
             <tr><td>GENERATED AT</td><td>{generatedLabel}</td></tr>
           </tbody>
         </table>
-      </div>
+      </div>}
     </article>
   );
 }

@@ -6,6 +6,11 @@ import { listJournals, getJournalScope } from "./api";
 import { formatMoney, moneyNumber } from "@/utils/formatMoney";
 
 const money = formatMoney;
+const numericCell = (value: unknown) => ({
+  "data-v": moneyNumber(value),
+  "data-t": "n",
+  "data-z": "#,##0.00",
+});
 const accountSummary = (row: any, side: "debit" | "credit") => {
   const accounts = (row.lines ?? [])
     .filter((line: any) => moneyNumber(line[side]) > 0)
@@ -62,46 +67,103 @@ export default function JournalRegisterPrintPage() {
   const lastDataRow = Math.max(rows.length, 1) + 1;
   const debitTotalRow = lastDataRow + 1;
   const creditTotalRow = lastDataRow + 2;
-  const excelTotals = [
-    {
-      label: "TOTAL DEBIT",
-      value: money(totalDebit),
-      dataValue: totalDebit,
-      formula: rows.length ? `SUM(I2:I${lastDataRow})` : undefined,
-    },
-    {
-      label: "TOTAL CREDIT",
-      value: money(totalCredit),
-      dataValue: totalCredit,
-      formula: rows.length ? `SUM(J2:J${lastDataRow})` : undefined,
-    },
-    {
-      label: "DIFFERENCE",
-      value: money(totalDebit - totalCredit),
-      dataValue: totalDebit - totalCredit,
-      formula: rows.length ? `SUM(I2:I${lastDataRow})-SUM(J2:J${lastDataRow})` : undefined,
-    },
+
+  const registerFilters = [
+    { label: "Date From", value: params.date_from || "All" },
+    { label: "Date To", value: params.date_to || "All" },
+    { label: "Search", value: params.search || "All" },
+    { label: "Status", value: params.status || "All" },
+    { label: "Source / Category", value: params.reference_type ? String(params.reference_type).replaceAll("_", " ") : "All" },
+    { label: "Location", value: scope.data?.locations.find(row => row.id === Number(params.location_id || (scope.data?.location_locked ? scope.data.default_location_id : 0)))?.name || "All locations" },
+    { label: "Business Unit", value: scope.data?.units.find(row => row.id === Number(params.business_unit_id))?.name || "All units" },
+    { label: "Department ID", value: params.department_id || "All" },
+    { label: "Supplier ID", value: params.supplier_id || "All" },
+    { label: "Account ID", value: params.account_id || "All" },
+    { label: "Balance State", value: params.balance_state || "All" },
+    { label: "Difference", value: params.difference_amount || "All" },
+    { label: "Journal Count", value: rows.length },
   ];
+  const registerMeta = [
+    { label: "REPORT", value: "JOURNAL REGISTER" },
+    { label: "SCOPE", value: "all filtered rows" },
+    ...registerFilters,
+    { label: "GENERATED AT", value: new Date().toLocaleString("id-ID") },
+  ];
+  const registerHeaderRow = registerMeta.length + 3;
+  const registerDataStart = registerHeaderRow + 1;
+  const registerDataEnd = registerDataStart + rows.length - 1;
+  const registerDebitRow = registerDataEnd + 1;
+  const registerCreditRow = registerDebitRow + 1;
+  const registerHeaders = [
+    "Journal No.", "Journal Date", "Reference / Document", "Source / Category",
+    "Debit Accounts", "Credit Accounts", "Description", "Location",
+    "Debit", "Credit", "Status",
+  ];
+  const registerExcelTable = (
+    <table
+      data-export-sheet="Journal Register"
+      data-export-autofilter-range={`A${registerHeaderRow}:K${Math.max(registerHeaderRow, registerDataEnd)}`}
+      data-export-freeze-row={registerHeaderRow}
+      data-export-widths="18,15,24,24,34,34,36,18,18,18,12"
+    >
+      <tbody>
+        <tr><td colSpan={11}>JOURNAL REGISTER</td></tr>
+        {registerMeta.map((item, index) => <tr key={`register-meta-${index}`}><td>{item.label}</td><td>{item.value}</td></tr>)}
+        <tr><td colSpan={11} /></tr>
+        <tr>{registerHeaders.map((label) => <th key={label}>{label}</th>)}</tr>
+        {rows.map((row: any) => (
+          <tr key={`register-export-${row.id}`}>
+            <td>{row.journal_number}</td>
+            <td>{row.journal_date}</td>
+            <td>{row.reference_number || "—"}</td>
+            <td>{String(row.reference_type || "").replaceAll("_", " ") || "—"}</td>
+            <td>{accountSummary(row, "debit")}</td>
+            <td>{accountSummary(row, "credit")}</td>
+            <td>{row.description || "—"}</td>
+            <td>{row.location_name || "—"}</td>
+            <td {...numericCell(row.total_debit)}>{money(row.total_debit)}</td>
+            <td {...numericCell(row.total_credit)}>{money(row.total_credit)}</td>
+            <td>{row.status}</td>
+          </tr>
+        ))}
+        <tr>
+          <td colSpan={8}>TOTAL DEBIT</td>
+          <td
+            {...numericCell(totalDebit)}
+            data-f={rows.length ? `SUM(I${registerDataStart}:I${registerDataEnd})` : undefined}
+          >{money(totalDebit)}</td>
+          <td /><td />
+        </tr>
+        <tr>
+          <td colSpan={8}>TOTAL CREDIT</td>
+          <td />
+          <td
+            {...numericCell(totalCredit)}
+            data-f={rows.length ? `SUM(J${registerDataStart}:J${registerDataEnd})` : undefined}
+          >{money(totalCredit)}</td>
+          <td />
+        </tr>
+        <tr>
+          <td colSpan={8}>DIFFERENCE</td>
+          <td
+            {...numericCell(totalDebit - totalCredit)}
+            data-f={rows.length ? `I${registerDebitRow}-J${registerCreditRow}` : undefined}
+          >{money(totalDebit - totalCredit)}</td>
+          <td /><td />
+        </tr>
+        <tr><td colSpan={11} /></tr>
+        <tr><td>SOURCE</td><td>Journal register print preview</td></tr>
+        <tr><td>JOURNAL COUNT</td><td>{rows.length}</td></tr>
+        <tr><td>PRINTED BY</td><td>Finance</td></tr>
+      </tbody>
+    </table>
+  );
 
   return (
     <FinancialReportPrintTemplate
       title="Journal Register"
       subtitle="Complete journal listing for the selected filters"
-      filters={[
-        { label: "Date From", value: params.date_from || "All" },
-        { label: "Date To", value: params.date_to || "All" },
-        { label: "Search", value: params.search || "All" },
-        { label: "Status", value: params.status || "All" },
-        { label: "Source / Category", value: params.reference_type ? String(params.reference_type).replaceAll("_", " ") : "All" },
-        { label: "Location", value: scope.data?.locations.find(row => row.id === Number(params.location_id || (scope.data?.location_locked ? scope.data.default_location_id : 0)))?.name || "All locations" },
-        { label: "Business Unit", value: scope.data?.units.find(row => row.id === Number(params.business_unit_id))?.name || "All units" },
-        { label: "Department ID", value: params.department_id || "All" },
-        { label: "Supplier ID", value: params.supplier_id || "All" },
-        { label: "Account ID", value: params.account_id || "All" },
-        { label: "Balance State", value: params.balance_state || "All" },
-        { label: "Difference", value: params.difference_amount || "All" },
-        { label: "Journal Count", value: rows.length },
-      ]}
+      filters={registerFilters}
       columns={[
         { label: "Journal No.", render: (row: any) => row.journal_number },
         { label: "Journal Date", render: (row: any) => row.journal_date },
@@ -118,7 +180,7 @@ export default function JournalRegisterPrintPage() {
       rows={rows}
       rowKey={(row: any) => row.id}
       excelSheetName="Journal Register"
-      excelTotals={excelTotals}
+      excelTable={registerExcelTable}
       footerRows={
         <>
           <tr className="font-bold">
@@ -162,4 +224,3 @@ export default function JournalRegisterPrintPage() {
     />
   );
 }
-

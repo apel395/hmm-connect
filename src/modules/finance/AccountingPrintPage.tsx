@@ -8,6 +8,7 @@ import { formatMoney, moneyNumber } from "@/utils/formatMoney";
 
 const money = formatMoney;
 const date = (value: unknown) => value ? new Date(String(value)).toLocaleDateString() : "—";
+const numericCell = (value: unknown) => ({ "data-v": moneyNumber(value), "data-t": "n", "data-z": "#,##0.00" });
 
 export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices" | "journal-entries" | "payments" }) {
   const { id } = useParams();
@@ -131,6 +132,63 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
   if (!approvalSignatures.length && data.approved_by_name) approvalSignatures.push({ label: "Approved By", name: data.approved_by_name, signedAt: data.approved_at || null, status: "APPROVED" });
   const creator = data.created_by_name || data.requester_name || data.received_by_name;
 
+  const journalMeta = isJournal ? [
+    { label: "REPORT", value: "JOURNAL VOUCHER" },
+    { label: "DOCUMENT #", value: documentNumber ?? "—" },
+    { label: "DATE", value: date(documentDate) },
+    ...fields.filter((field) => field.value !== undefined && field.value !== null && field.value !== ""),
+    { label: "NOTES", value: data.notes || data.description || "—" },
+  ] : [];
+  const journalHeaderRow = journalMeta.length + 3;
+  const journalLineStart = journalHeaderRow + 1;
+  const journalLineEnd = journalLineStart + rows.length - 1;
+  const journalDebitRow = journalLineEnd + 1;
+  const journalCreditRow = journalDebitRow + 1;
+  const journalExcelTable = isJournal ? (
+    <table data-export-sheet="Journal Voucher" data-export-autofilter="false" data-export-widths="8,18,28,42,18,18">
+      <tbody>
+        <tr><td colSpan={6}>JOURNAL VOUCHER</td></tr>
+        {journalMeta.map((field, index) => <tr key={`journal-meta-${index}`}><td>{field.label}</td><td>{field.value}</td></tr>)}
+        <tr><td colSpan={6} /></tr>
+        <tr>{["LINE", "ACCOUNT CODE", "ACCOUNT NAME", "DESCRIPTION", "DEBIT", "CREDIT"].map((label) => <th key={label}>{label}</th>)}</tr>
+        {rows.map((line: any, index: number) => (
+          <tr key={`journal-export-${line.id ?? index}`}>
+            <td>{index + 1}</td>
+            <td>{line.account_code || "—"}</td>
+            <td>{line.account_name || "—"}</td>
+            <td>{line.description || "—"}</td>
+            <td {...numericCell(line.debit)}>{money(line.debit)}</td>
+            <td {...numericCell(line.credit)}>{money(line.credit)}</td>
+          </tr>
+        ))}
+        <tr>
+          <td colSpan={4}>TOTAL DEBIT</td>
+          <td {...numericCell(data.total_debit)} data-f={rows.length ? `SUM(E${journalLineStart}:E${journalLineEnd})` : undefined}>{money(data.total_debit)}</td>
+          <td />
+        </tr>
+        <tr>
+          <td colSpan={4}>TOTAL CREDIT</td>
+          <td />
+          <td {...numericCell(data.total_credit)} data-f={rows.length ? `SUM(F${journalLineStart}:F${journalLineEnd})` : undefined}>{money(data.total_credit)}</td>
+        </tr>
+        <tr>
+          <td colSpan={4}>DIFFERENCE</td>
+          <td
+            {...numericCell(Number(data.total_debit || 0) - Number(data.total_credit || 0))}
+            data-f={rows.length ? `E${journalDebitRow}-F${journalCreditRow}` : undefined}
+          >{money(Number(data.total_debit || 0) - Number(data.total_credit || 0))}</td>
+          <td />
+        </tr>
+        <tr><td colSpan={6} /></tr>
+        <tr><td>PREPARED BY</td><td>{creator || "—"}</td></tr>
+        <tr><td>POSTED BY</td><td>{data.posted_by_name || "—"}</td></tr>
+        <tr><td>PRINTED BY</td><td>{data.printed_by || data.generated_by_name || "Finance"}</td></tr>
+        <tr><td>PRINTED AT</td><td>{data.generated_at ? new Date(data.generated_at).toLocaleString("id-ID") : "—"}</td></tr>
+        <tr><td>STATUS</td><td>{data.status || "—"}</td></tr>
+      </tbody>
+    </table>
+  ) : undefined;
+
   const funding = isPayment && data.funding_lines?.length ? <section className="avoid-break mt-6"><div className="mb-2 font-semibold">FUNDING ACCOUNTS</div><table className="w-full border-collapse text-[11px]"><thead><tr><th className="border-y border-black px-2 py-1 text-left">BANK</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT</th><th className="border-y border-black px-2 py-1 text-left">ACCOUNT NUMBER</th><th className="border-y border-black px-2 py-1 text-right">AMOUNT</th></tr></thead><tbody>{data.funding_lines.map((line: any) => <tr key={line.id}><td className="border-b px-2 py-1">{line.bank_name}</td><td className="border-b px-2 py-1">{line.account_name}</td><td className="border-b px-2 py-1">{line.account_number}</td><td className="border-b px-2 py-1 text-right">{money(line.amount)}</td></tr>)}</tbody></table></section> : undefined;
 
   return <DocumentPrintTemplate
@@ -142,7 +200,8 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     columns={columns}
     rows={rows}
     rowKey={(row: any, index) => row.id ?? index}
-    excelSheetName={isJournal ? "Journal Lines" : undefined}
+    excelSheetName={isJournal ? "Journal Voucher" : undefined}
+    excelTable={journalExcelTable}
     totals={totals}
     notes={data.notes || data.description}
     extraAfterTable={funding}

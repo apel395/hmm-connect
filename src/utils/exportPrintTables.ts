@@ -43,6 +43,8 @@ function qualifyFormula(formula: string, source?: string | null) {
  * formulas. Print markup can opt in with data-v (raw value), data-f (formula),
  * data-z (number format), data-excel-address (explicit cell address), and
  * data-export-source-sheet (formula source when the summary lives elsewhere).
+ * Tables can also declare data-export-autofilter-range, data-export-freeze-row
+ * and data-export-widths for purpose-built single-sheet exports.
  */
 function applyCellMetadata(sheet: any, table: HTMLTableElement) {
   const tableSource = table.getAttribute("data-export-source-sheet") ?? undefined;
@@ -75,19 +77,38 @@ function applyCellMetadata(sheet: any, table: HTMLTableElement) {
       columnIndex += Math.max(1, cell.colSpan || 1);
     });
   });
+
+  // Export tables can live in a visually hidden container; keep their rows
+  // visible once the workbook is opened.
+  const rowInfo = sheet["!rows"];
+  if (Array.isArray(rowInfo)) rowInfo.forEach((info: any) => { if (info) info.hidden = false; });
 }
 
 function decorateSheet(sheet: any, table: HTMLTableElement) {
-  if (table.getAttribute("data-export-autofilter") === "false") return;
   const header = table.rows[0];
   const headers = Array.from(header?.cells ?? []) as HTMLTableCellElement[];
-  const columnCount = Math.max(1, headers.reduce((total, cell) => total + Math.max(1, cell.colSpan || 1), 0));
+  const explicitWidths = (table.getAttribute("data-export-widths") ?? "")
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const columnCount = Math.max(
+    1,
+    explicitWidths.length,
+    headers.reduce((total, cell) => total + Math.max(1, cell.colSpan || 1), 0),
+  );
   const rowCount = Math.max(1, table.rows.length);
-  sheet["!autofilter"] = { ref: `A1:${columnName(columnCount - 1)}${rowCount}` };
-  sheet["!views"] = [{ state: "frozen", ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", pane: "bottomLeft" }];
-  sheet["!cols"] = headers.map((cell) => ({
-    wch: Math.min(48, Math.max(12, (cell.textContent || "").trim().length + 4)),
-  }));
+  const filterRange = table.getAttribute("data-export-autofilter-range");
+  if (filterRange) sheet["!autofilter"] = { ref: filterRange };
+  else if (table.getAttribute("data-export-autofilter") !== "false") {
+    sheet["!autofilter"] = { ref: `A1:${columnName(columnCount - 1)}${rowCount}` };
+  }
+  const freezeRow = Math.max(1, Number(table.getAttribute("data-export-freeze-row")) || 1);
+  sheet["!views"] = [{ state: "frozen", ySplit: freezeRow, topLeftCell: `A${freezeRow + 1}`, activePane: "bottomLeft", pane: "bottomLeft" }];
+  sheet["!cols"] = explicitWidths.length
+    ? explicitWidths.map((wch) => ({ wch }))
+    : headers.map((cell) => ({
+        wch: Math.min(48, Math.max(12, (cell.textContent || "").trim().length + 4)),
+      }));
 }
 
 /** Export the tables already rendered in a print preview to a workbook. */

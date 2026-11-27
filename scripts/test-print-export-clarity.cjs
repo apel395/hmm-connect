@@ -120,26 +120,43 @@ async function run() {
   assert.ok(!read("src/modules/finance/AccountingPrintPage.tsx").includes('label: "SIDE"'), "journal voucher relies on debit/credit columns instead of a redundant side column");
   has("src/modules/finance/AccountingPrintPage.tsx", "SUM(E2:E", "journal print-to-Excel debits use a SUM formula");
   has("src/modules/finance/AccountingPrintPage.tsx", "SUM(F2:F", "journal print-to-Excel credits use a SUM formula");
-  has("src/modules/finance/AccountingPrintPage.tsx", 'excelSheetName={isJournal ? "Journal Lines" : undefined}', "journal voucher exports a named line sheet");
+  has("src/modules/finance/AccountingPrintPage.tsx", "excelTable={journalExcelTable}", "journal voucher replaces multi-sheet export with one worksheet");
+  has("src/modules/finance/AccountingPrintPage.tsx", 'data-export-sheet="Journal Voucher"', "journal voucher exports one named worksheet");
   has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", 'label: "Debit Accounts"', "journal register names debited accounts");
   has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", 'label: "Credit Accounts"', "journal register names credited accounts");
   has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", 'label: "Source / Category"', "journal register names the source category");
-  has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", "SUM(I2:I", "journal register Excel debits are formula-driven");
-  has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", 'excelSheetName="Journal Register"', "journal register exports a named sheet");
+  has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", "SUM(I${registerDataStart}:I${registerDataEnd})", "journal register Excel debits are formula-driven");
+  has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", "excelTable={registerExcelTable}", "journal register replaces multi-sheet export with one worksheet");
+  has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", 'data-export-sheet="Journal Register"', "journal register exports one named worksheet");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", '"Running Balance"', "GL print uses a standard running balance column");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", '"Posting Date"', "GL print uses the posting date label");
   assert.ok(!read("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx").includes('"Side"'), "GL print relies on debit/credit columns instead of a redundant side column");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "Opening Balance (brought forward)", "GL print includes the opening balance");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "MOVEMENT TOTAL (FILTERED)", "GL movement total names the filtered scope");
-  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "data-export-sheet={DATA_SHEET}", "GL exports a dedicated line sheet");
-  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "data-export-sheet={SUMMARY_SHEET}", "GL exports a dedicated account summary sheet");
+  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "data-export-sheet={SHEET_NAME}", "GL exports one named worksheet");
+  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "EXPORT_HEADERS", "GL single worksheet carries the full audit trail");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "data-f={closingFormula}", "GL Excel closing balance is formula-driven");
-  has("src/components/print/DocumentPrintTemplate.tsx", 'data-export-sheet="Control"', "document exports a control sheet");
-  has("src/components/print/DocumentPrintTemplate.tsx", 'data-export-sheet="Audit"', "document exports an audit sheet");
+  for (const file of [
+    "src/modules/finance/AccountingPrintPage.tsx",
+    "src/modules/finance/journals/JournalRegisterPrintPage.tsx",
+    "src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx",
+  ]) {
+    const text = read(file);
+    assert.equal((text.match(/data-export-sheet=/g) ?? []).length, 1, `${file} exports exactly one worksheet`);
+    assert.ok(!text.includes('data-export-sheet="Control"'), `${file} has no separate control sheet`);
+    assert.ok(!text.includes('data-export-sheet="Audit"'), `${file} has no separate audit sheet`);
+  }
+  has("src/components/print/DocumentPrintTemplate.tsx", "data-export-omit={excelTable ? \"\" : undefined}", "document print can defer to a purpose-built worksheet");
+  has("src/components/print/FinancialReportPrintTemplate.tsx", "data-export-omit={excelTable ? \"\" : undefined}", "report print can defer to a purpose-built worksheet");
+  has("src/components/print/DocumentPrintTemplate.tsx", 'data-export-sheet="Control"', "document default export still carries control data");
+  has("src/components/print/DocumentPrintTemplate.tsx", 'data-export-sheet="Audit"', "document default export still carries audit data");
   has("src/components/print/DocumentPrintTemplate.tsx", 'data-f={total.formula}', "document totals carry Excel formulas");
-  has("src/components/print/FinancialReportPrintTemplate.tsx", 'data-export-sheet="Control"', "reports export a control sheet");
+  has("src/components/print/FinancialReportPrintTemplate.tsx", 'data-export-sheet="Control"', "report default export still carries control data");
   has("src/components/print/FinancialReportPrintTemplate.tsx", "data-v={hasRaw ? Number(raw) : undefined}", "report rows carry raw numeric values");
   has("src/utils/exportPrintTables.ts", "safeSheetName", "print-to-Excel uses named sheets");
+  has("src/utils/exportPrintTables.ts", "data-export-autofilter-range", "single-sheet exports can scope AutoFilter to the data table");
+  has("src/utils/exportPrintTables.ts", "data-export-freeze-row", "single-sheet exports can freeze the correct header row");
+  has("src/utils/exportPrintTables.ts", "data-export-widths", "single-sheet exports declare readable column widths");
   has("src/utils/exportPrintTables.ts", '"!autofilter"', "print-to-Excel adds AutoFilter to data sheets");
   has("src/utils/exportPrintTables.ts", '"!views"', "print-to-Excel freezes data headers");
   has("src/utils/exportPrintTables.ts", "qualifyFormula", "summary formulas reference their source sheet");

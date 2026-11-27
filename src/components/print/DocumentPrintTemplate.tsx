@@ -50,6 +50,8 @@ interface Props<Row> {
   rows: Row[];
   rowKey?: (row: Row, index: number) => string | number;
   excelSheetName?: string;
+  /** Replaces the default multi-sheet export with one purpose-built worksheet. */
+  excelTable?: ReactNode;
   totals?: PrintTotal[];
   notes?: ReactNode;
   extraAfterTable?: ReactNode;
@@ -79,6 +81,7 @@ export default function DocumentPrintTemplate<Row>({
   rows,
   rowKey,
   excelSheetName,
+  excelTable,
   totals = [],
   notes,
   extraAfterTable,
@@ -162,7 +165,7 @@ export default function DocumentPrintTemplate<Row>({
 
     <h1 className="my-4 text-center text-[18px] font-bold tracking-[0.16em]">{title.toUpperCase()}</h1>
 
-    <table data-export-sheet={dataSheetName} className="w-full border-collapse">
+    <table data-export-omit={excelTable ? "" : undefined} data-export-sheet={excelTable ? undefined : dataSheetName} className="w-full border-collapse">
       <thead><tr>{columns.map((column, index) => <th key={`${column.label}-${index}`} className={`border-y border-black px-2 py-2 font-bold ${alignClass[column.align ?? "left"]}`}>{column.label}</th>)}</tr></thead>
       <tbody>{rows.map((row, rowIndex) => <tr key={rowKey ? rowKey(row, rowIndex) : rowIndex}>{columns.map((column, columnIndex) => {
         const raw = column.dataValue?.(row, rowIndex);
@@ -213,7 +216,7 @@ export default function DocumentPrintTemplate<Row>({
 
     {footer && <footer className="mt-5 border-t pt-2 text-[10px] text-slate-600">{footer}</footer>}
 
-    <div data-export-include className="hidden">
+    {excelTable ? <div data-export-include className="hidden">{excelTable}</div> : <div data-export-include className="hidden">
       <table data-export-sheet="Control" data-export-source-sheet={dataSheetName} data-export-autofilter="false">
         <thead><tr><th>Field</th><th>Value</th></tr></thead>
         <tbody>
@@ -244,6 +247,6 @@ export default function DocumentPrintTemplate<Row>({
           {footer && <tr><td>FOOTER</td><td>{footer}</td></tr>}
         </tbody>
       </table>
-    </div>
+    </div>}
   </article>;
 }
