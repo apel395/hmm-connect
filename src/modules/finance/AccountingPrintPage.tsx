@@ -4,8 +4,9 @@ import { useParams } from "react-router-dom";
 import api from "@/api/client";
 import Loading from "@/components/ui/Loading";
 import DocumentPrintTemplate from "@/components/print/DocumentPrintTemplate";
+import { formatMoney, moneyNumber } from "@/utils/formatMoney";
 
-const money = (value: unknown) => Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = formatMoney;
 const date = (value: unknown) => value ? new Date(String(value)).toLocaleDateString() : "—";
 
 export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices" | "journal-entries" | "payments" }) {
@@ -45,16 +46,21 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     { label: "DUE DATE", value: data.due_date ? date(data.due_date) : undefined },
   ];
 
+  const lastDataRow = rows.length + 1;
+  const debitTotalRow = rows.length + 2;
+  const creditTotalRow = rows.length + 3;
   const columns = isJournal ? [
+    { label: "ACCOUNT CODE", align: "left" as const, render: (line: any) => line.account_code || "—" },
     { label: "ACCOUNT", align: "left" as const, render: (line: any) => line.account_name || "—" },
+    { label: "SIDE", align: "center" as const, render: (line: any) => moneyNumber(line.debit) > 0 ? "DEBIT" : "CREDIT" },
     { label: "DESCRIPTION", align: "left" as const, render: (line: any) => line.description || "—" },
-    { label: "DEBIT", align: "right" as const, render: (line: any) => money(line.debit) },
-    { label: "CREDIT", align: "right" as const, render: (line: any) => money(line.credit) },
+    { label: "DEBIT", align: "right" as const, dataValue: (line: any) => moneyNumber(line.debit), render: (line: any) => money(line.debit) },
+    { label: "CREDIT", align: "right" as const, dataValue: (line: any) => moneyNumber(line.credit), render: (line: any) => money(line.credit) },
   ] : isPayment ? [
     { label: "INVOICE", align: "left" as const, render: (line: any) => line.invoice_number || line.internal_invoice_number || "—" },
     { label: "DUE DATE", align: "center" as const, render: (line: any) => line.due_date ? date(line.due_date) : "—" },
-    { label: "INVOICE TOTAL", align: "right" as const, render: (line: any) => money(line.invoice_total) },
-    { label: "AMOUNT", align: "right" as const, render: (line: any) => money(line.allocated_amount) },
+    { label: "INVOICE TOTAL", align: "right" as const, dataValue: (line: any) => moneyNumber(line.invoice_total), render: (line: any) => money(line.invoice_total) },
+    { label: "AMOUNT", align: "right" as const, dataValue: (line: any) => moneyNumber(line.allocated_amount), render: (line: any) => money(line.allocated_amount) },
   ] : [
     {
       label: "ITEM",
@@ -74,30 +80,49 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
         );
       },
     },
-    { label: "QTY", align: "right" as const, render: (line: any) => line.quantity },
+    { label: "QTY", align: "right" as const, dataValue: (line: any) => moneyNumber(line.quantity), render: (line: any) => line.quantity },
     { label: "UOM", align: "center" as const, render: (line: any) => line.uom || "—" },
-    { label: "UNIT PRICE", align: "right" as const, render: (line: any) => money(line.unit_price) },
+    { label: "UNIT PRICE", align: "right" as const, dataValue: (line: any) => moneyNumber(line.unit_price), render: (line: any) => money(line.unit_price) },
     ...(rows.some((line: any) => Number(line.tax_amount || 0) !== 0 || Number(line.tax_rate || 0) !== 0)
-      ? [{ label: "PPN", align: "right" as const, render: (line: any) => money(line.tax_amount) }]
+      ? [{ label: "PPN", align: "right" as const, dataValue: (line: any) => moneyNumber(line.tax_amount), render: (line: any) => money(line.tax_amount) }]
       : []),
     { label: "ACCOUNT", align: "left" as const, render: (line: any) => line.account_name || "—" },
-    { label: "LINE TOTAL", align: "right" as const, render: (line: any) => money(line.line_amount) },
+    { label: "LINE TOTAL", align: "right" as const, dataValue: (line: any) => moneyNumber(line.line_amount), render: (line: any) => money(line.line_amount) },
   ];
 
   const totals = isJournal ? [
-    { label: "TOTAL DEBIT", value: money(data.total_debit), emphasis: true },
-    { label: "TOTAL CREDIT", value: money(data.total_credit), emphasis: true },
+    {
+      label: "TOTAL DEBIT",
+      value: money(data.total_debit),
+      emphasis: true,
+      dataValue: moneyNumber(data.total_debit),
+      formula: rows.length ? `SUM(E2:E${lastDataRow})` : undefined,
+    },
+    {
+      label: "TOTAL CREDIT",
+      value: money(data.total_credit),
+      emphasis: true,
+      dataValue: moneyNumber(data.total_credit),
+      formula: rows.length ? `SUM(F2:F${lastDataRow})` : undefined,
+    },
+    {
+      label: "DIFFERENCE",
+      value: money(Number(data.total_debit || 0) - Number(data.total_credit || 0)),
+      emphasis: true,
+      dataValue: moneyNumber(Number(data.total_debit || 0) - Number(data.total_credit || 0)),
+      formula: rows.length ? `E${debitTotalRow}-F${creditTotalRow}` : undefined,
+    },
   ] : isPayment ? [
-    { label: "INVOICE SETTLEMENT", value: money(data.total_amount) },
-    ...(Number(data.bank_charge_amount || 0) ? [{ label: "BANK CHARGE", value: money(data.bank_charge_amount) }] : []),
-    ...(Number(data.short_over_amount || 0) ? [{ label: "SHORT / OVER", value: money(data.short_over_amount) }] : []),
-    { label: "TOTAL FUNDED", value: money(data.funded_amount), emphasis: true },
+    { label: "INVOICE SETTLEMENT", value: money(data.total_amount), dataValue: moneyNumber(data.total_amount) },
+    ...(Number(data.bank_charge_amount || 0) ? [{ label: "BANK CHARGE", value: money(data.bank_charge_amount), dataValue: moneyNumber(data.bank_charge_amount) }] : []),
+    ...(Number(data.short_over_amount || 0) ? [{ label: "SHORT / OVER", value: money(data.short_over_amount), dataValue: moneyNumber(data.short_over_amount) }] : []),
+    { label: "TOTAL FUNDED", value: money(data.funded_amount), emphasis: true, dataValue: moneyNumber(data.funded_amount) },
   ] : [
-    { label: "SUBTOTAL", value: money(data.subtotal) },
-    ...(Number(data.discount_amount || 0) ? [{ label: "DISCOUNT", value: money(-Number(data.discount_amount)) }] : []),
-    ...(Number(data.tax_amount || 0) ? [{ label: "VAT / TAX", value: money(data.tax_amount) }] : []),
-    ...(Number(data.withholding_tax_amount || 0) ? [{ label: "WITHHOLDING TAX", value: money(-Number(data.withholding_tax_amount)) }] : []),
-    { label: "TOTAL", value: money(data.total_amount), emphasis: true },
+    { label: "SUBTOTAL", value: money(data.subtotal), dataValue: moneyNumber(data.subtotal) },
+    ...(Number(data.discount_amount || 0) ? [{ label: "DISCOUNT", value: money(-Number(data.discount_amount)), dataValue: -moneyNumber(data.discount_amount) }] : []),
+    ...(Number(data.tax_amount || 0) ? [{ label: "VAT / TAX", value: money(data.tax_amount), dataValue: moneyNumber(data.tax_amount) }] : []),
+    ...(Number(data.withholding_tax_amount || 0) ? [{ label: "WITHHOLDING TAX", value: money(-Number(data.withholding_tax_amount)), dataValue: -moneyNumber(data.withholding_tax_amount) }] : []),
+    { label: "TOTAL", value: money(data.total_amount), emphasis: true, dataValue: moneyNumber(data.total_amount) },
   ];
 
   const approvalSignatures = approvalPrintSignatures(data.approval_history);

@@ -103,6 +103,32 @@ async function run() {
   has("src/modules/finance/journals/JournalListPage.tsx", "note={GENERIC_REPORT_PRINT_NOTE}", "journal register note is shown");
   has("src/modules/finance/trial-balance/TrialBalancePage.tsx", "note={GENERIC_REPORT_PRINT_NOTE}", "trial balance note is shown");
 
+  has("src/utils/formatMoney.ts", '"id-ID"', "shared accounting money format is Indonesian");
+  for (const file of [
+    "src/modules/finance/journals/JournalDetailPage.tsx",
+    "src/modules/finance/journals/JournalListPage.tsx",
+    "src/modules/finance/AccountingPrintPage.tsx",
+    "src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx",
+    "src/modules/finance/journals/JournalRegisterPrintPage.tsx",
+  ]) {
+    assert.ok(!read(file).includes("toLocaleString(undefined"), `journal and GL amounts use one format in ${file}`);
+  }
+  has("src/modules/finance/journals/JournalDetailPage.tsx", "<TH>Side</TH>", "journal detail names the debited or credited side");
+  has("src/modules/finance/AccountingPrintPage.tsx", 'label: "SIDE"', "journal document print names the debited or credited side");
+  has("src/modules/finance/AccountingPrintPage.tsx", 'label: "ACCOUNT CODE"', "journal print shows the account code");
+  has("src/modules/finance/AccountingPrintPage.tsx", "SUM(E2:E", "journal print-to-Excel debits use a SUM formula");
+  has("src/modules/finance/AccountingPrintPage.tsx", "SUM(F2:F", "journal print-to-Excel credits use a SUM formula");
+  has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", 'label: "Debited Account"', "journal register names debited accounts");
+  has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", 'label: "Credited Account"', "journal register names credited accounts");
+  has("src/modules/finance/journals/JournalRegisterPrintPage.tsx", "SUM(I2:I", "journal register Excel debits are formula-driven");
+  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", '"Side"', "GL print names the debited or credited side");
+  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "Opening Balance (brought forward)", "GL print includes the opening balance");
+  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "data-f={account.rows.length ? closingFormula", "GL Excel closing balance is formula-driven");
+  has("src/components/print/DocumentPrintTemplate.tsx", 'data-f={total.formula}', "document totals carry Excel formulas");
+  has("src/components/print/FinancialReportPrintTemplate.tsx", "data-v={hasRaw ? Number(raw) : undefined}", "report rows carry raw numeric values");
+  has("src/utils/exportPrintTables.ts", "data-v", "print-to-Excel reads raw numeric values");
+  has("src/utils/exportPrintTables.ts", "data-f", "print-to-Excel writes formula cells");
+
   for (const file of [
     "src/components/print/DocumentPrintTemplate.tsx",
     "src/components/print/FinancialReportPrintTemplate.tsx",

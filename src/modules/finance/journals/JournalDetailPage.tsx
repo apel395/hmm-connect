@@ -22,6 +22,7 @@ import { Link,useNavigate,useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { getJournal,journalAction,updateJournal } from "./api";
 import { sourceDocumentPath } from "./sourceDocument";
+import { formatMoney } from "@/utils/formatMoney";
 
 type EditLine = {
   account_id: number;
@@ -173,8 +174,8 @@ export default function JournalDetailPage() {
       </div>
     </div>
     <Card><div className="grid gap-4 md:grid-cols-4"><div><small>Date</small><div>{x.journal_date}</div></div><div><small>Source</small><div>{(x.reference_type || "MANUAL").replaceAll("_", " ")}</div></div><div><small>Work Location</small><div>{x.location_name || (x.location_id ? `Location #${x.location_id}` : "Missing — edit before posting")}</div></div><div><small>Reference</small><div>{sourcePath?<Link className="font-medium text-emerald-700 hover:underline" to={sourcePath} state={{returnTo:`/journal-entries/${x.id}`}}>{x.reference_number||"View Source Document"}</Link>:x.reference_number||"—"}</div></div><div><small>Created By</small><div>{x.created_by_name || "—"}</div></div><div className="md:col-span-4"><small>Description</small><div>{x.description || "—"}</div></div></div></Card>
-    <Card><Table stickyHeader variant="grid" className="min-w-[820px]" containerClassName="max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible"><THead><TR className="whitespace-nowrap"><TH>Account</TH><TH>Description</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH>Organization</TH></TR></THead><TBody>{x.lines.map((l: any) => <TR key={l.id} className="whitespace-nowrap"><TD className="max-w-[280px]"><TableCellStack primary={l.account_name} secondary={l.account_code}/></TD><TD className="max-w-[280px]"><span className="block truncate" title={l.description || undefined}>{l.description || "—"}</span></TD><TD numeric className="w-40">{Number(l.debit).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}</TD><TD numeric className="w-40">{Number(l.credit).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})}</TD><TD>{l.department_name || l.location_name ? <TableCellStack primary={l.department_name || l.location_name} secondary={l.department_name ? l.location_name : undefined}/> : "—"}</TD></TR>)}</TBody></Table></Card>
-    <Card><div className="grid grid-cols-3 gap-4 text-right"><div><small>Total Debit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_debit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Total Credit</small><div className="text-lg font-bold tabular-nums">{Number(x.total_credit).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div><div><small>Difference</small><div className="text-lg font-bold tabular-nums">{Number(x.difference).toLocaleString(undefined,{minimumFractionDigits:2})}</div></div></div></Card>
+    <Card><Table stickyHeader variant="grid" className="min-w-[920px]" containerClassName="max-h-[60vh] overflow-auto border-0 shadow-none print:max-h-none print:overflow-visible"><THead><TR className="whitespace-nowrap"><TH>Account</TH><TH>Side</TH><TH>Description</TH><TH numeric>Debit</TH><TH numeric>Credit</TH><TH>Organization</TH></TR></THead><TBody>{x.lines.map((l: any) => <TR key={l.id} className="whitespace-nowrap"><TD className="max-w-[280px]"><TableCellStack primary={l.account_name} secondary={l.account_code}/></TD><TD><Badge variant={Number(l.debit) > 0 ? "success" : "secondary"}>{Number(l.debit) > 0 ? "Debit" : "Credit"}</Badge></TD><TD className="max-w-[280px]"><span className="block truncate" title={l.description || undefined}>{l.description || "—"}</span></TD><TD numeric className="w-40">{formatMoney(l.debit)}</TD><TD numeric className="w-40">{formatMoney(l.credit)}</TD><TD>{l.department_name || l.location_name ? <TableCellStack primary={l.department_name || l.location_name} secondary={l.department_name ? l.location_name : undefined}/> : "—"}</TD></TR>)}</TBody></Table></Card>
+    <Card><div className="grid grid-cols-3 gap-4 text-right"><div><small>Total Debit</small><div className="text-lg font-bold tabular-nums">{formatMoney(x.total_debit)}</div></div><div><small>Total Credit</small><div className="text-lg font-bold tabular-nums">{formatMoney(x.total_credit)}</div></div><div><small>Difference</small><div className="text-lg font-bold tabular-nums">{formatMoney(x.difference)}</div></div></div></Card>
     {x.period_locked&&<p className="text-xs text-slate-500">The accounting period must be reopened by authorized Finance before this journal can be corrected.</p>}
     {!x.period_locked && x.status === "POSTED" && !a.can_unpost && <p className="text-xs text-slate-500">This journal cannot be safely unposted from Journal. Reverse it from the originating module or reopen the required fiscal period first.</p>}
 
@@ -202,9 +203,9 @@ export default function JournalDetailPage() {
           <div className="flex items-center justify-between gap-4">
             <Button type="button" variant="outline" onClick={() => setLines([...lines, blankLine()])}>Add Line</Button>
             <div className={`rounded-lg border px-5 py-3 text-sm ${balanced ? "bg-emerald-50" : "bg-amber-50"}`}>
-              <div>1 journal · {validLines.length} lines</div><div>Debit: <strong className="tabular-nums">{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
-              <div>Credit: <strong className="tabular-nums">{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
-              <div>Difference: <strong className="tabular-nums">{Math.abs(totals.debit - totals.credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
+              <div>1 journal · {validLines.length} lines</div><div>Debit: <strong className="tabular-nums">{formatMoney(totals.debit)}</strong></div>
+              <div>Credit: <strong className="tabular-nums">{formatMoney(totals.credit)}</strong></div>
+              <div>Difference: <strong className="tabular-nums">{formatMoney(Math.abs(totals.debit - totals.credit))}</strong></div>
             </div>
           </div>
         </DialogBody>

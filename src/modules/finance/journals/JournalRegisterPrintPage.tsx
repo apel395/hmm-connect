@@ -3,12 +3,16 @@ import { useSearchParams } from "react-router-dom";
 import Loading from "@/components/ui/Loading";
 import FinancialReportPrintTemplate from "@/components/print/FinancialReportPrintTemplate";
 import { listJournals, getJournalScope } from "./api";
+import { formatMoney, moneyNumber } from "@/utils/formatMoney";
 
-const money = (value: unknown) =>
-  Number(value || 0).toLocaleString("id-ID", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+const money = formatMoney;
+const accountSummary = (row: any, side: "debit" | "credit") => {
+  const accounts = (row.lines ?? [])
+    .filter((line: any) => moneyNumber(line[side]) > 0)
+    .map((line: any) => `${line.account_code ?? ""} ${line.account_name ?? ""}`.trim())
+    .filter(Boolean);
+  return accounts.length ? accounts.join(", ") : "—";
+};
 
 async function loadAll(params: Record<string, unknown>) {
   const rows: any[] = [];
@@ -53,8 +57,11 @@ export default function JournalRegisterPrintPage() {
   if (!query.data) return <p>Journal register could not be loaded.</p>;
 
   const rows = query.data;
-  const totalDebit = rows.reduce((sum: number, row: any) => sum + Number(row.total_debit || 0), 0);
-  const totalCredit = rows.reduce((sum: number, row: any) => sum + Number(row.total_credit || 0), 0);
+  const totalDebit = rows.reduce((sum: number, row: any) => sum + moneyNumber(row.total_debit), 0);
+  const totalCredit = rows.reduce((sum: number, row: any) => sum + moneyNumber(row.total_credit), 0);
+  const lastDataRow = Math.max(rows.length, 1) + 1;
+  const debitTotalRow = lastDataRow + 1;
+  const creditTotalRow = lastDataRow + 2;
 
   return (
     <FinancialReportPrintTemplate
@@ -72,21 +79,48 @@ export default function JournalRegisterPrintPage() {
         { label: "Date", render: (row: any) => row.journal_date },
         { label: "Document", render: (row: any) => row.reference_number || "—" },
         { label: "Type", render: (row: any) => String(row.reference_type || "").replaceAll("_", " ") || "—" },
+        { label: "Debited Account", render: (row: any) => accountSummary(row, "debit") },
+        { label: "Credited Account", render: (row: any) => accountSummary(row, "credit") },
         { label: "Description", render: (row: any) => row.description || "—" },
         { label: "Location", render: (row: any) => row.location_name || "—" },
-        { label: "Debit", align: "right", render: (row: any) => money(row.total_debit) },
-        { label: "Credit", align: "right", render: (row: any) => money(row.total_credit) },
+        { label: "Debit", align: "right", dataValue: (row: any) => moneyNumber(row.total_debit), render: (row: any) => money(row.total_debit) },
+        { label: "Credit", align: "right", dataValue: (row: any) => moneyNumber(row.total_credit), render: (row: any) => money(row.total_credit) },
         { label: "Status", render: (row: any) => row.status },
       ]}
       rows={rows}
       rowKey={(row: any) => row.id}
       footerRows={
-        <tr className="font-bold">
-          <td colSpan={6} className="border border-slate-700 px-1.5 py-1 text-right">CONTROL TOTAL</td>
-          <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalDebit)}</td>
-          <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(totalCredit)}</td>
-          <td className="border border-slate-700 px-1.5 py-1" />
-        </tr>
+        <>
+          <tr className="font-bold">
+            <td colSpan={8} className="border border-slate-700 px-1.5 py-1 text-right">CONTROL TOTAL</td>
+            <td
+              data-v={rows.length ? totalDebit : undefined}
+              data-t="n"
+              data-z="#,##0.00"
+              data-f={rows.length ? `SUM(I2:I${lastDataRow})` : undefined}
+              className="border border-slate-700 px-1.5 py-1 text-right tabular-nums"
+            >{money(totalDebit)}</td>
+            <td
+              data-v={rows.length ? totalCredit : undefined}
+              data-t="n"
+              data-z="#,##0.00"
+              data-f={rows.length ? `SUM(J2:J${lastDataRow})` : undefined}
+              className="border border-slate-700 px-1.5 py-1 text-right tabular-nums"
+            >{money(totalCredit)}</td>
+            <td className="border border-slate-700 px-1.5 py-1" />
+          </tr>
+          <tr className="font-bold">
+            <td colSpan={8} className="border border-slate-700 px-1.5 py-1 text-right">DIFFERENCE</td>
+            <td colSpan={2}
+              data-v={rows.length ? totalDebit - totalCredit : undefined}
+              data-t="n"
+              data-z="#,##0.00"
+              data-f={rows.length ? `I${debitTotalRow}-J${creditTotalRow}` : undefined}
+              className="border border-slate-700 px-1.5 py-1 text-right tabular-nums"
+            >{money(totalDebit - totalCredit)}</td>
+            <td className="border border-slate-700 px-1.5 py-1" />
+          </tr>
+        </>
       }
       control={
         <div className="mx-auto grid w-80 grid-cols-2 gap-y-1">

@@ -4,9 +4,10 @@ import { useSearchParams } from "react-router-dom";
 import Empty from "@/components/ui/Empty";
 import Loading from "@/components/ui/Loading";
 import { apiErrorMessage } from "@/utils/apiError";
+import { formatMoney, moneyNumber } from "@/utils/formatMoney";
 import { getLedgerPrint } from "./api";
 
-const money = (value: unknown) => Number(value || 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = formatMoney;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -23,7 +24,12 @@ const shortDate = (value?: string | null) => {
   return `${String(parsed.getDate()).padStart(2, "0")}-${MONTHS_SHORT[parsed.getMonth()]}-${String(parsed.getFullYear()).slice(2)}`;
 };
 
-const COLUMNS = ["Date", "Journal No.", "Document", "Reference", "Description", "Location", "Dept", "Debit", "Credit", "Balance"];
+const COLUMNS = ["Date", "Journal No.", "Document", "Reference", "Description", "Location", "Dept", "Side", "Debit", "Credit", "Balance"];
+const numericCell = (value: unknown) => ({
+  "data-v": moneyNumber(value),
+  "data-t": "n",
+  "data-z": "#,##0.00",
+});
 
 export default function GeneralLedgerPrintPage() {
   const [searchParams] = useSearchParams();
@@ -82,8 +88,15 @@ export default function GeneralLedgerPrintPage() {
         <div>Printed : {data.generated_at ? new Date(data.generated_at).toLocaleString("en-GB") : ""}</div>
       </section>
 
-      {accounts.map((account) => (
-        <section key={account.account_id} className="gl-account mb-6">
+      {accounts.map((account) => {
+        const lastDataRow = Math.max(account.rows.length, 1) + 1;
+        const openingRow = lastDataRow + 1;
+        const totalRow = openingRow + 1;
+        const debitNormal = String(account.normal_balance || "").toUpperCase() === "DEBIT";
+        const closingFormula = debitNormal
+          ? `K${openingRow}+I${totalRow}-J${totalRow}`
+          : `K${openingRow}-I${totalRow}+J${totalRow}`;
+        return <section key={account.account_id} className="gl-account mb-6">
           <div className="mb-1 border-b border-slate-500 pb-1">
             <div className="font-bold">{account.account_code} — {account.account_name}</div>
             <div className="text-[9px] text-slate-600">{account.account_type} | Normal Balance: {account.normal_balance}</div>
@@ -97,7 +110,7 @@ export default function GeneralLedgerPrintPage() {
           <table className="w-full border-collapse">
             <thead>
               <tr>{COLUMNS.map((label, index) => (
-                <th key={label} className={`border border-slate-700 px-1.5 py-1 font-semibold ${index >= 7 ? "text-right" : "text-left"} ${label === "Description" ? "w-[26%]" : "whitespace-nowrap"}`}>{label}</th>
+                <th key={label} className={`border border-slate-700 px-1.5 py-1 font-semibold ${index >= 8 ? "text-right" : "text-left"} ${label === "Description" ? "w-[26%]" : "whitespace-nowrap"}`}>{label}</th>
               ))}</tr>
             </thead>
             <tbody>
@@ -110,21 +123,41 @@ export default function GeneralLedgerPrintPage() {
                   <td className="border border-slate-400 px-1.5 py-0.5 break-words">{row.description || "—"}</td>
                   <td className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5">{row.location_name || "—"}</td>
                   <td className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5">{row.department_name || "—"}</td>
-                  <td className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5 text-right tabular-nums">{money(row.debit)}</td>
-                  <td className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5 text-right tabular-nums">{money(row.credit)}</td>
-                  <td className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5 text-right font-semibold tabular-nums">{money(row.balance)}</td>
+                  <td className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5">{moneyNumber(row.debit) > 0 ? "DEBIT" : "CREDIT"}</td>
+                  <td {...numericCell(row.debit)} className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5 text-right tabular-nums">{money(row.debit)}</td>
+                  <td {...numericCell(row.credit)} className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5 text-right tabular-nums">{money(row.credit)}</td>
+                  <td {...numericCell(row.balance)} className="whitespace-nowrap border border-slate-400 px-1.5 py-0.5 text-right font-semibold tabular-nums">{money(row.balance)}</td>
                 </tr>
               ))}
               {!account.rows.length && (
-                <tr><td colSpan={10} className="border border-slate-400 px-1.5 py-1 text-center text-slate-500">No movements in this period</td></tr>
+                <tr><td colSpan={11} className="border border-slate-400 px-1.5 py-1 text-center text-slate-500">No movements in this period</td></tr>
               )}
             </tbody>
             <tfoot>
+              <tr className="hidden">
+                <td colSpan={10}>Opening Balance (brought forward)</td>
+                <td {...numericCell(account.opening_balance)}>{money(account.opening_balance)}</td>
+              </tr>
               <tr className="font-bold">
-                <td colSpan={7} className="border border-slate-700 px-1.5 py-1 text-right">FULL ACCOUNT TOTAL</td>
-                <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(account.total_debit)}</td>
-                <td className="border border-slate-700 px-1.5 py-1 text-right tabular-nums">{money(account.total_credit)}</td>
+                <td colSpan={8} className="border border-slate-700 px-1.5 py-1 text-right">FULL ACCOUNT TOTAL</td>
+                <td
+                  {...numericCell(account.total_debit)}
+                  data-f={account.rows.length ? `SUM(I2:I${lastDataRow})` : undefined}
+                  className="border border-slate-700 px-1.5 py-1 text-right tabular-nums"
+                >{money(account.total_debit)}</td>
+                <td
+                  {...numericCell(account.total_credit)}
+                  data-f={account.rows.length ? `SUM(J2:J${lastDataRow})` : undefined}
+                  className="border border-slate-700 px-1.5 py-1 text-right tabular-nums"
+                >{money(account.total_credit)}</td>
                 <td className="border border-slate-700 px-1.5 py-1" />
+              </tr>
+              <tr className="hidden">
+                <td colSpan={10}>Closing Balance (all period movements)</td>
+                <td
+                  {...numericCell(account.closing_balance)}
+                  data-f={account.rows.length ? closingFormula : undefined}
+                >{money(account.closing_balance)}</td>
               </tr>
             </tfoot>
           </table>
@@ -133,8 +166,8 @@ export default function GeneralLedgerPrintPage() {
             <span>Closing Balance (all period movements)</span>
             <span className="tabular-nums">{money(account.closing_balance)}</span>
           </div>
-        </section>
-      ))}
+        </section>;
+      })}
 
       {!accounts.length && <Empty title="No ledger activity" description="No ledger activity for the selected filters." />}
 

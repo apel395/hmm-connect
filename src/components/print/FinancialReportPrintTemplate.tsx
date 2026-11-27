@@ -4,6 +4,9 @@ type Column<Row> = {
   label: string;
   align?: "left" | "center" | "right";
   render: (row: Row, index: number) => ReactNode;
+  /** Raw numeric value used by print-to-Excel so control totals stay computable. */
+  dataValue?: (row: Row, index: number) => number | string | null | undefined;
+  dataFormat?: string;
 };
 
 type SummaryItem = { label: string; value: ReactNode };
@@ -96,14 +99,21 @@ export default function FinancialReportPrintTemplate<Row>({
         <tbody>
           {rows.map((row, index) => (
             <tr key={rowKey ? rowKey(row, index) : index}>
-              {columns.map((column, columnIndex) => (
-                <td
-                  key={columnIndex}
-                  className={`border border-slate-400 px-1.5 py-1 align-top ${align[column.align ?? "left"]}`}
-                >
-                  {column.render(row, index)}
-                </td>
-              ))}
+              {columns.map((column, columnIndex) => {
+                const raw = column.dataValue?.(row, index);
+                const hasRaw = raw !== null && raw !== undefined && raw !== "";
+                return (
+                  <td
+                    key={columnIndex}
+                    data-v={hasRaw ? Number(raw) : undefined}
+                    data-t={hasRaw ? "n" : undefined}
+                    data-z={hasRaw ? column.dataFormat ?? "#,##0.00" : undefined}
+                    className={`border border-slate-400 px-1.5 py-1 align-top ${align[column.align ?? "left"]}`}
+                  >
+                    {column.render(row, index)}
+                  </td>
+                );
+              })}
             </tr>
           ))}
           {!rows.length ? (

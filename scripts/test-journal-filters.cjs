@@ -42,6 +42,7 @@ async function run(){
  else if(a.path.includes('useAuthorization'))contents="export default ()=>({isSuperuser:()=>true});";
  else if(a.path.includes('useFormRecovery'))contents="export default ()=>({load:()=>null,clear:()=>{},notifyRestored:()=>{}});";
  else if(a.path.includes('dateConstraints'))contents="export const todayLocal=()=> '2026-01-01';";
+  else if(a.path.includes('formatMoney'))contents="export const formatMoney=v=>String(v??0),moneyNumber=v=>Number(v??0);";
  else if(a.path==='sonner')contents="export const toast={success:()=>{},error:()=>{}};";
  else if(a.path==='lucide-react')contents="export const SlidersHorizontal=()=>null,AlertTriangle=()=>null,MoreHorizontal=()=>null;";
  else if(a.path==='@radix-ui/react-dropdown-menu')contents="import React from 'react';const C=p=>React.createElement('menu',p,p.children);export const Root=C,Trigger=C,Portal=C,Content=C,Item=C;";

@@ -15,12 +15,19 @@ export interface PrintColumn<Row> {
   label: string;
   align?: "left" | "center" | "right";
   render: (row: Row, index: number) => ReactNode;
+  /** Raw numeric value used by print-to-Excel so formulas can reference it. */
+  dataValue?: (row: Row, index: number) => number | string | null | undefined;
+  dataFormat?: string;
 }
 
 export interface PrintTotal {
   label: string;
   value: ReactNode;
   emphasis?: boolean;
+  /** Raw numeric value and optional Excel formula for the hidden export row. */
+  dataValue?: number | string | null;
+  formula?: string;
+  dataFormat?: string;
 }
 
 export interface PrintSignature {
@@ -153,7 +160,31 @@ export default function DocumentPrintTemplate<Row>({
 
     <table className="w-full border-collapse">
       <thead><tr>{columns.map((column, index) => <th key={`${column.label}-${index}`} className={`border-y border-black px-2 py-2 font-bold ${alignClass[column.align ?? "left"]}`}>{column.label}</th>)}</tr></thead>
-      <tbody>{rows.map((row, rowIndex) => <tr key={rowKey ? rowKey(row, rowIndex) : rowIndex}>{columns.map((column, columnIndex) => <td key={columnIndex} className={`border-b border-slate-300 px-2 py-1 align-top ${alignClass[column.align ?? "left"]}`}>{column.render(row, rowIndex)}</td>)}</tr>)}</tbody>
+      <tbody>{rows.map((row, rowIndex) => <tr key={rowKey ? rowKey(row, rowIndex) : rowIndex}>{columns.map((column, columnIndex) => {
+        const raw = column.dataValue?.(row, rowIndex);
+        const hasRaw = raw !== null && raw !== undefined && raw !== "";
+        return <td
+          key={columnIndex}
+          data-v={hasRaw ? Number(raw) : undefined}
+          data-t={hasRaw ? "n" : undefined}
+          data-z={hasRaw ? column.dataFormat ?? "#,##0.00" : undefined}
+          className={`border-b border-slate-300 px-2 py-1 align-top ${alignClass[column.align ?? "left"]}`}
+        >{column.render(row, rowIndex)}</td>;
+      })}</tr>)}</tbody>
+      {!!totals.length && <tfoot className="hidden">
+        {totals.map((total, index) => {
+          const hasRaw = total.dataValue !== null && total.dataValue !== undefined && total.dataValue !== "";
+          return <tr key={`export-${total.label}-${index}`}>
+            <td colSpan={Math.max(1, columns.length - 1)}>{total.label}</td>
+            <td
+              data-v={hasRaw ? Number(total.dataValue) : undefined}
+              data-t={hasRaw ? "n" : undefined}
+              data-z={hasRaw ? total.dataFormat ?? "#,##0.00" : undefined}
+              data-f={total.formula}
+            >{total.value}</td>
+          </tr>;
+        })}
+      </tfoot>}
     </table>
 
     {!!totals.length && <div data-print-after-table className="ml-auto mt-3 w-[48%]">

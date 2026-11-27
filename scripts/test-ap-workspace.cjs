@@ -1,4 +1,4 @@
-/* global require, __dirname, console, process, global */
+/* global require, __dirname, console, process, global, URLSearchParams */
 /* eslint @typescript-eslint/no-require-imports: "off" */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
