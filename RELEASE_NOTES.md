@@ -1,10 +1,10 @@
 # Release notes
 
-Last verified: 2026-11-26.
+Last verified: 2026-11-27.
 
 ## Deployed revisions
 
-- Frontend `main`: `8ab16eb6` (Trial Balance, General Ledger and report print states), preceded by `f099bddd` (Bank Reconciliation, Balance Sheet/P&L shared workspace, release note), `a8e342d5` (Admin/Finance setup), `96927b64` (Inventory/Stock Movement Summary), `a00a0466` (operational flows), `5f3fd247` (POS operations), `5050e4f1` (print/export scope clarity).
+- Frontend `main`: `af69ec7f` (AR/AP reporting and AP aging print states), preceded by `8ab16eb6` (Trial Balance, General Ledger and report print states), `f099bddd` (Bank Reconciliation, Balance Sheet/P&L shared workspace, release note), `a8e342d5` (Admin/Finance setup), `96927b64` (Inventory/Stock Movement Summary), `a00a0466` (operational flows), `5f3fd247` (POS operations), `5050e4f1` (print/export scope clarity).
 - Backend `backend`: `7ea57c1f` (demo single-login receiving approval), preceded by `b27e65f3` (allowlisted demo DB routing). No backend change in the latest frontend waves.
 - Alembic head in both `erp_db` and `erp_demo`: `20261105_pos_guests`.
 - GitHub Actions Lambda deployments: runs `45542976476`, `45548502019`. Lambda `hmm-connect-api` Active/Successful; Function URL unchanged.
