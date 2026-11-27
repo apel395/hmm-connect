@@ -62,25 +62,53 @@ export default function JournalRegisterPrintPage() {
   const lastDataRow = Math.max(rows.length, 1) + 1;
   const debitTotalRow = lastDataRow + 1;
   const creditTotalRow = lastDataRow + 2;
+  const excelTotals = [
+    {
+      label: "TOTAL DEBIT",
+      value: money(totalDebit),
+      dataValue: totalDebit,
+      formula: rows.length ? `SUM(I2:I${lastDataRow})` : undefined,
+    },
+    {
+      label: "TOTAL CREDIT",
+      value: money(totalCredit),
+      dataValue: totalCredit,
+      formula: rows.length ? `SUM(J2:J${lastDataRow})` : undefined,
+    },
+    {
+      label: "DIFFERENCE",
+      value: money(totalDebit - totalCredit),
+      dataValue: totalDebit - totalCredit,
+      formula: rows.length ? `SUM(I2:I${lastDataRow})-SUM(J2:J${lastDataRow})` : undefined,
+    },
+  ];
 
   return (
     <FinancialReportPrintTemplate
       title="Journal Register"
       subtitle="Complete journal listing for the selected filters"
       filters={[
+        { label: "Date From", value: params.date_from || "All" },
+        { label: "Date To", value: params.date_to || "All" },
         { label: "Search", value: params.search || "All" },
         { label: "Status", value: params.status || "All" },
+        { label: "Source / Category", value: params.reference_type ? String(params.reference_type).replaceAll("_", " ") : "All" },
         { label: "Location", value: scope.data?.locations.find(row => row.id === Number(params.location_id || (scope.data?.location_locked ? scope.data.default_location_id : 0)))?.name || "All locations" },
-        { label: "Unit", value: scope.data?.units.find(row => row.id === Number(params.business_unit_id))?.name || "All units" },
+        { label: "Business Unit", value: scope.data?.units.find(row => row.id === Number(params.business_unit_id))?.name || "All units" },
+        { label: "Department ID", value: params.department_id || "All" },
+        { label: "Supplier ID", value: params.supplier_id || "All" },
+        { label: "Account ID", value: params.account_id || "All" },
+        { label: "Balance State", value: params.balance_state || "All" },
+        { label: "Difference", value: params.difference_amount || "All" },
         { label: "Journal Count", value: rows.length },
       ]}
       columns={[
         { label: "Journal No.", render: (row: any) => row.journal_number },
-        { label: "Date", render: (row: any) => row.journal_date },
-        { label: "Document", render: (row: any) => row.reference_number || "—" },
-        { label: "Type", render: (row: any) => String(row.reference_type || "").replaceAll("_", " ") || "—" },
-        { label: "Debited Account", render: (row: any) => accountSummary(row, "debit") },
-        { label: "Credited Account", render: (row: any) => accountSummary(row, "credit") },
+        { label: "Journal Date", render: (row: any) => row.journal_date },
+        { label: "Reference / Document", render: (row: any) => row.reference_number || "—" },
+        { label: "Source / Category", render: (row: any) => String(row.reference_type || "").replaceAll("_", " ") || "—" },
+        { label: "Debit Accounts", render: (row: any) => accountSummary(row, "debit") },
+        { label: "Credit Accounts", render: (row: any) => accountSummary(row, "credit") },
         { label: "Description", render: (row: any) => row.description || "—" },
         { label: "Location", render: (row: any) => row.location_name || "—" },
         { label: "Debit", align: "right", dataValue: (row: any) => moneyNumber(row.total_debit), render: (row: any) => money(row.total_debit) },
@@ -89,6 +117,8 @@ export default function JournalRegisterPrintPage() {
       ]}
       rows={rows}
       rowKey={(row: any) => row.id}
+      excelSheetName="Journal Register"
+      excelTotals={excelTotals}
       footerRows={
         <>
           <tr className="font-bold">

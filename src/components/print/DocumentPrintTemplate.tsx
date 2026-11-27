@@ -4,7 +4,7 @@ import { attachNativePrintTracking, createPrintSession, stampText, type PrintTar
 import Button from "@/components/ui/Button";
 import { Download, Printer } from "lucide-react";
 import { toast } from "sonner";
-import { exportTablesToExcel, printExcelFileName } from "@/utils/exportPrintTables";
+import { exportTablesToExcel, printExcelFileName, safeSheetName } from "@/utils/exportPrintTables";
 
 export interface PrintField {
   label: string;
@@ -49,6 +49,7 @@ interface Props<Row> {
   columns: PrintColumn<Row>[];
   rows: Row[];
   rowKey?: (row: Row, index: number) => string | number;
+  excelSheetName?: string;
   totals?: PrintTotal[];
   notes?: ReactNode;
   extraAfterTable?: ReactNode;
@@ -77,6 +78,7 @@ export default function DocumentPrintTemplate<Row>({
   columns,
   rows,
   rowKey,
+  excelSheetName,
   totals = [],
   notes,
   extraAfterTable,
@@ -131,6 +133,8 @@ export default function DocumentPrintTemplate<Row>({
     catch {toast.error("Unable to export the document to Excel");}
   };
   const visibleAuthenticity = authenticity.filter((field) => field.value !== undefined && field.value !== null && field.value !== "");
+  const dataSheetName = safeSheetName(excelSheetName || printExcelFileName(title));
+  const generatedAt = new Date().toISOString();
   return <article ref={articleRef} data-print-ready="true" className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
     <style>{`@page{size:A4 portrait;margin:10mm}@media print{body{background:#fff!important}.print-document{max-width:none!important;min-height:auto!important;padding:0!important}.print-document thead{display:table-header-group}.print-document tr{break-inside:avoid;page-break-inside:avoid}.avoid-break{break-inside:avoid;page-break-inside:avoid}}`}</style>
     <div className="mb-2 flex justify-end gap-2 print:hidden"><Button variant="outline" disabled={printing} onClick={downloadExcel} aria-label="Export document to Excel"><Download size={16}/> Excel</Button>{printTarget&&<Button variant="outline" disabled={printing} onClick={downloadPdf}>Download PDF</Button>}<Button variant="outline" disabled={printing} aria-label="Print document" onClick={printCopy}><Printer size={16}/></Button></div>
@@ -158,7 +162,7 @@ export default function DocumentPrintTemplate<Row>({
 
     <h1 className="my-4 text-center text-[18px] font-bold tracking-[0.16em]">{title.toUpperCase()}</h1>
 
-    <table className="w-full border-collapse">
+    <table data-export-sheet={dataSheetName} className="w-full border-collapse">
       <thead><tr>{columns.map((column, index) => <th key={`${column.label}-${index}`} className={`border-y border-black px-2 py-2 font-bold ${alignClass[column.align ?? "left"]}`}>{column.label}</th>)}</tr></thead>
       <tbody>{rows.map((row, rowIndex) => <tr key={rowKey ? rowKey(row, rowIndex) : rowIndex}>{columns.map((column, columnIndex) => {
         const raw = column.dataValue?.(row, rowIndex);
@@ -171,20 +175,6 @@ export default function DocumentPrintTemplate<Row>({
           className={`border-b border-slate-300 px-2 py-1 align-top ${alignClass[column.align ?? "left"]}`}
         >{column.render(row, rowIndex)}</td>;
       })}</tr>)}</tbody>
-      {!!totals.length && <tfoot className="hidden">
-        {totals.map((total, index) => {
-          const hasRaw = total.dataValue !== null && total.dataValue !== undefined && total.dataValue !== "";
-          return <tr key={`export-${total.label}-${index}`}>
-            <td colSpan={Math.max(1, columns.length - 1)}>{total.label}</td>
-            <td
-              data-v={hasRaw ? Number(total.dataValue) : undefined}
-              data-t={hasRaw ? "n" : undefined}
-              data-z={hasRaw ? total.dataFormat ?? "#,##0.00" : undefined}
-              data-f={total.formula}
-            >{total.value}</td>
-          </tr>;
-        })}
-      </tfoot>}
     </table>
 
     {!!totals.length && <div data-print-after-table className="ml-auto mt-3 w-[48%]">
@@ -222,5 +212,38 @@ export default function DocumentPrintTemplate<Row>({
     </section>}
 
     {footer && <footer className="mt-5 border-t pt-2 text-[10px] text-slate-600">{footer}</footer>}
+
+    <div data-export-include className="hidden">
+      <table data-export-sheet="Control" data-export-source-sheet={dataSheetName} data-export-autofilter="false">
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>DOCUMENT #</td><td>{documentNumber ?? "—"}</td></tr>
+          <tr><td>DATE</td><td>{documentDate ?? "—"}</td></tr>
+          {status != null && <tr><td>STATUS</td><td>{status}</td></tr>}
+          {fields.filter((field) => field.value !== undefined && field.value !== null && field.value !== "").map((field, index) => <tr key={`export-field-${index}`}><td>{field.label}</td><td>{field.value}</td></tr>)}
+          {totals.map((total, index) => {
+            const hasRaw = total.dataValue !== null && total.dataValue !== undefined && total.dataValue !== "";
+            return <tr key={`export-total-${index}`}>
+              <td>{total.label}</td>
+              <td
+                data-v={hasRaw ? Number(total.dataValue) : undefined}
+                data-t={hasRaw ? "n" : undefined}
+                data-z={hasRaw ? total.dataFormat ?? "#,##0.00" : undefined}
+                data-f={total.formula}
+              >{total.value}</td>
+            </tr>;
+          })}
+          <tr><td>NOTES</td><td>{notes || "—"}</td></tr>
+          <tr><td>GENERATED AT</td><td>{generatedAt}</td></tr>
+        </tbody>
+      </table>
+      <table data-export-sheet="Audit" data-export-autofilter="false">
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          {visibleAuthenticity.map((field, index) => <tr key={`export-audit-${index}`}><td>{field.label}</td><td>{field.value}</td></tr>)}
+          {footer && <tr><td>FOOTER</td><td>{footer}</td></tr>}
+        </tbody>
+      </table>
+    </div>
   </article>;
 }

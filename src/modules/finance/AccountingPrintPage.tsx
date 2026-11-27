@@ -18,21 +18,25 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
   const isJournal = kind === "journal-entries";
   const isPayment = kind === "payments";
   const rows: any[] = isPayment ? (data.allocations ?? []) : (data.lines ?? []);
-  const title = isPayment ? "Payment" : isJournal ? "Journal Entry" : "Supplier Invoice";
-  const documentNumber = data.payment_number || data.journal_number || data.internal_invoice_number;
-  const documentDate = data.payment_date || data.journal_date || data.posting_date || data.invoice_date;
+  const title = isPayment ? "Payment" : isJournal ? "Journal Voucher" : "Supplier Invoice";
+  const documentNumber = data.journal_number || data.payment_number || data.internal_invoice_number;
+  const documentDate = data.journal_date || data.posting_date || data.payment_date || data.invoice_date;
 
   const fields = isPayment ? [
+    { label: "PAYMENT DATE", value: date(data.payment_date) },
     { label: "PAY TO", value: data.supplier_name },
     { label: "PAYMENT METHOD", value: String(data.payment_method || "—").replaceAll("_", " ") },
     { label: "REFERENCE", value: data.reference_number },
-    { label: "UNIT BISNIS", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
+    { label: "BUSINESS UNIT", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
     { label: "LOCATION", value: data.location_name ?? (data.location_id ? `#${data.location_id}` : undefined) },
     { label: "DEPARTMENT", value: data.department_name ?? (data.department_id ? `#${data.department_id}` : undefined) },
   ] : isJournal ? [
+    { label: "JOURNAL DATE", value: date(data.journal_date) },
+    { label: "POSTING DATE", value: data.posting_date ? date(data.posting_date) : "—" },
+    { label: "SOURCE / CATEGORY", value: String(data.reference_type || data.source_type || "MANUAL").replaceAll("_", " ") },
     { label: "REFERENCE", value: data.reference_number || data.document_number },
     { label: "DESCRIPTION", value: data.description },
-    { label: "UNIT BISNIS", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
+    { label: "BUSINESS UNIT", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
     { label: "LOCATION", value: data.location_name ?? (data.location_id ? `#${data.location_id}` : undefined) },
     { label: "DEPARTMENT", value: data.department_name ?? (data.department_id ? `#${data.department_id}` : undefined) },
   ] : [
@@ -40,19 +44,17 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     { label: "SUPPLIER INVOICE #", value: data.supplier_invoice_number },
     { label: "PO #", value: data.purchase_order_number },
     { label: "RECEIVING #", value: data.receipt_number },
-    { label: "UNIT BISNIS", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
+    { label: "BUSINESS UNIT", value: data.business_unit_name ?? (data.business_unit_id ? `#${data.business_unit_id}` : undefined) },
     { label: "LOCATION", value: data.location_name ?? (data.location_id ? `#${data.location_id}` : undefined) },
     { label: "DEPARTMENT", value: data.department_name ?? (data.department_id ? `#${data.department_id}` : undefined) },
     { label: "DUE DATE", value: data.due_date ? date(data.due_date) : undefined },
   ];
 
   const lastDataRow = rows.length + 1;
-  const debitTotalRow = rows.length + 2;
-  const creditTotalRow = rows.length + 3;
   const columns = isJournal ? [
+    { label: "LINE", align: "center" as const, render: (_line: any, index: number) => index + 1 },
     { label: "ACCOUNT CODE", align: "left" as const, render: (line: any) => line.account_code || "—" },
-    { label: "ACCOUNT", align: "left" as const, render: (line: any) => line.account_name || "—" },
-    { label: "SIDE", align: "center" as const, render: (line: any) => moneyNumber(line.debit) > 0 ? "DEBIT" : "CREDIT" },
+    { label: "ACCOUNT NAME", align: "left" as const, render: (line: any) => line.account_name || "—" },
     { label: "DESCRIPTION", align: "left" as const, render: (line: any) => line.description || "—" },
     { label: "DEBIT", align: "right" as const, dataValue: (line: any) => moneyNumber(line.debit), render: (line: any) => money(line.debit) },
     { label: "CREDIT", align: "right" as const, dataValue: (line: any) => moneyNumber(line.credit), render: (line: any) => money(line.credit) },
@@ -110,7 +112,7 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
       value: money(Number(data.total_debit || 0) - Number(data.total_credit || 0)),
       emphasis: true,
       dataValue: moneyNumber(Number(data.total_debit || 0) - Number(data.total_credit || 0)),
-      formula: rows.length ? `E${debitTotalRow}-F${creditTotalRow}` : undefined,
+      formula: rows.length ? `SUM(E2:E${lastDataRow})-SUM(F2:F${lastDataRow})` : undefined,
     },
   ] : isPayment ? [
     { label: "INVOICE SETTLEMENT", value: money(data.total_amount), dataValue: moneyNumber(data.total_amount) },
@@ -140,6 +142,7 @@ export default function AccountingPrintPage({ kind }: { kind: "supplier-invoices
     columns={columns}
     rows={rows}
     rowKey={(row: any, index) => row.id ?? index}
+    excelSheetName={isJournal ? "Journal Lines" : undefined}
     totals={totals}
     notes={data.notes || data.description}
     extraAfterTable={funding}

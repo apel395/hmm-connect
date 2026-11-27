@@ -20,16 +20,37 @@ const parseCellReference = (reference: string): { row: number; column: number } 
   return { row: Number(match[2]) - 1, column };
 };
 
+/** Excel sheet names cannot contain these characters and are capped at 31 chars. */
+export function safeSheetName(value: string) {
+  return (value.replace(/[\\/?*[\]:]/g, " ").trim() || "Sheet").slice(0, 31);
+}
+
+const quoteSheet = (value: string) => `'${value.replace(/'/g, "''")}'`;
+
+/**
+ * Summary-sheet formulas are authored against the data sheet in plain A1 form.
+ * Qualify them here so a Control or Account Summary sheet can reference the
+ * correct worksheet without forcing every print page to know the final name.
+ */
+function qualifyFormula(formula: string, source?: string | null) {
+  const cleaned = formula.trim().replace(/^=/, "");
+  if (!source || cleaned.includes("!")) return cleaned;
+  return cleaned.replace(/\b([A-Z]{1,3}\d+(?::[A-Z]{1,3}\d+)?)\b/g, `${quoteSheet(source)}!$1`);
+}
+
 /**
  * Keep printed amounts as readable text while exporting real numbers and
  * formulas. Print markup can opt in with data-v (raw value), data-f (formula),
- * data-z (number format), and data-excel-address (explicit cell address).
+ * data-z (number format), data-excel-address (explicit cell address), and
+ * data-export-source-sheet (formula source when the summary lives elsewhere).
  */
 function applyCellMetadata(sheet: any, table: HTMLTableElement) {
+  const tableSource = table.getAttribute("data-export-source-sheet") ?? undefined;
   Array.from(table.rows).forEach((row, rowIndex) => {
     let columnIndex = 0;
     Array.from(row.cells).forEach((element) => {
       const cell = element as HTMLTableCellElement;
+      if (cell.closest("[data-export-omit]")) return;
       const override = parseCellReference(cell.getAttribute("data-excel-address") ?? "");
       const address = override ?? { row: rowIndex, column: columnIndex };
       const reference = cellReference(address.row, address.column);
@@ -49,22 +70,61 @@ function applyCellMetadata(sheet: any, table: HTMLTableElement) {
       const format = cell.getAttribute("data-z");
       if (format != null && format !== "") target.z = format;
       const formula = cell.getAttribute("data-f");
-      if (formula) target.f = formula.trim().replace(/^=/, "");
+      if (formula) target.f = qualifyFormula(formula, cell.getAttribute("data-export-source-sheet") ?? tableSource);
 
       columnIndex += Math.max(1, cell.colSpan || 1);
     });
   });
 }
 
+function decorateSheet(sheet: any, table: HTMLTableElement) {
+  if (table.getAttribute("data-export-autofilter") === "false") return;
+  const header = table.rows[0];
+  const headers = Array.from(header?.cells ?? []) as HTMLTableCellElement[];
+  const columnCount = Math.max(1, headers.reduce((total, cell) => total + Math.max(1, cell.colSpan || 1), 0));
+  const rowCount = Math.max(1, table.rows.length);
+  sheet["!autofilter"] = { ref: `A1:${columnName(columnCount - 1)}${rowCount}` };
+  sheet["!views"] = [{ state: "frozen", ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", pane: "bottomLeft" }];
+  sheet["!cols"] = headers.map((cell) => ({
+    wch: Math.min(48, Math.max(12, (cell.textContent || "").trim().length + 4)),
+  }));
+}
+
 /** Export the tables already rendered in a print preview to a workbook. */
 export function exportTablesToExcel(root: ParentNode | null | undefined, fileName: string) {
-  const tables = Array.from(root?.querySelectorAll("table") ?? []) as HTMLTableElement[];
+  const tables = (Array.from(root?.querySelectorAll("table") ?? []) as HTMLTableElement[]).filter(
+    (table) => !table.hasAttribute("data-export-omit") && !table.closest("[data-export-omit]"),
+  );
   if (!tables.length) throw new Error("No printable table is available to export");
+
   const workbook = XLSX.utils.book_new();
-  tables.forEach((table, index) => {
+  const usedNames = new Set<string>();
+  const generatedAt = new Date().toISOString();
+  Object.assign(workbook, {
+    Props: {
+      Title: fileName,
+      Subject: "Print report export",
+      Creator: "MMH-Connect",
+      Description: "Generated from print preview",
+      CreatedAt: new Date(),
+    },
+    Custprops: { ExportSource: "Print preview", GeneratedAt: generatedAt },
+  });
+
+  tables.forEach((table) => {
+    const base = safeSheetName(table.getAttribute("data-export-sheet") || `Sheet ${usedNames.size + 1}`);
+    let name = base;
+    let suffixIndex = 2;
+    while (usedNames.has(name)) {
+      const suffix = ` (${suffixIndex++})`;
+      name = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+    }
+    usedNames.add(name);
+
     const sheet = XLSX.utils.table_to_sheet(table);
     applyCellMetadata(sheet, table);
-    XLSX.utils.book_append_sheet(workbook, sheet, `Sheet ${index + 1}`.slice(0, 31));
+    decorateSheet(sheet, table);
+    XLSX.utils.book_append_sheet(workbook, sheet, name);
   });
   XLSX.writeFile(workbook, `${fileName}.xlsx`);
 }
