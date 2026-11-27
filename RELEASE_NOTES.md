@@ -23,17 +23,24 @@ Last verified: 2026-11-27.
 - Backend: full `pytest` (`1058 passed, 21 skipped`), `compileall`, `git diff --check`, migration-chain validation.
 - Frontend: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test` (`test:finance`, `test:workspace`, `test:pos-operations`, `test:inventory-print`, `test:inventory-module`, `test:admin-setup`, `test:report-workspace`, `test:store-request`) — all passing. `test:report-workspace` now covers fiscal COA mapping, reconciliation, Lampiran 1D and SPT 1771, including runtime fiscal API contract checks.
 - Demo purchasing E2E: PO → GRN approvals → GRN posting → supplier invoice → posted journal.
-- Public URL smoke: `/health` 200, demo login 200 with `db=demo`, `/api/v1/auth/me` 200. Operational-flow smoke: stock opnames, inventory returns, return sources, store requests and period report all 200; `/put-away` 404 as documented.
+- Public URL smoke: `/health` 200, demo login 200 with `db=demo`, `/api/v1/auth/me` 200. Operational-flow smoke: stock opnames, inventory returns, return sources, store requests and period report all 200; `/put-away` 404 as documented. Finance-flow smoke: AR summary/detail/aging, AP summary, fiscal reconciliation/balance sheet, SPT report/profile/credits and trial balance all 200.
 
 ## Demo workflow records
 
-Seeded through the public API with the demo token, all in `erp_demo` and all still in `DRAFT`:
+Seeded through the public API with the demo token, all in `erp_demo`. Operational drafts remain available for completion:
 
 - `SO-202611-0001` (Stock Opname, id 1, 3 snapshotted inventory lines)
 - `SR-202611-0001` (Store Request, id 1)
 - `RTN-202611-0001` (Inventory Return, id 1, sourced from existing GRN `GR-20261125-00002`)
 
-Read-back with the demo token returns 200 and `total_items=1` for all three lists. The demo token receives `503 Bulk journal import is not available in the demo database` for `/api/v1/journal-imports/template`, confirming the primary-only guard.
+Closed-loop finance data added in the latest demo pass:
+
+- AP: approved payment voucher `PV-20261127-00001`, partial payment `PAY-202611-0001`, and posted journal `PAY-202611-0005`; AP summary now shows 1 paid, 1 partially paid, and `175,000` outstanding.
+- AR: two posted POS invoices for `Demo AR Customer` (`INV-20261127-00001` 150,000 and `INV-20261127-00002` 300,000), plus posted customer receipt `CP-202611-0001` (100,000); AR summary now shows 450,000 gross, 100,000 received, 350,000 outstanding, and 50,000 overdue.
+- Fiscal: 2026 profile `PT HMM Connect Demo`, two tax credits (60,000 PPh 25 and 30,000 PPh 23), two posted P&L journals, and fiscal remapping for FINAL interest income and NON_DEDUCTIBLE entertainment; reconciliation shows 2,000,000 commercial profit, 250,000 correction, 2,250,000 fiscal taxable income, 247,500 PPh payable, and no unmapped commercial accounts.
+- New COA `400-110-100` (Catering Service Revenue) enables POS/AR seeding for the Project Catering business unit and is mapped to fiscal account `4021`.
+
+Read-back with the demo token returns 200 for the operational lists and all AR/AP/fiscal reporting endpoints. Trial balance remains balanced at 9,650,000 debit and credit. The demo token receives `503 Bulk journal import is not available in the demo database` for `/api/v1/journal-imports/template`, confirming the primary-only guard.
 
 ## Local-only test constraints
 
