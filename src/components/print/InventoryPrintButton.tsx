@@ -1,7 +1,8 @@
 import { attachNativePrintTracking, createPrintSession, printSnapshot, stampText } from "./printTracking";
 import { useEffect, useRef, useState } from "react";
-import { Printer } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import { toast } from "sonner";
+import { exportTablesToExcel, printExcelFileName } from "@/utils/exportPrintTables";
 import Button from "@/components/ui/Button";
 import Dialog, {
   DialogBody,
@@ -69,6 +70,10 @@ export default function InventoryPrintButton({
     catch {toast.error("Unable to record print attempt. Try again.");}
     finally {printingRef.current=false;setPrinting(false);}
   };
+  const downloadExcel = () => {
+    try {exportTablesToExcel(frame.current?.contentDocument, printExcelFileName(reportLabel));}
+    catch {toast.error("Unable to export the report to Excel");}
+  };
   return (
     <>
       <Button
@@ -109,6 +114,7 @@ export default function InventoryPrintButton({
             <Button variant="outline" onClick={() => setHtml("")}>
               Close
             </Button>
+            <Button variant="outline" disabled={!ready||printing} onClick={downloadExcel} aria-label="Export print preview to Excel"><Download size={16} /> Excel</Button>
             <Button disabled={!ready||printing} onClick={print}>
               <Printer size={16} /><span className="sr-only">Print</span>
             </Button>

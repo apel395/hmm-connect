@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Printer } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import type { PrintWindow } from "./printTracking";
+import { exportTablesToExcel, printExcelFileName } from "@/utils/exportPrintTables";
 import Button from "@/components/ui/Button";
 import { ReportScopeNote } from "@/components/common/ReportActions";
 import Dialog, { DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
@@ -58,6 +59,12 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
     try {await target.mmhDownloadPdf();}catch {toast.error("Unable to download PDF. Refresh the preview and try again.");}
     finally {printingRef.current=false;setPrinting(false);}
   };
+  const downloadExcel=()=>{
+    const doc=frameRef.current?.contentDocument;
+    if(!frameLoaded||!doc||printingRef.current||doc.querySelector('[data-print-ready="false"]')){toast.error("Wait for the report to load before exporting");return;}
+    try {exportTablesToExcel(doc, printExcelFileName(previewTitle));}
+    catch {toast.error("Unable to export the report to Excel");}
+  };
   return (
     <>
       <Button variant="outline" title="Print preview" aria-label={ariaLabel} onClick={() => { setFrameLoaded(false); setOpen(true); }}>
@@ -89,6 +96,7 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewOpen(false)}>Close</Button>
+            <Button variant="outline" disabled={!frameLoaded||printing} onClick={downloadExcel} aria-label="Export print preview to Excel"><Download size={16} /> Excel</Button>
             {purchasing&&<Button variant="outline" disabled={!frameLoaded||printing} onClick={downloadPdf}>Download PDF</Button>}
             <Button disabled={!frameLoaded || printing} onClick={print}><Printer size={16} /> Print</Button>
           </DialogFooter>
