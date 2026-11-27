@@ -1,8 +1,11 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import api from "@/api/client";
 import Empty from "@/components/ui/Empty";
 import Loading from "@/components/ui/Loading";
 import { apiErrorMessage } from "@/utils/apiError";
+import { agingDateRangeFromSearch, inAgingDateRange } from "./agingFilters";
 
 type AgingAmount = string | number | null | undefined;
 
@@ -39,32 +42,98 @@ type AgingPrintResponse = {
   generated_at?: string | null;
 };
 
+type AgingInvoice = {
+  id: number;
+  supplier_id: number;
+  supplier_name?: string | null;
+  invoice_date?: string | null;
+  due_date?: string | null;
+  amount?: AgingAmount;
+  paid_amount?: AgingAmount;
+  outstanding?: AgingAmount;
+};
+
+const PRINT_BUCKETS = ["0_30", "31_60", "61_90", "91_120", "over_120"] as const;
+
+const printBucket = (days: number) => {
+  if (days <= 30) return "0_30";
+  if (days <= 60) return "31_60";
+  if (days <= 90) return "61_90";
+  if (days <= 120) return "91_120";
+  return "over_120";
+};
+
 const money = (value: AgingAmount) =>
   Number(value || 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function APAgingPrintPage() {
+  const [searchParams] = useSearchParams();
+  const dateFrom = searchParams.get("date_from") || "";
+  const dateTo = searchParams.get("date_to") || "";
+  const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
+  const dateFilterActive = Boolean(dateFrom || dateTo) && !invalidRange;
+  const range = useMemo(() => agingDateRangeFromSearch(searchParams), [searchParams]);
+
   const query = useQuery({
     queryKey: ["accounts-payable-aging", "print"],
     queryFn: async () => (await api.get<AgingPrintResponse>("/ap-aging/print")).data,
   });
+  const invoices = useQuery({
+    queryKey: ["accounts-payable-aging", "print", "filtered", dateFrom, dateTo],
+    queryFn: async () => (await api.get<{ details: AgingInvoice[] }>("/ap-aging")).data.details,
+    enabled: dateFilterActive,
+  });
 
-  if (query.isLoading) {
+  const { rows, totals } = useMemo(() => {
+    if (!dateFilterActive) return { rows: query.data?.rows ?? [], totals: query.data?.totals ?? {} };
+    const supplierCodes = new Map((query.data?.rows ?? []).map((row) => [Number(row.supplier_id), row.supplier_code]));
+    const grouped = new Map<number, AgingPrintRow>();
+    const today = new Date().toLocaleDateString("en-CA");
+    for (const invoice of invoices.data ?? []) {
+      if (!inAgingDateRange(invoice.invoice_date, range)) continue;
+      const key = Number(invoice.supplier_id);
+      const bucket = printBucket(invoice.due_date ? Math.max((new Date(today).getTime() - new Date(invoice.due_date).getTime()) / 86400000, 0) : 0);
+      const row = grouped.get(key) ?? {
+        supplier_id: key,
+        supplier_code: supplierCodes.get(key),
+        supplier_name: invoice.supplier_name,
+        purchase: 0,
+        payment: 0,
+        outstanding: 0,
+        ...Object.fromEntries(PRINT_BUCKETS.map((item) => [item, 0])),
+      };
+      const outstanding = Number(invoice.outstanding || 0);
+      row.purchase = Number(row.purchase || 0) + Number(invoice.amount || 0);
+      row.payment = Number(row.payment || 0) + Number(invoice.paid_amount || 0);
+      row.outstanding = Number(row.outstanding || 0) + outstanding;
+      row[bucket] = Number(row[bucket] || 0) + outstanding;
+      grouped.set(key, row);
+    }
+    const filteredRows = Array.from(grouped.values()).sort((a, b) => String(a.supplier_name || "").localeCompare(String(b.supplier_name || "")));
+    const filteredTotals = Object.fromEntries(
+      (["purchase", "payment", "outstanding", ...PRINT_BUCKETS] as const).map((key) => [
+        key,
+        filteredRows.reduce((sum, row) => sum + Number(row[key] || 0), 0),
+      ]),
+    ) as AgingPrintTotals;
+    return { rows: filteredRows, totals: filteredTotals };
+  }, [dateFilterActive, invoices.data, query.data, range]);
+
+  if (query.isLoading || (dateFilterActive && invoices.isLoading)) {
     return <div data-print-ready="false"><Loading message="Loading AP aging report…" /></div>;
   }
-  if (query.isError) {
+  if (query.isError || (dateFilterActive && invoices.isError)) {
     return (
       <div data-print-ready="false" role="alert" className="p-6 text-sm text-red-700">
-        {apiErrorMessage(query.error, "AP aging report could not be loaded.")}
+        {apiErrorMessage(query.error || invoices.error, "AP aging report could not be loaded.")}
       </div>
     );
   }
-  if (!query.data) {
+  if (!query.data || (dateFilterActive && !invoices.data)) {
     return <div data-print-ready="false" role="alert" className="p-6 text-sm text-red-700">AP aging report could not be loaded.</div>;
   }
 
   const { as_of_date, printed_by, generated_at } = query.data;
-  const rows = query.data.rows ?? [];
-  const totals = query.data.totals ?? {};
 
   if (!rows.length) {
     return (
@@ -84,6 +153,7 @@ export default function APAgingPrintPage() {
           <div />
         </div>
         <div className="mt-1">As of {as_of_date}</div>
+        {dateFilterActive && <div className="mt-0.5">Invoice date {dateFrom || "…"} to {dateTo || "…"}</div>}
       </header>
 
       <table className="w-full border-collapse">

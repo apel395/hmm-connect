@@ -60,6 +60,27 @@ async function run() {
     status: "PARTIALLY_PAID",
   });
 
+  const filterBundle = await req("esbuild").build({
+    absWorkingDir: root,
+    tsconfig: root + "/tsconfig.app.json",
+    entryPoints: ["src/modules/finance/accounts-payable/agingFilters.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "cjs",
+  });
+  const filterModule = { exports: {} };
+  new Function("module", "exports", "require", filterBundle.outputFiles[0].text)(filterModule, filterModule.exports, (name) => req(name));
+  const { inAgingDateRange, agingDateRangeFromSearch, agingDateRangeParams } = filterModule.exports;
+  const range = agingDateRangeFromSearch(new URLSearchParams("date_from=2026-11-01&date_to=2026-11-30"));
+  assert.equal(inAgingDateRange("2026-11-01", range), true, "date range includes its start");
+  assert.equal(inAgingDateRange("2026-11-30", range), true, "date range includes its end");
+  assert.equal(inAgingDateRange("2026-10-31", range), false, "date range excludes earlier invoices");
+  assert.equal(inAgingDateRange("2026-12-01", range), false, "date range excludes later invoices");
+  assert.equal(inAgingDateRange(null, range), true, "undated invoices stay visible");
+  assert.equal(agingDateRangeParams(range).toString(), "date_from=2026-11-01&date_to=2026-11-30", "print source carries the date range");
+  assert.deepEqual(agingDateRangeFromSearch(new URLSearchParams("date_from=2026-12-01&date_to=2026-11-01")), {}, "invalid range falls back to all dates");
+
   const reporting = read("src/modules/finance/accounts-payable/APReportingPage.tsx");
   assert.ok(reporting.includes('<DataWorkspace area="Accounting" className="data-first">'), "AP uses the finance data-first shell");
   assert.equal((reporting.match(/<PageHeader/g) ?? []).length, 1, "AP reporting has one page header");
@@ -86,8 +107,18 @@ async function run() {
 
   const aging = read("src/modules/finance/accounts-payable/AccountsPayablePage.tsx");
   assert.equal((aging.match(/<PageHeader/g) ?? []).length, 1, "AP aging has one page header");
-  assert.ok(aging.includes('src="/accounts-payable/aging/print"'), "AP aging print route is preserved");
+  assert.ok(aging.includes("src={printSrc}"), "AP aging print uses the scoped source");
+  assert.ok(aging.includes("/accounts-payable/aging/print${search"), "AP aging print keeps its route and appends the date range");
+  assert.ok(aging.includes("agingDateRangeParams(range)"), "AP aging print shares the date range helper");
+  assert.ok(aging.includes('aria-label="Invoice date from"') && aging.includes('aria-label="Invoice date to"'), "AP aging exposes invoice date filters");
+  assert.ok(aging.includes("Screen and print use the same invoice date range."), "AP aging date filter scope is stated to users");
   assert.ok(aging.includes("opening_unassigned"), "manual opening AP exception stays visible");
+
+  const agingPrint = read("src/modules/finance/accounts-payable/APAgingPrintPage.tsx");
+  assert.ok(agingPrint.includes("agingDateRangeFromSearch(searchParams)"), "AP aging print reads the invoice date range");
+  assert.ok(agingPrint.includes('api.get<{ details: AgingInvoice[] }>("/ap-aging")'), "AP aging print filters invoice-level data without a backend change");
+  assert.ok(agingPrint.includes("Invoice date {dateFrom || \"…\"} to {dateTo || \"…\"}"), "AP aging print shows the applied date range");
+  assert.ok(agingPrint.includes('api.get<AgingPrintResponse>("/ap-aging/print")'), "AP aging print keeps the server register endpoint");
 
   const movement = read("src/modules/finance/accounts-payable/APMovementPage.tsx");
   assert.equal((movement.match(/<PageHeader/g) ?? []).length, 1, "AP movement has one page header");

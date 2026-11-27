@@ -15,6 +15,7 @@ import { Table, TBody, TD, TH, THead, TR, TableCellStack } from "@/components/ui
 import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { apiErrorMessage } from "@/utils/apiError";
 import APWorkspaceHeader from "./APWorkspaceHeader";
+import { agingDateRangeParams, inAgingDateRange, type AgingDateRange } from "./agingFilters";
 
 type PayableRow = {
   id: number;
@@ -91,13 +92,100 @@ export default function AccountsPayablePage() {
   const location = useLocation();
   const isAging = location.pathname.endsWith("/aging");
   const [agingTab, setAgingTab] = useState<"OPEN" | "PAID">("OPEN");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const aging = useQuery({ queryKey: ["accounts-payable-aging"], queryFn: async () => (await api.get<AgingResponse>("/ap-aging")).data });
 
-  const paidTotal = useMemo(
-    () => (aging.data?.paid ?? []).reduce((sum, row) => sum + Number(row.paid_amount || 0), 0),
-    [aging.data],
+  const invalidRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
+  const range = useMemo<AgingDateRange>(
+    () => (invalidRange ? {} : { date_from: dateFrom, date_to: dateTo }),
+    [invalidRange, dateFrom, dateTo],
   );
-  const metrics = aging.data?.metrics;
+  const dateFilterActive = Boolean(range.date_from || range.date_to);
+  const printSrc = useMemo(() => {
+    const search = agingDateRangeParams(range).toString();
+    return `/accounts-payable/aging/print${search ? `?${search}` : ""}`;
+  }, [range]);
+
+  const agingData = useMemo(() => {
+    const source = aging.data;
+    if (!source || !dateFilterActive) return source;
+    const details = (source.details ?? []).filter((row) => inAgingDateRange(row.invoice_date, range));
+    const paid = (source.paid ?? []).filter((row) => inAgingDateRange(row.invoice_date, range));
+    const totals = Object.fromEntries(bucketKeys.map((key) => [key, 0])) as Record<string, number>;
+    const counts = Object.fromEntries(bucketKeys.map((key) => [key, 0])) as Record<string, number>;
+    const suppliersByBucket = Object.fromEntries(bucketKeys.map((key) => [key, new Set<number>()])) as Record<string, Set<number>>;
+    const supplierMap = new Map<number, { supplier_id: number; supplier_name?: string | null; outstanding: number; invoice_count: number; overdue: number }>();
+    const today = new Date().toLocaleDateString("en-CA");
+    let totalOutstanding = 0;
+    let overdueTotal = 0;
+    let overdueCount = 0;
+    let dueToday = 0;
+    let weightedDays = 0;
+    let weightedAmount = 0;
+
+    for (const row of details) {
+      const outstanding = Number(row.outstanding || 0);
+      const days = Math.max(Number(row.days_overdue || 0), 0);
+      totalOutstanding += outstanding;
+      if (days > 0) {
+        weightedDays += outstanding * days;
+        weightedAmount += outstanding;
+      }
+      if ((row.aging_bucket ?? "current") !== "current") {
+        overdueTotal += outstanding;
+        overdueCount += 1;
+      }
+      if (row.due_date === today) dueToday += outstanding;
+      for (const key of bucketKeys) {
+        const value = Number((row as unknown as Record<string, number>)[key] || 0);
+        if (value <= 0) continue;
+        totals[key] += value;
+        counts[key] += 1;
+        suppliersByBucket[key].add(row.supplier_id);
+      }
+      const supplier = supplierMap.get(row.supplier_id) ?? {
+        supplier_id: row.supplier_id,
+        supplier_name: row.supplier_name,
+        outstanding: 0,
+        invoice_count: 0,
+        overdue: 0,
+      };
+      supplier.outstanding += outstanding;
+      supplier.invoice_count += 1;
+      if (days > 0) supplier.overdue += outstanding;
+      supplierMap.set(row.supplier_id, supplier);
+    }
+
+    return {
+      ...source,
+      details,
+      paid,
+      buckets: Object.fromEntries(bucketKeys.map((key) => [key, {
+        amount: totals[key],
+        invoice_count: counts[key],
+        supplier_count: suppliersByBucket[key].size,
+        percentage: totalOutstanding ? (totals[key] / totalOutstanding) * 100 : 0,
+      }])),
+      metrics: {
+        ...source.metrics,
+        total_outstanding: totalOutstanding,
+        overdue_total: overdueTotal,
+        due_today: dueToday,
+        overdue_invoice_count: overdueCount,
+        open_invoice_count: details.length,
+        supplier_count: supplierMap.size,
+        average_overdue_days: weightedAmount ? weightedDays / weightedAmount : 0,
+      },
+      top_suppliers: Array.from(supplierMap.values()).sort((a, b) => b.outstanding - a.outstanding).slice(0, 10),
+    } as AgingResponse;
+  }, [aging.data, dateFilterActive, range]);
+
+  const paidTotal = useMemo(
+    () => (agingData?.paid ?? []).reduce((sum, row) => sum + Number(row.paid_amount || 0), 0),
+    [agingData],
+  );
+  const metrics = agingData?.metrics;
 
   const summaryMetrics: SummaryMetric[] = isAging
     ? [
@@ -129,15 +217,50 @@ export default function AccountsPayablePage() {
           }
           actions={
             isAging && agingTab === "OPEN" ? (
-              <PrintPreviewButton src="/accounts-payable/aging/print" title="Account Payable Aging" ariaLabel="Print AP aging" label="Print" />
+              <PrintPreviewButton src={printSrc} title="Account Payable Aging" ariaLabel="Print AP aging" label="Print" />
             ) : undefined
           }
         >
-          <div className="mt-0.5 text-[11px] text-slate-500">Read-only AP subledger · aging as of today</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">
+            Read-only AP subledger · aging as of today · invoice dates {dateFilterActive ? `${range.date_from || "…"} → ${range.date_to || "…"}` : "all"}
+          </div>
         </PageHeader>
         <APWorkspaceHeader />
 
-        {aging.data?.opening_unassigned && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 print:hidden">
+          <span className="font-medium">Invoice date</span>
+          <label className="inline-flex items-center gap-1">
+            From
+            <input
+              aria-label="Invoice date from"
+              className="h-8 rounded border border-slate-300 bg-white px-2"
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+          </label>
+          <label className="inline-flex items-center gap-1">
+            To
+            <input
+              aria-label="Invoice date to"
+              className="h-8 rounded border border-slate-300 bg-white px-2"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+          </label>
+          {dateFilterActive && (
+            <Button size="sm" variant="outline" onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear date filter</Button>
+          )}
+          {invalidRange && <span role="alert" className="text-red-700">From date must be on or before To date.</span>}
+          {dateFilterActive && !invalidRange && (
+            <span className="text-slate-500">Screen and print use the same invoice date range.</span>
+          )}
+        </div>
+
+        {agingData?.opening_unassigned && (
           <div role="status" className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             The manual opening AP is recorded by account and cannot be assigned to this supplier or AP user. These balances show document activity only.
@@ -176,9 +299,9 @@ export default function AccountsPayablePage() {
                   {bucketKeys.map((key) => (
                     <TR key={key}>
                       <TD><Badge variant={bucketVariant(key)}>{bucketLabel[key]}</Badge></TD>
-                      <TD numeric>{money(aging.data?.buckets?.[key]?.amount)}</TD>
-                      <TD numeric>{aging.data?.buckets?.[key]?.invoice_count ?? 0}</TD>
-                      <TD numeric>{aging.data?.buckets?.[key]?.supplier_count ?? 0}</TD>
+                      <TD numeric>{money(agingData?.buckets?.[key]?.amount)}</TD>
+                      <TD numeric>{agingData?.buckets?.[key]?.invoice_count ?? 0}</TD>
+                      <TD numeric>{agingData?.buckets?.[key]?.supplier_count ?? 0}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -195,7 +318,7 @@ export default function AccountsPayablePage() {
               <Table containerClassName="rounded-none border-x-0 border-b-0 shadow-none">
                 <THead><TR><TH>Supplier</TH><TH numeric>Open Invoices</TH><TH numeric>Overdue</TH><TH numeric>Outstanding</TH></TR></THead>
                 <TBody>
-                  {(aging.data?.top_suppliers ?? []).map((row, index) => (
+                  {(agingData?.top_suppliers ?? []).map((row, index) => (
                     <TR key={row.supplier_id}>
                       <TD><TableCellStack primary={row.supplier_name || `Supplier #${row.supplier_id}`} secondary={`#${index + 1}`} /></TD>
                       <TD numeric>{row.invoice_count}</TD>
@@ -203,14 +326,14 @@ export default function AccountsPayablePage() {
                       <TD numeric className="font-semibold tabular-nums">{money(row.outstanding)}</TD>
                     </TR>
                   ))}
-                  {!aging.data?.top_suppliers?.length && (
+                  {!agingData?.top_suppliers?.length && (
                     <TR><TD colSpan={4} className="p-8 text-center text-slate-500">No outstanding suppliers.</TD></TR>
                   )}
                 </TBody>
               </Table>
             </Card>
 
-            <PayableTable title="Open Supplier Payables" rows={(aging.data?.details ?? []).slice(0, 8)} limitNote="Showing the 8 most recent open invoices." />
+            <PayableTable title="Open Supplier Payables" rows={(agingData?.details ?? []).slice(0, 8)} limitNote="Showing the 8 most recent open invoices." />
           </>
         ) : (
           <>
@@ -246,26 +369,26 @@ export default function AccountsPayablePage() {
                       {bucketKeys.map((key) => (
                         <TR key={key}>
                           <TD><Badge variant={bucketVariant(key)}>{bucketLabel[key]}</Badge></TD>
-                          <TD numeric>{money(aging.data?.buckets?.[key]?.amount)}</TD>
-                          <TD numeric>{aging.data?.buckets?.[key]?.invoice_count ?? 0}</TD>
-                          <TD numeric>{aging.data?.buckets?.[key]?.supplier_count ?? 0}</TD>
-                          <TD numeric>{Number(aging.data?.buckets?.[key]?.percentage ?? 0).toFixed(1)}%</TD>
+                          <TD numeric>{money(agingData?.buckets?.[key]?.amount)}</TD>
+                          <TD numeric>{agingData?.buckets?.[key]?.invoice_count ?? 0}</TD>
+                          <TD numeric>{agingData?.buckets?.[key]?.supplier_count ?? 0}</TD>
+                          <TD numeric>{Number(agingData?.buckets?.[key]?.percentage ?? 0).toFixed(1)}%</TD>
                         </TR>
                       ))}
                     </TBody>
                   </Table>
                 </Card>
-                <PayableTable title="Open Supplier Payables" rows={aging.data?.details ?? []} />
+                <PayableTable title="Open Supplier Payables" rows={agingData?.details ?? []} />
               </>
             ) : (
               <>
                 <ModuleSummary
                   metrics={[
                     { label: "Total payments allocated", value: money(paidTotal) },
-                    { label: "Invoices with payment", value: aging.data?.paid?.length ?? 0 },
+                    { label: "Invoices with payment", value: agingData?.paid?.length ?? 0 },
                   ]}
                 />
-                <PaidTable rows={aging.data?.paid ?? []} />
+                <PaidTable rows={agingData?.paid ?? []} />
               </>
             )}
           </>
