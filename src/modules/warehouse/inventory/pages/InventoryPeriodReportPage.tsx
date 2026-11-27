@@ -16,10 +16,16 @@ import InventoryPrintButton from "@/components/print/InventoryPrintButton";
 import { FORM_UI } from "@/config/formUi";
 import { warehouseApi } from "@/modules/master/warehouses/api/warehouseApi";
 import { warehouseErrorMessage } from "@/modules/warehouse/errors";
+import { exportTablesToExcel } from "@/utils/exportPrintTables";
+import useAuth from "@/store/auth";
 import {
   collectReportPages,
+  printCell,
   printMoney,
   printNumber,
+  renderInventoryPrint,
+  type InventoryPrintReport,
+  type PrintCell,
 } from "@/utils/inventoryPrint";
 import { todayLocal } from "@/utils/dateConstraints";
 
@@ -58,7 +64,72 @@ const columns = [
   ["closing_quantity", "Closing"],
 ] as const;
 
+/** One purpose-built report shared by print preview and filtered Excel export. */
+function buildPeriodReport(
+  data: Page,
+  context: string,
+  measure: string,
+): InventoryPrintReport {
+  const isValue = measure === "value";
+  const format = isValue ? printMoney : printNumber;
+  const measureFormat = isValue ? "#,##0.00" : "#,##0.####";
+  const keyFor = (key: string) =>
+    isValue ? key.replace("_quantity", "_value") : key;
+  const measureCell = (value: unknown): PrintCell =>
+    printCell(format(value), Number(value ?? 0), measureFormat);
+  const closingValue = Number(data.summary?.closing_value ?? 0);
+  const closingCell = (value: unknown): PrintCell =>
+    printCell(printMoney(value), Number(value ?? 0), "#,##0.00");
+
+  return {
+    title: "Stock Movement Summary",
+    context: `${context} · ${measure}`,
+    excelSheetName: "Stock Movement Summary",
+    excelWidths: [16, 34, 20, 8, ...columns.map(() => 16), 18],
+    summary: isValue
+      ? `Opening ${printMoney(data.summary?.opening_value)} · In ${printMoney(data.summary?.in_value)} · Out ${printMoney(data.summary?.out_value)} · Closing ${printMoney(
+          data.summary?.closing_value,
+        )}`
+      : `Quantity basis · Closing value ${printMoney(data.summary?.closing_value)}`,
+    columns: [
+      { label: "Code", code: true },
+      { label: "Description" },
+      { label: "Warehouse" },
+      { label: "UOM" },
+      ...columns.map(([, title]) => ({
+        label: title,
+        numeric: true,
+        format: measureFormat,
+      })),
+      { label: "Closing value", numeric: true, format: "#,##0.00" },
+    ],
+    groups: [
+      {
+        title: "Filtered stock lines",
+        rows: data.items.map((row) => [
+          row.product_code,
+          row.product_name,
+          row.warehouse,
+          row.uom,
+          ...columns.map(([key]) => measureCell(row[keyFor(key)])),
+          closingCell(row.closing_value),
+        ]),
+      },
+    ],
+    rowCount: data.items.length,
+    footer: [
+      "Grand total",
+      null,
+      null,
+      null,
+      ...columns.map(() => null),
+      printCell(printMoney(closingValue), closingValue, "#,##0.00"),
+    ],
+  };
+}
+
 export default function InventoryPeriodReportPage() {
+  const user = useAuth((state) => state.user);
   const [unit, setUnit] = useState("");
   const [from, setFrom] = useState(() => todayLocal().slice(0, 8) + "01");
   const [to, setTo] = useState(todayLocal);
@@ -94,7 +165,7 @@ export default function InventoryPeriodReportPage() {
     enabled: valid,
   });
   const all = () =>
-    collectReportPages<Row>(
+    collectReportPages<Row, Page>(
       async (p) =>
         (
           await api.get<Page>("/inventory/period-report", {
@@ -107,47 +178,16 @@ export default function InventoryPeriodReportPage() {
     setExporting(true);
     try {
       const data = await all();
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.utils.book_new();
-      const first = XLSX.utils.aoa_to_sheet([
-        ["Stock movement summary"],
-        [context],
-        ["Value basis", "Warehouse carrying cost"],
-        [],
-        ["Metric", "Value"],
-        ...Object.entries((data as Page).summary),
-      ]);
-      first["!cols"] = [{ wch: 28 }, { wch: 70 }];
-      XLSX.utils.book_append_sheet(workbook, first, "Summary");
-      const detail = XLSX.utils.json_to_sheet(
-        data.items.map((r) => ({
-          Code: r.product_code,
-          Description: r.product_name,
-          Warehouse: r.warehouse,
-          UOM: r.uom,
-          ...Object.fromEntries(
-            columns.flatMap(([key, title]) => [
-              [`${title} quantity`, Number(r[key])],
-              [`${title} value`, Number(r[key.replace("_quantity", "_value")])],
-            ]),
-          ),
-          "Opening value": Number(r.opening_value),
-          "Incoming value": Number(r.in_value),
-          "Outgoing value": Number(r.out_value),
-          "Closing value": Number(r.closing_value),
-          "Snapshot missing": r.missing_inventory_snapshot ? "Review" : "",
-        })),
+      const report = buildPeriodReport(data, context, measure);
+      const documentHtml = renderInventoryPrint(
+        report,
+        user?.full_name || user?.username || "User",
       );
-      detail["!cols"] = [
-        { wch: 16 },
-        { wch: 38 },
-        { wch: 20 },
-        { wch: 8 },
-        ...Array.from({ length: 21 }, () => ({ wch: 18 })),
-      ];
-      if (detail["!ref"]) detail["!autofilter"] = { ref: detail["!ref"] };
-      XLSX.utils.book_append_sheet(workbook, detail, "Stock Detail");
-      XLSX.writeFile(workbook, `Stock-${from}-${to}.xlsx`);
+      const document = new DOMParser().parseFromString(
+        documentHtml,
+        "text/html",
+      );
+      exportTablesToExcel(document, `Stock-${from}-${to}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Export failed");
     } finally {
@@ -170,38 +210,10 @@ export default function InventoryPeriodReportPage() {
             />
             <InventoryPrintButton
               disabled={!valid}
-              loadReport={async () => {
-                const data = await all();
-                return {
-                  title: "Stock Movement Summary",
-                  context: context + ` · ${measure}`,
-                  columns: [
-                    { label: "Code", code: true },
-                    { label: "Description" },
-                    { label: "Warehouse" },
-                    { label: "UOM" },
-                    ...columns.map(([, title]) => ({
-                      label: title,
-                      numeric: true,
-                    })),
-                    { label: "Closing value", numeric: true },
-                  ],
-                  groups: [
-                    {
-                      title: "Stock detail",
-                      rows: data.items.map((r) => [
-                        r.product_code,
-                        r.product_name,
-                        r.warehouse,
-                        r.uom,
-                        ...columns.map(([key]) => format(r[keyFor(key)])),
-                        printMoney(r.closing_value),
-                      ]),
-                    },
-                  ],
-                  rowCount: data.items.length,
-                };
-              }}
+              reportLabel="Stock Movement Summary"
+              loadReport={async () =>
+                buildPeriodReport(await all(), context, measure)
+              }
             />
           </>
         }

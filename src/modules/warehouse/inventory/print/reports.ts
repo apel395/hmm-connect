@@ -1,9 +1,11 @@
 import api from "@/api/client";
 import {
   collectReportPages,
+  printCell,
   printMoney as money,
   printNumber as num,
   type InventoryPrintReport,
+  type PrintCell,
   type PrintColumn,
   type PrintGroup,
   type ReportPage,
@@ -11,14 +13,20 @@ import {
 
 type Row = Record<string, any> & { id: number };
 type Params = Record<string, unknown>;
+const moneyCell = (value: unknown): PrintCell =>
+  printCell(money(value), Number(value ?? 0), "#,##0.00");
+const quantityCell = (value: unknown): PrintCell =>
+  printCell(num(value), Number(value ?? 0), "#,##0.####");
+const countCell = (value: unknown): PrintCell =>
+  printCell(num(value), Number(value ?? 0), "#,##0");
 const stockColumns: PrintColumn[] = [
   { label: "Item code", code: true },
   { label: "Item name" },
   { label: "Warehouse" },
   { label: "Unit" },
-  { label: "Quantity", numeric: true },
-  { label: "Average cost", numeric: true },
-  { label: "Stock value", numeric: true },
+  { label: "Quantity", numeric: true, format: "#,##0.####" },
+  { label: "Average cost", numeric: true, format: "#,##0.00" },
+  { label: "Stock value", numeric: true, format: "#,##0.00" },
 ];
 const accountName = (row: Row) =>
   row.inventory_account_code
@@ -65,9 +73,9 @@ export async function stockListReport(
         row.product_name,
         row.warehouse_name,
         row.uom,
-        num(row.quantity),
-        money(row.average_cost),
-        money(row.stock_value),
+        quantityCell(row.quantity),
+        moneyCell(row.average_cost),
+        moneyCell(row.stock_value),
       ]),
     footer: [
       "Subtotal",
@@ -76,12 +84,14 @@ export async function stockListReport(
       null,
       null,
       null,
-      money(total(items, "stock_value")),
+      moneyCell(total(items, "stock_value")),
     ],
   }));
   return {
     title,
     context,
+    excelSheetName: title,
+    excelWidths: [18, 34, 20, 8, 14, 16, 18],
     columns: stockColumns,
     groups,
     rowCount: data.items.length,
@@ -92,7 +102,7 @@ export async function stockListReport(
       null,
       null,
       null,
-      money(total(data.items, "stock_value")),
+      moneyCell(total(data.items, "stock_value")),
     ],
   };
 }
@@ -106,29 +116,31 @@ export async function warehouseValuationReport(
   return {
     title: "Stock Valuation by Warehouse",
     context,
+    excelSheetName: "Warehouse Valuation",
+    excelWidths: [34, 14, 16, 18],
     rowCount: data.items.length,
     columns: [
       { label: "Warehouse" },
-      { label: "Stock lines", numeric: true },
-      { label: "Low-stock lines", numeric: true },
-      { label: "Stock value", numeric: true },
+      { label: "Stock lines", numeric: true, format: "#,##0" },
+      { label: "Low-stock lines", numeric: true, format: "#,##0" },
+      { label: "Stock value", numeric: true, format: "#,##0.00" },
     ],
     groups: [
       {
         title: "Warehouses",
         rows: items.map(([, rows]) => [
           `${rows[0].warehouse_code || ""} ${rows[0].warehouse_name}`.trim(),
-          num(rows.length),
-          num(rows.filter((r) => r.low_stock).length),
-          money(total(rows, "stock_value")),
+          countCell(rows.length),
+          countCell(rows.filter((r) => r.low_stock).length),
+          moneyCell(total(rows, "stock_value")),
         ]),
       },
     ],
     footer: [
       "Grand total",
-      num(data.items.length),
-      num(data.items.filter((r) => r.low_stock).length),
-      money(total(data.items, "stock_value")),
+      countCell(data.items.length),
+      countCell(data.items.filter((r) => r.low_stock).length),
+      moneyCell(total(data.items, "stock_value")),
     ],
   };
 }
@@ -144,15 +156,17 @@ export async function lowStockReport(
   return {
     title: "Low Stock",
     context,
+    excelSheetName: "Low Stock",
+    excelWidths: [18, 34, 20, 8, 14, 14, 14],
     rowCount: data.items.length,
     columns: [
       { label: "Item code", code: true },
       { label: "Item name" },
       { label: "Warehouse" },
       { label: "Unit" },
-      { label: "On hand", numeric: true },
-      { label: "Minimum", numeric: true },
-      { label: "Shortage", numeric: true },
+      { label: "On hand", numeric: true, format: "#,##0.####" },
+      { label: "Minimum", numeric: true, format: "#,##0.####" },
+      { label: "Shortage", numeric: true, format: "#,##0.####" },
     ],
     groups: grouped(data.items, accountName).map(([, items]) => ({
       title: items[0].inventory_account_name || "Unmapped inventory account",
@@ -161,11 +175,20 @@ export async function lowStockReport(
         r.product_name,
         r.warehouse_name,
         r.uom,
-        num(r.quantity),
-        num(r.minimum_stock),
-        num(r.shortage),
+        quantityCell(r.quantity),
+        quantityCell(r.minimum_stock),
+        quantityCell(r.shortage),
       ]),
     })),
+    footer: [
+      "Grand total shortage",
+      null,
+      null,
+      null,
+      null,
+      null,
+      quantityCell(total(data.items, "shortage")),
+    ],
   };
 }
 
@@ -189,10 +212,10 @@ export async function movementReport(
     { label: "Item name" },
     { label: "Warehouse" },
     { label: "Event" },
-    { label: "Quantity", numeric: true },
-    { label: "Unit cost", numeric: true },
-    { label: "Value", numeric: true },
-    { label: "Remaining", numeric: true },
+    { label: "Quantity", numeric: true, format: "#,##0.####" },
+    { label: "Unit cost", numeric: true, format: "#,##0.00" },
+    { label: "Value", numeric: true, format: "#,##0.00" },
+    { label: "Remaining", numeric: true, format: "#,##0.####" },
   ];
   const value = (items: Row[], event: string) =>
     total(
@@ -202,6 +225,8 @@ export async function movementReport(
   return {
     title: "Stock Movement",
     context,
+    excelSheetName: "Stock Movement",
+    excelWidths: [14, 22, 18, 34, 20, 10, 14, 16, 18, 16],
     columns,
     rowCount: data.items.length,
     groups: grouped(data.items, accountName).map(([, items]) => ({
@@ -215,10 +240,14 @@ export async function movementReport(
           r.product_name,
           r.warehouse_name,
           direction(r),
-          num(r.quantity),
-          money(r.unit_cost),
-          money(r.movement_value),
-          r.running_quantity == null ? "—" : num(r.running_quantity),
+          quantityCell(r.quantity),
+          moneyCell(r.unit_cost),
+          printCell(
+            money(r.movement_value),
+            (direction(r) === "OUT" ? -1 : 1) * Number(r.movement_value),
+            "#,##0.00",
+          ),
+          r.running_quantity == null ? "—" : quantityCell(r.running_quantity),
         ]),
       footer: [
         "Subtotal net value",
@@ -229,7 +258,7 @@ export async function movementReport(
         null,
         null,
         null,
-        money(value(items, "IN") - value(items, "OUT")),
+        moneyCell(value(items, "IN") - value(items, "OUT")),
         null,
       ],
     })),
@@ -243,7 +272,7 @@ export async function movementReport(
       null,
       null,
       null,
-      money(value(data.items, "IN") - value(data.items, "OUT")),
+      moneyCell(value(data.items, "IN") - value(data.items, "OUT")),
       null,
     ],
   };
@@ -332,10 +361,10 @@ export async function stockCardReport(
         rows: items.map((r) => [
           r.movement_date,
           reference(r),
-          Number(r.in_quantity) ? num(r.in_quantity) : "—",
-          Number(r.out_quantity) ? num(r.out_quantity) : "—",
-          num(r.running_quantity),
-          money(
+          Number(r.in_quantity) ? quantityCell(r.in_quantity) : "—",
+          Number(r.out_quantity) ? quantityCell(r.out_quantity) : "—",
+          quantityCell(r.running_quantity),
+          moneyCell(
             r.movement_type === "OUT"
               ? -Number(r.movement_value)
               : r.movement_value,
@@ -344,10 +373,10 @@ export async function stockCardReport(
         footer: [
           "Period movement",
           null,
-          num(total(items, "in_quantity")),
-          num(total(items, "out_quantity")),
+          quantityCell(total(items, "in_quantity")),
+          quantityCell(total(items, "out_quantity")),
           null,
-          money(
+          moneyCell(
             items.reduce(
               (sum, r) =>
                 sum +
@@ -378,7 +407,7 @@ export async function stockCardReport(
         null,
         null,
         null,
-        num(balance.closing_quantity),
+        quantityCell(balance.closing_quantity),
         null,
       ],
     });
@@ -387,14 +416,16 @@ export async function stockCardReport(
   return {
     title: "Stock Card",
     context: `${context} · Period: ${filters.date_from} – ${filters.date_to}`,
+    excelSheetName: "Stock Card",
+    excelWidths: [14, 24, 14, 14, 20, 20],
     rowCount: data.items.length,
     columns: [
       { label: "Date" },
       { label: "Source document" },
-      { label: "IN", numeric: true },
-      { label: "OUT", numeric: true },
-      { label: "Running quantity", numeric: true },
-      { label: "Movement value", numeric: true },
+      { label: "IN", numeric: true, format: "#,##0.####" },
+      { label: "OUT", numeric: true, format: "#,##0.####" },
+      { label: "Running quantity", numeric: true, format: "#,##0.####" },
+      { label: "Movement value", numeric: true, format: "#,##0.00" },
     ],
     groups,
     footer: [
@@ -403,7 +434,7 @@ export async function stockCardReport(
       null,
       null,
       null,
-      money(
+      moneyCell(
         data.items.reduce(
           (sum, r) =>
             sum + (direction(r) === "OUT" ? -1 : 1) * Number(r.movement_value),
@@ -424,6 +455,8 @@ export async function inventoryDocumentReport(
     adjustments: {
       path: "/stock-adjustments",
       title: "Stock Adjustments",
+      sheet: "Stock Adjustments",
+      totalKeys: ["total_adjustment_value"],
       columns: [
         "Number",
         "Date",
@@ -446,6 +479,8 @@ export async function inventoryDocumentReport(
     opnames: {
       path: "/stock-opnames",
       title: "Stock Opname",
+      sheet: "Stock Opname",
+      totalKeys: ["total_items", "total_variance_quantity"],
       columns: [
         "Number",
         "Count date",
@@ -468,6 +503,8 @@ export async function inventoryDocumentReport(
     requests: {
       path: "/store-requests",
       title: "Store Requests",
+      sheet: "Store Requests",
+      totalKeys: ["total_remaining_quantity"],
       columns: [
         "Number",
         "Date",
@@ -496,27 +533,41 @@ export async function inventoryDocumentReport(
     "total_remaining_quantity",
     "total_adjustment_value",
   ]);
+  const formats: Record<string, string> = {
+    total_items: "#,##0",
+    total_variance_quantity: "#,##0.####",
+    total_remaining_quantity: "#,##0.####",
+    total_adjustment_value: "#,##0.00",
+  };
+  const cellFor = (key: string, value: unknown): PrintCell =>
+    key === "total_adjustment_value"
+      ? moneyCell(value)
+      : numericKeys.has(key)
+        ? printCell(num(value), Number(value ?? 0), formats[key])
+        : (value as PrintCell);
   return {
     title: config.title,
     context,
+    excelSheetName: config.sheet,
+    excelWidths: config.columns.map((_label, index) => (index === 0 ? 24 : 18)),
     rowCount: items.length,
     columns: config.columns.map((label, index) => ({
       label,
       numeric: numericKeys.has(config.keys[index]),
+      format: formats[config.keys[index]],
     })),
     groups: [
       {
         title: config.title,
         rows: items.map((r) =>
-          config.keys.map((key) =>
-            key === "total_adjustment_value"
-              ? money(r[key])
-              : numericKeys.has(key)
-                ? num(r[key])
-                : r[key],
-          ),
+          config.keys.map((key) => cellFor(key, r[key])),
         ),
       },
     ],
+    footer: config.columns.map((_label, index) => {
+      const key = config.keys[index];
+      if (config.totalKeys.includes(key)) return cellFor(key, total(items, key));
+      return index === 0 ? "Grand total" : null;
+    }),
   };
 }

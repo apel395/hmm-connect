@@ -174,26 +174,36 @@ globalThis.inventoryTestApi = async (path, { params } = {}) => {
     },
   };
 };
+const printed = (cell) =>
+  cell && typeof cell === "object" && !Array.isArray(cell)
+    ? cell.value
+    : cell;
 const valuation = await builders.stockListReport(
   { as_of: "2026-01-31" },
   "As of January",
 );
 assert.equal(valuation.groups.length, 2);
-assert.equal(valuation.footer[6], "Rp 900,00");
+assert.equal(printed(valuation.footer[6]), "Rp 900,00");
+assert.equal(valuation.footer[6].raw, 900);
+assert.equal(valuation.footer[6].format, "#,##0.00");
 assert.equal(valuation.footer[4], null, "Do not sum KG and BOX quantities");
+assert.equal(valuation.excelSheetName, "Stock List");
 const movement = await builders.movementReport(
   { date_from: "2026-01-01" },
   "January",
 );
-assert.equal(movement.footer[8], "Rp 300,00");
+assert.equal(printed(movement.footer[8]), "Rp 300,00");
+assert.equal(movement.footer[8].raw, 300);
 assert.equal(movement.groups[0].rows[1][5], "OUT");
+assert.equal(movement.groups[0].rows[1][8].raw, -200, "OUT values are signed in Excel");
 const card = await builders.stockCardReport(
   { account_id: 1, date_from: "2026-01-01", date_to: "2026-01-31" },
   "January",
 );
 assert.match(card.groups[0].detail, /Opening quantity: 10/);
-assert.equal(card.groups[0].rows[1][4], "13");
-assert.equal(card.groups[0].rows[1][5], "Rp -200,00");
+assert.equal(printed(card.groups[0].rows[1][4]), "13");
+assert.equal(printed(card.groups[0].rows[1][5]), "Rp -200,00");
+assert.equal(card.groups[0].rows[1][5].raw, -200);
 assert.ok(
   requests.some(
     (r) => r.params?.product_id === 10 && r.params.account_id === 1,
@@ -202,7 +212,8 @@ assert.ok(
 assert.ok(
   card.groups.some((g) => g.title.includes("Water") && g.rows.length === 0),
 );
-assert.equal(card.footer[5], "Rp 300,00");
+assert.equal(printed(card.footer[5]), "Rp 300,00");
+assert.equal(card.footer[5].raw, 300);
 const html = renderInventoryPrint(
   valuation,
   "Finance <Admin>",
@@ -216,6 +227,23 @@ assert.ok(html.includes("counter(pages)"));
 assert.ok(html.includes("table-header-group"));
 assert.ok(html.includes("Records: 2"));
 assert.ok(html.includes("WIB"));
+assert.ok(
+  html.includes('data-export-sheet="Stock List"'),
+  "inventory print exports exactly one named worksheet",
+);
+assert.equal(
+  (html.match(/data-export-sheet=/g) ?? []).length,
+  1,
+  "inventory print has no secondary sheets",
+);
+assert.match(html, /data-export-autofilter-range="A8:G\d+"/);
+assert.ok(html.includes('data-export-freeze-row="8"'));
+assert.ok(html.includes('data-export-widths="18,34,20,8,14,16,18"'));
+assert.ok(html.includes("EXPORT SOURCE"), "workbook keeps a single audit trail");
+assert.ok(!html.includes("Print preview uses"));
+assert.ok(html.includes('data-v="500"'), "printed money carries a raw Excel number");
+assert.ok(html.includes('data-z="#,##0.00"'), "Excel keeps two-decimal formatting");
+assert.ok(html.includes('data-f="SUM('), "totals are formula-driven");
 console.log(
-  "Inventory print passed: all pages, changing/incomplete data rejected, grouped valuation, mixed-unit safety, signed movements, true running balances, escaped fields and print metadata.",
+  "Inventory print passed: all pages, changing/incomplete data rejected, grouped valuation, mixed-unit safety, signed movements, true running balances, escaped fields, one-sheet Excel metadata and formulas.",
 );

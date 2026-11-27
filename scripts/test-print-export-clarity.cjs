@@ -163,6 +163,17 @@ async function run() {
   has("src/utils/exportPrintTables.ts", "data-v", "print-to-Excel reads raw numeric values");
   has("src/utils/exportPrintTables.ts", "data-f", "print-to-Excel writes formula cells");
 
+  has("src/modules/warehouse/inventory/pages/InventoryPeriodReportPage.tsx", "buildPeriodReport(", "inventory print and Excel share one report definition");
+  has("src/modules/warehouse/inventory/pages/InventoryPeriodReportPage.tsx", "exportTablesToExcel(document", "inventory Excel export uses the single-sheet print table");
+  has("src/modules/warehouse/inventory/pages/InventoryPeriodReportPage.tsx", 'scope="filtered"', "inventory Excel export keeps its filtered scope");
+  has("src/modules/warehouse/inventory/pages/InventoryPeriodReportPage.tsx", 'format="excel"', "inventory Excel export keeps its Excel format");
+  assert.ok(!read("src/modules/warehouse/inventory/pages/InventoryPeriodReportPage.tsx").includes("XLSX.utils.book_new"), "inventory Excel no longer builds multiple sheets");
+  has("src/utils/inventoryPrint.ts", "data-export-sheet=", "inventory print exports one named worksheet");
+  has("src/utils/inventoryPrint.ts", "data-export-autofilter-range=", "inventory worksheet scopes AutoFilter to data rows");
+  has("src/utils/inventoryPrint.ts", "data-export-freeze-row=", "inventory worksheet freezes the Excel header");
+  has("src/utils/inventoryPrint.ts", "EXPORT SOURCE", "inventory worksheet keeps its audit trail on the same sheet");
+  has("src/modules/warehouse/inventory/print/reports.ts", "excelWidths", "inventory reports declare readable column widths");
+
   for (const file of [
     "src/components/print/DocumentPrintTemplate.tsx",
     "src/components/print/FinancialReportPrintTemplate.tsx",

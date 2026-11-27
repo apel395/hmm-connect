@@ -23,7 +23,11 @@ for (const token of [
 assert.ok(source.includes('["inventory-period-report"'), "period report query key is preserved");
 assert.ok(source.includes('"/inventory/period-report"'), "period report endpoint is preserved");
 assert.ok(source.includes("ExportButton"), "filtered Excel export is preserved");
+assert.ok(source.includes('scope="filtered"'), "filtered export scope is preserved");
+assert.ok(source.includes('format="excel"'), "Excel export format is preserved");
 assert.ok(source.includes("InventoryPrintButton"), "authenticated report print is preserved");
+assert.ok(source.includes("buildPeriodReport("), "print and Excel share one report definition");
+assert.ok(!source.includes("XLSX.utils.book_new"), "multi-sheet workbook builder is removed");
 assert.ok(!source.includes("quantity_totals_by_uom.map"), "per-UOM arithmetic strip is removed from the UI");
 
 const fixture = {
@@ -44,7 +48,9 @@ const stubs = {
   sonner: "export const toast={error:()=>{}};",
   "@/api/client": "export default {get:async()=>({data:[]})};",
   "@/modules/master/warehouses/api/warehouseApi": "export const warehouseApi={list:async()=>({data:[]})};",
-  "@/utils/inventoryPrint": "export const collectReportPages=async()=>({items:[],summary:{}});export const printMoney=v=>String(v??0);export const printNumber=v=>String(v??0);",
+  "@/utils/inventoryPrint": "export const collectReportPages=async()=>({items:[],summary:{}});export const printCell=(value,raw)=>({value,raw});export const printMoney=v=>String(v??0);export const printNumber=v=>String(v??0);export const renderInventoryPrint=()=>'<html></html>';",
+  "@/utils/exportPrintTables": "export const exportTablesToExcel=()=>{};export const printExcelFileName=v=>String(v);",
+  "@/store/auth": "export default selector=>selector({user:{full_name:'Tester',username:'tester'}});",
   "@/utils/dateConstraints": "export const todayLocal=()=>'2026-11-25';",
   "@/components/common/ReportActions": "export const ExportButton=()=>null;",
   "@/components/print/InventoryPrintButton": componentStub,
