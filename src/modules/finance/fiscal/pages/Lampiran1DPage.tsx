@@ -3,43 +3,44 @@ import { useQuery } from "@tanstack/react-query";
 import { Printer, RefreshCw } from "lucide-react";
 import { ExportButton } from "@/components/common/ReportActions";
 import PageHeader from "@/components/common/PageHeader";
+import ModuleSummary from "@/components/common/ModuleSummary";
+import { FORM_UI } from "@/config/formUi";
+import Badge, { type BadgeVariant } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 import SearchableSelect from "@/components/form/SearchableSelect";
-import { listDepartments, listLocations } from "@/modules/admin/organization/api";
+import { listDepartments, listLocations, type Department, type Location } from "@/modules/admin/organization/api";
+import { apiErrorMessage } from "@/utils/apiError";
 import { exportCsv } from "@/utils/exportCsv";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
+import DataWorkspace from "@/components/workspace/DataWorkspace";
 import { fiscalApi } from "../api";
 import FiscalWorkspaceHeader from "../FiscalWorkspaceHeader";
 
-const money = (v: unknown) => "Rp " + Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const num = (v: unknown) => Number(v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value: unknown) => `Rp ${Number(value ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const num = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const numeric = "whitespace-nowrap text-right tabular-nums";
+const input = `${FORM_UI.controlBase} ${FORM_UI.density.compact.control}`;
 
-const clsVariant: Record<string, string> = {
-  NORMAL: "bg-emerald-50 text-emerald-700",
-  FINAL: "bg-slate-100 text-slate-600",
-  NON_DEDUCTIBLE: "bg-red-50 text-red-700",
-  KOREKSI_POSITIF: "bg-red-50 text-red-700",
-  KOREKSI_NEGATIF: "bg-blue-50 text-blue-700",
+const classificationVariant: Record<string, BadgeVariant> = {
+  NORMAL: "success",
+  FINAL: "default",
+  NON_DEDUCTIBLE: "danger",
+  KOREKSI_POSITIF: "danger",
+  KOREKSI_NEGATIF: "primary",
 };
 
-interface ReconLine {
-  fiscal_account_id: number;
-  fiscal_code: string;
-  fiscal_name: string;
-  klasifikasi_fiskal: string;
-  saldo_komersial: number;
-  koreksi_positif: number;
-  koreksi_negatif: number;
-  saldo_fiskal: number;
-}
+type LampiranFilters = {
+  fiscal_year: number;
+  department_id: number | string;
+  location_id: number | string;
+};
 
 export default function Lampiran1DPage() {
   const currentYear = new Date().getFullYear();
-  const [draft, setDraft] = useState<any>({ fiscal_year: currentYear, department_id: "", location_id: "" });
-  const [filters, setFilters] = useState<any>(draft);
+  const [draft, setDraft] = useState<LampiranFilters>({ fiscal_year: currentYear, department_id: "", location_id: "" });
+  const [filters, setFilters] = useState<LampiranFilters>(draft);
 
   const year = Number(filters.fiscal_year) || currentYear;
   const dateFrom = `${year}-01-01`;
@@ -55,158 +56,199 @@ export default function Lampiran1DPage() {
     queryKey: ["fiscal-lampiran-1d-recon", { dateFrom, dateTo, ...departmentFilter, ...locationFilter }],
     queryFn: async () => (await fiscalApi.reconciliation({ date_from: dateFrom, date_to: dateTo, ...departmentFilter, ...locationFilter })).data,
   });
-  const ds = useQuery({
+  const balanceSheet = useQuery({
     queryKey: ["fiscal-lampiran-1d-bs", { fiscal_year: year, ...departmentFilter, ...locationFilter }],
     queryFn: async () => (await fiscalApi.fiscalBalanceSheet({ fiscal_year: year, ...departmentFilter, ...locationFilter })).data,
   });
 
-  const reconData: any = recon.data;
-  const lines: ReconLine[] = reconData?.lines ?? [];
-  const summary = reconData?.summary ?? {};
-  const s = ds.data?.summary;
-  const sections: any[] = ds.data?.sections ?? [];
+  const lines = recon.data?.lines ?? [];
+  const summary = recon.data?.summary;
+  const balanceSummary = balanceSheet.data?.summary;
+  const sections = balanceSheet.data?.sections ?? [];
 
   const exportData = () => {
     const headers = ["SPT Account Code", "Name", "Classification", "Commercial", "Non-Taxable Object", "Subject to Final PPh", "Positive Correction", "Negative Correction", "Fiscal"];
-    const rows = lines.map((l) => {
-      const finalAmount = l.klasifikasi_fiskal === "FINAL" ? l.saldo_komersial : 0;
-      return [l.fiscal_code, l.fiscal_name, l.klasifikasi_fiskal ?? "", l.saldo_komersial, 0, finalAmount, l.koreksi_positif, l.koreksi_negatif, l.saldo_fiskal];
+    const rows = lines.map((line) => {
+      const finalAmount = line.klasifikasi_fiskal === "FINAL" ? line.saldo_komersial : 0;
+      return [line.fiscal_code, line.fiscal_name, line.klasifikasi_fiskal ?? "", line.saldo_komersial, 0, finalAmount, line.koreksi_positif, line.koreksi_negatif, line.saldo_fiskal];
     });
-    rows.push(["", "TOTAL", "", summary.laba_bersih_komersial ?? 0, 0, 0, summary.koreksi_positif ?? 0, summary.koreksi_negatif ?? 0, summary.laba_fiskal_pkp ?? 0]);
+    rows.push(["", "TOTAL", "", summary?.laba_bersih_komersial ?? 0, 0, 0, summary?.koreksi_positif ?? 0, summary?.koreksi_negatif ?? 0, summary?.laba_fiskal_pkp ?? 0]);
     exportCsv(`lampiran-1d-jasa-${year}.csv`, headers, rows);
   };
 
-  const isLoading = recon.isLoading || ds.isLoading;
+  const isLoading = recon.isLoading || balanceSheet.isLoading;
+  const loadError = recon.isError || balanceSheet.isError;
 
   return (
-    <div className="print-document space-y-4">
-      <div className="hidden print:block">
-        <h1 className="text-2xl font-bold">MMH-Connect</h1>
-        <h2 className="text-xl font-semibold">Lampiran 1D – Rekonsiliasi Laporan Keuangan (Jasa)</h2>
-        <p>Fiscal Year {year} · Coretax PER-11/PJ/2025 Jasa Sector (L1-D)</p>
-      </div>
-      <div className="print:hidden">
-        <FiscalWorkspaceHeader />
-      </div>
-      <div className="print:hidden">
-        <PageHeader title="Lampiran 1D (Jasa)" description={`Fiscal Year ${year} · Coretax PER-11/PJ/2025 Lampiran L1-D — Rekonsiliasi Laporan Keuangan, Jasa sector. Commercial figures reconciled to fiscal by fiscal classification; balance sheet half below.`} actions={
+    <DataWorkspace area="Accounting" className="data-first print-document">
+      <div className="space-y-4">
+        <div className="hidden print:block">
+          <h1 className="text-2xl font-bold">MMH-Connect</h1>
+          <h2 className="text-xl font-semibold">Lampiran 1D – Rekonsiliasi Laporan Keuangan (Jasa)</h2>
+          <p>Fiscal Year {year} · Coretax PER-11/PJ/2025 Jasa Sector (L1-D)</p>
+        </div>
+        <div className="print:hidden">
+          <FiscalWorkspaceHeader />
+        </div>
+        <div className="print:hidden">
+          <PageHeader
+            title="Lampiran 1D (Jasa)"
+            description={`Fiscal Year ${year} · Coretax PER-11/PJ/2025 Lampiran L1-D — Rekonsiliasi Laporan Keuangan, Jasa sector. Commercial figures reconciled to fiscal by fiscal classification; balance sheet half below.`}
+            actions={
+              <>
+                <Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>
+                <ExportButton scope="filtered" format="csv" onClick={exportData} />
+                <Button variant="outline" onClick={() => { recon.refetch(); balanceSheet.refetch(); }}><RefreshCw size={16} /> Refresh</Button>
+              </>
+            }
+          />
+        </div>
+
+        <Card className="p-4 print:hidden">
+          <form className="grid gap-3 md:grid-cols-4" onSubmit={(event) => { event.preventDefault(); setFilters({ ...draft }); }}>
+            <label>Fiscal Year
+              <input required type="number" min={2000} max={2100} className={input} value={draft.fiscal_year} onChange={(event) => setDraft({ ...draft, fiscal_year: Number(event.target.value) })} />
+            </label>
+            <SearchableSelect
+              label="Department"
+              value={draft.department_id || undefined}
+              disabled={departments.isLoading}
+              placeholder={departments.isLoading ? "Loading departments..." : "Type department code or name..."}
+              options={(departments.data ?? []).map((department: Department) => ({ id: department.id, label: `${department.code} - ${department.name}`, keywords: [String(department.code), String(department.name)] }))}
+              onChange={(id) => setDraft({ ...draft, department_id: id ?? "" })}
+            />
+            <SearchableSelect
+              label="Location"
+              value={draft.location_id || undefined}
+              disabled={locations.isLoading}
+              placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."}
+              options={(locations.data ?? []).map((location: Location) => ({ id: location.id, label: `${location.code} - ${location.name}`, keywords: [String(location.code), String(location.name)] }))}
+              onChange={(id) => setDraft({ ...draft, location_id: id ?? "" })}
+            />
+            <div className="flex items-end gap-2">
+              <Button type="submit">Apply</Button>
+              <Button type="button" variant="outline" onClick={() => {
+                const reset: LampiranFilters = { fiscal_year: currentYear, department_id: "", location_id: "" };
+                setDraft(reset);
+                setFilters(reset);
+              }}>Reset</Button>
+            </div>
+          </form>
+        </Card>
+
+        {isLoading ? (
+          <div className="py-16"><Loading message="Loading Lampiran 1D…" /></div>
+        ) : loadError ? (
+          <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+            <div className="font-semibold">Lampiran 1D could not be loaded.</div>
+            <p className="mt-1 text-xs">{apiErrorMessage(recon.error ?? balanceSheet.error, "The fiscal report service did not return a usable response.")}</p>
+            <Button className="mt-3" size="sm" variant="outline" onClick={() => { recon.refetch(); balanceSheet.refetch(); }}>Try again</Button>
+          </div>
+        ) : (
           <>
-            <Button variant="outline" onClick={() => window.print()}><Printer size={16} /> Print</Button>
-            <ExportButton scope="filtered" format="csv" onClick={exportData} />
-            <Button variant="outline" onClick={() => { recon.refetch(); ds.refetch(); }}><RefreshCw size={16} /> Refresh</Button>
+            <ModuleSummary metrics={[
+              { label: "Net Commercial Profit", value: money(summary?.laba_bersih_komersial) },
+              { label: "Positive Corrections (+)", value: money(summary?.koreksi_positif) },
+              { label: "Negative Corrections (−)", value: money(summary?.koreksi_negatif) },
+              { label: "Fiscal Profit (PKP)", value: money(summary?.laba_fiskal_pkp) },
+              { label: "Corporate Tax Payable (31E)", value: money(summary?.pph_terutang) },
+            ]} />
+
+            <Card className="p-0">
+              <div className="border-b px-4 py-3">
+                <h2 className="font-semibold">Income Statement (L1-D Reconciliation)</h2>
+                <p className="text-xs text-slate-500">Each commercial line is reconciled to fiscal; the "Non-Taxable Object" column is blank because it is not yet modeled separately.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <Table variant="grid">
+                  <THead>
+                    <TR>
+                      <TH>SPT Account Code</TH><TH>Name</TH><TH>Classification</TH>
+                      <TH className={numeric}>Commercial</TH>
+                      <TH className={numeric}>Non-Taxable</TH>
+                      <TH className={numeric}>Final PPh</TH>
+                      <TH className={numeric}>Positive Corr.</TH>
+                      <TH className={numeric}>Negative Corr.</TH>
+                      <TH className={numeric}>Fiscal</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {!lines.length && (
+                      <TR><TD colSpan={9} className="py-10 text-center text-slate-500">No P&amp;L activity in the fiscal year.</TD></TR>
+                    )}
+                    {lines.map((line) => {
+                      const finalAmount = line.klasifikasi_fiskal === "FINAL" ? line.saldo_komersial : 0;
+                      return (
+                        <TR key={line.fiscal_account_id}>
+                          <TD className="font-mono font-medium">{line.fiscal_code}</TD>
+                          <TD>{line.fiscal_name}</TD>
+                          <TD><Badge variant={classificationVariant[line.klasifikasi_fiskal] ?? "default"}>{line.klasifikasi_fiskal.replaceAll("_", " ")}</Badge></TD>
+                          <TD className={numeric}>{num(line.saldo_komersial)}</TD>
+                          <TD className={numeric}>0</TD>
+                          <TD className={numeric}>{num(finalAmount)}</TD>
+                          <TD className={numeric}>{num(line.koreksi_positif)}</TD>
+                          <TD className={numeric}>{num(line.koreksi_negatif)}</TD>
+                          <TD className={`${numeric} font-semibold`}>{num(line.saldo_fiskal)}</TD>
+                        </TR>
+                      );
+                    })}
+                    <TR className="bg-slate-100 font-semibold">
+                      <TD colSpan={3}>TOTAL</TD>
+                      <TD className={numeric}>{num(summary?.laba_bersih_komersial)}</TD>
+                      <TD className={numeric}>0</TD>
+                      <TD className={numeric}>0</TD>
+                      <TD className={numeric}>{num(summary?.koreksi_positif)}</TD>
+                      <TD className={numeric}>{num(summary?.koreksi_negatif)}</TD>
+                      <TD className={`${numeric} font-bold`}>{num(summary?.laba_fiskal_pkp)}</TD>
+                    </TR>
+                  </TBody>
+                </Table>
+              </div>
+            </Card>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Table variant="grid" stickyHeader className="min-w-full">
+                  <THead><TR><TH>Statement of Financial Position (Balance Sheet) — Assets</TH><TH className={numeric}>Fiscal</TH></TR></THead>
+                  <TBody>
+                    {sections.filter((section) => section.code === "ASET").flatMap((section) => section.sections.map((sub) => (
+                      <Fragment key={sub.code}>
+                        <TR className="bg-slate-50 font-semibold"><TD className="pl-6">{sub.label}</TD><TD className={numeric}>{money(sub.total)}</TD></TR>
+                        {sub.lines.map((line) => (
+                          <TR key={`${sub.code}-${line.fiscal_code}`}><TD className="pl-10">{line.fiscal_code} — {line.account_name}</TD><TD className={numeric}>{money(line.amount)}</TD></TR>
+                        ))}
+                      </Fragment>
+                    )))}
+                    {!sections.length && (
+                      <TR><TD colSpan={2} className="py-10 text-center text-slate-500">No fiscal balance sheet sections.</TD></TR>
+                    )}
+                    <TR className="bg-slate-100 font-bold"><TD>Total Assets</TD><TD className={numeric}>{money(balanceSummary?.total_assets)}</TD></TR>
+                  </TBody>
+                </Table>
+              </div>
+              <div>
+                <Table variant="grid" stickyHeader className="min-w-full">
+                  <THead><TR><TH>Statement of Financial Position (Balance Sheet) — Liabilities &amp; Equity</TH><TH className={numeric}>Fiscal</TH></TR></THead>
+                  <TBody>
+                    {sections.filter((section) => section.code === "KEWAJIBAN_EKUITAS").flatMap((section) => section.sections.map((sub) => (
+                      <Fragment key={sub.code}>
+                        <TR className="bg-slate-50 font-semibold"><TD className="pl-6">{sub.label}</TD><TD className={numeric}>{money(sub.total)}</TD></TR>
+                        {sub.lines.map((line) => (
+                          <TR key={`${sub.code}-${line.fiscal_code}`}><TD className="pl-10">{line.fiscal_code} — {line.account_name}</TD><TD className={numeric}>{money(line.amount)}</TD></TR>
+                        ))}
+                      </Fragment>
+                    )))}
+                    {!sections.length && (
+                      <TR><TD colSpan={2} className="py-10 text-center text-slate-500">No fiscal balance sheet sections.</TD></TR>
+                    )}
+                    <TR className="bg-slate-100 font-bold"><TD>Total Liabilities &amp; Equity</TD><TD className={numeric}>{money(balanceSummary?.total_liabilities_and_equity)}</TD></TR>
+                  </TBody>
+                </Table>
+              </div>
+            </div>
           </>
-        } />
+        )}
       </div>
-      <Card className="p-4 print:hidden">
-        <form className="grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); setFilters({ ...draft }); }}>
-          <label>Fiscal Year
-            <input required type="number" min={2000} max={2100} className="h-9 w-full rounded border px-3 text-[13px]" value={draft.fiscal_year} onChange={(e) => setDraft({ ...draft, fiscal_year: Number(e.target.value) })} />
-          </label>
-          <SearchableSelect label="Department" value={draft.department_id || undefined} disabled={departments.isLoading} placeholder={departments.isLoading ? "Loading departments..." : "Type department code or name..."} options={(departments.data ?? []).map((d: any) => ({ id: d.id, label: `${d.code} - ${d.name}`, keywords: [String(d.code), String(d.name)] }))} onChange={(id) => setDraft({ ...draft, department_id: id ?? "" })} />
-          <SearchableSelect label="Location" value={draft.location_id || undefined} disabled={locations.isLoading} placeholder={locations.isLoading ? "Loading locations..." : "Type location code or name..."} options={(locations.data ?? []).map((l: any) => ({ id: l.id, label: `${l.code} - ${l.name}`, keywords: [String(l.code), String(l.name)] }))} onChange={(id) => setDraft({ ...draft, location_id: id ?? "" })} />
-          <div className="flex items-end gap-2">
-            <Button type="submit">Apply</Button>
-            <Button type="button" variant="outline" onClick={() => { setDraft({ fiscal_year: currentYear, department_id: "", location_id: "" }); setFilters({ fiscal_year: currentYear, department_id: "", location_id: "" }); }}>Reset</Button>
-          </div>
-        </form>
-      </Card>
-
-      {isLoading ? <div className="py-16"><Loading /></div> : recon.isError || ds.isError ? (
-        <div className="rounded border border-red-300 bg-red-50 p-4 text-red-700">Lampiran 1D could not be loaded.</div>
-      ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Net Commercial Profit</div><div className="mt-2 text-xl font-bold">{money(summary.laba_bersih_komersial)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Positive Corrections (+)</div><div className="mt-2 text-xl font-bold text-red-700">{money(summary.koreksi_positif)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Negative Corrections (−)</div><div className="mt-2 text-xl font-bold text-blue-700">{money(summary.koreksi_negatif)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Fiscal Profit (PKP)</div><div className="mt-2 text-xl font-bold">{money(summary.laba_fiskal_pkp)}</div></Card>
-            <Card className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Corporate Tax Payable (31E)</div><div className="mt-2 text-xl font-bold text-emerald-700">{money(summary.pph_terutang)}</div></Card>
-          </div>
-
-          <Card className="p-0">
-            <div className="border-b px-4 py-3">
-              <h2 className="font-semibold">Income Statement (L1-D Reconciliation)</h2>
-              <p className="text-xs text-slate-500">Each commercial line is reconciled to fiscal; the "Non-Taxable Object" column is blank because it is not yet modeled separately.</p>
-            </div>
-            <div className="overflow-x-auto">
-              <Table variant="grid">
-                <THead><TR>
-                  <TH>SPT Account Code</TH><TH>Name</TH><TH>Classification</TH>
-                  <TH className={numeric}>Commercial</TH>
-                  <TH className={numeric}>Non-Taxable</TH>
-                  <TH className={numeric}>Final PPh</TH>
-                  <TH className={numeric}>Positive Corr.</TH>
-                  <TH className={numeric}>Negative Corr.</TH>
-                  <TH className={numeric}>Fiscal</TH>
-                </TR></THead>
-                <TBody>
-                  {lines.length === 0 && <TR><TD colSpan={9} className="py-10 text-center text-slate-500">No P&amp;L activity in the fiscal year.</TD></TR>}
-                  {lines.map((l) => {
-                    const finalAmount = l.klasifikasi_fiskal === "FINAL" ? l.saldo_komersial : 0;
-                    return (
-                      <TR key={l.fiscal_account_id}>
-                        <TD className="font-mono font-medium">{l.fiscal_code}</TD>
-                        <TD>{l.fiscal_name}</TD>
-                        <TD><span className={`rounded px-2 py-1 text-xs font-medium ${clsVariant[l.klasifikasi_fiskal] ?? "bg-slate-100 text-slate-600"}`}>{l.klasifikasi_fiskal.replaceAll("_", " ")}</span></TD>
-                        <TD className={numeric}>{num(l.saldo_komersial)}</TD>
-                        <TD className={numeric}>0</TD>
-                        <TD className={numeric}>{num(finalAmount)}</TD>
-                        <TD className={numeric}>{num(l.koreksi_positif)}</TD>
-                        <TD className={numeric}>{num(l.koreksi_negatif)}</TD>
-                        <TD className={`${numeric} font-semibold`}>{num(l.saldo_fiskal)}</TD>
-                      </TR>
-                    );
-                  })}
-                  <TR className="bg-slate-100 font-semibold">
-                    <TD colSpan={3}>TOTAL</TD>
-                    <TD className={numeric}>{num(summary.laba_bersih_komersial)}</TD>
-                    <TD className={numeric}>0</TD>
-                    <TD className={numeric}>0</TD>
-                    <TD className={numeric}>{num(summary.koreksi_positif)}</TD>
-                    <TD className={numeric}>{num(summary.koreksi_negatif)}</TD>
-                    <TD className={`${numeric} font-bold`}>{num(summary.laba_fiskal_pkp)}</TD>
-                  </TR>
-                </TBody>
-              </Table>
-            </div>
-          </Card>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Table variant="grid" stickyHeader className="min-w-full">
-                <THead><TR><TH>Statement of Financial Position (Balance Sheet) — Assets</TH><TH className={numeric}>Fiscal</TH></TR></THead>
-                <TBody>
-                  {sections.filter((sec: any) => sec.code === "ASET").flatMap((sec: any) => sec.sections.map((sub: any) => (
-                    <Fragment key={sub.code}>
-                      <TR className="bg-slate-50 font-semibold"><TD className="pl-6">{sub.label}</TD><TD className={numeric}>{money(sub.total)}</TD></TR>
-                      {sub.lines.map((line: any) => (
-                        <TR key={`${sub.code}-${line.fiscal_code}`}><TD className="pl-10">{line.fiscal_code} — {line.account_name}</TD><TD className={numeric}>{money(line.amount)}</TD></TR>
-                      ))}
-                    </Fragment>
-                  )))}
-                  <TR className="bg-slate-100 font-bold"><TD>Total Assets</TD><TD className={numeric}>{money(s?.total_assets)}</TD></TR>
-                </TBody>
-              </Table>
-            </div>
-            <div>
-              <Table variant="grid" stickyHeader className="min-w-full">
-                <THead><TR><TH>Statement of Financial Position (Balance Sheet) — Liabilities &amp; Equity</TH><TH className={numeric}>Fiscal</TH></TR></THead>
-                <TBody>
-                  {sections.filter((sec: any) => sec.code === "KEWAJIBAN_EKUITAS").flatMap((sec: any) => sec.sections.map((sub: any) => (
-                    <Fragment key={sub.code}>
-                      <TR className="bg-slate-50 font-semibold"><TD className="pl-6">{sub.label}</TD><TD className={numeric}>{money(sub.total)}</TD></TR>
-                      {sub.lines.map((line: any) => (
-                        <TR key={`${sub.code}-${line.fiscal_code}`}><TD className="pl-10">{line.fiscal_code} — {line.account_name}</TD><TD className={numeric}>{money(line.amount)}</TD></TR>
-                      ))}
-                    </Fragment>
-                  )))}
-                  <TR className="bg-slate-100 font-bold"><TD>Total Liabilities &amp; Equity</TD><TD className={numeric}>{money(s?.total_liabilities_and_equity)}</TD></TR>
-                </TBody>
-              </Table>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    </DataWorkspace>
   );
 }

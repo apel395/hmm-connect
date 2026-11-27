@@ -80,10 +80,12 @@ Already verified and deployed:
 - [x] U-54 Make the Balance Sheet/P&L, Trial Balance and General Ledger print layouts explicit about loading, error and empty states while preserving the authenticated report endpoints and print scopes.
 - [x] U-55 Extend the shared workspace treatment to AR reporting, AP reporting and AP aging with consistent loading, empty and error states, while keeping current-page CSV wording, workspace tabs, status/unit filters and print actions.
 - [x] U-56 Type the AP aging print payload and add explicit loading, error, empty and print-readiness states without changing the authenticated `/ap-aging/print` contract or table control totals.
+- [x] U-57 Apply the shared finance workspace treatment to the fiscal COA mapping and reconciliation screens with explicit loading, empty and error states and typed reconciliation contracts.
+- [x] U-58 Polish Lampiran 1D and SPT 1771 with shared summaries/states, tabs-only fiscal header and preserved profile, credit, export and print contracts.
 
 ## Recommended next task
 
-All waves through Wave 5 are complete, including Trial Balance, General Ledger, financial-statement print layouts, AR/AP reporting and AP aging. `scripts/test-report-workspace.cjs` guards the report screens and print contracts; `scripts/test-report-statistics.mjs` also passes. If continuing, deepen demo workflow data or review the fiscal report screens individually.
+All waves through Wave 5 are complete, including Trial Balance, General Ledger, financial-statement print layouts, AR/AP reporting, AP aging and the fiscal report screens. `scripts/test-report-workspace.cjs` guards the report screens and print contracts; `scripts/test-report-statistics.mjs` also passes. If continuing, deepen demo workflow data.
 
 ## Definition of done for a wave
 

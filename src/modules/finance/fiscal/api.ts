@@ -118,25 +118,117 @@ export type FiscalLinkedAccountPage = {
   pages: number;
 };
 
+export type FiscalAmount = string | number | null | undefined;
+
+export interface FiscalReconciliationAccount {
+  commercial_account_id: number;
+  commercial_code: string;
+  commercial_name: string;
+  saldo_komersial: FiscalAmount;
+  koreksi_positif: FiscalAmount;
+  koreksi_negatif: FiscalAmount;
+  saldo_fiskal: FiscalAmount;
+}
+
+export interface FiscalReconciliationLine {
+  fiscal_account_id: number;
+  fiscal_code: string;
+  fiscal_name: string;
+  klasifikasi_fiskal: string;
+  saldo_komersial: FiscalAmount;
+  koreksi_positif: FiscalAmount;
+  koreksi_negatif: FiscalAmount;
+  saldo_fiskal: FiscalAmount;
+  accounts: FiscalReconciliationAccount[];
+}
+
+export interface FiscalReconciliationSummary {
+  laba_bersih_komersial: FiscalAmount;
+  koreksi_positif: FiscalAmount;
+  koreksi_negatif: FiscalAmount;
+  laba_fiskal_pkp: FiscalAmount;
+  pph_terutang: FiscalAmount;
+}
+
+export interface FiscalUnmappedCommercial {
+  commercial_code: string;
+  commercial_name: string;
+  saldo_komersial: FiscalAmount;
+}
+
+export interface FiscalUnmappedCommercialPage {
+  items: FiscalUnmappedCommercial[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export type FiscalUnmappedCommercialResponse = FiscalUnmappedCommercial[] | FiscalUnmappedCommercialPage;
+
+export interface FiscalReconciliationResponse {
+  summary: FiscalReconciliationSummary;
+  lines: FiscalReconciliationLine[];
+  unmapped: FiscalUnmappedCommercial[];
+}
+
+export interface FiscalBalanceSheetLine {
+  fiscal_code: string;
+  account_name: string;
+  amount: FiscalAmount;
+}
+
+export interface FiscalBalanceSheetSection {
+  code: string;
+  label: string;
+  total: FiscalAmount;
+  lines: FiscalBalanceSheetLine[];
+}
+
+export interface FiscalBalanceSheetResponse {
+  summary?: {
+    total_assets: FiscalAmount;
+    total_liabilities_and_equity: FiscalAmount;
+  };
+  sections: Array<{ code: string; sections: FiscalBalanceSheetSection[] }>;
+}
+
+export interface Spt1771Response {
+  section_i_a: Record<string, unknown>;
+  section_ii: Record<string, unknown>;
+  section_iii: Record<string, unknown>;
+}
+
+export interface TaxCredit {
+  id: number;
+  tax_year: number;
+  credit_type: TaxCreditCreate["credit_type"];
+  amount: FiscalAmount;
+  description: string | null;
+  payment_date: string | null;
+  counterparty_npwp?: string | null;
+  counterparty_name?: string | null;
+}
+
 export const fiscalApi = {
-  accounts: (params: FiscalAccountListParams = {}) => api.get("/fiscal/accounts", { params }),
+  accounts: (params: FiscalAccountListParams = {}) => api.get<FiscalAccountPage>("/fiscal/accounts", { params }),
   account: (id: number) => api.get(`/fiscal/accounts/${id}`),
   createAccount: (payload: FiscalAccountPayload) => api.post("/fiscal/accounts", payload),
   updateAccount: (id: number, payload: FiscalAccountPayload) => api.patch(`/fiscal/accounts/${id}`, payload),
   deleteAccount: (id: number) => api.delete(`/fiscal/accounts/${id}`),
   categories: () => api.get("/fiscal/categories"),
-  mappings: (params: Record<string, unknown> = {}) => api.get("/fiscal/mappings", { params }),
-  linkedCoa: (params: Record<string, unknown> = {}) => api.get("/fiscal/linked-coa", { params }),
-  unmappedCommercial: (params: Record<string, unknown> = {}) => api.get("/fiscal/mappings/unmapped-commercial", { params }),
-  createMapping: (payload: { fiscal_account_id: number; commercial_account_id: number }) => api.post("/fiscal/mappings", payload),
+  mappings: (params: Record<string, unknown> = {}) => api.get<FiscalMappingPage>("/fiscal/mappings", { params }),
+  linkedCoa: (params: Record<string, unknown> = {}) => api.get<FiscalLinkedAccountPage>("/fiscal/linked-coa", { params }),
+  unmappedCommercial: (params: Record<string, unknown> = {}) => api.get<FiscalUnmappedCommercialResponse>("/fiscal/mappings/unmapped-commercial", { params }),
+  createMapping: (payload: { fiscal_account_id: number; commercial_account_id: number }) => api.post<FiscalMapping>("/fiscal/mappings", payload),
   deleteMapping: (id: number) => api.delete(`/fiscal/mappings/${id}`),
-  reconciliation: (params: { date_from: string; date_to: string; location_id?: number; department_id?: number; business_unit_id?: number }) => api.get("/fiscal/reconciliation", { params }),
-  fiscalBalanceSheet: (params: FiscalBalanceSheetParams) => api.get("/fiscal-balance-sheet", { params }),
+  reconciliation: (params: { date_from: string; date_to: string; location_id?: number; department_id?: number; business_unit_id?: number }) => api.get<FiscalReconciliationResponse>("/fiscal/reconciliation", { params }),
+  fiscalBalanceSheet: (params: FiscalBalanceSheetParams) => api.get<FiscalBalanceSheetResponse>("/fiscal-balance-sheet", { params }),
   exportBalanceSheet: (params: FiscalBalanceSheetParams, format: "xlsx" | "csv") => api.get("/fiscal-balance-sheet/export", { params: { ...params, format }, responseType: "blob" }),
-  sptReport: (params: SptReportParams) => api.get("/spt-1771/report", { params }),
-  sptProfile: (tax_year: number) => api.get("/spt-1771/profile", { params: { tax_year } }),
-  sptUpsertProfile: (tax_year: number, payload: Partial<TaxProfile>) => api.put("/spt-1771/profile", payload, { params: { tax_year } }),
-  sptCredits: (tax_year: number) => api.get("/spt-1771/credits", { params: { tax_year } }),
+  sptReport: (params: SptReportParams) => api.get<Spt1771Response>("/spt-1771/report", { params }),
+  sptProfile: (tax_year: number) => api.get<TaxProfile>("/spt-1771/profile", { params: { tax_year } }),
+  sptUpsertProfile: (tax_year: number, payload: Partial<TaxProfile>) => api.put<TaxProfile>("/spt-1771/profile", payload, { params: { tax_year } }),
+  sptCredits: (tax_year: number) => api.get<TaxCredit[]>("/spt-1771/credits", { params: { tax_year } }),
   sptCreateCredit: (payload: TaxCreditCreate) => api.post("/spt-1771/credits", payload),
   sptDeleteCredit: (id: number) => api.delete(`/spt-1771/credits/${id}`),
 };
