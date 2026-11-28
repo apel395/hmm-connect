@@ -5,16 +5,13 @@ import Empty from "@/components/ui/Empty";
 import Loading from "@/components/ui/Loading";
 import { apiErrorMessage } from "@/utils/apiError";
 import { formatMoney, moneyNumber } from "@/utils/formatMoney";
-import { safeSheetName } from "@/utils/exportPrintTables";
+import { buildGeneralLedgerReport, serializeGLReport } from "@/utils/generalLedgerExcel";
 import { getLedgerPrint } from "./api";
 
 const money = formatMoney;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const COLUMNS = ["Posting Date", "Journal No.", "Source Document", "Reference", "Description", "Location", "Dept", "Debit", "Credit", "Running Balance"];
-const EXPORT_HEADERS = ["Account Code", "Account Name", "Posting Date", "Journal No.", "Source Document", "Reference", "Description", "Location", "Dept", "Debit", "Credit", "Running Balance", "Row Type"];
-const EXPORT_WIDTHS = "18,28,14,18,24,22,44,18,14,18,18,18,16";
-const SHEET_NAME = safeSheetName("General Ledger");
 
 const longDate = (value?: string | null) => {
   if (!value) return "";
@@ -58,7 +55,6 @@ export default function GeneralLedgerPrintPage() {
     ? `${filters.account_code} — ${filters.account_name || "Selected account"}`
     : "ALL";
   const printedAt = data.generated_at ? new Date(data.generated_at).toLocaleString("en-GB") : "";
-  const generatedAt = data.generated_at ? new Date(data.generated_at).toISOString() : new Date().toISOString();
   const filteredScope = Object.entries(params).some(([, value]) => value && value !== "ALL");
   const movementLabel = filteredScope ? "MOVEMENT TOTAL (FILTERED)" : "MOVEMENT TOTAL";
   const closingLabel = filteredScope ? "Closing Balance (selected filters)" : "Closing Balance (carried forward)";
@@ -66,45 +62,7 @@ export default function GeneralLedgerPrintPage() {
     ? `${filters.account_from_code || "…"} - ${filters.account_to_code || "…"}`
     : "All";
 
-  const exportMeta = [
-    { label: "REPORT", value: "GENERAL LEDGER" },
-    { label: "PERIOD", value: period },
-    { label: "ACCOUNT", value: accountLine },
-    { label: "BUSINESS UNIT", value: filters.business_unit_name || "All" },
-    { label: "LOCATION", value: filters.location_name || "All" },
-    { label: "DEPARTMENT", value: filters.department_name || "All" },
-    { label: "REFERENCE TYPE", value: filters.reference_type || "All" },
-    { label: "SEARCH TYPE", value: filters.search_type || "All" },
-    { label: "SEARCH", value: filters.search || "—" },
-    { label: "SUPPLIER", value: filters.supplier_name || "All" },
-    { label: "ACCOUNT RANGE", value: accountRange },
-    { label: "PRINTED", value: printedAt || "—" },
-    { label: "ENTITY", value: brand },
-    { label: "HOTEL", value: data.hotel_name || "—" },
-    { label: "PRINTED BY", value: data.printed_by || "Finance" },
-    { label: "GENERATED AT", value: generatedAt },
-  ];
-  const openingTitleRow = exportMeta.length + 3;
-  const openingStartRow = openingTitleRow + 1;
-  const openingRows = accounts.map((_account, index) => openingStartRow + index);
-  const openingCount = Math.max(1, accounts.length);
-  const exportHeaderRow = openingStartRow + openingCount + 1;
-  let exportCursor = exportHeaderRow + 1;
-  const exportRanges = accounts.map((account, accountIndex) => {
-    const rowCount = Array.isArray(account.rows) ? account.rows.length : 0;
-    exportCursor += 1;
-    const lineStart = exportCursor;
-    exportCursor += rowCount;
-    const lineEnd = lineStart + rowCount - 1;
-    const movementRow = exportCursor++;
-    const closingRow = exportCursor++;
-    return { openingRow: openingRows[accountIndex], lineStart, lineEnd, movementRow, closingRow, hasRows: rowCount > 0 };
-  });
-  const exportLastDataRow = Math.max(exportHeaderRow, exportCursor - 1);
-  const controlDebitRow = exportCursor++;
-  const controlCreditRow = exportCursor++;
-  const debitReferences = exportRanges.map((range) => `J${range.movementRow}`).join(",");
-  const creditReferences = exportRanges.map((range) => `K${range.movementRow}`).join(",");
+  const excelReport = buildGeneralLedgerReport(data, params as Record<string, string>);
 
   return (
     <article className="gl-print mx-auto bg-white p-6 text-[10px] leading-tight text-slate-950 print:p-0">
@@ -205,125 +163,9 @@ export default function GeneralLedgerPrintPage() {
         <div className="mx-auto flex w-72 justify-between font-bold"><span>Difference :</span><span className="tabular-nums">{money(control.difference)}</span></div>
       </section>
 
-      <div data-export-include className="hidden">
-        <table
-          data-export-sheet={SHEET_NAME}
-          data-export-autofilter-range={`A${exportHeaderRow}:M${exportLastDataRow}`}
-          data-export-freeze-row={exportHeaderRow}
-          data-export-widths={EXPORT_WIDTHS}
-        >
-          <tbody>
-            <tr><td colSpan={13}>GENERAL LEDGER</td></tr>
-            {exportMeta.map((item, index) => <tr key={`gl-export-meta-${index}`}><td>{item.label}</td><td>{item.value}</td></tr>)}
-            <tr><td colSpan={13} /></tr>
-            <tr><td colSpan={13}>OPENING BALANCES (BROUGHT FORWARD)</td></tr>
-            {accounts.map((account, index) => (
-              <tr key={`gl-export-opening-summary-${index}`}>
-                <td>{account.account_code}</td>
-                <td>{account.account_name}</td>
-                <td colSpan={9}>Opening Balance (brought forward)</td>
-                <td {...numericCell(account.opening_balance)}>{money(account.opening_balance)}</td>
-                <td>OPENING</td>
-              </tr>
-            ))}
-            {!accounts.length && <tr><td colSpan={12}>No accounts selected</td><td>OPENING</td></tr>}
-            <tr><td colSpan={13} /></tr>
-            <tr>{EXPORT_HEADERS.map((label) => <th key={label}>{label}</th>)}</tr>
-            {accounts.map((account, accountIndex) => {
-              const range = exportRanges[accountIndex];
-              const debitNormal = String(account.normal_balance || "").toUpperCase() === "DEBIT";
-              const closingFormula = range.hasRows
-                ? debitNormal
-                  ? `L${range.openingRow}+J${range.movementRow}-K${range.movementRow}`
-                  : `L${range.openingRow}-J${range.movementRow}+K${range.movementRow}`
-                : undefined;
-              return [
-                <tr key={`gl-export-account-${accountIndex}`}>
-                  <td>{account.account_code}</td>
-                  <td>{account.account_name}</td>
-                  <td>{account.account_type || "—"}</td>
-                  <td>{account.normal_balance || "—"}</td>
-                  <td colSpan={8} />
-                  <td>ACCOUNT HEADER</td>
-                </tr>,
-                ...(account.rows ?? []).map((row: any, rowIndex: number) => (
-                  <tr key={`gl-export-line-${accountIndex}-${row.id ?? rowIndex}`}>
-                    <td>{account.account_code}</td>
-                    <td>{account.account_name}</td>
-                    <td>{row.posting_date || "—"}</td>
-                    <td>{row.journal_number || "—"}</td>
-                    <td>{row.document_number || row.document_type || "—"}</td>
-                    <td>{row.reference || "—"}</td>
-                    <td>{row.description || "—"}</td>
-                    <td>{row.location_name || "—"}</td>
-                    <td>{row.department_name || "—"}</td>
-                    <td {...numericCell(row.debit)}>{money(row.debit)}</td>
-                    <td {...numericCell(row.credit)}>{money(row.credit)}</td>
-                    <td {...numericCell(row.balance)}>{money(row.balance)}</td>
-                    <td>LINE</td>
-                  </tr>
-                )),
-                <tr key={`gl-export-movement-${accountIndex}`}>
-                  <td>{account.account_code}</td>
-                  <td>{account.account_name}</td>
-                  <td colSpan={4} />
-                  <td>{movementLabel}</td>
-                  <td colSpan={2} />
-                  <td
-                    {...numericCell(account.total_debit)}
-                    data-f={range.hasRows ? `SUM(J${range.lineStart}:J${range.lineEnd})` : undefined}
-                  >{money(account.total_debit)}</td>
-                  <td
-                    {...numericCell(account.total_credit)}
-                    data-f={range.hasRows ? `SUM(K${range.lineStart}:K${range.lineEnd})` : undefined}
-                  >{money(account.total_credit)}</td>
-                  <td />
-                  <td>MOVEMENT TOTAL</td>
-                </tr>,
-                <tr key={`gl-export-closing-${accountIndex}`}>
-                  <td>{account.account_code}</td>
-                  <td>{account.account_name}</td>
-                  <td colSpan={4} />
-                  <td>{closingLabel}</td>
-                  <td colSpan={4} />
-                  <td {...numericCell(account.closing_balance)} data-f={closingFormula}>{money(account.closing_balance)}</td>
-                  <td>CLOSING</td>
-                </tr>,
-              ];
-            })}
-            <tr>
-              <td colSpan={9}>TOTAL DEBITS</td>
-              <td {...numericCell(control.total_debit)} data-f={accounts.length ? `SUM(${debitReferences})` : undefined}>{money(control.total_debit)}</td>
-              <td />
-              <td />
-              <td>CONTROL</td>
-            </tr>
-            <tr>
-              <td colSpan={9}>TOTAL CREDITS</td>
-              <td />
-              <td {...numericCell(control.total_credit)} data-f={accounts.length ? `SUM(${creditReferences})` : undefined}>{money(control.total_credit)}</td>
-              <td />
-              <td>CONTROL</td>
-            </tr>
-            <tr>
-              <td colSpan={9}>DIFFERENCE</td>
-              <td
-                {...numericCell(control.difference)}
-                data-f={accounts.length ? `J${controlDebitRow}-K${controlCreditRow}` : undefined}
-              >{money(control.difference)}</td>
-              <td />
-              <td />
-              <td>CONTROL</td>
-            </tr>
-            <tr><td colSpan={13} /></tr>
-            <tr><td>SOURCE</td><td>General ledger print preview</td></tr>
-            <tr><td>ENTITY</td><td>{brand}</td></tr>
-            <tr><td>HOTEL</td><td>{data.hotel_name || "—"}</td></tr>
-            <tr><td>PRINTED BY</td><td>{data.printed_by || "Finance"}</td></tr>
-            <tr><td>GENERATED AT</td><td>{generatedAt}</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <script type="application/json" data-export-generator="general-ledger">
+        {serializeGLReport(excelReport)}
+      </script>
 
       <footer className="mt-4 flex justify-between text-[9px] text-slate-600">
         <span>Generated by {brand} · {data.hotel_name || ""}</span>

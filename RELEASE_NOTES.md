@@ -1,6 +1,10 @@
 # Release notes
 
-Last verified: 2026-11-27.
+Last verified: 2026-11-28.
+
+## Latest frontend revision
+
+- Frontend `main`: compact General Ledger Excel export. The workbook has a main accounting sheet and a `Report Info` sheet; the main sheet keeps a 5-row header, account and normal balance shown once, opening balance immediately before transactions, a clean transaction table without `Row Type`, and opening → debit/credit movement → net movement → closing reconciliation with real date/numeric cells and formulas. Secondary filters, generated time, printed-by and technical references live on `Report Info`. Printed GL page layout, backend data and accounting calculations are unchanged. Verified with `node scripts/test-gl-excel.mjs`, `npm test`, `npm run build`, TypeScript, ESLint and `git diff --check`.
 
 ## Deployed revisions
 

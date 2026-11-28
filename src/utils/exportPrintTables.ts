@@ -1,4 +1,8 @@
 import * as XLSX from "xlsx";
+import {
+  exportGeneralLedgerWorkbook,
+  type GLExcelReport,
+} from "./generalLedgerExcel";
 
 const columnName = (index: number) => {
   let value = index + 1;
@@ -112,7 +116,13 @@ function decorateSheet(sheet: any, table: HTMLTableElement) {
 }
 
 /** Export the tables already rendered in a print preview to a workbook. */
-export function exportTablesToExcel(root: ParentNode | null | undefined, fileName: string) {
+export async function exportTablesToExcel(root: ParentNode | null | undefined, fileName: string) {
+  const glModel = root?.querySelector('script[data-export-generator="general-ledger"]');
+  if (glModel) {
+    const report = JSON.parse(glModel.textContent || "{}") as GLExcelReport;
+    await exportGeneralLedgerWorkbook(report, fileName);
+    return;
+  }
   const tables = (Array.from(root?.querySelectorAll("table") ?? []) as HTMLTableElement[]).filter(
     (table) => !table.hasAttribute("data-export-omit") && !table.closest("[data-export-omit]"),
   );

@@ -59,10 +59,10 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
     try {await target.mmhDownloadPdf();}catch {toast.error("Unable to download PDF. Refresh the preview and try again.");}
     finally {printingRef.current=false;setPrinting(false);}
   };
-  const downloadExcel=()=>{
+  const downloadExcel=async()=>{
     const doc=frameRef.current?.contentDocument;
     if(!frameLoaded||!doc||printingRef.current||doc.querySelector('[data-print-ready="false"]')){toast.error("Wait for the report to load before exporting");return;}
-    try {exportTablesToExcel(doc, printExcelFileName(previewTitle));}
+    try {await exportTablesToExcel(doc, printExcelFileName(previewTitle));}
     catch {toast.error("Unable to export the report to Excel");}
   };
   return (
@@ -96,7 +96,7 @@ export default function PrintPreviewButton({ src, title, ariaLabel = "Print prev
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewOpen(false)}>Close</Button>
-            <Button variant="outline" disabled={!frameLoaded||printing} onClick={downloadExcel} aria-label="Export print preview to Excel"><Download size={16} /> Excel</Button>
+            <Button variant="outline" disabled={!frameLoaded||printing} onClick={() => void downloadExcel()} aria-label="Export print preview to Excel"><Download size={16} /> Excel</Button>
             {purchasing&&<Button variant="outline" disabled={!frameLoaded||printing} onClick={downloadPdf}>Download PDF</Button>}
             <Button disabled={!frameLoaded || printing} onClick={print}><Printer size={16} /> Print</Button>
           </DialogFooter>

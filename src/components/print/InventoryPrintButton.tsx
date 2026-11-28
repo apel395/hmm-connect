@@ -70,8 +70,8 @@ export default function InventoryPrintButton({
     catch {toast.error("Unable to record print attempt. Try again.");}
     finally {printingRef.current=false;setPrinting(false);}
   };
-  const downloadExcel = () => {
-    try {exportTablesToExcel(frame.current?.contentDocument, printExcelFileName(reportLabel));}
+  const downloadExcel = async () => {
+    try {await exportTablesToExcel(frame.current?.contentDocument, printExcelFileName(reportLabel));}
     catch {toast.error("Unable to export the report to Excel");}
   };
   return (
@@ -114,7 +114,7 @@ export default function InventoryPrintButton({
             <Button variant="outline" onClick={() => setHtml("")}>
               Close
             </Button>
-            <Button variant="outline" disabled={!ready||printing} onClick={downloadExcel} aria-label="Export print preview to Excel"><Download size={16} /> Excel</Button>
+            <Button variant="outline" disabled={!ready||printing} onClick={() => void downloadExcel()} aria-label="Export print preview to Excel"><Download size={16} /> Excel</Button>
             <Button disabled={!ready||printing} onClick={print}>
               <Printer size={16} /><span className="sr-only">Print</span>
             </Button>

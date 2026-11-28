@@ -132,24 +132,28 @@ async function run() {
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", '"Posting Date"', "GL print uses the posting date label");
   assert.ok(!read("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx").includes('"Side"'), "GL print relies on debit/credit columns instead of a redundant side column");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "Opening Balance (brought forward)", "GL print includes the opening balance");
-  const glPrint = read("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx");
-  assert.ok(glPrint.includes("OPENING BALANCES (BROUGHT FORWARD)"), "GL Excel has a labeled opening-balance block");
-  assert.ok(
-    glPrint.indexOf("OPENING BALANCES (BROUGHT FORWARD)") < glPrint.indexOf("EXPORT_HEADERS.map"),
-    "GL Excel opening balances appear before the column header row",
-  );
-  assert.ok(
-    !glPrint.includes("gl-export-opening-${accountIndex}"),
-    "GL Excel no longer repeats opening balances inside the transaction area",
-  );
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "MOVEMENT TOTAL (FILTERED)", "GL movement total names the filtered scope");
-  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "data-export-sheet={SHEET_NAME}", "GL exports one named worksheet");
-  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "EXPORT_HEADERS", "GL single worksheet carries the full audit trail");
-  has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "data-f={closingFormula}", "GL Excel closing balance is formula-driven");
+  const glPrint = read("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx");
+  assert.ok(glPrint.includes('data-export-generator="general-ledger"'), "GL print hands the compact workbook a typed model");
+  assert.ok(glPrint.includes("buildGeneralLedgerReport("), "GL print builds its Excel presentation model from backend data");
+  assert.ok(!glPrint.includes("EXPORT_HEADERS"), "GL Excel no longer uses the trial-balance-shaped export table");
+  assert.ok(!glPrint.includes("Row Type"), "GL Excel has no technical Row Type column");
+  assert.equal((glPrint.match(/data-export-sheet=/g) ?? []).length, 0, "GL Excel no longer relies on the generic table exporter");
+  const glExcel = read("src/utils/generalLedgerExcel.ts");
+  has("src/utils/generalLedgerExcel.ts", 'GL_SHEET = "General Ledger"', "GL exports a dedicated accounting worksheet");
+  has("src/utils/generalLedgerExcel.ts", 'GL_INFO_SHEET = "Report Info"', "secondary GL metadata moves to Report Info");
+  has("src/utils/generalLedgerExcel.ts", "OPENING BALANCE", "GL opening balance sits directly above transactions");
+  has("src/utils/generalLedgerExcel.ts", "Net Movement", "GL reconciliation reports net movement instead of a balance-check difference");
+  has("src/utils/generalLedgerExcel.ts", "Closing Balance", "GL reconciliation reports the closing balance");
+  has("src/utils/generalLedgerExcel.ts", "_xlnm.Print_Titles", "GL worksheet repeats transaction headers when printed");
+  has("src/utils/generalLedgerExcel.ts", 'orientation="landscape"', "GL worksheet prints in landscape");
+  has("src/utils/generalLedgerExcel.ts", 'fitToWidth="1"', "GL worksheet fits all columns to one page wide");
+  has("src/utils/generalLedgerExcel.ts", "showGridLines", "GL worksheet hides worksheet gridlines");
+  assert.ok(!glExcel.includes('"Row Type"'), "GL workbook has no technical Row Type column");
+  assert.ok(!glExcel.includes('"Difference"'), "GL workbook has no misleading single-account difference");
   for (const file of [
     "src/modules/finance/AccountingPrintPage.tsx",
     "src/modules/finance/journals/JournalRegisterPrintPage.tsx",
-    "src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx",
   ]) {
     const text = read(file);
     assert.equal((text.match(/data-export-sheet=/g) ?? []).length, 1, `${file} exports exactly one worksheet`);

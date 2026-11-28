@@ -131,8 +131,8 @@ export default function DocumentPrintTemplate<Row>({
     try {await (window as PrintWindow).mmhDownloadPdf?.();}
     catch {toast.error("Unable to prepare PDF. Refresh the preview if the document changed.");}
   };
-  const downloadExcel=()=>{
-    try {exportTablesToExcel(articleRef.current, printExcelFileName(String(documentNumber ?? "document")));}
+  const downloadExcel=async()=>{
+    try {await exportTablesToExcel(articleRef.current, printExcelFileName(String(documentNumber ?? "document")));}
     catch {toast.error("Unable to export the document to Excel");}
   };
   const visibleAuthenticity = authenticity.filter((field) => field.value !== undefined && field.value !== null && field.value !== "");
@@ -140,7 +140,7 @@ export default function DocumentPrintTemplate<Row>({
   const generatedAt = new Date().toISOString();
   return <article ref={articleRef} data-print-ready="true" className="print-document mx-auto min-h-[277mm] max-w-[210mm] bg-white px-8 py-7 text-[12px] text-black">
     <style>{`@page{size:A4 portrait;margin:10mm}@media print{body{background:#fff!important}.print-document{max-width:none!important;min-height:auto!important;padding:0!important}.print-document thead{display:table-header-group}.print-document tr{break-inside:avoid;page-break-inside:avoid}.avoid-break{break-inside:avoid;page-break-inside:avoid}}`}</style>
-    <div className="mb-2 flex justify-end gap-2 print:hidden"><Button variant="outline" disabled={printing} onClick={downloadExcel} aria-label="Export document to Excel"><Download size={16}/> Excel</Button>{printTarget&&<Button variant="outline" disabled={printing} onClick={downloadPdf}>Download PDF</Button>}<Button variant="outline" disabled={printing} aria-label="Print document" onClick={printCopy}><Printer size={16}/></Button></div>
+    <div className="mb-2 flex justify-end gap-2 print:hidden"><Button variant="outline" disabled={printing} onClick={() => void downloadExcel()} aria-label="Export document to Excel"><Download size={16}/> Excel</Button>{printTarget&&<Button variant="outline" disabled={printing} onClick={downloadPdf}>Download PDF</Button>}<Button variant="outline" disabled={printing} aria-label="Print document" onClick={printCopy}><Printer size={16}/></Button></div>
     {tracking && <div data-print-stamp className="mb-2 text-right text-xs font-semibold">{stampText(tracking)}</div>}
     <header className="grid grid-cols-[1.35fr_1fr] items-center gap-8 border-b border-black pb-4">
       <div className="flex items-center gap-4">

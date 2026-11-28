@@ -187,7 +187,7 @@ export default function InventoryPeriodReportPage() {
         documentHtml,
         "text/html",
       );
-      exportTablesToExcel(document, `Stock-${from}-${to}`);
+      await exportTablesToExcel(document, `Stock-${from}-${to}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Export failed");
     } finally {
