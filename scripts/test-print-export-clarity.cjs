@@ -151,6 +151,11 @@ async function run() {
   has("src/utils/generalLedgerExcel.ts", "showGridLines", "GL worksheet hides worksheet gridlines");
   assert.ok(!glExcel.includes('"Row Type"'), "GL workbook has no technical Row Type column");
   assert.ok(!glExcel.includes('"Difference"'), "GL workbook has no misleading single-account difference");
+  has("src/modules/finance/general-ledger/GeneralLedgerPage.tsx", "downloadGeneralLedgerReport(", "GL page Excel button uses the shared compact workbook");
+  assert.ok(!read("src/modules/finance/general-ledger/GeneralLedgerPage.tsx").includes("createLedgerExport("), "GL page no longer starts a backend export job");
+  has("src/modules/finance/general-ledger/export.ts", "getLedgerPrint(params)", "shared GL export reads backend print values");
+  has("src/modules/finance/general-ledger/export.ts", "exportGeneralLedgerWorkbook(report", "shared GL export writes the print-preview template");
+  has("src/utils/exportPrintTables.ts", "exportGeneralLedgerWorkbook(report", "print-to-Excel writes the same GL template");
   for (const file of [
     "src/modules/finance/AccountingPrintPage.tsx",
     "src/modules/finance/journals/JournalRegisterPrintPage.tsx",

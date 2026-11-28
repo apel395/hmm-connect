@@ -475,8 +475,13 @@ export function buildGeneralLedgerWorkbook(report: GLExcelReport): {
   };
 }
 
+// Excel requires a stable child order in CT_Font and CT_Border; SheetJS does
+// not enforce it, but Excel will repair the workbook when the order is wrong.
 const font = (size: number, bold: boolean, color?: string) =>
-  `<font><sz val="${size}"/>${bold ? "<b/>" : ""}${color ? `<color rgb="${color}"/>` : ""}<name val="Calibri"/><family val="2"/></font>`;
+  `<font>${bold ? "<b/>" : ""}<sz val="${size}"/>${color ? `<color rgb="${color}"/>` : ""}<name val="Calibri"/><family val="2"/></font>`;
+
+const side = (name: "left" | "right" | "top" | "bottom", style: string, color: string) =>
+  `<${name} style="${style}"><color rgb="${color}"/></${name}>`;
 
 const border = (sides: string) =>
   `<border>${sides}<diagonal/></border>`;
@@ -499,7 +504,12 @@ function styleXml() {
     '<fill><patternFill patternType="solid"><fgColor rgb="FFE8EFEA"/><bgColor indexed="64"/></patternFill></fill>',
     '<fill><patternFill patternType="solid"><fgColor rgb="FFDDE6E0"/><bgColor indexed="64"/></patternFill></fill>',
   ];
-  const thin = '<top style="thin"><color rgb="FFD1D9D4"/></top><left style="thin"><color rgb="FFD1D9D4"/></left><right style="thin"><color rgb="FFD1D9D4"/></right><bottom style="thin"><color rgb="FFD1D9D4"/></bottom>';
+  const thin = [
+    side("left", "thin", "FFD1D9D4"),
+    side("right", "thin", "FFD1D9D4"),
+    side("top", "thin", "FFD1D9D4"),
+    side("bottom", "thin", "FFD1D9D4"),
+  ].join("");
   const borders = [
     border(""),
     border('<bottom style="thin"><color rgb="FFD1D9D4"/></bottom>'),

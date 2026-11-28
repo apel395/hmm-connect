@@ -7,6 +7,7 @@ export type ReceivingBilling = {
   tax_invoice_date: string;
   supplier_document_url: string;
   discount_amount: number;
+  discount_account_id: number | null;
   shipping_fee_amount: number;
   admin_fee_amount: number;
   other_fee_amount: number;
@@ -18,7 +19,7 @@ export type ReceivingBilling = {
 export const emptyReceivingBilling = (): ReceivingBilling => ({
   supplier_invoice_number: "", supplier_document_total: null, supplier_invoice_date: "", supplier_invoice_due_date: "",
   tax_invoice_number: "", tax_invoice_date: "", supplier_document_url: "",
-  discount_amount: 0, shipping_fee_amount: 0, admin_fee_amount: 0, other_fee_amount: 0,
+  discount_amount: 0, discount_account_id: null, shipping_fee_amount: 0, admin_fee_amount: 0, other_fee_amount: 0,
   other_fee_description: "", shipping_fee_account_id: null,
   admin_fee_account_id: null, other_fee_account_id: null,
 });

@@ -30,6 +30,8 @@ async function run() {
   assert.equal(payload.admin_fee_amount, 0);
   assert.equal(payload.other_fee_amount, 0);
   assert.equal(payload.supplier_document_total, null);
+  assert.equal(empty.discount_account_id, null);
+  assert.equal(payload.discount_account_id, null);
   assert.equal(JSON.stringify(payload).includes('""'), true);
 
   const dated = receivingBillingPayload({
@@ -53,7 +55,15 @@ async function run() {
     assert.match(src, /\.\.\.receivingBillingPayload\(billing\),/, name + " must omit empty dates");
     assert.doesNotMatch(src, /\.\.\.billing,/, name + " must not send unnormalized billing");
   }
-  console.log("Receiving optional billing PASS: blank dates omitted from draft save, dated values preserved.");
+  const billingFields = fs.readFileSync(
+    root + "/src/modules/purchasing/goods-receipts/components/ReceivingBillingFields.tsx", "utf8"
+  );
+  assert.match(billingFields, /label="Discount account"/, "receiving billing exposes a discount account selector");
+  assert.match(billingFields, /dataField="discount_account_id"/, "discount account uses a stable validation path");
+  assert.match(billingFields, /discount_account_id\?\?undefined/, "discount selector binds the billing account id");
+  assert.match(billingFields, /\["INCOME","EXPENSE"\]/, "discount account is limited to credit-normal income/expense accounts");
+  assert.match(billingFields, /==="CREDIT"/, "discount account stays credit-normal");
+  console.log("Receiving optional billing PASS: blank dates omitted from draft save, dated values preserved, discount COA selectable.");
 }
 
 run().catch(error => { console.error(error); process.exitCode = 1; });

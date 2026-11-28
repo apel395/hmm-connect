@@ -118,6 +118,10 @@ assert.ok(!safeJson.includes("<"), "inline model cannot close the script tag");
 assert.deepEqual(JSON.parse(safeJson).account, "Accrual <script> & Gaji");
 
 const { workbook, meta } = gl.buildGeneralLedgerWorkbook(report);
+const printModel = JSON.parse(gl.serializeGLReport(report));
+const fromPrintModel = gl.buildGeneralLedgerWorkbook(printModel).workbook;
+assert.deepEqual(fromPrintModel.SheetNames, workbook.SheetNames, "page and print exports use the same sheets");
+assert.deepEqual(fromPrintModel.Sheets, workbook.Sheets, "page and print exports use the same cells and template");
 assert.deepEqual(workbook.SheetNames, ["General Ledger", "Report Info"]);
 assert.equal(meta.printLayout.headerRow, 5);
 const sheet = workbook.Sheets["General Ledger"];
@@ -219,6 +223,24 @@ assert.match(stylesXml, /<b\/>/, "accounting styles include bold headings");
 assert.match(stylesXml, /FF1F4E3D/, "table headers use an understated accounting fill");
 assert.match(stylesXml, /numFmtId="164" formatCode="#,##0\.00"/, "money uses Indonesian-style two decimals");
 assert.match(stylesXml, /numFmtId="165" formatCode="dd\/mm\/yy"/, "dates use a readable short format");
+const boldFont = [...stylesXml.matchAll(/<font>[\s\S]*?<\/font>/g)]
+  .map((match) => match[0])
+  .find((entry) => entry.includes("<b/>"));
+assert.ok(boldFont, "styles include a bold font");
+assert.deepEqual(
+  [...boldFont.matchAll(/<(b|i|strike|condense|extend|outline|shadow|u|vertAlign|sz|color|name|family|charset|scheme)\b/g)].map((match) => match[1]),
+  ["b", "sz", "color", "name", "family"],
+  "font children stay in the order Excel requires",
+);
+const fullBorder = [...stylesXml.matchAll(/<border>[\s\S]*?<\/border>/g)]
+  .map((match) => match[0])
+  .find((entry) => (entry.match(/style="thin"/g) ?? []).length === 4);
+assert.ok(fullBorder, "styles include a full cell border");
+assert.deepEqual(
+  [...fullBorder.matchAll(/<(left|right|top|bottom|diagonal)\b/g)].map((match) => match[1]),
+  ["left", "right", "top", "bottom", "diagonal"],
+  "border children stay in the order Excel requires",
+);
 const workbookXml = await zip.file("xl/workbook.xml").async("string");
 assert.match(workbookXml, /_xlnm\.Print_Area/);
 assert.match(workbookXml, /_xlnm\.Print_Titles/);

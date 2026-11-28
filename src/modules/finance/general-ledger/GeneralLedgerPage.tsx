@@ -23,13 +23,11 @@ import SearchableSelect from "@/components/form/SearchableSelect";
 import { getAllAccountLookup } from "@/modules/master/chart-of-accounts/api";
 import { listBusinessUnits, listDepartments, listLocations } from "@/modules/admin/organization/api";
 import { useSuppliers } from "@/modules/master/suppliers/hooks/useSuppliers";
-import { createLedgerExport, getAccountSummary, getExport, getLedgerAccountBalances, getLedgerPrint, listLedger } from "./api";
+import { getAccountSummary, getLedgerAccountBalances, getLedgerPrint, listLedger } from "./api";
+import { downloadGeneralLedgerReport } from "./export";
 import type { LedgerAccountBalance } from "./api";
 
 const amount = (value: unknown) => Number(value ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const EXPORT_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000];
-const EXPORT_BACKGROUND_POLL_DELAY_MS = 15000;
-const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 const SKELETON_WIDTHS = ["w-16", "w-24", "w-32", "w-40", "w-24", "w-20", "w-20", "w-20", "w-24"];
 
@@ -54,8 +52,7 @@ export default function GeneralLedgerPage() {
   const [groupByAccount, setGroupByAccount] = useState(true);
   const [collapsedAccounts, setCollapsedAccounts] = useState<number[]>([]);
   const [filters, setFilters] = useState<any>({ account_ids: searchParams.get("account_ids") || "", search: searchParams.get("search") || "", search_type: searchParams.get("search_type") || "ALL", account_id: searchParams.get("account_id") || "", account_from_id: searchParams.get("account_from_id") || "", account_to_id: searchParams.get("account_to_id") || "", date_from: searchParams.get("date_from") ?? glMonthStart, date_to: searchParams.get("date_to") ?? glToday, reference_type: searchParams.get("reference_type") || "", supplier_id: searchParams.get("supplier_id") || "", department_id: searchParams.get("department_id") || "", location_id: searchParams.get("location_id") || "", business_unit_id: searchParams.get("business_unit_id") || "" });
-  const [exportJobId, setExportJobId] = useState<string | null>(null);
-  const [exportStatus, setExportStatus] = useState<"idle" | "starting" | "processing" | "failed">("idle");
+  const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: pageSize }).filter(([, value]) => value !== ""));
   const ledger = useQuery({ queryKey: ["general-ledger", params], queryFn: () => listLedger(params) });
@@ -96,65 +93,6 @@ export default function GeneralLedgerPage() {
     setPage(1);
   };
 
-  useEffect(() => {
-    if (!exportJobId) return;
-
-    let cancelled = false;
-    let timer: number | undefined;
-    let pollAttempt = 0;
-    const startedAt = Date.now();
-
-    const scheduleNextPoll = (poll: () => Promise<void>) => {
-      if (cancelled) return;
-      const foregroundDelay = EXPORT_POLL_DELAYS_MS[Math.min(pollAttempt, EXPORT_POLL_DELAYS_MS.length - 1)];
-      const delay = document.visibilityState === "hidden"
-        ? EXPORT_BACKGROUND_POLL_DELAY_MS
-        : foregroundDelay;
-      pollAttempt += 1;
-      timer = window.setTimeout(poll, delay);
-    };
-
-    const poll = async () => {
-      if (cancelled) return;
-      if (Date.now() - startedAt >= EXPORT_POLL_TIMEOUT_MS) {
-        setExportStatus("failed");
-        setExportJobId(null);
-        setExportError("Export is taking longer than expected. Please try again later.");
-        return;
-      }
-      try {
-        const job = await getExport(exportJobId);
-        if (cancelled) return;
-        if (job.status === "READY" && job.download_url) {
-          setExportStatus("idle");
-          setExportJobId(null);
-          setExportError(null);
-          window.location.assign(job.download_url);
-          return;
-        }
-        if (job.status === "FAILED") {
-          setExportStatus("failed");
-          setExportJobId(null);
-          setExportError(job.error_message || "Export failed");
-          return;
-        }
-        setExportStatus("processing");
-        scheduleNextPoll(poll);
-      } catch (error: any) {
-        if (cancelled) return;
-        setExportStatus("failed");
-        setExportJobId(null);
-        setExportError(error?.response?.data?.detail || "Unable to check export status");
-      }
-    };
-
-    scheduleNextPoll(poll);
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [exportJobId]);
-
   const printParams = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
   // Grouped view needs every entry for each account, not one globally paginated slice.
   // The report endpoint already returns the complete account-grouped ledger with
@@ -171,18 +109,15 @@ export default function GeneralLedgerPage() {
 
   const handleExport = async () => {
     setExportError(null);
-    setExportStatus("starting");
+    setExporting(true);
     try {
-      const job = await createLedgerExport(printParams);
-      setExportJobId(job.job_id);
-      setExportStatus("processing");
+      await downloadGeneralLedgerReport(printParams, "general-ledger");
     } catch (error: any) {
-      setExportStatus("failed");
-      setExportError(error?.response?.data?.detail || "Unable to start export");
+      setExportError(error?.response?.data?.detail || "Unable to export the general ledger");
+    } finally {
+      setExporting(false);
     }
   };
-
-  const exportBusy = exportStatus === "starting" || exportStatus === "processing";
   type AccountGroup = { id: number; code: string; name: string; rows: any[]; debit: number; credit: number; opening?: string | number; closing?: string | number };
   const pagedAccountGroups = Array.from<AccountGroup>(
     (ledger.data?.items ?? []).reduce((groups: Map<number, AccountGroup>, row: any) => {
@@ -409,7 +344,7 @@ export default function GeneralLedgerPage() {
       </select>
       <Button type="button" size="md" variant="outline" title="Open transaction filters" aria-label="Open General Ledger filters" aria-expanded={showFilters} onClick={() => setShowFilters(true)}><SlidersHorizontal size={15}/><span className="sr-only">Filters</span>{activeAdvancedFilters ? <span className="text-xs">{activeAdvancedFilters}</span> : null}</Button>
       <Button type="button" size="md" variant="outline" title="Display preferences" aria-label="Ledger display preferences" onClick={() => setShowDisplayTools(true)}><Rows3 size={15}/><span className="sr-only">Display</span></Button>
-      <ExportButton scope="filtered" format="excel" size="md" loading={exportBusy} onClick={handleExport} />
+      <ExportButton scope="filtered" format="excel" size="md" loading={exporting} onClick={handleExport} />
       <PrintPreviewButton src={printSrc} title="General Ledger" ariaLabel="Preview general ledger" label="Print" />
     </div>
     {activeChips.length > 0 && <div className="gl-chips print:hidden">
