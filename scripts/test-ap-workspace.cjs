@@ -130,7 +130,8 @@ async function run() {
   assert.ok(invoiceList.includes("ListToolbar"), "supplier invoice filters use the shared toolbar");
   assert.ok(invoiceList.includes("<Pagination"), "supplier invoices use shared pagination");
   assert.ok(invoiceList.includes("Confirm whether the supplier invoice records PPN."), "PPN confirmation is preserved");
-  assert.ok(invoiceList.includes("Faktur Pajak Number is required for an invoice with PPN."), "faktur guard is preserved");
+  assert.match(invoiceList, /Optional when saving a draft\./);
+  assert.doesNotMatch(invoiceList, /failSubmit\([^\n]*"tax_invoice_(?:number|date)"\)/);
   assert.ok(invoiceList.includes("Document Total does not match the recalculated Invoice Total"), "document-total guard is preserved");
   assert.ok(invoiceList.includes("withSyncedDocumentTotal"), "stale-total sync is preserved");
 
