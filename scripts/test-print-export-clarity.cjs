@@ -132,6 +132,16 @@ async function run() {
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", '"Posting Date"', "GL print uses the posting date label");
   assert.ok(!read("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx").includes('"Side"'), "GL print relies on debit/credit columns instead of a redundant side column");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "Opening Balance (brought forward)", "GL print includes the opening balance");
+  const glPrint = read("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx");
+  assert.ok(glPrint.includes("OPENING BALANCES (BROUGHT FORWARD)"), "GL Excel has a labeled opening-balance block");
+  assert.ok(
+    glPrint.indexOf("OPENING BALANCES (BROUGHT FORWARD)") < glPrint.indexOf("EXPORT_HEADERS.map"),
+    "GL Excel opening balances appear before the column header row",
+  );
+  assert.ok(
+    !glPrint.includes("gl-export-opening-${accountIndex}"),
+    "GL Excel no longer repeats opening balances inside the transaction area",
+  );
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "MOVEMENT TOTAL (FILTERED)", "GL movement total names the filtered scope");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "data-export-sheet={SHEET_NAME}", "GL exports one named worksheet");
   has("src/modules/finance/general-ledger/GeneralLedgerPrintPage.tsx", "EXPORT_HEADERS", "GL single worksheet carries the full audit trail");

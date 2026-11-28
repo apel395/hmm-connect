@@ -84,18 +84,21 @@ export default function GeneralLedgerPrintPage() {
     { label: "PRINTED BY", value: data.printed_by || "Finance" },
     { label: "GENERATED AT", value: generatedAt },
   ];
-  const exportHeaderRow = exportMeta.length + 3;
+  const openingTitleRow = exportMeta.length + 3;
+  const openingStartRow = openingTitleRow + 1;
+  const openingRows = accounts.map((_account, index) => openingStartRow + index);
+  const openingCount = Math.max(1, accounts.length);
+  const exportHeaderRow = openingStartRow + openingCount + 1;
   let exportCursor = exportHeaderRow + 1;
-  const exportRanges = accounts.map((account) => {
+  const exportRanges = accounts.map((account, accountIndex) => {
     const rowCount = Array.isArray(account.rows) ? account.rows.length : 0;
-    const accountRow = exportCursor++;
-    const openingRow = exportCursor++;
+    exportCursor += 1;
     const lineStart = exportCursor;
     exportCursor += rowCount;
     const lineEnd = lineStart + rowCount - 1;
     const movementRow = exportCursor++;
     const closingRow = exportCursor++;
-    return { accountRow, openingRow, lineStart, lineEnd, movementRow, closingRow, hasRows: rowCount > 0 };
+    return { openingRow: openingRows[accountIndex], lineStart, lineEnd, movementRow, closingRow, hasRows: rowCount > 0 };
   });
   const exportLastDataRow = Math.max(exportHeaderRow, exportCursor - 1);
   const controlDebitRow = exportCursor++;
@@ -213,6 +216,18 @@ export default function GeneralLedgerPrintPage() {
             <tr><td colSpan={13}>GENERAL LEDGER</td></tr>
             {exportMeta.map((item, index) => <tr key={`gl-export-meta-${index}`}><td>{item.label}</td><td>{item.value}</td></tr>)}
             <tr><td colSpan={13} /></tr>
+            <tr><td colSpan={13}>OPENING BALANCES (BROUGHT FORWARD)</td></tr>
+            {accounts.map((account, index) => (
+              <tr key={`gl-export-opening-summary-${index}`}>
+                <td>{account.account_code}</td>
+                <td>{account.account_name}</td>
+                <td colSpan={9}>Opening Balance (brought forward)</td>
+                <td {...numericCell(account.opening_balance)}>{money(account.opening_balance)}</td>
+                <td>OPENING</td>
+              </tr>
+            ))}
+            {!accounts.length && <tr><td colSpan={12}>No accounts selected</td><td>OPENING</td></tr>}
+            <tr><td colSpan={13} /></tr>
             <tr>{EXPORT_HEADERS.map((label) => <th key={label}>{label}</th>)}</tr>
             {accounts.map((account, accountIndex) => {
               const range = exportRanges[accountIndex];
@@ -230,15 +245,6 @@ export default function GeneralLedgerPrintPage() {
                   <td>{account.normal_balance || "—"}</td>
                   <td colSpan={8} />
                   <td>ACCOUNT HEADER</td>
-                </tr>,
-                <tr key={`gl-export-opening-${accountIndex}`}>
-                  <td>{account.account_code}</td>
-                  <td>{account.account_name}</td>
-                  <td colSpan={4} />
-                  <td>Opening Balance (brought forward)</td>
-                  <td colSpan={4} />
-                  <td {...numericCell(account.opening_balance)}>{money(account.opening_balance)}</td>
-                  <td>OPENING</td>
                 </tr>,
                 ...(account.rows ?? []).map((row: any, rowIndex: number) => (
                   <tr key={`gl-export-line-${accountIndex}-${row.id ?? rowIndex}`}>
